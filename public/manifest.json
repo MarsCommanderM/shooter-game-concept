@@ -1,0 +1,9 @@
+{
+  "name": "WIRRWARR - Game Design Document",
+  "short_name": "WIRRWARR GDD",
+  "description": "Ein innovatives Third-Person-Shooter-Konzept mit Dynamic Destructibility",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0d0a",
+  "theme_color": "#00ff40"
+}
