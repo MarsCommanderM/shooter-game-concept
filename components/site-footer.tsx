@@ -2,7 +2,7 @@ export function SiteFooter() {
   return (
     <footer className="relative py-16 px-6 border-t border-border">
       <div className="max-w-6xl mx-auto">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
+        <div className="flex flex-col md:flex-row items-start md:justify-between gap-10">
           <div>
             <p className="text-2xl font-bold text-foreground mb-2">
               <span className="text-primary glow-neon-sm">WIRR</span>WARR
@@ -11,6 +11,26 @@ export function SiteFooter() {
               Game Design Document // Konzeptphase
             </p>
           </div>
+
+          {/* Footer Nav */}
+          <nav className="flex flex-wrap gap-x-8 gap-y-3">
+            {[
+              { label: "USP", href: "#usp" },
+              { label: "Setting", href: "#setting" },
+              { label: "Mechanik", href: "#mechanics" },
+              { label: "Charakter", href: "#character" },
+              { label: "Arsenal", href: "#arsenal" },
+              { label: "Gegner", href: "#enemies" },
+            ].map((link) => (
+              <a
+                key={link.href}
+                href={link.href}
+                className="font-mono text-xs tracking-wider uppercase text-muted-foreground hover:text-primary transition-colors"
+              >
+                {link.label}
+              </a>
+            ))}
+          </nav>
 
           <div className="flex flex-col items-start md:items-end gap-2">
             <p className="font-mono text-xs text-muted-foreground tracking-wider">

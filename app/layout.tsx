@@ -34,7 +34,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="de" className="bg-background">
+    <html
+      lang="de"
+      className={`bg-background ${_rajdhani.variable} ${_jetbrainsMono.variable}`}
+    >
       <body className="font-sans antialiased">{children}</body>
     </html>
   );
