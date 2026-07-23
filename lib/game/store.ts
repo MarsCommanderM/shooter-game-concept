@@ -9,6 +9,7 @@ export interface HudState {
   health: number;
   maxHealth: number;
   score: number;
+  kills: number;
   wave: number;
   enemiesRemaining: number;
   ammo: number;
@@ -21,6 +22,7 @@ const initialState: HudState = {
   health: 100,
   maxHealth: 100,
   score: 0,
+  kills: 0,
   wave: 0,
   enemiesRemaining: 0,
   ammo: 30,

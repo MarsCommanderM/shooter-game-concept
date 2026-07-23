@@ -4,12 +4,15 @@ import { Canvas } from "@react-three/fiber";
 import { Suspense } from "react";
 import { Arena } from "./arena";
 import { Player } from "./player";
-import { Enemies } from "./enemies";
+import { EnemyManager } from "./enemies";
 import { Effects } from "./effects";
+import { Hud } from "./hud";
+import { Overlays } from "./overlays";
 
 export function GameScene() {
   return (
-    <Canvas
+    <div className="relative h-full w-full">
+      <Canvas
       shadows
       camera={{ fov: 60, near: 0.1, far: 200, position: [0, 6, 10] }}
       gl={{ antialias: true, powerPreference: "high-performance" }}
@@ -18,11 +21,11 @@ export function GameScene() {
       <color attach="background" args={["#0a0f0a"]} />
       <fog attach="fog" args={["#0a0f0a", 25, 70]} />
 
-      {/* Lighting - moody with toxic green ambience */}
-      <ambientLight intensity={0.35} color="#7dffb0" />
+      {/* Lighting - moody with subtle toxic green ambience */}
+      <ambientLight intensity={0.25} color="#c8d8c8" />
       <hemisphereLight
-        intensity={0.4}
-        color="#88ff9c"
+        intensity={0.3}
+        color="#3d5c46"
         groundColor="#1a1410"
       />
       <directionalLight
@@ -43,9 +46,12 @@ export function GameScene() {
       <Suspense fallback={null}>
         <Arena />
         <Player />
-        <Enemies />
+        <EnemyManager />
         <Effects />
       </Suspense>
-    </Canvas>
+      </Canvas>
+      <Hud />
+      <Overlays />
+    </div>
   );
 }

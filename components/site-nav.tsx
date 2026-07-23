@@ -76,6 +76,12 @@ export function SiteNav() {
               {link.label}
             </a>
           ))}
+          <a
+            href="/play"
+            className="font-mono text-xs tracking-widest uppercase font-bold bg-primary text-primary-foreground px-4 py-2 rounded-sm hover:bg-primary/90 transition-colors"
+          >
+            Spielen
+          </a>
         </div>
 
         {/* Mobile Menu Button */}
@@ -83,7 +89,7 @@ export function SiteNav() {
           type="button"
           onClick={() => setMenuOpen(!menuOpen)}
           className="md:hidden flex flex-col gap-1.5 p-2 min-w-[44px] min-h-[44px] items-center justify-center"
-          aria-label="Men\u00fc \u00f6ffnen"
+          aria-label="Menü öffnen"
         >
           <span
             className={`w-5 h-0.5 bg-foreground transition-transform ${
@@ -121,6 +127,13 @@ export function SiteNav() {
                 {link.label}
               </a>
             ))}
+            <a
+              href="/play"
+              onClick={() => setMenuOpen(false)}
+              className="font-mono text-sm tracking-widest uppercase font-bold bg-primary text-primary-foreground px-4 py-3 rounded-sm text-center mt-2 min-h-[44px] flex items-center justify-center"
+            >
+              Jetzt Spielen
+            </a>
           </div>
         </div>
       )}

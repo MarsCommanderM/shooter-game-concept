@@ -1,28 +1,23 @@
 "use client";
 
-import { useGameStore } from "@/lib/game/store";
-import { resetSharedState } from "@/lib/game/shared";
+import { gameStore, useGameState } from "@/lib/game/store";
+import { resetWorld } from "@/lib/game/shared";
 
 export function Overlays() {
-  const phase = useGameStore((s) => s.phase);
-  const wave = useGameStore((s) => s.wave);
-  const score = useGameStore((s) => s.score);
-  const kills = useGameStore((s) => s.kills);
-  const startGame = useGameStore((s) => s.startGame);
-  const resetGame = useGameStore((s) => s.resetGame);
+  const phase = useGameState((s) => s.phase);
+  const wave = useGameState((s) => s.wave);
+  const score = useGameState((s) => s.score);
+  const kills = useGameState((s) => s.kills);
 
   if (phase === "playing") return null;
 
   const handleStart = () => {
-    resetSharedState();
-    startGame();
+    resetWorld();
+    gameStore.reset();
+    gameStore.set({ phase: "playing" });
   };
 
-  const handleRestart = () => {
-    resetSharedState();
-    resetGame();
-    startGame();
-  };
+  const handleRestart = handleStart;
 
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/85 backdrop-blur-sm scanlines">
@@ -48,7 +43,7 @@ export function Overlays() {
               <ul className="space-y-2 font-mono text-sm text-muted-foreground">
                 <ControlRow keys="WASD" action="Bewegen" />
                 <ControlRow keys="Maus" action="Zielen" />
-                <ControlRow keys="Linksklick" action="Schie&szlig;en" />
+                <ControlRow keys="Linksklick" action="Schießen" />
                 <ControlRow keys="Shift" action="Sprinten" />
                 <ControlRow keys="Leertaste" action="Ausweichrolle" />
                 <ControlRow keys="R" action="Nachladen" />
@@ -106,7 +101,7 @@ function ControlRow({ keys, action }: { keys: string; action: string }) {
       <span className="rounded border border-border bg-secondary px-2 py-1 text-xs text-foreground">
         {keys}
       </span>
-      <span className="text-right" dangerouslySetInnerHTML={{ __html: action }} />
+      <span className="text-right">{action}</span>
     </li>
   );
 }

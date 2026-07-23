@@ -70,7 +70,7 @@ export function Arena() {
       const mat = mesh.material as THREE.MeshStandardMaterial;
       if (rt.hitFlash > 0) {
         rt.hitFlash = Math.max(0, rt.hitFlash - delta * 4);
-        mat.emissiveIntensity = 0.3 + rt.hitFlash * 2;
+        mat.emissiveIntensity = 0.06 + rt.hitFlash * 2;
         // Shrink slightly as it takes damage.
         const dmg = 1 - rt.hp / rt.maxHp;
         mesh.scale.setScalar(1 - dmg * 0.25);
@@ -102,10 +102,10 @@ export function Arena() {
         <mesh key={i} position={w.pos} castShadow receiveShadow>
           <boxGeometry args={w.size} />
           <meshStandardMaterial
-            color="#12201a"
+            color="#2e332c"
             emissive={NEON}
-            emissiveIntensity={0.08}
-            roughness={0.8}
+            emissiveIntensity={0.03}
+            roughness={0.9}
           />
         </mesh>
       ))}
@@ -123,11 +123,11 @@ export function Arena() {
         >
           <cylinderGeometry args={[d.radius, d.radius * 1.15, d.height, 12]} />
           <meshStandardMaterial
-            color="#1a2b1f"
+            color="#4a4f46"
             emissive={NEON}
-            emissiveIntensity={0.3}
-            roughness={0.6}
-            metalness={0.2}
+            emissiveIntensity={0.06}
+            roughness={0.85}
+            metalness={0.1}
           />
         </mesh>
       ))}

@@ -16,6 +16,8 @@ export const input = {
   right: false,
   sprint: false,
   shooting: false,
+  reload: false,
+  dodge: false,
   // accumulated mouse delta since last frame (pointer lock)
   mouseDX: 0,
   mouseDY: 0,
@@ -95,11 +97,17 @@ export function resetWorld() {
   playerAim.set(0, 0, -1);
   playerState.alive = true;
   enemyRegistry.clear();
-  pillarRegistry.clear();
+  // Restore pillars instead of clearing: the Arena registers them only once.
+  for (const p of pillarRegistry.values()) {
+    p.hp = p.maxHp;
+    p.alive = true;
+    p.hitFlash = 0;
+  }
   tracers.length = 0;
   impacts.length = 0;
   input.forward = input.backward = input.left = input.right = false;
   input.sprint = input.shooting = false;
+  input.reload = input.dodge = false;
   input.mouseDX = input.mouseDY = 0;
 }
 

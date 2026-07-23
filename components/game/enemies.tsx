@@ -88,6 +88,7 @@ export function EnemyManager() {
       livingCount.current -= 1;
       gameStore.set({
         score: store.score + stats.score,
+        kills: store.kills + 1,
         enemiesRemaining: Math.max(0, livingCount.current),
       });
       setSpawns((prev) => prev.filter((s) => s.id !== id));
