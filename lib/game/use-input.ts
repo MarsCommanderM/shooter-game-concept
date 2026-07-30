@@ -33,6 +33,9 @@ export function useInput(enabled: boolean, canvas: HTMLElement | null) {
         case "ShiftRight":
           input.sprint = down;
           break;
+        case "KeyR":
+          if (down) input.reload = true;
+          break;
         default:
           return;
       }
@@ -50,7 +53,10 @@ export function useInput(enabled: boolean, canvas: HTMLElement | null) {
     };
 
     const onMouseDown = (e: MouseEvent) => {
-      if (e.button === 0) input.shooting = true;
+      if (e.button === 0) {
+        input.shooting = true;
+        input.firePressed = true;
+      }
     };
     const onMouseUp = (e: MouseEvent) => {
       if (e.button === 0) input.shooting = false;
@@ -70,6 +76,7 @@ export function useInput(enabled: boolean, canvas: HTMLElement | null) {
       window.removeEventListener("mouseup", onMouseUp);
       input.forward = input.backward = input.left = input.right = false;
       input.sprint = input.shooting = false;
+      input.reload = input.dodge = false;
     };
   }, [enabled, canvas]);
 }

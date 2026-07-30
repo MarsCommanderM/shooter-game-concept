@@ -90,6 +90,7 @@ export function EnemyManager() {
         score: store.score + stats.score,
         kills: store.kills + 1,
         enemiesRemaining: Math.max(0, livingCount.current),
+        killMarkerAt: performance.now(),
       });
       setSpawns((prev) => prev.filter((s) => s.id !== id));
 
@@ -213,7 +214,7 @@ function Enemy({ def, onDeath }: EnemyProps) {
       rt.lastAttack = now;
       const store = gameStore.get();
       const newHealth = Math.max(0, store.health - stats.damage);
-      gameStore.set({ health: newHealth });
+      gameStore.set({ health: newHealth, damageAt: performance.now() });
       if (newHealth <= 0) {
         playerState.alive = false;
         gameStore.set({ phase: "gameover" });

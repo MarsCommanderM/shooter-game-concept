@@ -15,6 +15,9 @@ export interface HudState {
   ammo: number;
   maxAmmo: number;
   reloading: boolean;
+  hitMarkerAt: number;
+  killMarkerAt: number;
+  damageAt: number;
 }
 
 const initialState: HudState = {
@@ -28,6 +31,9 @@ const initialState: HudState = {
   ammo: 30,
   maxAmmo: 30,
   reloading: false,
+  hitMarkerAt: 0,
+  killMarkerAt: 0,
+  damageAt: 0,
 };
 
 /**

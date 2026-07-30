@@ -15,6 +15,11 @@ export function Overlays() {
     resetWorld();
     gameStore.reset();
     gameStore.set({ phase: "playing" });
+    // Request pointer lock within the click gesture.
+    requestAnimationFrame(() => {
+      const canvas = document.querySelector("canvas");
+      canvas?.requestPointerLock?.();
+    });
   };
 
   const handleRestart = handleStart;
@@ -31,7 +36,7 @@ export function Overlays() {
               <span className="text-primary glow-neon">WIRR</span>WARR
             </h1>
             <p className="mx-auto mt-4 max-w-md text-pretty leading-relaxed text-muted-foreground">
-              Ein Third-Person-Shooter gegen die Biomasse. &Uuml;berlebe die
+              Ein First-Person-Shooter gegen die Biomasse. &Uuml;berlebe die
               Wellen, sprenge dir Schusslinien frei und halte den{" "}
               <span className="text-primary">Wirrwarr</span> auf.
             </p>
@@ -42,11 +47,11 @@ export function Overlays() {
               </p>
               <ul className="space-y-2 font-mono text-sm text-muted-foreground">
                 <ControlRow keys="WASD" action="Bewegen" />
-                <ControlRow keys="Maus" action="Zielen" />
+                <ControlRow keys="Maus" action="Umsehen / Zielen" />
                 <ControlRow keys="Linksklick" action="Schießen" />
                 <ControlRow keys="Shift" action="Sprinten" />
-                <ControlRow keys="Leertaste" action="Ausweichrolle" />
                 <ControlRow keys="R" action="Nachladen" />
+                <ControlRow keys="Esc" action="Maus freigeben" />
               </ul>
             </div>
 

@@ -16,6 +16,9 @@ export const input = {
   right: false,
   sprint: false,
   shooting: false,
+  // Edge-latch: set on mousedown, consumed by the loop so a quick tap
+  // always produces at least one shot even if mouseup lands the same frame.
+  firePressed: false,
   reload: false,
   dodge: false,
   // accumulated mouse delta since last frame (pointer lock)
@@ -107,6 +110,7 @@ export function resetWorld() {
   impacts.length = 0;
   input.forward = input.backward = input.left = input.right = false;
   input.sprint = input.shooting = false;
+  input.firePressed = false;
   input.reload = input.dodge = false;
   input.mouseDX = input.mouseDY = 0;
 }
