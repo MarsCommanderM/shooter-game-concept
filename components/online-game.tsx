@@ -60,6 +60,16 @@ function sShot() {
   g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.12, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
   o.connect(g).connect(c.destination); o.start(t); o.stop(t + 0.1);
 }
+function sAnnounceOnline() {
+  const c = ac(); if (!c) return;
+  const t = c.currentTime;
+  [523, 784, 1046].forEach((f, i) => {
+    const o = c.createOscillator(); const g = c.createGain();
+    o.type = "square"; o.frequency.setValueAtTime(f, t + i * 0.07);
+    g.gain.setValueAtTime(0.0001, t + i * 0.07); g.gain.exponentialRampToValueAtTime(0.06, t + i * 0.07 + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.07 + 0.18);
+    o.connect(g).connect(c.destination); o.start(t + i * 0.07); o.stop(t + i * 0.07 + 0.2);
+  });
+}
 function sStep() {
   const c = ac(); if (!c) return;
   const t = c.currentTime;
@@ -78,7 +88,7 @@ export function OnlineGame() {
   const [hud, setHud] = useState({
     hp: 100, ammo: 24, reloading: false, feed: [] as string[],
     players: [] as { name: string; kills: number; deaths: number; me: boolean }[],
-    scores: "",
+    scores: "", announce: null as string | null,
   });
   const apiRef = useRef<{ dispose: () => void } | null>(null);
   const [name] = useState(() => `KAEMPFER-${Math.floor(10 + Math.random() * 89)}`);
@@ -160,6 +170,7 @@ export function OnlineGame() {
       x: 0, z: 30, y: 0, vy: 0, vx: 0, vz: 0,
       hp: 100, ammo: 24, reloading: 0, fireCd: 0,
       kills: 0, deaths: 0, respawnAt: 0,
+      streak: 0, multiKills: [] as number[], announce: null as { text: string; t: number } | null,
       crouch: false, prone: false, proneHeld: false, prevCrouch: false,
       slideT: 0, coyote: 0, jbuf: 0, jumpHeld: false,
       camH: 1.7, bobPhase: 0, landDip: 0, stepAcc: 0, mantleTarget: null as number | null,
@@ -178,9 +189,25 @@ export function OnlineGame() {
     try { ws = new WebSocket(`${proto}//${location.host}/ws?mode=${gameMode}`); } catch { setStatus("error"); }
     const send = (m: unknown) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); };
 
+    const announce = (text: string) => {
+      me.announce = { text, t: performance.now() / 1000 };
+      sAnnounceOnline();
+    };
     const creditKill = (killerTeam: number, victimTeam: number, killerName: string, victimName: string) => {
       if (gameMode === "tdm" && killerTeam >= 0 && killerTeam < 2) teamScore[killerTeam]++;
       pushFeed(`${killerName} ⚡ ${victimName}`);
+      const nowS = performance.now() / 1000;
+      if (killerName === "DU") {
+        me.streak++;
+        if (me.streak === 3) announce("RAMPAGE!");
+        if (me.streak === 5) announce("UNSTOPPBAR!");
+        if (me.streak === 8) announce("GOTTGLEICH!");
+        me.multiKills = me.multiKills.filter((t) => nowS - t < 2.5);
+        me.multiKills.push(nowS);
+        if (me.multiKills.length === 2) announce("DOUBLE KILL!");
+        if (me.multiKills.length === 3) announce("TRIPLE KILL!");
+      }
+      if (victimName === "DU") me.streak = 0;
       if (gameMode === "tdm" && !ended && teamScore[killerTeam] >= 10) {
         ended = true;
         setResult(me.team === killerTeam ? "SIEG! Team gewinnt 10" : `NIEDERLAGE – Team ${killerTeam === 0 ? "GRÜN" : "ROT"} gewinnt`);
@@ -463,7 +490,8 @@ export function OnlineGame() {
           hp: Math.max(0, Math.round(me.hp)), ammo: me.ammo, reloading: me.reloading > 0,
           feed: [...feed], players,
           scores: gameMode === "tdm" ? `GRÜN ${teamScore[0]} : ${teamScore[1]} ROT` : "",
-        });
+          announce: me.announce && performance.now() / 1000 - me.announce.t < 1.8 ? me.announce.text : null,
+        } as typeof hud & { announce: string | null });
       }
 
       renderer.render(scene, camera);
@@ -551,6 +579,13 @@ export function OnlineGame() {
               Online braucht den Custom-Server: lokal <span className="text-foreground font-mono">npm run online</span> starten.
             </p>
           </div>
+        </div>
+      )}
+      {hud.announce && (
+        <div className="absolute inset-x-0 top-[28%] flex justify-center pointer-events-none">
+          <p className="font-mono text-4xl md:text-6xl font-bold text-primary glow-neon tracking-[0.25em] uppercase animate-pulse-neon">
+            {hud.announce}
+          </p>
         </div>
       )}
       {result && (

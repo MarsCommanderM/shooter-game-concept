@@ -9,6 +9,36 @@ import * as THREE from "three";
 /* ================================================================== */
 
 type PerkId = "sprint" | "panzer" | "sprung";
+const SKINS = [
+  { id: "green", name: "Toxin-Grün", color: "#22ff55", level: 1 },
+  { id: "cyan", name: "Echo-Cyan", color: "#33ccff", level: 2 },
+  { id: "amber", name: "Funken-Amber", color: "#ffcc33", level: 4 },
+  { id: "pink", name: "Myzel-Pink", color: "#ff66cc", level: 6 },
+  { id: "white", name: "Apex-Weiß", color: "#ffffff", level: 10 },
+];
+const LEVEL_XP = [0, 400, 1000, 1800, 2800, 4000, 5400, 7000, 8800, 10800, 13000, 15500, 18300, 21400, 24800];
+function levelFromXp(xp: number): number {
+  let lv = 1;
+  for (let i = 0; i < LEVEL_XP.length; i++) if (xp >= LEVEL_XP[i]) lv = i + 1;
+  return lv;
+}
+const PROF_KEY = "wirrwarr-profile";
+const LOAD_KEY = "wirrwarr-loadout";
+function loadProfile(): { xp: number } {
+  try { return JSON.parse(localStorage.getItem(PROF_KEY) ?? "null") ?? { xp: 0 }; } catch { return { xp: 0 }; }
+}
+function loadLoadout(): { streaks: string[]; skin: string } {
+  try { return JSON.parse(localStorage.getItem(LOAD_KEY) ?? "null") ?? { streaks: ["recon", "mortar", "rage"], skin: "green" }; }
+  catch { return { streaks: ["recon", "mortar", "rage"], skin: "green" }; }
+}
+const KSTREAKS = [
+  { num: 3, id: "recon", name: "Recon-Puls", level: 1, desc: "Markiert alle Feinde 5 s lang" },
+  { num: 4, id: "ammo", name: "Nachschub", level: 2, desc: "+2 Granaten, Munition sofort voll" },
+  { num: 5, id: "mortar", name: "Mörserschlag", level: 3, desc: "Detonation am Zielpunkt" },
+  { num: 7, id: "orbital", name: "Orbital-Schlag", level: 5, desc: "3-fache Detonation – sprengt Wände" },
+  { num: 10, id: "rage", name: "Biomass-Rage", level: 8, desc: "10 s: +50 % Schaden, +Tempo, Schild voll" },
+];
+const WEAPON_LEVEL: Record<string, number> = { dorn: 1, brecher: 2, richter: 4 };
 interface UpgDef { id: string; path: string; tier: number; name: string; desc: string; cost: number; }
 const UPG_DEFS: UpgDef[] = [
   { id: "s1", path: "sinne", tier: 1, name: "Schwarm-Sinn", desc: "Feinde als Glow durch Wände sichtbar", cost: 1 },
@@ -29,7 +59,7 @@ const PERKS: { id: PerkId; name: string; desc: string }[] = [
 
 type VsMode = "tdm" | "ffa";
 type GameKind = VsMode | "m1" | "m2" | "m3" | "m4";
-type ArenaId = "sektor" | "garten" | "stahl";
+type ArenaId = "sektor" | "garten" | "stahl" | "orbital";
 
 interface Mission {
   id: GameKind; title: string; briefing: string;
@@ -98,6 +128,9 @@ interface BotEnt {
   pauseT: number;
   ghost: THREE.Mesh;
   markedT: number;
+  flankT: number;
+  flankX: number;
+  flankZ: number;
 }
 
 interface Particle {
@@ -236,6 +269,10 @@ export function RealGame() {
   const [winner, setWinner] = useState("");
   const [arena, setArena] = useState<ArenaId>("sektor");
   const [perk, setPerk] = useState<PerkId>("sprint");
+  const [profile, setProfile] = useState(() => loadProfile());
+  const [loadout, setLoadout] = useState(() => loadLoadout());
+  const level = levelFromXp(profile.xp);
+  const feedExtraRef = useRef<string[]>([]);
   const [doneMissions, setDoneMissions] = useState<string[]>([]);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -245,7 +282,7 @@ export function RealGame() {
     hp: 100, ammo: 24, reloading: false, weapon: "DORN",
     scores: "", feed: [] as string[], kills: 0, objective: "", tactics: false,
     shield: 100, bloom: 0, grenades: 2, dmgDirs: [] as { a: number; age: number }[],
-    codes: 0, upg: [] as string[], bioOpen: false, announce: null as string | null,
+    codes: 0, upg: [] as string[], bioOpen: false, announce: null as string | null, skin: "#22ff55",
   });
   const apiRef = useRef<{ dispose: () => void; upgrade?: (id: string) => void } | null>(null);
   const feedRef = useRef<string[]>([]);
@@ -255,11 +292,26 @@ export function RealGame() {
   const start = (kind: GameKind) => {
     setFailed(false);
     setScreen("game");
-    // Engine startet im nächsten Frame, sobald das DIV gemountet ist
-    requestAnimationFrame(() => initEngine(kind, arena, perk));
+    requestAnimationFrame(() =>
+      initEngine(kind, arena, perk, loadout, level, (xpGain: number, msg?: string) => {
+        if (msg) feedExtraRef.current.push(msg);
+        setProfile((pr) => {
+          const np = { xp: pr.xp + xpGain };
+          try { localStorage.setItem(PROF_KEY, JSON.stringify(np)); } catch { /* */ }
+          const oldLv = levelFromXp(pr.xp);
+          const newLv = levelFromXp(np.xp);
+          if (newLv > oldLv) feedExtraRef.current.push(`⬆ LEVEL UP! Level ${newLv} – neue Unlocks im Menü!`);
+          return np;
+        });
+      })
+    );
   };
 
-  const initEngine = (mode: GameKind, arenaId: ArenaId, perk: PerkId) => {
+  const initEngine = (
+    mode: GameKind, arenaId: ArenaId, perk: PerkId,
+    loadout: { streaks: string[]; skin: string }, level: number,
+    addXp: (n: number, msg?: string) => void
+  ) => {
     const mission = MISSIONS.find((m) => m.id === mode) ?? null;
     const mount = mountRef.current;
     if (!mount) return;
@@ -364,7 +416,8 @@ export function RealGame() {
             [0, 2, -26, 10, 4, 2, false],
             [0, 2, 26, 10, 4, 2, false],
           ]
-        : [
+        : arenaId === "stahl"
+          ? [
             // Stahlwiege: Fabrikhallen, dünne sprengbare Doppelwände = Brecher-Paradies
             [-10, 1.5, -12, 1.2, 3, 10, true], [10, 1.5, -12, 1.2, 3, 10, true],
             [-10, 1.5, 12, 1.2, 3, 10, true], [10, 1.5, 12, 1.2, 3, 10, true],
@@ -373,6 +426,16 @@ export function RealGame() {
             [0, 1.5, 0, 4, 3, 4, true],
             [-28, 2, -28, 3, 4, 3, false], [28, 2, 28, 3, 4, 3, false],
             [28, 2, -28, 3, 4, 3, false], [-28, 2, 28, 3, 4, 3, false],
+          ]
+        : [
+            // Orbitaldock: Containerzeilen, lange Lanes, viele Mantle-Kanten
+            [-8, 1, -8, 6, 1.1, 2.5, true], [8, 1, 8, 6, 1.1, 2.5, true],
+            [-8, 1, 8, 6, 1.1, 2.5, true], [8, 1, -8, 6, 1.1, 2.5, true],
+            [0, 1.5, -16, 8, 3, 1.2, true], [0, 1.5, 16, 8, 3, 1.2, true],
+            [-16, 1.5, 0, 1.2, 3, 8, true], [16, 1.5, 0, 1.2, 3, 8, true],
+            [-24, 1, -24, 3, 2, 3, true], [24, 1, 24, 3, 2, 3, true],
+            [24, 1, -24, 3, 2, 3, true], [-24, 1, 24, 3, 2, 3, true],
+            [0, 2.5, 0, 3, 5, 3, false],
           ];
     for (const [x, y, z, w, h, d, des] of structs) addWall(x, y, z, w, h, d, des);
 
@@ -462,6 +525,7 @@ export function RealGame() {
         kills: 0, strafeDir: 1, strafeT: 0, color,
         y: 0, vy: 0, mantle: null,
         burstLeft: 0, reactT: 0, pauseT: 0, ghost, markedT: 0,
+        flankT: 0, flankX: 0, flankZ: 0,
       });
     };
     const botCount = mission ? mission.botCount : 5;
@@ -513,6 +577,8 @@ export function RealGame() {
       codes: 0, upg: {} as Record<string, boolean>, bioOpen: false, usedRevive: false,
       streak: 0, revengeTarget: -1, multiKills: [] as number[], announce: null as { text: string; t: number } | null,
       headshots: 0, melees: 0,
+      skinColor: SKINS.find((s) => s.id === loadout.skin && level >= s.level)?.color ?? "#22ff55",
+      rageT: 0, bonusXp: 0, usedStreaks: [] as number[],
     };
     yaw.position.set(player.x, 1.7, player.z);
 
@@ -523,6 +589,7 @@ export function RealGame() {
     let missionKills = 0;
     let missionDestroyed = 0;
     const finishMission = (win: boolean) => {
+      if (win) addXp(250);
       ended = true;
       setFailed(!win);
       if (win && mission) {
@@ -573,6 +640,17 @@ export function RealGame() {
         if (player.multiKills.length === 4) { player.announce = { text: "MULTI-KILL!", t: gameTime }; sAnnounce(); }
         // Revenge
         if (victimId === player.revengeTarget) { player.announce = { text: "REVENGE!", t: gameTime }; sAnnounce(); player.revengeTarget = -1; }
+        // XP
+        addXp(100 + player.bonusXp);
+        player.bonusXp = 0;
+        // Killstreaks (CoD-DNA)
+        for (const ks of KSTREAKS) {
+          if (!loadout.streaks.includes(ks.id) || level < ks.level) continue;
+          if (player.streak >= ks.num && !player.usedStreaks.includes(ks.num)) {
+            player.usedStreaks.push(ks.num);
+            activateStreak(ks.id);
+          }
+        }
         // Stats persistieren
         try {
           const st = loadStats();
@@ -583,6 +661,38 @@ export function RealGame() {
       if (mode === "ffa") { if (killerId < 6) ffaScore[killerId]++; }
       else teamScore[killerId === 0 || killerId >= 100 ? 0 : bots.find((x) => x.id === killerId)!.team]++;
       pushFeed(`${nameOf(killerId)} ⚡ ${nameOf(victimId)}`);
+    };
+
+    const strikes: { at: number; pos: THREE.Vector3 }[] = [];
+    const activateStreak = (id: string) => {
+      const def = KSTREAKS.find((k) => k.id === id)!;
+      player.announce = { text: `${def.name.toUpperCase()}!`, t: gameTime };
+      sAnnounce();
+      const dir = new THREE.Vector3();
+      camera.getWorldDirection(dir);
+      const target = new THREE.Vector3(player.x, 0, player.z).addScaledVector(new THREE.Vector3(dir.x, 0, dir.z).normalize(), 18);
+      if (id === "recon") {
+        for (const b of bots) if (b.alive) b.markedT = gameTime + 5;
+        pushFeed(" Recon-Puls: Feinde markiert!");
+      }
+      if (id === "ammo") {
+        player.grenades = Math.min(4, player.grenades + 2);
+        player.ammo = player.weapon === "richter" ? 5 : 24;
+        player.reloading = 0;
+        pushFeed("📦 Nachschub angekommen!");
+      }
+      if (id === "mortar") strikes.push({ at: gameTime + 0.8, pos: target });
+      if (id === "orbital") {
+        strikes.push({ at: gameTime + 0.8, pos: target.clone() });
+        strikes.push({ at: gameTime + 1.3, pos: target.clone().add(new THREE.Vector3(2.2, 0, 1.2)) });
+        strikes.push({ at: gameTime + 1.8, pos: target.clone().add(new THREE.Vector3(-2.0, 0, 1.8)) });
+        pushFeed("🛰 ORBITAL-SCHLAG eingeleitet!");
+      }
+      if (id === "rage") {
+        player.rageT = 10;
+        player.shield = 100;
+        pushFeed("🧬 BIOMASS-RAGE!");
+      }
     };
 
     const hurtPlayer = (dmgIn: number, fx: number, fz: number, killerId: number) => {
@@ -639,9 +749,11 @@ export function RealGame() {
         return;
       }
       if (e.code === "KeyQ" || e.code === "Digit1" || e.code === "Digit2" || e.code === "Digit3") {
-        player.weapon = e.code === "KeyQ"
+        const next = e.code === "KeyQ"
           ? (player.weapon === "dorn" ? "brecher" : player.weapon === "brecher" ? "richter" : "dorn")
           : e.code === "Digit1" ? "dorn" : e.code === "Digit2" ? "brecher" : "richter";
+        if (level < (WEAPON_LEVEL[next] ?? 1)) { pushFeed(`🔒 ${next.toUpperCase()} braucht Level ${WEAPON_LEVEL[next]}`); return; }
+        player.weapon = next;
         player.ammo = player.weapon === "richter" ? 5 : 24;
         player.reloading = 0;
       }
@@ -729,6 +841,7 @@ export function RealGame() {
         if (botHit && (mode === "ffa" || botHit.team === 1)) {
           const head = h.object === botHit.group.children[1];
           let dmg = player.weapon === "brecher" ? 80 : player.weapon === "richter" ? 100 : 26;
+          if (player.rageT > 0) dmg = Math.round(dmg * 1.5);
           if (head) { dmg = Math.round(dmg * 2.5); sHeadshot(); pushFeed("🎯 HEADSHOT!"); player.headshots++; }
           if (player.upg.s2) botHit.markedT = gameTime + 3;
           botHit.hp -= dmg;
@@ -782,6 +895,49 @@ export function RealGame() {
             if (b.hp <= 0) kill(0, b.id);
           }
         }
+      }
+    };
+
+    /* ---------- Dynamischer Soundtrack (Exploration- vs. Combat-Layer) ---------- */
+    const mus = { intensity: 0, beat: 0, started: false };
+    const startMusic = () => {
+      const c = ac(); if (!c || mus.started) return;
+      mus.started = true;
+      const drone = c.createOscillator(); drone.type = "sine"; drone.frequency.value = 55;
+      const drone2 = c.createOscillator(); drone2.type = "sine"; drone2.frequency.value = 57.3;
+      const dg = c.createGain(); dg.gain.value = 0.035;
+      const dg2 = c.createGain(); dg2.gain.value = 0.028;
+      drone.connect(dg).connect(c.destination);
+      drone2.connect(dg2).connect(c.destination);
+      drone.start(); drone2.start();
+      const pad = c.createOscillator(); pad.type = "triangle"; pad.frequency.value = 220;
+      const pg = c.createGain(); pg.gain.value = 0.008;
+      const lfo = c.createOscillator(); lfo.frequency.value = 0.13;
+      const lg = c.createGain(); lg.gain.value = 0.006;
+      lfo.connect(lg).connect(pg.gain);
+      pad.connect(pg).connect(c.destination);
+      pad.start(); lfo.start();
+    };
+    const musicTick = (dt: number) => {
+      startMusic();
+      // Combat-Intensity: sichtbarer naher Feind oder kürzlich Schaden
+      let near = 99;
+      for (const b of bots) {
+        if (!b.alive) continue;
+        const d = Math.hypot(b.group.position.x - player.x, b.group.position.z - player.z);
+        if (d < near) near = d;
+      }
+      const target = near < 14 || gameTime - player.lastDmg < 2 ? 1 : near < 25 ? 0.5 : 0;
+      mus.intensity += (target - mus.intensity) * Math.min(1, dt * 1.5);
+      mus.beat -= dt;
+      if (mus.intensity > 0.25 && mus.beat <= 0) {
+        mus.beat = 0.55 - 0.15 * mus.intensity;
+        const c = ac(); if (!c) return;
+        const t = c.currentTime;
+        const o = c.createOscillator(); const g = c.createGain();
+        o.type = "sine"; o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(38, t + 0.12);
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.09 * mus.intensity, t + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+        o.connect(g).connect(c.destination); o.start(t); o.stop(t + 0.18);
       }
     };
 
@@ -962,11 +1118,28 @@ export function RealGame() {
       moveWithCollide(p2, wantX, wantZ, 0.5, b.y);
       const blockedB = (wantX !== 0 && Math.abs(p2.x - (bp.x + wantX)) > 0.001) || (wantZ !== 0 && Math.abs(p2.z - (bp.z + wantZ)) > 0.001);
       if (target) moveWithCollide(p2, (-dz / dist) * b.strafeDir * 2.2 * dt, (dx / dist) * b.strafeDir * 2.2 * dt, 0.5, b.y);
-      // Bot-Parkour: Mantling, wenn die Verfolgung blockiert ist
+      // Bot-Parkour + Flanking: Mantling ODER Umweg um massive Waende
       if (blockedB && b.mantle == null && dist > 0.5) {
         const probeTop = getSupport(bp.x + (dx / dist) * 0.7, bp.z + (dz / dist) * 0.7, b.y + 2);
         const dh = probeTop - b.y;
         if (dh > 0.1 && dh <= 1.5) { b.mantle = probeTop + 0.02; b.vy = 0; }
+        else if (!b.flankT || b.flankT <= 0) {
+          // seitlichen Flank-Punkt waehlen (quer zur Zielrichtung)
+          const side = Math.random() < 0.5 ? 1 : -1;
+          b.flankX = bp.x + (-dz / dist) * 8 * side + (dx / dist) * 4;
+          b.flankZ = bp.z + (dx / dist) * 8 * side + (dz / dist) * 4;
+          b.flankT = 1.2 + Math.random() * 0.8;
+        }
+      }
+      if (b.flankT && b.flankT > 0) {
+        b.flankT -= dt;
+        const fdx = b.flankX - bp.x, fdz = b.flankZ - bp.z;
+        const fd = Math.hypot(fdx, fdz) || 0.001;
+        if (fd > 0.8) {
+          const p3 = { x: bp.x, z: bp.z };
+          moveWithCollide(p3, (fdx / fd) * 4.5 * dt, (fdz / fd) * 4.5 * dt, 0.5, b.y);
+          bp.x = p3.x; bp.z = p3.z;
+        }
       }
       if (b.mantle != null) {
         b.y += (b.mantle - b.y) * Math.min(1, 8 * dt);
@@ -1101,6 +1274,7 @@ export function RealGame() {
       if (player.hp <= 0) {
         if (gameTime >= player.respawnAt) {
           player.hp = 100; player.shield = 100; player.x = SPAWNS[0][0]; player.z = SPAWNS[0][1]; player.ammo = 24;
+          player.usedStreaks = [];
         }
       } else {
         // ===== Bewegungsfluss: Stance, Slide, Acceleration, Friction =====
@@ -1120,7 +1294,7 @@ export function RealGame() {
         const sliding = player.slideT > 0 && onGround;
 
         const sprinting = !!keys["ShiftLeft"] && !player.crouch && speedNow0 > 4;
-        const maxSp = (player.prone ? 1.5 : player.crouch ? 2.6 : sprinting ? (perk === "sprint" ? 9.6 : 8.6) : 5.2) * (player.upg.l1 && sprinting ? 1.1 : 1);
+        const maxSp = (player.prone ? 1.5 : player.crouch ? 2.6 : sprinting ? (perk === "sprint" ? 9.6 : 8.6) : 5.2) * (player.upg.l1 && sprinting ? 1.1 : 1) * (player.rageT > 0 ? 1.2 : 1);
 
         // Wish-Richtung + Acceleration (Air-Control)
         let wx = 0, wz = 0;
@@ -1227,6 +1401,14 @@ export function RealGame() {
       player.meleeCd = Math.max(0, player.meleeCd - dt);
       player.nadeCd = Math.max(0, player.nadeCd - dt);
       player.dmgDirs = player.dmgDirs.filter((d) => gameTime - d.t < 0.8);
+      for (let i = strikes.length - 1; i >= 0; i--) {
+        if (gameTime >= strikes[i].at) {
+          explode3(strikes[i].pos);
+          strikes.splice(i, 1);
+        }
+      }
+      player.rageT = Math.max(0, player.rageT - dt);
+      musicTick(dt);
       nadesTick3(dt);
       pickupsTick(dt);
       flashLight.intensity = Math.max(0, flashLight.intensity - 30 * dt);
@@ -1293,6 +1475,7 @@ export function RealGame() {
       hudAcc += dt;
       if (hudAcc > 0.12) {
         hudAcc = 0;
+        while (feedExtraRef.current.length) pushFeed(feedExtraRef.current.shift()!);
         setHud({
           hp: Math.max(0, Math.round(player.hp)),
           ammo: player.ammo,
@@ -1319,6 +1502,7 @@ export function RealGame() {
           upg: Object.keys(player.upg).filter((k) => player.upg[k]),
           bioOpen: player.bioOpen,
           announce: player.announce && gameTime - player.announce.t < 1.8 ? player.announce.text : null,
+          skin: player.skinColor,
         });
       }
 
@@ -1422,6 +1606,87 @@ export function RealGame() {
             ))}
           </div>
 
+          {/* Loadout / Progression */}
+          <div className="border border-primary/40 bg-card rounded-sm p-4 mb-6 box-glow-neon">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <p className="font-mono text-xs tracking-[0.25em] uppercase text-primary glow-neon-sm">
+                Loadout // Level {level}
+              </p>
+              <p className="font-mono text-[11px] text-muted-foreground">
+                XP {profile.xp}{level < LEVEL_XP.length ? ` / nächstes Lv: ${LEVEL_XP[level]}` : " / MAX"}
+              </p>
+            </div>
+            {level < LEVEL_XP.length && (
+              <div className="w-full h-1.5 bg-secondary rounded-full overflow-hidden mb-4">
+                <div className="h-full bg-primary rounded-full" style={{ width: `${Math.min(100, ((profile.xp - LEVEL_XP[level - 1]) / (LEVEL_XP[level] - LEVEL_XP[level - 1])) * 100)}%` }} />
+              </div>
+            )}
+            <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground mb-2">Killstreak-Slots (3/4/5/7/10er-Serie)</p>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {KSTREAKS.map((ks) => {
+                const sel = loadout.streaks.includes(ks.id);
+                const locked = level < ks.level;
+                return (
+                  <button
+                    key={ks.id}
+                    type="button"
+                    disabled={locked}
+                    title={ks.desc}
+                    onClick={() => {
+                      setLoadout((lo) => {
+                        const next = sel ? lo.streaks.filter((s) => s !== ks.id) : lo.streaks.length < 3 ? [...lo.streaks, ks.id] : lo.streaks;
+                        const nl = { ...lo, streaks: next };
+                        try { localStorage.setItem(LOAD_KEY, JSON.stringify(nl)); } catch { /* */ }
+                        return nl;
+                      });
+                    }}
+                    className={`text-left rounded-sm border px-3 py-2 transition-all min-h-[44px] ${
+                      locked ? "opacity-40 cursor-not-allowed border-border/50" : sel ? "border-primary/70 bg-primary/15 box-glow-neon" : "border-border bg-secondary/40 hover:border-primary/40"
+                    }`}
+                  >
+                    <p className={`font-bold text-xs ${sel ? "text-primary glow-neon-sm" : "text-foreground"}`}>
+                      {locked ? "🔒 " : sel ? "✓ " : ""}{ks.num}er: {ks.name}
+                    </p>
+                    <p className="font-mono text-[9px] text-muted-foreground">{locked ? `ab Level ${ks.level}` : ks.desc}</p>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+              <div>
+                <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground mb-1.5">Charakter-Set</p>
+                <div className="flex gap-2">
+                  {SKINS.map((sk) => {
+                    const locked = level < sk.level;
+                    return (
+                      <button
+                        key={sk.id}
+                        type="button"
+                        disabled={locked}
+                        title={locked ? `ab Level ${sk.level}` : sk.name}
+                        onClick={() => {
+                          setLoadout((lo) => {
+                            const nl = { ...lo, skin: sk.id };
+                            try { localStorage.setItem(LOAD_KEY, JSON.stringify(nl)); } catch { /* */ }
+                            return nl;
+                          });
+                        }}
+                        className={`w-8 h-8 rounded-sm border-2 transition-all ${locked ? "opacity-30 cursor-not-allowed" : "cursor-pointer"}`}
+                        style={{ background: sk.color, borderColor: loadout.skin === sk.id ? "#fff" : "transparent" }}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground mb-1.5">Waffen-Unlocks</p>
+                <p className="font-mono text-[11px] text-foreground">
+                  DORN <span className="text-primary">Lv1</span> · BRECHER {level >= 2 ? <span className="text-primary">✓</span> : <span className="text-muted-foreground">🔒 Lv2</span>} · RICHTER {level >= 4 ? <span className="text-primary">✓</span> : <span className="text-muted-foreground">🔒 Lv4</span>}
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* Stats */}
           <div className="border border-border bg-card rounded-sm px-4 py-3 mb-6 flex flex-wrap gap-x-6 gap-y-1">
             <p className="font-mono text-[11px] text-muted-foreground">🏆 DEINE STATS</p>
@@ -1433,12 +1698,13 @@ export function RealGame() {
 
           {/* Arena */}
           <p className="font-mono text-[10px] tracking-[0.25em] uppercase text-muted-foreground mb-2">Arena</p>
-          <div className="grid grid-cols-3 gap-3 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
             {(
               [
                 ["sektor", "Sektor 7", "Barrikaden-Krieg"],
                 ["garten", "Biomass-Garten", "Säulen & Kuppel"],
                 ["stahl", "Stahlwiege", "Breschen-Paradies"],
+                ["orbital", "Orbitaldock", "Container-Lanes"],
               ] as [ArenaId, string, string][]
             ).map(([id, nm, sub]) => (
               <button
@@ -1540,11 +1806,11 @@ export function RealGame() {
       {/* Crosshair mit Bloom */}
       <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
         <div className="relative w-0 h-0">
-          <div className="absolute rounded-full bg-primary" style={{ width: 2, height: 8, left: -1, top: -(6 + hud.bloom * 16) - 8, boxShadow: "0 0 6px rgba(34,255,85,0.9)" }} />
-          <div className="absolute rounded-full bg-primary" style={{ width: 2, height: 8, left: -1, top: 6 + hud.bloom * 16, boxShadow: "0 0 6px rgba(34,255,85,0.9)" }} />
-          <div className="absolute rounded-full bg-primary" style={{ width: 8, height: 2, top: -1, left: -(6 + hud.bloom * 16) - 8, boxShadow: "0 0 6px rgba(34,255,85,0.9)" }} />
-          <div className="absolute rounded-full bg-primary" style={{ width: 8, height: 2, top: -1, left: 6 + hud.bloom * 16, boxShadow: "0 0 6px rgba(34,255,85,0.9)" }} />
-          <div className="absolute rounded-full bg-primary" style={{ width: 2, height: 2, left: -1, top: -1 }} />
+          <div className="absolute rounded-full" style={{ width: 2, height: 8, left: -1, top: -(6 + hud.bloom * 16) - 8, background: hud.skin, boxShadow: `0 0 6px ${hud.skin}` }} />
+          <div className="absolute rounded-full" style={{ width: 2, height: 8, left: -1, top: 6 + hud.bloom * 16, background: hud.skin, boxShadow: `0 0 6px ${hud.skin}` }} />
+          <div className="absolute rounded-full" style={{ width: 8, height: 2, top: -1, left: -(6 + hud.bloom * 16) - 8, background: hud.skin, boxShadow: `0 0 6px ${hud.skin}` }} />
+          <div className="absolute rounded-full" style={{ width: 8, height: 2, top: -1, left: 6 + hud.bloom * 16, background: hud.skin, boxShadow: `0 0 6px ${hud.skin}` }} />
+          <div className="absolute rounded-full" style={{ width: 2, height: 2, left: -1, top: -1, background: hud.skin }} />
         </div>
       </div>
       {/* Damage-Richtungsanzeige */}
