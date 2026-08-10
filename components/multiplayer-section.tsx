@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import {
   Swords,
   Shield,
@@ -424,6 +425,24 @@ export function MultiplayerSection() {
           Parkour und Taktik – auf seine eigene Art. Wähle einen Modus für das
           vollständige Design-Dokument.
         </p>
+
+        {/* Key Art */}
+        <div
+          className={`relative aspect-[21/9] rounded-sm overflow-hidden border border-border border-glow mb-10 transition-all duration-700 delay-200 ${
+            isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+          }`}
+        >
+          <Image
+            src="/images/multiplayer-keyart.jpg"
+            alt="Zwei Squads stehen sich in einer von Biomass überwucherten Ruinenstadt gegenüber"
+            fill
+            className="object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent" />
+          <span className="absolute bottom-3 left-4 font-mono text-[10px] tracking-[0.25em] uppercase text-primary glow-neon-sm">
+            Konzept-Key-Art // Squad-Krieg
+          </span>
+        </div>
 
         {/* Mode Selector */}
         <div

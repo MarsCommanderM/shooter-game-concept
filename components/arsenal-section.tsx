@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { Dna, Cog } from "lucide-react";
 
 type WeaponClass = "organisch" | "mechanisch";
@@ -218,6 +219,24 @@ export function ArsenalSection() {
         >
           {cls.blurb}
         </p>
+
+        {/* Key Art */}
+        <div
+          className={`relative aspect-[21/9] rounded-sm overflow-hidden border border-border border-glow mb-8 transition-all duration-700 delay-300 ${
+            isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+          }`}
+        >
+          <Image
+            src="/images/arsenal-weapons.jpg"
+            alt="Organische Biomass-Waffe und mechanische Kanone im direkten Vergleich"
+            fill
+            className="object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent" />
+          <span className="absolute bottom-3 left-4 font-mono text-[10px] tracking-[0.25em] uppercase text-primary glow-neon-sm">
+            Konzept-Key-Art // Zwei Doktrinen
+          </span>
+        </div>
 
         <div className="grid lg:grid-cols-[260px_1fr] gap-6">
           {/* Weapon List */}

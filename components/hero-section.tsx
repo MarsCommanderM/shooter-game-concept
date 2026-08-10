@@ -93,6 +93,23 @@ export function HeroSection() {
           </span>
         </div>
 
+        {/* Play CTA */}
+        <div
+          className={`mt-8 transition-all duration-1000 delay-700 ${
+            isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
+          }`}
+        >
+          <a
+            href="/play"
+            className="inline-flex items-center gap-3 bg-primary text-primary-foreground font-mono text-sm tracking-[0.2em] uppercase px-8 py-4 rounded-sm box-glow-neon hover:opacity-90 transition-opacity min-h-[44px]"
+          >
+            ▶ Prototyp spielen
+          </a>
+          <p className="font-mono text-[10px] text-muted-foreground tracking-wider uppercase mt-3">
+            Web-Demo // alle 6 Modi gegen Bots
+          </p>
+        </div>
+
         {/* Scroll indicator */}
         <div
           className={`mt-16 flex flex-col items-center gap-2 transition-all duration-1000 delay-1000 ${

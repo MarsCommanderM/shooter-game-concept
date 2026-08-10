@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { Eye, Shield, Zap, Lock } from "lucide-react";
 
 type PathId = "sinne" | "panzer" | "mobilitaet";
@@ -222,6 +223,24 @@ export function EvolutionSection() {
         >
           {path.blurb}
         </p>
+
+        {/* Key Art */}
+        <div
+          className={`relative aspect-[21/9] rounded-sm overflow-hidden border border-border border-glow mb-8 transition-all duration-700 delay-300 ${
+            isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+          }`}
+        >
+          <Image
+            src="/images/evolution-biomass.jpg"
+            alt="Soldat in gewachsener Bio-Rüstung vor holografischen Upgrade-Symbolen"
+            fill
+            className="object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent" />
+          <span className="absolute bottom-3 left-4 font-mono text-[10px] tracking-[0.25em] uppercase text-primary glow-neon-sm">
+            Konzept-Key-Art // Integration
+          </span>
+        </div>
 
         {/* Node Chain */}
         <div

@@ -59,6 +59,14 @@ export function SiteNav() {
           ))}
         </div>
 
+        {/* Demo CTA (desktop) */}
+        <a
+          href="/play"
+          className="hidden lg:inline-flex items-center gap-2 font-mono text-[11px] tracking-wider uppercase text-primary-foreground bg-primary rounded-sm px-3 py-2 box-glow-neon hover:opacity-90 transition-opacity min-h-[36px]"
+        >
+          ▶ Demo
+        </a>
+
         {/* Mobile Menu Button */}
         <button
           type="button"
@@ -88,6 +96,13 @@ export function SiteNav() {
       {menuOpen && (
         <div className="lg:hidden bg-background/95 backdrop-blur-md border-b border-border">
           <div className="px-6 py-4 flex flex-col gap-1">
+            <a
+              href="/play"
+              onClick={() => setMenuOpen(false)}
+              className="font-mono text-sm tracking-wider uppercase text-primary glow-neon-sm py-3 min-h-[44px] flex items-center"
+            >
+              ▶ Demo spielen
+            </a>
             {navLinks.map((link) => (
               <a
                 key={link.href}
