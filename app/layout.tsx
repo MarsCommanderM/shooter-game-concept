@@ -35,7 +35,23 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="de" className="bg-background">
-      <body className="font-sans antialiased">{children}</body>
+      <head>
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="WIRRWARR" />
+        <link rel="apple-touch-icon" href="/icons/icon-512.png" />
+      </head>
+      <body className="font-sans antialiased">
+        {children}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "if ('serviceWorker' in navigator) { window.addEventListener('load', function () { navigator.serviceWorker.register('/sw.js').catch(function () {}); }); }",
+          }}
+        />
+      </body>
     </html>
   );
 }

@@ -1,9 +1,25 @@
 {
-  "name": "WIRRWARR - Game Design Document",
-  "short_name": "WIRRWARR GDD",
-  "description": "Ein innovatives Third-Person-Shooter-Konzept mit Dynamic Destructibility",
+  "name": "WIRRWARR – Shooter-Konzept & Web-Demo",
+  "short_name": "WIRRWARR",
+  "description": "Third-Person-Shooter-Konzept mit Dynamic Destructibility – inklusive spielbarer Prototyp-Arena mit 6 Multiplayer-Modi.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "landscape",
   "background_color": "#0a0d0a",
-  "theme_color": "#00ff40"
+  "theme_color": "#00ff40",
+  "icons": [
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
 }
