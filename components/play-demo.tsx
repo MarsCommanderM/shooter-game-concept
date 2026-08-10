@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react";
 /* ================================================================== */
 
 type ModeId = "tdm" | "ffa" | "hq" | "sabotage" | "ctf" | "domination";
-type MapId = "spire" | "garten";
+type MapId = "spire" | "garten" | "stahl";
 
 const MODE_INFO: { id: ModeId; name: string; desc: string }[] = [
   { id: "tdm", name: "Team-Deathmatch", desc: "3v3 – erstes Team mit 10 Kills gewinnt." },
@@ -22,18 +22,34 @@ const MODE_INFO: { id: ModeId; name: string; desc: string }[] = [
 const MAP_INFO: { id: MapId; name: string; desc: string }[] = [
   { id: "spire", name: "Sektor 7", desc: "Vier Blöcke, vier Barrikaden – alles sprengbar." },
   { id: "garten", name: "Biomass-Garten", desc: "Offene Kuppeln mit Säulenwald, mehr Sightlines." },
+  { id: "stahl", name: "Stahlwiege", desc: "Fabrikhallen mit dünnen Doppelwänden – Brecher-Paradies." },
 ];
 
 interface Bot {
   id: number; name: string; team: number;
   x: number; y: number; hp: number; alive: boolean;
   respawnAt: number; cd: number; color: string; kills: number; deaths: number;
+  strafeDir: number; strafeT: number;
 }
 
+interface Nad { x: number; y: number; vx: number; vy: number; t: number; team: number; }
+interface DmgNum { v: number; t: number; kill: boolean; }
+
 interface HudState {
-  hp: number; ammo: number; reloading: boolean; weapon: string;
+  hp: number; ammo: number; reloading: boolean; weapon: string; grenades: number;
   scores: string; objective: string; feed: string[];
   winner: string | null; planting: boolean;
+}
+
+type Records = Partial<Record<ModeId, { wins: number; bestKills: number }>>;
+const REC_KEY = "wirrwarr-demo-records";
+function loadRecords(): Records {
+  try {
+    const raw = localStorage.getItem(REC_KEY);
+    return raw ? (JSON.parse(raw) as Records) : {};
+  } catch {
+    return {};
+  }
 }
 
 const SIZE = 24;
@@ -50,11 +66,17 @@ function buildMap(id: MapId): number[][] {
   if (id === "spire") {
     rect(4, 4, 2, 2, 2); rect(18, 4, 2, 2, 2); rect(4, 18, 2, 2, 2); rect(18, 18, 2, 2, 2);
     rect(11, 4, 2, 2, 2); rect(11, 18, 2, 2, 2); rect(4, 11, 2, 2, 2); rect(18, 11, 2, 2, 2);
-  } else {
+  } else if (id === "garten") {
     rect(6, 6, 1, 1, 2); rect(12, 5, 1, 1, 2); rect(17, 6, 1, 1, 2);
     rect(5, 12, 1, 1, 2); rect(18, 12, 1, 1, 2);
     rect(6, 17, 1, 1, 2); rect(12, 18, 1, 1, 2); rect(17, 17, 1, 1, 2);
     rect(11, 11, 2, 2, 1);
+  } else {
+    // Stahlwiege: drei Hallen, dünne sprengbare Doppelwände
+    rect(8, 4, 1, 7, 2); rect(15, 4, 1, 7, 2);
+    rect(8, 13, 1, 7, 2); rect(15, 13, 1, 7, 2);
+    rect(4, 11, 3, 1, 2); rect(17, 11, 3, 1, 2);
+    rect(11, 11, 2, 1, 1);
   }
   return m;
 }
@@ -73,6 +95,9 @@ interface GameState {
   px: number; py: number; pa: number;
   hp: number; ammo: number; reloading: number; flash: number; fireCd: number;
   weapon: "dorn" | "brecher"; pRespawnAt: number;
+  playerKills: number; grenades: number; nades: Nad[];
+  hitMarker: number; killConfirm: number; hurt: number;
+  dmgNums: DmgNum[]; recorded: boolean;
   bots: Bot[]; keys: Record<string, boolean>; mouseDown: boolean;
   touchVec: { x: number; y: number };
   teamScore: number[]; ffaScore: number[]; domOwner: number[]; hqOwner: number;
@@ -90,6 +115,7 @@ function makeGame(mode: ModeId, mapId: MapId): GameState {
       id: i + 1, name: BOT_NAMES[i], team, x: sp[0], y: sp[1],
       hp: 100, alive: true, respawnAt: 0, cd: 1 + Math.random(),
       color: TEAM_COLORS[mode === "ffa" ? i + 1 : team], kills: 0, deaths: 0,
+      strafeDir: 1, strafeT: 0,
     });
   }
   return {
@@ -97,6 +123,9 @@ function makeGame(mode: ModeId, mapId: MapId): GameState {
     px: SPAWNS[0][0], py: SPAWNS[0][1], pa: 0,
     hp: 100, ammo: 24, reloading: 0, flash: 0, fireCd: 0,
     weapon: "dorn", pRespawnAt: 0,
+    playerKills: 0, grenades: 3, nades: [],
+    hitMarker: 0, killConfirm: 0, hurt: 0,
+    dmgNums: [], recorded: false,
     bots, keys: {}, mouseDown: false, touchVec: { x: 0, y: 0 },
     teamScore: [0, 0], ffaScore: Array(6).fill(0), domOwner: [-1, -1, -1], hqOwner: -1,
     flags: [
@@ -165,9 +194,13 @@ export function PlayDemo() {
   const [screen, setScreen] = useState<"menu" | "game" | "end">("menu");
   const [mapId, setMapId] = useState<MapId>("spire");
   const [hud, setHud] = useState<HudState>({
-    hp: 100, ammo: 24, reloading: false, weapon: "DORN", scores: "", objective: "",
+    hp: 100, ammo: 24, reloading: false, weapon: "DORN", grenades: 3, scores: "", objective: "",
     feed: [], winner: null, planting: false,
   });
+  const [records, setRecords] = useState<Records>({});
+  useEffect(() => {
+    if (screen !== "game") setRecords(loadRecords());
+  }, [screen]);
 
   const start = (mode: ModeId) => {
     stateRef.current = makeGame(mode, mapId);
@@ -214,6 +247,17 @@ export function PlayDemo() {
         const g = s();
         g.weapon = k === "q" ? (g.weapon === "dorn" ? "brecher" : "dorn") : k === "1" ? "dorn" : "brecher";
         g.ammo = 24; g.reloading = 0;
+      }
+      if (k === "g") {
+        const g = s();
+        if (g.grenades > 0 && g.nades.length < 3) {
+          g.grenades--;
+          g.nades.push({
+            x: g.px, y: g.py,
+            vx: Math.cos(g.pa) * 7, vy: Math.sin(g.pa) * 7,
+            t: 1.1, team: 0,
+          });
+        }
       }
     };
     const ku = (e: KeyboardEvent) => { s().keys[e.key.toLowerCase()] = false; };
@@ -289,6 +333,7 @@ export function PlayDemo() {
       if (victim) { victim.hp = 0; victim.alive = false; victim.deaths++; victim.respawnAt = g.time + 3; }
       if (victimId === 0) g.hp = 0;
       if (killer) killer.kills++;
+      if (killerId === 0) { g.playerKills++; g.killConfirm = 0.25; }
       if (g.mode === "ffa") g.ffaScore[killerId]++;
       else g.teamScore[killerId === 0 ? 0 : killer!.team]++;
       addFeed(`${killerId === 0 ? "DU" : killer?.name ?? "?"} ⚡ ${victimId === 0 ? "DU" : victim?.name ?? "?"}`);
@@ -329,6 +374,56 @@ export function PlayDemo() {
         }
       }
       return null;
+    };
+
+    /* ---------------- Granaten & Explosionen ---------------- */
+    const explode = (x: number, y: number) => {
+      const g = s();
+      sBoom();
+      // Bots
+      for (const b of g.bots) {
+        if (!b.alive) continue;
+        const d = Math.hypot(b.x - x, b.y - y);
+        if (d < 2.6) {
+          const dmg = Math.round(90 * (1 - d / 3));
+          b.hp -= dmg;
+          if (b.hp <= 0) kill(0, b.id);
+        }
+      }
+      // Spieler (auch selbstverletzend – Respekt!)
+      const dP = Math.hypot(g.px - x, g.py - y);
+      if (dP < 2.6 && g.hp > 0) {
+        g.hp -= Math.round(70 * (1 - dP / 3));
+        g.hurt = 0.4;
+        if (g.hp <= 0) addFeed("Von eigener Granade erwischt 💀");
+      }
+      // DESTRUCTION: Wände im Radius sprengen
+      const R = 1.6;
+      for (let cy = Math.floor(y - R); cy <= Math.ceil(y + R); cy++) {
+        for (let cx = Math.floor(x - R); cx <= Math.ceil(x + R); cx++) {
+          if (cx < 1 || cy < 1 || cx >= SIZE - 1 || cy >= SIZE - 1) continue;
+          const v = g.map[cy][cx];
+          if (v >= 2) g.map[cy][cx] = v === 2 ? 3 : 0;
+        }
+      }
+      addFeed("💥 DETONATION");
+    };
+
+    const nadesTick = (dt: number) => {
+      const g = s();
+      const done: Nad[] = [];
+      for (const n of g.nades) {
+        n.t -= dt;
+        const nx = n.x + n.vx * dt, ny = n.y + n.vy * dt;
+        if (!isWall(nx, n.y)) n.x = nx; else n.vx *= -0.4;
+        if (!isWall(n.x, ny)) n.y = ny; else n.vy *= -0.4;
+        n.vx *= 1 - 1.5 * dt; n.vy *= 1 - 1.5 * dt;
+        if (n.t <= 0) done.push(n);
+      }
+      if (done.length) {
+        g.nades = g.nades.filter((n) => !done.includes(n));
+        for (const n of done) explode(n.x, n.y);
+      }
     };
 
     /* ---------------- Mode logic ---------------- */
@@ -454,13 +549,21 @@ export function PlayDemo() {
       const [ox, oy] = target ? [target.x, target.y] : botObjective(b);
       const dx = ox - b.x, dy = oy - b.y;
       const dist = Math.hypot(dx, dy) || 0.001;
+      b.strafeT -= dt;
+      if (b.strafeT <= 0) { b.strafeT = 0.6 + Math.random() * 0.8; b.strafeDir = Math.random() < 0.5 ? -1 : 1; }
       if (!target && dist > 0.5) moveEntity(b, (dx / dist) * 2.2 * dt, (dy / dist) * 2.2 * dt);
       else if (target && td > 3) moveEntity(b, (dx / dist) * 2.0 * dt, (dy / dist) * 2.0 * dt);
+      if (target) {
+        // Strafen im Kampf + Rückzug bei niedriger HP
+        const sx = (-dy / dist) * b.strafeDir, sy = (dx / dist) * b.strafeDir;
+        moveEntity(b, sx * 1.3 * dt, sy * 1.3 * dt);
+        if (b.hp < 30) moveEntity(b, (-dx / dist) * 1.4 * dt, (-dy / dist) * 1.4 * dt);
+      }
       b.cd -= dt;
       if (target && b.cd <= 0) {
         b.cd = 0.7 + Math.random() * 0.5;
         const dmg = 8 + Math.random() * 10;
-        if (target.id === 0) { g.hp -= dmg; if (g.hp <= 0) kill(b.id, 0); }
+        if (target.id === 0) { g.hp -= dmg; g.hurt = 0.3; if (g.hp <= 0) kill(b.id, 0); }
         else {
           const v = g.bots.find((x) => x.id === target!.id)!;
           v.hp -= dmg;
@@ -515,8 +618,11 @@ export function PlayDemo() {
           if (Math.abs(ang) < 0.06 + 0.25 / d && los(g.px, g.py, b.x, b.y)) { best = b; bd = d; }
         }
         if (best && (!wall || bd < wall.dist)) {
-          best.hp -= g.weapon === "brecher" ? 70 : 26;
+          const dmg = g.weapon === "brecher" ? 70 : 26;
+          best.hp -= dmg;
           sHit();
+          g.hitMarker = 0.15;
+          g.dmgNums.push({ v: dmg, t: g.time, kill: best.hp <= 0 });
           if (best.hp <= 0) kill(0, best.id);
         } else if (wall && g.weapon === "brecher" && wall.v >= 2) {
           // DESTRUCTION: Wand sprengen
@@ -565,6 +671,7 @@ export function PlayDemo() {
 
       const sprites: { x: number; y: number; color: string; label: string; h: number }[] = [];
       for (const b of g.bots) if (b.alive) sprites.push({ x: b.x, y: b.y, color: b.color, label: b.name, h: 0.8 });
+      for (const n of g.nades) sprites.push({ x: n.x, y: n.y, color: n.t < 0.4 && Math.floor(g.time * 10) % 2 === 0 ? "#ff3333" : "#ffcc33", label: "", h: 0.15 });
       if (g.mode === "ctf") for (const f of g.flags) if (!f.carried) sprites.push({ x: f.x, y: f.y, color: f.owner === 0 ? "#22ff55" : "#ff5544", label: "FLAG", h: 0.5 });
       if (g.mode === "domination") DOM_POINTS.forEach((p, i) => sprites.push({ x: p.x, y: p.y, color: g.domOwner[i] === 0 ? "#22ff55" : g.domOwner[i] === 1 ? "#ff5544" : "#888888", label: p.label, h: 0.4 }));
       if (g.mode === "hq") sprites.push({ x: 12.5, y: 12.5, color: g.hqOwner === 0 ? "#22ff55" : g.hqOwner === 1 ? "#ff5544" : "#888888", label: "HQ", h: 0.5 });
@@ -620,6 +727,32 @@ export function PlayDemo() {
       ctx.moveTo(W / 2, H / 2 - 4); ctx.lineTo(W / 2, H / 2 - 1);
       ctx.moveTo(W / 2, H / 2 + 1); ctx.lineTo(W / 2, H / 2 + 4);
       ctx.stroke();
+
+      // Hitmarker / Kill-Confirm
+      if (g.hitMarker > 0 || g.killConfirm > 0) {
+        ctx.strokeStyle = g.killConfirm > 0 ? "#ff5544" : "#ffffff";
+        ctx.beginPath();
+        ctx.moveTo(W / 2 - 6, H / 2 - 6); ctx.lineTo(W / 2 - 3, H / 2 - 3);
+        ctx.moveTo(W / 2 + 3, H / 2 - 3); ctx.lineTo(W / 2 + 6, H / 2 - 6);
+        ctx.moveTo(W / 2 - 6, H / 2 + 6); ctx.lineTo(W / 2 - 3, H / 2 + 3);
+        ctx.moveTo(W / 2 + 3, H / 2 + 3); ctx.lineTo(W / 2 + 6, H / 2 + 6);
+        ctx.stroke();
+      }
+      // Damage-Numbers
+      g.dmgNums.forEach((d, i) => {
+        const age = g.time - d.t;
+        ctx.font = "7px monospace";
+        ctx.textAlign = "center";
+        ctx.fillStyle = d.kill ? "#ff5544" : "#ffffff";
+        ctx.globalAlpha = Math.max(0, 1 - age / 0.6);
+        ctx.fillText(`${d.v}`, W / 2 + 12, H / 2 - 8 - age * 20 - i * 7);
+        ctx.globalAlpha = 1;
+      });
+      // Hurt-Vignette
+      if (g.hurt > 0) {
+        ctx.fillStyle = `rgba(255,30,30,${(g.hurt * 0.5).toFixed(3)})`;
+        ctx.fillRect(0, 0, W, H);
+      }
     };
 
     /* ---------------- HUD sync ---------------- */
@@ -641,11 +774,25 @@ export function PlayDemo() {
         ammo: g.ammo,
         reloading: g.reloading > 0,
         weapon: g.weapon === "brecher" ? "BRECHER-7" : "DORN",
+        grenades: g.grenades,
         scores, objective,
         feed: g.feed.filter((f) => g.time - f.t < 5).map((f) => f.text),
         winner: g.winner,
         planting: g.plantProgress > 0 && !g.bombPlanted,
       });
+      if (g.winner && !g.recorded) {
+        g.recorded = true;
+        try {
+          const rec = loadRecords();
+          const cur = rec[g.mode] ?? { wins: 0, bestKills: 0 };
+          const win = g.winner === "DU" || g.winner === "TEAM GRÜN";
+          rec[g.mode] = {
+            wins: cur.wins + (win ? 1 : 0),
+            bestKills: Math.max(cur.bestKills, g.playerKills),
+          };
+          localStorage.setItem(REC_KEY, JSON.stringify(rec));
+        } catch { /* Speicher nicht verfügbar */ }
+      }
       if (g.winner) setScreen("end");
     };
 
@@ -656,6 +803,11 @@ export function PlayDemo() {
       last = now;
       const g = s();
       g.time += dt;
+      g.hitMarker = Math.max(0, g.hitMarker - dt);
+      g.killConfirm = Math.max(0, g.killConfirm - dt);
+      g.hurt = Math.max(0, g.hurt - dt);
+      g.dmgNums = g.dmgNums.filter((d) => g.time - d.t < 0.6);
+      nadesTick(dt);
       if (g.hp <= 0 && !g.winner) {
         if (!g.pRespawnAt) g.pRespawnAt = g.time + 3;
         if (g.time >= g.pRespawnAt) { g.pRespawnAt = 0; spawnAt(0); }
@@ -689,7 +841,7 @@ export function PlayDemo() {
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-6 py-16">
         <div className="max-w-3xl w-full">
           <p className="font-mono text-xs tracking-[0.3em] uppercase text-primary glow-neon-sm mb-3">
-            WIRRWARR // Web-Demo v0.2
+            WIRRWARR // Web-Demo v0.3
           </p>
           <h1 className="text-4xl md:text-5xl font-bold mb-2">
             {screen === "end" ? (
@@ -699,8 +851,8 @@ export function PlayDemo() {
             )}
           </h1>
           <p className="text-muted-foreground mb-6 leading-relaxed">
-            Raycaster-Prototyp v0.2: Bots, 6 Modi, <span className="text-primary">DESTRUCTION</span> (BRECHER-7
-            sprengt Wände!), Sounds, 2 Maps &amp; Touch-Controls. Steuerung:{" "}
+            Raycaster-Prototyp v0.3: Bots mit Kampf-KI, 6 Modi, <span className="text-primary">DESTRUCTION</span>,{" "}
+            <span className="text-primary">Granaten</span>, Hitmarker, Rekorde, 3 Maps &amp; Touch-Controls. Steuerung:{" "}
             <span className="text-foreground font-mono text-sm">WASD</span> +{" "}
             <span className="text-foreground font-mono text-sm">Shift</span> Sprint,{" "}
             <span className="text-foreground font-mono text-sm">Klick/Maus</span> schießen,{" "}
@@ -740,6 +892,24 @@ export function PlayDemo() {
               </button>
             ))}
           </div>
+          {/* Rekorde */}
+          {Object.keys(records).length > 0 && (
+            <div className="border border-border bg-card rounded-sm p-4 mb-6">
+              <p className="font-mono text-[10px] tracking-[0.25em] uppercase text-primary glow-neon-sm mb-3">
+                🏆 Deine Rekorde
+              </p>
+              <div className="flex flex-wrap gap-x-6 gap-y-1.5">
+                {MODE_INFO.filter((m) => records[m.id]).map((m) => (
+                  <p key={m.id} className="font-mono text-[11px] text-muted-foreground">
+                    <span className="text-foreground">{m.name}</span>{" "}
+                    · Siege: <span className="text-primary">{records[m.id]!.wins}</span>{" "}
+                    · Best-Kills: <span className="text-primary">{records[m.id]!.bestKills}</span>
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+
           <a href="/" className="font-mono text-xs tracking-wider uppercase text-muted-foreground hover:text-primary transition-colors">
             ← Zurück zum GDD
           </a>
@@ -768,12 +938,14 @@ export function PlayDemo() {
         <p className="font-mono text-xl text-primary leading-none mt-1">{hud.hp}</p>
       </div>
       <div className="absolute bottom-3 right-3 text-right pointer-events-none">
-        <p className="font-mono text-[10px] text-muted-foreground tracking-wider">{hud.weapon} <span className="text-primary">[Q]</span></p>
+        <p className="font-mono text-[10px] text-muted-foreground tracking-wider">
+          {hud.weapon} <span className="text-primary">[Q]</span> · 💣 {hud.grenades} <span className="text-primary">[G]</span>
+        </p>
         <p className="font-mono text-2xl text-foreground leading-none">
           {hud.reloading ? <span className="text-primary">LÄDT…</span> : <>{hud.ammo}<span className="text-muted-foreground text-sm">/∞</span></>}
         </p>
       </div>
-      {/* Touch-Fire-Button */}
+      {/* Touch-Buttons */}
       <button
         type="button"
         className="lg:hidden absolute bottom-20 right-4 w-20 h-20 rounded-full border-2 border-primary/60 bg-primary/20 text-primary font-mono text-xs tracking-widest active:bg-primary/50"
@@ -781,6 +953,19 @@ export function PlayDemo() {
         onTouchEnd={() => { if (stateRef.current) stateRef.current.mouseDown = false; }}
       >
         FEUER
+      </button>
+      <button
+        type="button"
+        className="lg:hidden absolute bottom-24 right-28 w-14 h-14 rounded-full border-2 border-border bg-secondary/40 text-foreground font-mono text-lg active:bg-primary/30"
+        onTouchStart={() => {
+          const g = stateRef.current;
+          if (g && g.grenades > 0 && g.nades.length < 3) {
+            g.grenades--;
+            g.nades.push({ x: g.px, y: g.py, vx: Math.cos(g.pa) * 7, vy: Math.sin(g.pa) * 7, t: 1.1, team: 0 });
+          }
+        }}
+      >
+        💣
       </button>
       {hud.planting && (
         <div className="absolute bottom-16 left-1/2 -translate-x-1/2 font-mono text-xs text-primary border border-primary/50 bg-black/60 px-3 py-1.5 rounded-sm animate-pulse-neon pointer-events-none">
