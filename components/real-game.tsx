@@ -131,6 +131,7 @@ interface BotEnt {
   flankT: number;
   flankX: number;
   flankZ: number;
+  shieldT: number;
 }
 
 interface Particle {
@@ -269,6 +270,7 @@ export function RealGame() {
   const [winner, setWinner] = useState("");
   const [arena, setArena] = useState<ArenaId>("sektor");
   const [perk, setPerk] = useState<PerkId>("sprint");
+  const [quality, setQuality] = useState<"low" | "med" | "high">("med");
   const [profile, setProfile] = useState(() => loadProfile());
   const [loadout, setLoadout] = useState(() => loadLoadout());
   const level = levelFromXp(profile.xp);
@@ -283,6 +285,7 @@ export function RealGame() {
     scores: "", feed: [] as string[], kills: 0, objective: "", tactics: false,
     shield: 100, bloom: 0, grenades: 2, dmgDirs: [] as { a: number; age: number }[],
     codes: 0, upg: [] as string[], bioOpen: false, announce: null as string | null, skin: "#22ff55",
+    fps: 60, killcam: null as string | null,
   });
   const apiRef = useRef<{ dispose: () => void; upgrade?: (id: string) => void } | null>(null);
   const feedRef = useRef<string[]>([]);
@@ -303,22 +306,24 @@ export function RealGame() {
           if (newLv > oldLv) feedExtraRef.current.push(`⬆ LEVEL UP! Level ${newLv} – neue Unlocks im Menü!`);
           return np;
         });
-      })
+      }, quality)
     );
   };
 
   const initEngine = (
     mode: GameKind, arenaId: ArenaId, perk: PerkId,
     loadout: { streaks: string[]; skin: string }, level: number,
-    addXp: (n: number, msg?: string) => void
+    addXp: (n: number, msg?: string) => void,
+    quality: "low" | "med" | "high" = "med"
   ) => {
     const mission = MISSIONS.find((m) => m.id === mode) ?? null;
     const mount = mountRef.current;
     if (!mount) return;
 
     /* ---------- Renderer / Scene / Camera ---------- */
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    const renderer = new THREE.WebGLRenderer({ antialias: quality !== "low", powerPreference: "high-performance" });
+    renderer.setPixelRatio(quality === "low" ? 1 : quality === "med" ? Math.min(window.devicePixelRatio, 1.5) : Math.min(window.devicePixelRatio, 2));
+    const particleCap = quality === "low" ? 60 : quality === "med" ? 150 : 250;
     renderer.setSize(mount.clientWidth, mount.clientHeight);
     renderer.shadowMap.enabled = false;
     mount.appendChild(renderer.domElement);
@@ -454,8 +459,8 @@ export function RealGame() {
           life: 0.5 + Math.random() * 0.5,
         });
       }
-      if (particles.length > 220) {
-        const rm = particles.splice(0, particles.length - 220);
+      if (particles.length > particleCap) {
+        const rm = particles.splice(0, particles.length - particleCap);
         rm.forEach((p) => scene.remove(p.mesh));
       }
     };
@@ -525,7 +530,7 @@ export function RealGame() {
         kills: 0, strafeDir: 1, strafeT: 0, color,
         y: 0, vy: 0, mantle: null,
         burstLeft: 0, reactT: 0, pauseT: 0, ghost, markedT: 0,
-        flankT: 0, flankX: 0, flankZ: 0,
+        flankT: 0, flankX: 0, flankZ: 0, shieldT: 0,
       });
     };
     const botCount = mission ? mission.botCount : 5;
@@ -546,7 +551,7 @@ export function RealGame() {
       const color = new THREE.Color(ALLY_HEX[i]);
       const body = new THREE.Mesh(
         new THREE.BoxGeometry(0.7, 1.5, 0.4),
-        new THREE.MeshStandardMaterial({ color, roughness: 0.6, emissive: color.clone().multiplyScalar(0.3) })
+        new THREE.MeshStandardMaterial({ color, roughness: 0.5, emissive: color.clone().multiplyScalar(0.5) })
       );
       body.position.y = 0.75;
       const head = new THREE.Mesh(
@@ -579,6 +584,7 @@ export function RealGame() {
       headshots: 0, melees: 0,
       skinColor: SKINS.find((s) => s.id === loadout.skin && level >= s.level)?.color ?? "#22ff55",
       rageT: 0, bonusXp: 0, usedStreaks: [] as number[],
+      spawnShield: 2, killcam: null as { botId: number; t: number } | null,
     };
     yaw.position.set(player.x, 1.7, player.z);
 
@@ -695,12 +701,35 @@ export function RealGame() {
       }
     };
 
+    // Smart-Spawn: Punkt mit groesster Distanz zu Feinden waehlen
+    const pickSpawn = (px: number, pz: number, avoidBots: boolean) => {
+      let best = SPAWNS[0], bestScore = -1;
+      for (const sp of SPAWNS) {
+        let score = 999;
+        if (avoidBots) {
+          for (const b of bots) {
+            if (!b.alive) continue;
+            score = Math.min(score, Math.hypot(b.group.position.x - sp[0], b.group.position.z - sp[1]));
+          }
+        } else {
+          score = Math.hypot(px - sp[0], pz - sp[1]);
+        }
+        score += Math.random() * 4;
+        if (score > bestScore) { bestScore = score; best = sp; }
+      }
+      return best;
+    };
+
     const hurtPlayer = (dmgIn: number, fx: number, fz: number, killerId: number) => {
+      if (player.spawnShield > 0) return;
       const dmg = dmgIn * (player.upg.c1 ? 0.9 : 1);
       player.lastDmg = gameTime;
       const rel = Math.atan2(fx - player.x, fz - player.z) - yaw.rotation.y - Math.PI;
       player.dmgDirs.push({ a: rel, t: gameTime });
       if (player.dmgDirs.length > 4) player.dmgDirs.shift();
+      // AimPunch: Treffer kickt die Ansicht (tight feel)
+      targetPitch += 0.012 + Math.random() * 0.006;
+      targetYaw += (Math.random() - 0.5) * 0.012;
       if (player.shield > 0) {
         player.shield -= dmg;
         sShieldHit();
@@ -846,6 +875,7 @@ export function RealGame() {
           if (player.upg.s2) botHit.markedT = gameTime + 3;
           botHit.hp -= dmg;
           burst(h.point, head ? 0xffcc33 : 0xff5544, head ? 10 : 6);
+          spawnDmgNum(h.point.clone(), dmg, botHit.hp <= 0);
           if (botHit.hp <= 0) kill(0, botHit.id);
         } else if (!botHit) {
           const wall = walls.find((w) => w.active && w.mesh === h.object);
@@ -938,6 +968,34 @@ export function RealGame() {
         o.type = "sine"; o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(38, t + 0.12);
         g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.09 * mus.intensity, t + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
         o.connect(g).connect(c.destination); o.start(t); o.stop(t + 0.18);
+      }
+    };
+
+    /* ---------- 3D-Damage-Numbers ---------- */
+    const dmgSprites: { sp: THREE.Sprite; t: number; y0: number }[] = [];
+    const spawnDmgNum = (pos: THREE.Vector3, val: number, kill: boolean) => {
+      if (dmgSprites.length > 18) { const old = dmgSprites.shift()!; scene.remove(old.sp); }
+      const cv = document.createElement("canvas");
+      cv.width = 64; cv.height = 32;
+      const c = cv.getContext("2d")!;
+      c.font = "bold 22px monospace";
+      c.textAlign = "center";
+      c.fillStyle = kill ? "#ff5544" : "#ffffff";
+      c.fillText(String(val), 32, 24);
+      const tex = new THREE.CanvasTexture(cv);
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+      sp.scale.set(1.1, 0.55, 1);
+      sp.position.copy(pos).add(new THREE.Vector3((Math.random() - 0.5) * 0.4, 0.3, 0));
+      scene.add(sp);
+      dmgSprites.push({ sp, t: gameTime, y0: sp.position.y });
+    };
+    const dmgTick = () => {
+      for (let i = dmgSprites.length - 1; i >= 0; i--) {
+        const d = dmgSprites[i];
+        const age = gameTime - d.t;
+        d.sp.position.y = d.y0 + age * 1.4;
+        (d.sp.material as THREE.SpriteMaterial).opacity = Math.max(0, 1 - age / 0.6);
+        if (age > 0.6) { scene.remove(d.sp); dmgSprites.splice(i, 1); }
       }
     };
 
@@ -1062,10 +1120,11 @@ export function RealGame() {
     const botTick = (b: BotEnt, dt: number) => {
       if (!b.alive) {
         if (gameTime >= b.respawnAt) {
-          const sp = SPAWNS[b.id % SPAWNS.length];
+          const sp = pickSpawn(b.group.position.x, b.group.position.z, false);
           b.group.position.set(sp[0], 0, sp[1]);
           b.group.visible = true;
           b.hp = 100; b.alive = true;
+          b.shieldT = 1;
         }
         return;
       }
@@ -1085,7 +1144,7 @@ export function RealGame() {
         }
       }
       for (const o of bots) {
-        if (o.id === b.id || !o.alive || !enemy(o.team)) continue;
+        if (o.id === b.id || !o.alive || !enemy(o.team) || (o.shieldT ?? 0) > 0) continue;
         const d = Math.hypot(o.group.position.x - bp.x, o.group.position.z - bp.z);
         if (d < 30 && (!target || d < target.dist) && losClear(bp, o.group.position)) {
           target = { x: o.group.position.x, z: o.group.position.z, y: o.group.position.y, id: o.id, dist: d };
@@ -1155,13 +1214,15 @@ export function RealGame() {
       b.group.rotation.y = Math.atan2(dx, dz);
 
       // Schießen
-      // Reaktion + Burst-Feuer (AAA-Bot-Feel)
+      // Reaktion + Burst-Feuer (AAA-Bot-Feel) – Spawn-Schutz respektieren
+      if (player.spawnShield > 0 && target && target.id === 0) target = null;
       if (!target) b.reactT = 0.22 + Math.random() * 0.3;
       else if (b.reactT > 0) b.reactT -= dt;
       if (b.pauseT > 0) b.pauseT -= dt;
       if (target && b.reactT <= 0 && b.pauseT <= 0 && b.burstLeft <= 0) {
         b.burstLeft = 3 + Math.floor(Math.random() * 3);
       }
+      b.shieldT = Math.max(0, (b.shieldT ?? 0) - dt);
       b.cd -= dt;
       if (target && b.burstLeft > 0 && b.cd <= 0 && b.reactT <= 0) {
         b.cd = 0.13;
@@ -1261,6 +1322,7 @@ export function RealGame() {
     /* ---------- Loop ---------- */
     const clock = new THREE.Clock();
     let raf = 0;
+    let fpsAcc = 0, fpsFrames = 0, fpsVal = 60;
     let hudAcc = 0;
 
     const loop = () => {
@@ -1273,8 +1335,10 @@ export function RealGame() {
       // Spieler
       if (player.hp <= 0) {
         if (gameTime >= player.respawnAt) {
-          player.hp = 100; player.shield = 100; player.x = SPAWNS[0][0]; player.z = SPAWNS[0][1]; player.ammo = 24;
+          const sp = pickSpawn(player.x, player.z, true);
+          player.hp = 100; player.shield = 100; player.x = sp[0]; player.z = sp[1]; player.ammo = 24;
           player.usedStreaks = [];
+          player.spawnShield = 2;
         }
       } else {
         // ===== Bewegungsfluss: Stance, Slide, Acceleration, Friction =====
@@ -1408,7 +1472,9 @@ export function RealGame() {
         }
       }
       player.rageT = Math.max(0, player.rageT - dt);
+      player.spawnShield = Math.max(0, player.spawnShield - dt);
       musicTick(dt);
+      dmgTick();
       nadesTick3(dt);
       pickupsTick(dt);
       flashLight.intensity = Math.max(0, flashLight.intensity - 30 * dt);
@@ -1472,6 +1538,8 @@ export function RealGame() {
       }
 
       // HUD
+      fpsAcc += dt; fpsFrames++;
+      if (fpsAcc >= 0.5) { fpsVal = Math.round(fpsFrames / fpsAcc); fpsAcc = 0; fpsFrames = 0; }
       hudAcc += dt;
       if (hudAcc > 0.12) {
         hudAcc = 0;
@@ -1503,6 +1571,8 @@ export function RealGame() {
           bioOpen: player.bioOpen,
           announce: player.announce && gameTime - player.announce.t < 1.8 ? player.announce.text : null,
           skin: player.skinColor,
+          fps: fpsVal,
+          killcam: player.killcam ? (bots.find((b) => b.id === player.killcam!.botId)?.name ?? "?") : null,
         });
       }
 
@@ -1696,6 +1766,24 @@ export function RealGame() {
             <p className="font-mono text-[11px] text-foreground">Beste Streak: <span className="text-primary">{stats.bestStreak}</span></p>
           </div>
 
+          {/* Performance */}
+          <div className="flex flex-wrap items-center gap-2 mb-6">
+            <span className="font-mono text-[10px] tracking-[0.25em] uppercase text-muted-foreground mr-1">Performance:</span>
+            {(["low", "med", "high"] as const).map((q) => (
+              <button
+                key={q}
+                type="button"
+                onClick={() => setQuality(q)}
+                aria-pressed={quality === q}
+                className={`font-mono text-[11px] tracking-wider uppercase rounded-sm border px-3 py-2 transition-all min-h-[36px] ${
+                  quality === q ? "border-primary/70 bg-primary/10 text-primary box-glow-neon" : "border-border bg-card text-muted-foreground hover:border-primary/30"
+                }`}
+              >
+                {q === "low" ? "Low (240Hz)" : q === "med" ? "Med" : "High"}
+              </button>
+            ))}
+          </div>
+
           {/* Arena */}
           <p className="font-mono text-[10px] tracking-[0.25em] uppercase text-muted-foreground mb-2">Arena</p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
@@ -1826,6 +1914,16 @@ export function RealGame() {
       <div className="absolute top-3 left-1/2 -translate-x-1/2 text-center pointer-events-none max-w-[80%]">
         <p className="font-mono text-sm text-primary glow-neon-sm tracking-wider">{hud.scores}</p>
         {hud.objective && <p className="font-mono text-[10px] text-foreground/90 tracking-wider mt-1">{hud.objective}</p>}
+      </div>
+      {hud.killcam && (
+        <div className="absolute inset-x-0 bottom-24 flex justify-center pointer-events-none">
+          <p className="font-mono text-sm tracking-[0.3em] uppercase text-destructive border border-destructive/50 bg-black/70 px-4 py-2 rounded-sm">
+            ☠ KILLCAM // {hud.killcam}
+          </p>
+        </div>
+      )}
+      <div className="absolute top-3 right-3 text-right pointer-events-none">
+        <p className="font-mono text-[10px] text-muted-foreground tracking-wider">FPS {hud.fps}</p>
       </div>
       {hud.announce && (
         <div className="absolute inset-x-0 top-[28%] flex justify-center pointer-events-none">

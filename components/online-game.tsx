@@ -23,6 +23,7 @@ interface Remote {
   alive: boolean;
   kills: number;
   deaths: number;
+  buf: { x: number; z: number; yaw: number; t: number }[];
 }
 
 const ARENA = 40;
@@ -88,7 +89,7 @@ export function OnlineGame() {
   const [hud, setHud] = useState({
     hp: 100, ammo: 24, reloading: false, feed: [] as string[],
     players: [] as { name: string; kills: number; deaths: number; me: boolean }[],
-    scores: "", announce: null as string | null,
+    scores: "", announce: null as string | null, ping: 0,
   });
   const apiRef = useRef<{ dispose: () => void } | null>(null);
   const [name] = useState(() => `KAEMPFER-${Math.floor(10 + Math.random() * 89)}`);
@@ -235,7 +236,7 @@ export function OnlineGame() {
             group.add(body, head, label);
             group.position.set(0, 0, -30);
             scene.add(group);
-            remotes.set(id, { id, name: String(m.name), color, team, group, body, label, tx: 0, tz: -30, tyaw: 0, hp: 100, stance: 1, alive: true, kills: 0, deaths: 0 });
+            remotes.set(id, { id, name: String(m.name), color, team, group, body, label, tx: 0, tz: -30, tyaw: 0, hp: 100, stance: 1, alive: true, kills: 0, deaths: 0, buf: [] });
             pushFeed(`${m.name} beitritt`);
           }
         } else if (m.t === "state") {
@@ -243,7 +244,11 @@ export function OnlineGame() {
           if (r) {
             r.tx = m.x; r.tz = m.z; r.tyaw = m.yaw; r.hp = m.hp; r.stance = m.stance ?? 1;
             r.alive = m.hp > 0;
+            r.buf.push({ x: m.x, z: m.z, yaw: m.yaw, t: performance.now() });
+            if (r.buf.length > 40) r.buf.shift();
           }
+        } else if (m.t === "pong") {
+          pingVal = Math.round(performance.now() - (m.ts as number));
         } else if (m.t === "hit") {
           if (m.target === me.id && me.hp > 0) {
             me.hp -= m.dmg;
@@ -353,6 +358,8 @@ export function OnlineGame() {
     let raf = 0;
     let stateAcc = 0;
     let hudAcc = 0;
+    let pingAcc = 0;
+    let pingVal = 0;
     const loop = () => {
       raf = requestAnimationFrame(loop);
       const dt = Math.min(0.05, clock.getDelta());
@@ -454,11 +461,24 @@ export function OnlineGame() {
         camera.updateProjectionMatrix();
       }
 
-      // Remotes interpolieren + Stance-Visual
+      // Remotes: echter Interpolation-Buffer (~100 ms in der Vergangenheit)
+      const rt = performance.now() - 100;
       for (const r of remotes.values()) {
-        r.group.position.x += (r.tx - r.group.position.x) * Math.min(1, dt * 12);
-        r.group.position.z += (r.tz - r.group.position.z) * Math.min(1, dt * 12);
-        r.group.rotation.y += (r.tyaw - r.group.rotation.y) * Math.min(1, dt * 12);
+        while (r.buf.length > 2 && r.buf[1].t < rt) r.buf.shift();
+        if (r.buf.length >= 2) {
+          const a = r.buf[0], b = r.buf[1];
+          const f = Math.max(0, Math.min(1, (rt - a.t) / ((b.t - a.t) || 1)));
+          r.group.position.x = a.x + (b.x - a.x) * f;
+          r.group.position.z = a.z + (b.z - a.z) * f;
+          let ay = a.yaw, by = b.yaw;
+          if (by - ay > Math.PI) ay += Math.PI * 2;
+          if (ay - by > Math.PI) by += Math.PI * 2;
+          r.group.rotation.y = ay + (by - ay) * f;
+        } else {
+          r.group.position.x += (r.tx - r.group.position.x) * Math.min(1, dt * 12);
+          r.group.position.z += (r.tz - r.group.position.z) * Math.min(1, dt * 12);
+          r.group.rotation.y += (r.tyaw - r.group.rotation.y) * Math.min(1, dt * 12);
+        }
         r.group.visible = r.alive;
         const sc = r.stance === 3 ? 0.45 : r.stance === 2 ? 0.72 : 1;
         r.group.scale.y += (sc - r.group.scale.y) * Math.min(1, dt * 10);
@@ -472,12 +492,14 @@ export function OnlineGame() {
         if (t.life <= 0) { scene.remove(t.line); t.line.geometry.dispose(); tracers.splice(i, 1); }
       }
 
-      // State 12 Hz (inkl. Stance)
+      // State 12 Hz (inkl. Stance) + Ping 0.5 Hz
       stateAcc += dt;
       if (stateAcc > 0.08) {
         stateAcc = 0;
         send({ t: "state", x: me.x, z: me.z, yaw: yaw.rotation.y, hp: me.hp, stance: me.prone ? 3 : me.crouch ? 2 : 1 });
       }
+      pingAcc += dt;
+      if (pingAcc > 2) { pingAcc = 0; send({ t: "ping", ts: performance.now() }); }
 
       hudAcc += dt;
       if (hudAcc > 0.25) {
@@ -491,7 +513,8 @@ export function OnlineGame() {
           feed: [...feed], players,
           scores: gameMode === "tdm" ? `GRÜN ${teamScore[0]} : ${teamScore[1]} ROT` : "",
           announce: me.announce && performance.now() / 1000 - me.announce.t < 1.8 ? me.announce.text : null,
-        } as typeof hud & { announce: string | null });
+          ping: pingVal,
+        } as typeof hud & { announce: string | null; ping: number });
       }
 
       renderer.render(scene, camera);
@@ -599,7 +622,7 @@ export function OnlineGame() {
         <p className="font-mono text-sm text-primary glow-neon-sm tracking-wider">
           {mode === "tdm" ? hud.scores || "TDM" : "ONLINE // FFA"}
         </p>
-        <p className="font-mono text-[10px] text-muted-foreground tracking-wider mt-1">{name} · Tab = Scoreboard</p>
+        <p className="font-mono text-[10px] text-muted-foreground tracking-wider mt-1">{name} · PING {hud.ping} ms · Tab = Scoreboard</p>
       </div>
       <div className="absolute top-12 left-3 pointer-events-none space-y-1">
         {hud.feed.map((f, i) => (

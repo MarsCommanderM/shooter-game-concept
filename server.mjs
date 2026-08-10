@@ -78,6 +78,9 @@ wss.on("connection", (ws, req, roomKey) => {
       posMap.set(ws.pid, { x: m.x, z: m.z });
       m.id = ws.pid;
       broadcast(m, ws);
+    } else if (m.t === "ping") {
+      ws.send(JSON.stringify({ t: "pong", ts: m.ts }));
+      return;
     } else if (m.t === "hit") {
       const v = validateHit(ws, m);
       if (!v.ok) {
