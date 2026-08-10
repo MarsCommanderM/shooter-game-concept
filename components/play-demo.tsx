@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 
 /* ================================================================== */
-/* WIRRWARR Web-Demo: Raycaster-FPS mit Bots & 6 Modi                  */
+/* WIRRWARR Web-Demo v0.2: Raycaster-FPS                               */
+/* Bots, 6 Modi, DESTRUCTION (BRECHER), Sounds, 2 Maps, Touch-Controls */
 /* ================================================================== */
 
 type ModeId = "tdm" | "ffa" | "hq" | "sabotage" | "ctf" | "domination";
+type MapId = "spire" | "garten";
 
 const MODE_INFO: { id: ModeId; name: string; desc: string }[] = [
   { id: "tdm", name: "Team-Deathmatch", desc: "3v3 – erstes Team mit 10 Kills gewinnt." },
@@ -17,148 +19,158 @@ const MODE_INFO: { id: ModeId; name: string; desc: string }[] = [
   { id: "domination", name: "Herrschaft", desc: "Zonen A/B/C halten: 1 Punkt/Sekunde pro Zone, 60 Punkte gewinnen." },
 ];
 
+const MAP_INFO: { id: MapId; name: string; desc: string }[] = [
+  { id: "spire", name: "Sektor 7", desc: "Vier Blöcke, vier Barrikaden – alles sprengbar." },
+  { id: "garten", name: "Biomass-Garten", desc: "Offene Kuppeln mit Säulenwald, mehr Sightlines." },
+];
+
 interface Bot {
-  id: number;
-  name: string;
-  team: number;
-  x: number;
-  y: number;
-  hp: number;
-  alive: boolean;
-  respawnAt: number;
-  cd: number;
-  color: string;
-  kills: number;
-  deaths: number;
+  id: number; name: string; team: number;
+  x: number; y: number; hp: number; alive: boolean;
+  respawnAt: number; cd: number; color: string; kills: number; deaths: number;
 }
 
 interface HudState {
-  hp: number;
-  ammo: number;
-  reloading: boolean;
-  scores: string;
-  objective: string;
-  feed: string[];
-  winner: string | null;
-  planting: boolean;
+  hp: number; ammo: number; reloading: boolean; weapon: string;
+  scores: string; objective: string; feed: string[];
+  winner: string | null; planting: boolean;
 }
 
 const SIZE = 24;
 const TEAM_COLORS = ["#22ff55", "#ff5544", "#ffcc33", "#33ccff", "#ff66cc", "#99ff33"];
 const BOT_NAMES = ["VEGA", "JUNO", "RAZOR", "MORBID", "ECHO", "SABLE"];
 
-function buildMap(): number[][] {
+/* Zellen: 0 frei, 1 massiv, 2 intakt sprengbar, 3 angeknackst sprengbar */
+function buildMap(id: MapId): number[][] {
   const m: number[][] = Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
-  for (let i = 0; i < SIZE; i++) {
-    m[0][i] = 1; m[SIZE - 1][i] = 1; m[i][0] = 1; m[i][SIZE - 1] = 1;
-  }
-  const rect = (x: number, y: number, w: number, h: number) => {
-    for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) m[j][i] = 1;
+  for (let i = 0; i < SIZE; i++) { m[0][i] = 1; m[SIZE - 1][i] = 1; m[i][0] = 1; m[i][SIZE - 1] = 1; }
+  const rect = (x: number, y: number, w: number, h: number, v: number) => {
+    for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) m[j][i] = v;
   };
-  rect(4, 4, 2, 2); rect(18, 4, 2, 2); rect(4, 18, 2, 2); rect(18, 18, 2, 2);
-  rect(11, 4, 2, 2); rect(11, 18, 2, 2); rect(4, 11, 2, 2); rect(18, 11, 2, 2);
+  if (id === "spire") {
+    rect(4, 4, 2, 2, 2); rect(18, 4, 2, 2, 2); rect(4, 18, 2, 2, 2); rect(18, 18, 2, 2, 2);
+    rect(11, 4, 2, 2, 2); rect(11, 18, 2, 2, 2); rect(4, 11, 2, 2, 2); rect(18, 11, 2, 2, 2);
+  } else {
+    rect(6, 6, 1, 1, 2); rect(12, 5, 1, 1, 2); rect(17, 6, 1, 1, 2);
+    rect(5, 12, 1, 1, 2); rect(18, 12, 1, 1, 2);
+    rect(6, 17, 1, 1, 2); rect(12, 18, 1, 1, 2); rect(17, 17, 1, 1, 2);
+    rect(11, 11, 2, 2, 1);
+  }
   return m;
 }
-const MAP = buildMap();
 
 const SPAWNS: [number, number][] = [
   [2.5, 12.5], [21.5, 12.5], [2.5, 2.5], [21.5, 21.5], [12.5, 2.5], [12.5, 21.5],
 ];
-const DOM_POINTS: { x: number; y: number; label: string }[] = [
+const DOM_POINTS = [
   { x: 7.5, y: 7.5, label: "A" },
   { x: 12.5, y: 12.5, label: "B" },
   { x: 16.5, y: 16.5, label: "C" },
 ];
 
-function isWall(x: number, y: number) {
-  const cx = Math.floor(x), cy = Math.floor(y);
-  if (cx < 0 || cy < 0 || cx >= SIZE || cy >= SIZE) return true;
-  return MAP[cy][cx] === 1;
-}
-
-function los(x0: number, y0: number, x1: number, y1: number): boolean {
-  const dx = x1 - x0, dy = y1 - y0;
-  const dist = Math.hypot(dx, dy);
-  const steps = Math.ceil(dist * 4);
-  for (let i = 1; i < steps; i++) {
-    const t = i / steps;
-    if (isWall(x0 + dx * t, y0 + dy * t)) return false;
-  }
-  return true;
-}
-
 interface GameState {
-  mode: ModeId;
+  mode: ModeId; map: number[][];
   px: number; py: number; pa: number;
-  hp: number; ammo: number; reloading: number; flash: number;
-  pRespawnAt: number;
-  bots: Bot[];
-  keys: Record<string, boolean>;
-  mouseDown: boolean;
-  teamScore: number[];
-  ffaScore: number[];
-  domOwner: number[];
-  hqOwner: number;
+  hp: number; ammo: number; reloading: number; flash: number; fireCd: number;
+  weapon: "dorn" | "brecher"; pRespawnAt: number;
+  bots: Bot[]; keys: Record<string, boolean>; mouseDown: boolean;
+  touchVec: { x: number; y: number };
+  teamScore: number[]; ffaScore: number[]; domOwner: number[]; hqOwner: number;
   flags: { owner: number; x: number; y: number; carried: boolean; carrierId: number | null }[];
-  plantProgress: number;
-  bombPlanted: boolean;
-  bombTimer: number;
-  defuseProgress: number;
-  roundWins: number[];
-  feed: { text: string; t: number }[];
-  time: number;
-  winner: string | null;
+  plantProgress: number; bombPlanted: boolean; bombTimer: number; defuseProgress: number;
+  roundWins: number[]; feed: { text: string; t: number }[]; time: number; winner: string | null;
 }
 
-function makeGame(mode: ModeId): GameState {
+function makeGame(mode: ModeId, mapId: MapId): GameState {
   const bots: Bot[] = [];
   for (let i = 0; i < 5; i++) {
     const team = mode === "ffa" ? i + 1 : i % 2 === 0 ? 1 : 0;
     const sp = SPAWNS[(i + 1) % SPAWNS.length];
     bots.push({
-      id: i + 1,
-      name: BOT_NAMES[i],
-      team,
-      x: sp[0], y: sp[1], hp: 100, alive: true, respawnAt: 0, cd: 1 + Math.random(),
-      color: TEAM_COLORS[mode === "ffa" ? i + 1 : team],
-      kills: 0, deaths: 0,
+      id: i + 1, name: BOT_NAMES[i], team, x: sp[0], y: sp[1],
+      hp: 100, alive: true, respawnAt: 0, cd: 1 + Math.random(),
+      color: TEAM_COLORS[mode === "ffa" ? i + 1 : team], kills: 0, deaths: 0,
     });
   }
-  const pSpawn = SPAWNS[0];
   return {
-    mode,
-    px: pSpawn[0], py: pSpawn[1], pa: 0,
-    hp: 100, ammo: 24, reloading: 0, flash: 0, pRespawnAt: 0,
-    bots,
-    keys: {},
-    mouseDown: false,
-    teamScore: [0, 0],
-    ffaScore: Array(6).fill(0),
-    domOwner: [-1, -1, -1],
-    hqOwner: -1,
+    mode, map: buildMap(mapId),
+    px: SPAWNS[0][0], py: SPAWNS[0][1], pa: 0,
+    hp: 100, ammo: 24, reloading: 0, flash: 0, fireCd: 0,
+    weapon: "dorn", pRespawnAt: 0,
+    bots, keys: {}, mouseDown: false, touchVec: { x: 0, y: 0 },
+    teamScore: [0, 0], ffaScore: Array(6).fill(0), domOwner: [-1, -1, -1], hqOwner: -1,
     flags: [
       { owner: 0, x: 2.5, y: 2.5, carried: false, carrierId: null },
       { owner: 1, x: 21.5, y: 21.5, carried: false, carrierId: null },
     ],
     plantProgress: 0, bombPlanted: false, bombTimer: 0, defuseProgress: 0,
-    roundWins: [0, 0],
-    feed: [], time: 0, winner: null,
+    roundWins: [0, 0], feed: [], time: 0, winner: null,
   };
 }
 
-/* ------------------------------------------------------------------ */
+/* ---------------- WebAudio-Sounds ---------------- */
+let actx: AudioContext | null = null;
+function ac(): AudioContext | null {
+  if (typeof window === "undefined") return null;
+  const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AC) return null;
+  if (!actx) actx = new AC();
+  if (actx.state === "suspended") void actx.resume();
+  return actx;
+}
+function sShot(weapon: string) {
+  const c = ac(); if (!c) return;
+  const t = c.currentTime;
+  const o = c.createOscillator(); const g = c.createGain();
+  if (weapon === "brecher") {
+    o.type = "square"; o.frequency.setValueAtTime(130, t); o.frequency.exponentialRampToValueAtTime(35, t + 0.18);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.3, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+    o.connect(g).connect(c.destination); o.start(t); o.stop(t + 0.22);
+  } else {
+    o.type = "triangle"; o.frequency.setValueAtTime(720, t); o.frequency.exponentialRampToValueAtTime(180, t + 0.07);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.16, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
+    o.connect(g).connect(c.destination); o.start(t); o.stop(t + 0.1);
+  }
+}
+function sBoom() {
+  const c = ac(); if (!c) return;
+  const t = c.currentTime;
+  const len = Math.floor(c.sampleRate * 0.5);
+  const buf = c.createBuffer(1, len, c.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+  const src = c.createBufferSource(); src.buffer = buf;
+  const f = c.createBiquadFilter(); f.type = "lowpass"; f.frequency.setValueAtTime(900, t); f.frequency.exponentialRampToValueAtTime(80, t + 0.5);
+  const g = c.createGain(); g.gain.setValueAtTime(0.5, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+  src.connect(f).connect(g).connect(c.destination); src.start(t);
+  const o = c.createOscillator(); const og = c.createGain();
+  o.type = "sine"; o.frequency.setValueAtTime(90, t); o.frequency.exponentialRampToValueAtTime(28, t + 0.4);
+  og.gain.setValueAtTime(0.4, t); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+  o.connect(og).connect(c.destination); o.start(t); o.stop(t + 0.5);
+}
+function sHit() {
+  const c = ac(); if (!c) return;
+  const t = c.currentTime;
+  const o = c.createOscillator(); const g = c.createGain();
+  o.type = "sine"; o.frequency.setValueAtTime(1200, t); o.frequency.exponentialRampToValueAtTime(600, t + 0.05);
+  g.gain.setValueAtTime(0.08, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+  o.connect(g).connect(c.destination); o.start(t); o.stop(t + 0.07);
+}
+
+/* ================================================================== */
 
 export function PlayDemo() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef<GameState | null>(null);
   const [screen, setScreen] = useState<"menu" | "game" | "end">("menu");
+  const [mapId, setMapId] = useState<MapId>("spire");
   const [hud, setHud] = useState<HudState>({
-    hp: 100, ammo: 24, reloading: false, scores: "", objective: "",
+    hp: 100, ammo: 24, reloading: false, weapon: "DORN", scores: "", objective: "",
     feed: [], winner: null, planting: false,
   });
 
   const start = (mode: ModeId) => {
-    stateRef.current = makeGame(mode);
+    stateRef.current = makeGame(mode, mapId);
     setHud((h) => ({ ...h, winner: null }));
     setScreen("game");
   };
@@ -172,16 +184,37 @@ export function PlayDemo() {
 
     const W = 320, H = 180;
     canvas.width = W; canvas.height = H;
-
     const s = () => stateRef.current!;
     let raf = 0;
     let last = performance.now();
     let lastMouseX = 0;
 
+    const isWall = (x: number, y: number) => {
+      const g = s();
+      const cx = Math.floor(x), cy = Math.floor(y);
+      if (cx < 0 || cy < 0 || cx >= SIZE || cy >= SIZE) return true;
+      return g.map[cy][cx] > 0;
+    };
+    const los = (x0: number, y0: number, x1: number, y1: number) => {
+      const dx = x1 - x0, dy = y1 - y0;
+      const steps = Math.ceil(Math.hypot(dx, dy) * 4);
+      for (let i = 1; i < steps; i++) {
+        const t = i / steps;
+        if (isWall(x0 + dx * t, y0 + dy * t)) return false;
+      }
+      return true;
+    };
+
     /* ---------------- Input ---------------- */
     const kd = (e: KeyboardEvent) => {
       if (e.key === "Tab") e.preventDefault();
-      s().keys[e.key.toLowerCase()] = true;
+      const k = e.key.toLowerCase();
+      s().keys[k] = true;
+      if (k === "q" || k === "1" || k === "2") {
+        const g = s();
+        g.weapon = k === "q" ? (g.weapon === "dorn" ? "brecher" : "dorn") : k === "1" ? "dorn" : "brecher";
+        g.ammo = 24; g.reloading = 0;
+      }
     };
     const ku = (e: KeyboardEvent) => { s().keys[e.key.toLowerCase()] = false; };
     const md = () => {
@@ -190,18 +223,53 @@ export function PlayDemo() {
     };
     const mu = () => { s().mouseDown = false; };
     const mm = (e: MouseEvent) => {
-      if (document.pointerLockElement === canvas) {
-        s().pa += e.movementX * 0.0025;
-      } else if (s().mouseDown) {
-        s().pa += (e.clientX - lastMouseX) * 0.004;
-      }
+      if (document.pointerLockElement === canvas) s().pa += e.movementX * 0.0025;
+      else if (s().mouseDown) s().pa += (e.clientX - lastMouseX) * 0.004;
       lastMouseX = e.clientX;
     };
+
+    /* Touch: linke Hälfte = bewegen, rechte Hälfte = schauen */
+    let moveId: number | null = null, lookId: number | null = null;
+    let lookX = 0, moveOX = 0, moveOY = 0;
+    const ts = (e: TouchEvent) => {
+      e.preventDefault();
+      const r = canvas.getBoundingClientRect();
+      for (const t of Array.from(e.changedTouches)) {
+        if (t.clientX - r.left < r.width / 2 && moveId === null) {
+          moveId = t.identifier; moveOX = t.clientX; moveOY = t.clientY;
+        } else if (lookId === null) {
+          lookId = t.identifier; lookX = t.clientX;
+        }
+      }
+    };
+    const tm = (e: TouchEvent) => {
+      e.preventDefault();
+      const g = s();
+      for (const t of Array.from(e.changedTouches)) {
+        if (t.identifier === moveId) {
+          g.touchVec.x = Math.max(-1, Math.min(1, (t.clientX - moveOX) / 50));
+          g.touchVec.y = Math.max(-1, Math.min(1, (t.clientY - moveOY) / 50));
+        } else if (t.identifier === lookId) {
+          g.pa += (t.clientX - lookX) * 0.006;
+          lookX = t.clientX;
+        }
+      }
+    };
+    const te = (e: TouchEvent) => {
+      for (const t of Array.from(e.changedTouches)) {
+        if (t.identifier === moveId) { moveId = null; s().touchVec = { x: 0, y: 0 }; }
+        if (t.identifier === lookId) lookId = null;
+      }
+    };
+
     window.addEventListener("keydown", kd);
     window.addEventListener("keyup", ku);
     canvas.addEventListener("mousedown", md);
     window.addEventListener("mouseup", mu);
     window.addEventListener("mousemove", mm);
+    canvas.addEventListener("touchstart", ts, { passive: false });
+    canvas.addEventListener("touchmove", tm, { passive: false });
+    canvas.addEventListener("touchend", te);
 
     /* ---------------- Helpers ---------------- */
     const moveEntity = (e: { x: number; y: number }, dx: number, dy: number) => {
@@ -209,30 +277,22 @@ export function PlayDemo() {
       if (!isWall(e.x + dx + Math.sign(dx) * r, e.y)) e.x += dx;
       if (!isWall(e.x, e.y + dy + Math.sign(dy) * r)) e.y += dy;
     };
-
     const addFeed = (text: string) => {
       const g = s();
       g.feed.push({ text, t: g.time });
       if (g.feed.length > 5) g.feed.shift();
     };
-
     const kill = (killerId: number, victimId: number) => {
       const g = s();
       const victim = victimId === 0 ? null : g.bots.find((b) => b.id === victimId);
       const killer = killerId === 0 ? null : g.bots.find((b) => b.id === killerId);
-      const kName = killerId === 0 ? "DU" : killer?.name ?? "?";
-      const vName = victimId === 0 ? "DU" : victim?.name ?? "?";
       if (victim) { victim.hp = 0; victim.alive = false; victim.deaths++; victim.respawnAt = g.time + 3; }
       if (victimId === 0) g.hp = 0;
       if (killer) killer.kills++;
       if (g.mode === "ffa") g.ffaScore[killerId]++;
-      else {
-        const team = killerId === 0 ? 0 : killer!.team;
-        g.teamScore[team]++;
-      }
-      addFeed(`${kName} ⚡ ${vName}`);
+      else g.teamScore[killerId === 0 ? 0 : killer!.team]++;
+      addFeed(`${killerId === 0 ? "DU" : killer?.name ?? "?"} ⚡ ${victimId === 0 ? "DU" : victim?.name ?? "?"}`);
     };
-
     const spawnAt = (id: number) => {
       const g = s();
       const sp = SPAWNS[id % SPAWNS.length];
@@ -242,34 +302,48 @@ export function PlayDemo() {
         b.x = sp[0]; b.y = sp[1]; b.hp = 100; b.alive = true;
       }
     };
-
     const nearTeam = (x: number, y: number, r: number, team: number) => {
       const g = s();
-      if (team === 0 && Math.hypot(g.px - x, g.py - y) < r && g.hp > 0) return true;
+      if (team === 0 && g.hp > 0 && Math.hypot(g.px - x, g.py - y) < r) return true;
       return g.bots.some((b) => b.alive && b.team === team && Math.hypot(b.x - x, b.y - y) < r);
+    };
+
+    /* Wand im Fadenkreuz finden (DDA) */
+    const wallInSight = (range: number): { cx: number; cy: number; dist: number; v: number } | null => {
+      const g = s();
+      const rdx = Math.cos(g.pa), rdy = Math.sin(g.pa);
+      let mapX = Math.floor(g.px), mapY = Math.floor(g.py);
+      const dDX = Math.abs(1 / (rdx || 1e-9)), dDY = Math.abs(1 / (rdy || 1e-9));
+      let stepX: number, stepY: number, sDX: number, sDY: number;
+      if (rdx < 0) { stepX = -1; sDX = (g.px - mapX) * dDX; } else { stepX = 1; sDX = (mapX + 1 - g.px) * dDX; }
+      if (rdy < 0) { stepY = -1; sDY = (g.py - mapY) * dDY; } else { stepY = 1; sDY = (mapY + 1 - g.py) * dDY; }
+      let side = 0;
+      for (let i = 0; i < 64; i++) {
+        if (sDX < sDY) { sDX += dDX; mapX += stepX; side = 0; } else { sDY += dDY; mapY += stepY; side = 1; }
+        if (mapX < 0 || mapY < 0 || mapX >= SIZE || mapY >= SIZE) return null;
+        const v = g.map[mapY][mapX];
+        if (v > 0) {
+          const dist = (side === 0 ? sDX - dDX : sDY - dDY);
+          if (dist > range) return null;
+          return { cx: mapX, cy: mapY, dist, v };
+        }
+      }
+      return null;
     };
 
     /* ---------------- Mode logic ---------------- */
     const modeTick = (dt: number) => {
       const g = s();
       if (g.mode === "hq") {
-        const inA = nearTeam(12.5, 12.5, 2.5, 0);
-        const inB = nearTeam(12.5, 12.5, 2.5, 1);
-        if (inA !== inB) {
-          g.hqOwner = inA ? 0 : 1;
-          g.teamScore[g.hqOwner] += dt;
-        }
+        const inA = nearTeam(12.5, 12.5, 2.5, 0), inB = nearTeam(12.5, 12.5, 2.5, 1);
+        if (inA !== inB) { g.hqOwner = inA ? 0 : 1; g.teamScore[g.hqOwner] += dt; }
         if (g.teamScore[0] >= 60) g.winner = "TEAM GRÜN";
         if (g.teamScore[1] >= 60) g.winner = "TEAM ROT";
       }
       if (g.mode === "domination") {
         DOM_POINTS.forEach((p, i) => {
-          const inA = nearTeam(p.x, p.y, 2, 0);
-          const inB = nearTeam(p.x, p.y, 2, 1);
-          if (inA !== inB) {
-            g.domOwner[i] = inA ? 0 : 1;
-            g.teamScore[g.domOwner[i]] += dt;
-          }
+          const inA = nearTeam(p.x, p.y, 2, 0), inB = nearTeam(p.x, p.y, 2, 1);
+          if (inA !== inB) { g.domOwner[i] = inA ? 0 : 1; g.teamScore[g.domOwner[i]] += dt; }
         });
         if (g.teamScore[0] >= 60) g.winner = "TEAM GRÜN";
         if (g.teamScore[1] >= 60) g.winner = "TEAM ROT";
@@ -298,7 +372,7 @@ export function PlayDemo() {
         if (!g.bombPlanted) {
           const onSite = Math.hypot(g.px - site.x, g.py - site.y) < 1.6 && g.keys["e"];
           g.plantProgress = onSite ? g.plantProgress + dt : 0;
-          if (g.plantProgress >= 4) { g.bombPlanted = true; g.bombTimer = 25; addFeed("LADUNG PLATZIERT!"); }
+          if (g.plantProgress >= 4) { g.bombPlanted = true; g.bombTimer = 25; addFeed("LADUNG PLATZIERT!"); sBoom(); }
         } else {
           g.bombTimer -= dt;
           const defusing = g.bots.some((b) => b.alive && b.team === 1 && Math.hypot(b.x - site.x, b.y - site.y) < 1.6);
@@ -310,7 +384,7 @@ export function PlayDemo() {
             }
           } else g.defuseProgress = 0;
           if (g.bombTimer <= 0 && g.bombPlanted) {
-            g.roundWins[0]++; addFeed("DETONATION! Runde an GRÜN");
+            g.roundWins[0]++; addFeed("DETONATION! Runde an GRÜN"); sBoom();
             g.bombPlanted = false; g.plantProgress = 0; g.bombTimer = 0;
           }
         }
@@ -366,12 +440,8 @@ export function PlayDemo() {
 
     const botTick = (b: Bot, dt: number) => {
       const g = s();
-      if (!b.alive) {
-        if (g.time >= b.respawnAt) spawnAt(b.id);
-        return;
-      }
-      const enemyOf = (team: number) =>
-        g.mode === "ffa" ? team !== b.team : team !== b.team;
+      if (!b.alive) { if (g.time >= b.respawnAt) spawnAt(b.id); return; }
+      const enemyOf = (team: number) => team !== b.team;
       let target: { x: number; y: number; id: number } | null = null;
       let td = 8;
       const dP = Math.hypot(g.px - b.x, g.py - b.y);
@@ -381,21 +451,17 @@ export function PlayDemo() {
         const d = Math.hypot(o.x - b.x, o.y - b.y);
         if (d < td && los(b.x, b.y, o.x, o.y)) { target = { x: o.x, y: o.y, id: o.id }; td = d; }
       }
-
       const [ox, oy] = target ? [target.x, target.y] : botObjective(b);
       const dx = ox - b.x, dy = oy - b.y;
       const dist = Math.hypot(dx, dy) || 0.001;
       if (!target && dist > 0.5) moveEntity(b, (dx / dist) * 2.2 * dt, (dy / dist) * 2.2 * dt);
       else if (target && td > 3) moveEntity(b, (dx / dist) * 2.0 * dt, (dy / dist) * 2.0 * dt);
-
       b.cd -= dt;
       if (target && b.cd <= 0) {
         b.cd = 0.7 + Math.random() * 0.5;
         const dmg = 8 + Math.random() * 10;
-        if (target.id === 0) {
-          g.hp -= dmg;
-          if (g.hp <= 0) kill(b.id, 0);
-        } else {
+        if (target.id === 0) { g.hp -= dmg; if (g.hp <= 0) kill(b.id, 0); }
+        else {
           const v = g.bots.find((x) => x.id === target!.id)!;
           v.hp -= dmg;
           if (v.hp <= 0) kill(b.id, v.id);
@@ -410,29 +476,32 @@ export function PlayDemo() {
       const rot = 2.6 * dt;
       if (g.keys["arrowleft"]) g.pa -= rot;
       if (g.keys["arrowright"]) g.pa += rot;
-      const sp = 4.2 * dt;
-      let fx = 0, fy = 0;
-      if (g.keys["w"] || g.keys["arrowup"]) { fx += Math.cos(g.pa); fy += Math.sin(g.pa); }
-      if (g.keys["s"] || g.keys["arrowdown"]) { fx -= Math.cos(g.pa); fy -= Math.sin(g.pa); }
-      if (g.keys["a"]) { fx += Math.cos(g.pa - Math.PI / 2); fy += Math.sin(g.pa - Math.PI / 2); }
-      if (g.keys["d"]) { fx += Math.cos(g.pa + Math.PI / 2); fy += Math.sin(g.pa + Math.PI / 2); }
+      const sprint = g.keys["shift"] ? 1.45 : 1;
+      const sp = 4.2 * dt * sprint;
+      const fwd = (g.keys["w"] || g.keys["arrowup"] ? 1 : 0) - (g.keys["s"] || g.keys["arrowdown"] ? 1 : 0) - g.touchVec.y;
+      const str = (g.keys["d"] ? 1 : 0) - (g.keys["a"] ? 1 : 0) + g.touchVec.x;
+      let fx = Math.cos(g.pa) * fwd + Math.cos(g.pa + Math.PI / 2) * str;
+      let fy = Math.sin(g.pa) * fwd + Math.sin(g.pa + Math.PI / 2) * str;
       const l = Math.hypot(fx, fy);
-      if (l > 0) {
+      if (l > 0.01) {
         const pl = { x: g.px, y: g.py };
         moveEntity(pl, (fx / l) * sp, (fy / l) * sp);
         g.px = pl.x; g.py = pl.y;
       }
 
-      if (g.reloading > 0) {
-        g.reloading -= dt;
-        if (g.reloading <= 0) g.ammo = 24;
-      }
+      if (g.reloading > 0) { g.reloading -= dt; if (g.reloading <= 0) g.ammo = 24; }
       if (g.keys["r"] && g.ammo < 24 && g.reloading <= 0) g.reloading = 1.2;
 
       g.flash = Math.max(0, g.flash - dt);
-      if (g.mouseDown && g.reloading <= 0 && g.ammo > 0 && g.flash <= 0.12) {
+      g.fireCd -= dt;
+      const rate = g.weapon === "brecher" ? 0.9 : 0.22;
+      if (g.mouseDown && g.reloading <= 0 && g.ammo > 0 && g.fireCd <= 0) {
+        g.fireCd = rate;
         g.ammo--;
-        g.flash = 0.25;
+        g.flash = 0.2;
+        sShot(g.weapon);
+        // Ziel bestimmen: Bot oder Wand?
+        const wall = wallInSight(g.weapon === "brecher" ? 10 : 14);
         let best: Bot | null = null; let bd = 14;
         for (const b of g.bots) {
           if (!b.alive) continue;
@@ -445,9 +514,15 @@ export function PlayDemo() {
           while (ang < -Math.PI) ang += 2 * Math.PI;
           if (Math.abs(ang) < 0.06 + 0.25 / d && los(g.px, g.py, b.x, b.y)) { best = b; bd = d; }
         }
-        if (best) {
-          best.hp -= 26;
+        if (best && (!wall || bd < wall.dist)) {
+          best.hp -= g.weapon === "brecher" ? 70 : 26;
+          sHit();
           if (best.hp <= 0) kill(0, best.id);
+        } else if (wall && g.weapon === "brecher" && wall.v >= 2) {
+          // DESTRUCTION: Wand sprengen
+          g.map[wall.cy][wall.cx] = wall.v === 2 ? 3 : 0;
+          sBoom();
+          if (g.map[wall.cy][wall.cx] === 0) addFeed("BRESCHE GESPRENGT!");
         }
         if (g.ammo === 0) g.reloading = 1.2;
       }
@@ -460,7 +535,6 @@ export function PlayDemo() {
       ctx.fillRect(0, 0, W, H / 2);
       ctx.fillStyle = "#0c0f0c";
       ctx.fillRect(0, H / 2, W, H / 2);
-
       const zBuf = new Float32Array(W);
       for (let x = 0; x < W; x++) {
         const camX = (2 * x) / W - 1;
@@ -471,17 +545,21 @@ export function PlayDemo() {
         let stepX: number, stepY: number, sDX: number, sDY: number;
         if (rdx < 0) { stepX = -1; sDX = (g.px - mapX) * dDX; } else { stepX = 1; sDX = (mapX + 1 - g.px) * dDX; }
         if (rdy < 0) { stepY = -1; sDY = (g.py - mapY) * dDY; } else { stepY = 1; sDY = (mapY + 1 - g.py) * dDY; }
-        let side = 0, hit = 0;
+        let side = 0, hit = 0, v = 1;
         for (let i = 0; i < 48 && !hit; i++) {
           if (sDX < sDY) { sDX += dDX; mapX += stepX; side = 0; } else { sDY += dDY; mapY += stepY; side = 1; }
           if (mapX < 0 || mapY < 0 || mapX >= SIZE || mapY >= SIZE) { hit = 1; break; }
-          if (MAP[mapY][mapX] === 1) hit = 1;
+          v = g.map[mapY][mapX];
+          if (v > 0) hit = 1;
         }
         const dist = side === 0 ? sDX - dDX : sDY - dDY;
         zBuf[x] = dist;
         const lineH = Math.min(H * 2, H / (dist || 0.01));
         const shade = Math.max(0.12, 1 - dist / 14) * (side === 1 ? 0.75 : 1);
-        ctx.fillStyle = `rgb(${Math.floor(36 * shade)},${Math.floor(90 * shade)},${Math.floor(45 * shade)})`;
+        let r = 36, gr = 90, b = 45;
+        if (v === 3) { r = 120; gr = 70; b = 30; } // angeknackst = warnend
+        else if (v === 2) { r = 60; gr = 110; b = 55; } // sprengbar = heller
+        ctx.fillStyle = `rgb(${Math.floor(r * shade)},${Math.floor(gr * shade)},${Math.floor(b * shade)})`;
         ctx.fillRect(x, (H - lineH) / 2, 1, lineH);
       }
 
@@ -523,18 +601,18 @@ export function PlayDemo() {
         }
       }
 
-      // Waffe + Muzzle-Flash
-      ctx.fillStyle = "#1a1f1a";
-      ctx.fillRect(W / 2 - 14, H - 26, 28, 26);
-      ctx.fillStyle = "#22ff55";
-      ctx.fillRect(W / 2 - 2, H - 30, 4, 8);
-      if (g.flash > 0.15) {
-        ctx.fillStyle = "rgba(120,255,120,0.8)";
+      // Waffe
+      const bw = g.weapon === "brecher";
+      ctx.fillStyle = bw ? "#241a10" : "#1a1f1a";
+      ctx.fillRect(W / 2 - (bw ? 18 : 14), H - 26, bw ? 36 : 28, 26);
+      ctx.fillStyle = bw ? "#ffcc33" : "#22ff55";
+      ctx.fillRect(W / 2 - (bw ? 4 : 2), H - 30, bw ? 8 : 4, 8);
+      if (g.flash > 0.1) {
+        ctx.fillStyle = bw ? "rgba(255,200,80,0.85)" : "rgba(120,255,120,0.8)";
         ctx.beginPath();
-        ctx.arc(W / 2, H - 32, 7, 0, Math.PI * 2);
+        ctx.arc(W / 2, H - 32, bw ? 10 : 7, 0, Math.PI * 2);
         ctx.fill();
       }
-      // Crosshair
       ctx.strokeStyle = "#22ff55";
       ctx.beginPath();
       ctx.moveTo(W / 2 - 4, H / 2); ctx.lineTo(W / 2 - 1, H / 2);
@@ -547,29 +625,23 @@ export function PlayDemo() {
     /* ---------------- HUD sync ---------------- */
     const syncHud = () => {
       const g = s();
-      let scores = "";
-      let objective = "";
+      let scores = "", objective = "";
       if (g.mode === "ffa") {
         scores = g.ffaScore.map((v, i) => `${i === 0 ? "DU" : BOT_NAMES[i - 1]}:${v}`).join("  ");
         objective = "Erster mit 8 Kills gewinnt";
       } else {
         scores = `GRÜN ${Math.floor(g.teamScore[0])} : ${Math.floor(g.teamScore[1])} ROT`;
-        if (g.mode === "sabotage")
-          objective = g.bombPlanted
-            ? `DETONATION in ${Math.max(0, g.bombTimer).toFixed(0)} s`
-            : "SITE (Mitte): halte E zum Pflanzen";
-        if (g.mode === "ctf") objective = `Hol die ROTE Flagge (SO) in deine Basis (NW)`;
-        if (g.mode === "domination")
-          objective = `Zonen: ${g.domOwner.map((o, i) => `${DOM_POINTS[i].label}${o === 0 ? "🟩" : o === 1 ? "🟥" : "⬜"}`).join(" ")}`;
-        if (g.mode === "hq") objective = `HQ: ${g.hqOwner === 0 ? "GRÜN" : g.hqOwner === 1 ? "ROT" : "neutral"} – halten!`;
         if (g.mode === "sabotage") objective = g.bombPlanted ? `DETONATION in ${Math.max(0, g.bombTimer).toFixed(0)} s` : `Runden ${g.roundWins[0]}:${g.roundWins[1]} – SITE (Mitte): halte E`;
+        if (g.mode === "ctf") objective = "Hol die ROTE Flagge (SO) in deine Basis (NW)";
+        if (g.mode === "domination") objective = `Zonen: ${g.domOwner.map((o, i) => `${DOM_POINTS[i].label}${o === 0 ? "🟩" : o === 1 ? "🟥" : "⬜"}`).join(" ")}`;
+        if (g.mode === "hq") objective = `HQ: ${g.hqOwner === 0 ? "GRÜN" : g.hqOwner === 1 ? "ROT" : "neutral"} – halten!`;
       }
       setHud({
         hp: Math.max(0, Math.round(g.hp)),
         ammo: g.ammo,
         reloading: g.reloading > 0,
-        scores,
-        objective,
+        weapon: g.weapon === "brecher" ? "BRECHER-7" : "DORN",
+        scores, objective,
         feed: g.feed.filter((f) => g.time - f.t < 5).map((f) => f.text),
         winner: g.winner,
         planting: g.plantProgress > 0 && !g.bombPlanted,
@@ -584,16 +656,12 @@ export function PlayDemo() {
       last = now;
       const g = s();
       g.time += dt;
-
       if (g.hp <= 0 && !g.winner) {
         if (!g.pRespawnAt) g.pRespawnAt = g.time + 3;
         if (g.time >= g.pRespawnAt) { g.pRespawnAt = 0; spawnAt(0); }
-      } else {
-        playerTick(dt);
-      }
+      } else playerTick(dt);
       for (const b of g.bots) botTick(b, dt);
       modeTick(dt);
-
       render();
       hudAcc += dt;
       if (hudAcc > 0.12) { hudAcc = 0; syncHud(); }
@@ -608,6 +676,9 @@ export function PlayDemo() {
       canvas.removeEventListener("mousedown", md);
       window.removeEventListener("mouseup", mu);
       window.removeEventListener("mousemove", mm);
+      canvas.removeEventListener("touchstart", ts);
+      canvas.removeEventListener("touchmove", tm);
+      canvas.removeEventListener("touchend", te);
       if (document.pointerLockElement === canvas) document.exitPointerLock();
     };
   }, [screen]);
@@ -618,7 +689,7 @@ export function PlayDemo() {
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-6 py-16">
         <div className="max-w-3xl w-full">
           <p className="font-mono text-xs tracking-[0.3em] uppercase text-primary glow-neon-sm mb-3">
-            WIRRWARR // Web-Demo v0.1
+            WIRRWARR // Web-Demo v0.2
           </p>
           <h1 className="text-4xl md:text-5xl font-bold mb-2">
             {screen === "end" ? (
@@ -627,14 +698,35 @@ export function PlayDemo() {
               <>Spiel die <span className="text-primary glow-neon">Prototyp-Arena</span></>
             )}
           </h1>
-          <p className="text-muted-foreground mb-8 leading-relaxed">
-            Raycaster-Prototyp mit Bot-Gegnern – alle sechs Modi aus dem GDD, runtergebrochen
-            auf eine Arena. Steuerung: <span className="text-foreground font-mono text-sm">WASD</span> bewegen,{" "}
-            <span className="text-foreground font-mono text-sm">Klick/Maus</span> zielen &amp; schießen,{" "}
-            <span className="text-foreground font-mono text-sm">←/→</span> drehen,{" "}
-            <span className="text-foreground font-mono text-sm">R</span> nachladen,{" "}
-            <span className="text-foreground font-mono text-sm">E</span> pflanzen (Sabotage).
+          <p className="text-muted-foreground mb-6 leading-relaxed">
+            Raycaster-Prototyp v0.2: Bots, 6 Modi, <span className="text-primary">DESTRUCTION</span> (BRECHER-7
+            sprengt Wände!), Sounds, 2 Maps &amp; Touch-Controls. Steuerung:{" "}
+            <span className="text-foreground font-mono text-sm">WASD</span> +{" "}
+            <span className="text-foreground font-mono text-sm">Shift</span> Sprint,{" "}
+            <span className="text-foreground font-mono text-sm">Klick/Maus</span> schießen,{" "}
+            <span className="text-foreground font-mono text-sm">Q/1/2</span> Waffe,{" "}
+            <span className="text-foreground font-mono text-sm">R</span> laden,{" "}
+            <span className="text-foreground font-mono text-sm">E</span> pflanzen. Mobil: links ziehen = laufen, rechts = schauen.
           </p>
+
+          {/* Map-Auswahl */}
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            {MAP_INFO.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setMapId(m.id)}
+                aria-pressed={mapId === m.id}
+                className={`text-left rounded-sm border p-4 transition-all min-h-[44px] ${
+                  mapId === m.id ? "border-primary/70 bg-primary/10 box-glow-neon" : "border-border bg-card hover:border-primary/30"
+                }`}
+              >
+                <p className={`font-bold mb-1 ${mapId === m.id ? "text-primary glow-neon-sm" : "text-foreground"}`}>{m.name}</p>
+                <p className="font-mono text-[11px] text-muted-foreground leading-relaxed">{m.desc}</p>
+              </button>
+            ))}
+          </div>
+
           <div className="grid sm:grid-cols-2 gap-3 mb-8">
             {MODE_INFO.map((m) => (
               <button
@@ -658,7 +750,7 @@ export function PlayDemo() {
 
   return (
     <div className="relative h-screen w-full bg-black overflow-hidden select-none">
-      <canvas ref={canvasRef} className="w-full h-full [image-rendering:pixelated] cursor-crosshair" />
+      <canvas ref={canvasRef} className="w-full h-full [image-rendering:pixelated] cursor-crosshair touch-none" />
       <div className="absolute top-3 left-1/2 -translate-x-1/2 text-center pointer-events-none">
         <p className="font-mono text-sm text-primary glow-neon-sm tracking-wider">{hud.scores}</p>
         <p className="font-mono text-[10px] text-muted-foreground tracking-wider mt-1">{hud.objective}</p>
@@ -676,11 +768,20 @@ export function PlayDemo() {
         <p className="font-mono text-xl text-primary leading-none mt-1">{hud.hp}</p>
       </div>
       <div className="absolute bottom-3 right-3 text-right pointer-events-none">
-        <p className="font-mono text-[10px] text-muted-foreground tracking-wider">DORN</p>
+        <p className="font-mono text-[10px] text-muted-foreground tracking-wider">{hud.weapon} <span className="text-primary">[Q]</span></p>
         <p className="font-mono text-2xl text-foreground leading-none">
           {hud.reloading ? <span className="text-primary">LÄDT…</span> : <>{hud.ammo}<span className="text-muted-foreground text-sm">/∞</span></>}
         </p>
       </div>
+      {/* Touch-Fire-Button */}
+      <button
+        type="button"
+        className="lg:hidden absolute bottom-20 right-4 w-20 h-20 rounded-full border-2 border-primary/60 bg-primary/20 text-primary font-mono text-xs tracking-widest active:bg-primary/50"
+        onTouchStart={() => { if (stateRef.current) stateRef.current.mouseDown = true; }}
+        onTouchEnd={() => { if (stateRef.current) stateRef.current.mouseDown = false; }}
+      >
+        FEUER
+      </button>
       {hud.planting && (
         <div className="absolute bottom-16 left-1/2 -translate-x-1/2 font-mono text-xs text-primary border border-primary/50 bg-black/60 px-3 py-1.5 rounded-sm animate-pulse-neon pointer-events-none">
           LADUNG WIRD PLATZIERT …
