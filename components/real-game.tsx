@@ -115,6 +115,22 @@ function sBoom() {
   const g = c.createGain(); g.gain.setValueAtTime(0.55, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
   src.connect(f).connect(g).connect(c.destination); src.start(t);
 }
+function sStep() {
+  const c = ac(); if (!c) return;
+  const t = c.currentTime;
+  const o = c.createOscillator(); const g = c.createGain();
+  o.type = "triangle"; o.frequency.setValueAtTime(95, t); o.frequency.exponentialRampToValueAtTime(55, t + 0.05);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.05, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+  o.connect(g).connect(c.destination); o.start(t); o.stop(t + 0.07);
+}
+function sLand() {
+  const c = ac(); if (!c) return;
+  const t = c.currentTime;
+  const o = c.createOscillator(); const g = c.createGain();
+  o.type = "sine"; o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.12);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.2, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+  o.connect(g).connect(c.destination); o.start(t); o.stop(t + 0.15);
+}
 
 /* ================================================================== */
 
@@ -366,10 +382,14 @@ export function RealGame() {
     /* ---------- Spieler-State ---------- */
     const player = {
       x: SPAWNS[0][0], z: SPAWNS[0][1], y: 0, vy: 0,
+      vx: 0, vz: 0,
       hp: 100, ammo: 24, reloading: 0, fireCd: 0,
       weapon: "dorn" as "dorn" | "brecher",
       kills: 0, deaths: 0, respawnAt: 0,
-      jumps: 0, jumpHeld: false,
+      jumps: 0, jumpHeld: false, jbuf: 0, coyote: 0,
+      crouch: false, prone: false, proneHeld: false, prevCrouch: false,
+      slideT: 0, camH: 1.7, bobPhase: 0, landDip: 0, stepAcc: 0,
+      mantleTarget: null as number | null,
     };
     yaw.position.set(player.x, 1.7, player.z);
 
@@ -426,6 +446,8 @@ export function RealGame() {
     let mouseDown = false;
     let lastMX = 0;
     const el = renderer.domElement;
+    let targetYaw = 0;
+    let targetPitch = 0;
     const kd = (e: KeyboardEvent) => {
       keys[e.code] = true;
       if (e.code === "KeyT") {
@@ -465,10 +487,10 @@ export function RealGame() {
     const mu = () => { mouseDown = false; };
     const mm = (e: MouseEvent) => {
       if (document.pointerLockElement === el) {
-        yaw.rotation.y -= e.movementX * 0.0022;
-        pitch.rotation.x = Math.max(-1.4, Math.min(1.4, pitch.rotation.x - e.movementY * 0.0022));
+        targetYaw -= e.movementX * 0.0022;
+        targetPitch = Math.max(-1.4, Math.min(1.4, targetPitch - e.movementY * 0.0022));
       } else if (mouseDown) {
-        yaw.rotation.y -= (e.clientX - lastMX) * 0.004;
+        targetYaw -= (e.clientX - lastMX) * 0.004;
       }
       lastMX = e.clientX;
     };
@@ -627,7 +649,8 @@ export function RealGame() {
         const to = new THREE.Vector3(target.x, 1.4, target.z);
         tracer(from, to, b.color.getHex());
         sShot("dorn");
-        const dmg = (7 + Math.random() * 9) * (perk === "panzer" ? 0.7 : 1);
+        const stanceMul = player.prone ? 0.6 : player.crouch ? 0.8 : 1;
+        const dmg = (7 + Math.random() * 9) * (perk === "panzer" ? 0.7 : 1) * stanceMul;
         if (target.id === 0) {
           player.hp -= dmg;
           if (player.hp <= 0) kill(b.id, 0);
@@ -715,51 +738,120 @@ export function RealGame() {
           player.hp = 100; player.x = SPAWNS[0][0]; player.z = SPAWNS[0][1]; player.ammo = 24;
         }
       } else {
-        const sprintMul = perk === "sprint" ? 1.7 : 1.5;
-        const sprint = keys["ShiftLeft"] ? sprintMul : 1;
-        const sp = 7 * dt * sprint;
-        let fx = 0, fz = 0;
-        const fy_ = yaw.rotation.y;
-        if (keys["KeyW"]) { fx -= Math.sin(fy_); fz -= Math.cos(fy_); }
-        if (keys["KeyS"]) { fx += Math.sin(fy_); fz += Math.cos(fy_); }
-        if (keys["KeyA"]) { fx -= Math.cos(fy_); fz += Math.sin(fy_); }
-        if (keys["KeyD"]) { fx += Math.cos(fy_); fz -= Math.sin(fy_); }
-        const l = Math.hypot(fx, fz);
-        if (l > 0.01) {
-          const bx = player.x, bz = player.z;
-          const dxm = (fx / l) * sp, dzm = (fz / l) * sp;
-          moveWithCollide(player, dxm, dzm, 0.5, player.y);
-          // Mantling: vorne blockiert + Kante erreichbar -> hochziehen
-          const blocked = Math.abs(player.x - (bx + dxm)) > 0.001 || Math.abs(player.z - (bz + dzm)) > 0.001;
-          if (blocked) {
-            const top = getSupport(bx + (fx / l) * 0.7, bz + (fz / l) * 0.7, player.y + 2);
-            if (top > player.y + 0.3 && top - player.y <= 1.5) {
-              player.y = top + 0.02;
-              player.vy = 0;
-              player.jumps = 0;
-            }
-          }
-        }
-        // Parkour-Physik: Support, Jump, Double-Jump
+        // ===== Bewegungsfluss: Stance, Slide, Acceleration, Friction =====
         const support = getSupport(player.x, player.z, player.y);
         const onGround = player.y <= support + 0.02;
-        if (keys["Space"] && onGround && !player.jumpHeld) { player.vy = 7.5; player.jumps = 1; }
-        else if (keys["Space"] && !onGround && perk === "sprung" && player.jumps === 1 && !player.jumpHeld) { player.vy = 7; player.jumps = 2; }
+        if (onGround) player.coyote = 0.12; else player.coyote = Math.max(0, player.coyote - dt);
+
+        const wantCrouch = !!(keys["KeyC"] || keys["ControlLeft"]);
+        if (keys["KeyX"] && !player.proneHeld) player.prone = !player.prone;
+        player.proneHeld = !!keys["KeyX"];
+        player.crouch = player.prone || wantCrouch;
+
+        const speedNow0 = Math.hypot(player.vx, player.vz);
+        if (wantCrouch && !player.prevCrouch && speedNow0 > 5.5 && onGround) player.slideT = 0.75;
+        player.prevCrouch = wantCrouch;
+        player.slideT = Math.max(0, player.slideT - dt);
+        const sliding = player.slideT > 0 && onGround;
+
+        const sprinting = !!keys["ShiftLeft"] && !player.crouch && speedNow0 > 4;
+        const maxSp = player.prone ? 1.5 : player.crouch ? 2.6 : sprinting ? (perk === "sprint" ? 9.6 : 8.6) : 5.2;
+
+        // Wish-Richtung + Acceleration (Air-Control)
+        let wx = 0, wz = 0;
+        const fy_ = yaw.rotation.y;
+        if (keys["KeyW"]) { wx -= Math.sin(fy_); wz -= Math.cos(fy_); }
+        if (keys["KeyS"]) { wx += Math.sin(fy_); wz += Math.cos(fy_); }
+        if (keys["KeyA"]) { wx -= Math.cos(fy_); wz += Math.sin(fy_); }
+        if (keys["KeyD"]) { wx += Math.cos(fy_); wz -= Math.sin(fy_); }
+        const wl = Math.hypot(wx, wz);
+        if (wl > 0.01) { wx /= wl; wz /= wl; }
+        const accel = onGround ? 46 : 15;
+        player.vx += wx * accel * dt;
+        player.vz += wz * accel * dt;
+        const damp = onGround ? (wl > 0.01 ? 1 - 1.4 * dt : 1 - 12 * dt) : 1 - 0.15 * dt;
+        player.vx *= damp; player.vz *= damp;
+        const spNow = Math.hypot(player.vx, player.vz);
+        if (!sliding && spNow > maxSp && spNow > 0) { player.vx *= maxSp / spNow; player.vz *= maxSp / spNow; }
+        if (sliding && spNow > 0) { const cap = Math.max(maxSp, spNow * (1 - 1.1 * dt)); if (spNow > cap) { player.vx *= cap / spNow; player.vz *= cap / spNow; } }
+
+        // Jump-Buffer + Coyote-Time + Double-Jump
+        if (keys["Space"] && !player.jumpHeld) player.jbuf = 0.14; else player.jbuf = Math.max(0, player.jbuf - dt);
         player.jumpHeld = !!keys["Space"];
+        if (player.prone && player.jbuf > 0) { player.prone = false; player.jbuf = 0; }
+        else if (player.jbuf > 0 && player.coyote > 0 && !player.crouch) { player.vy = 7.6; player.jumps = 1; player.coyote = 0; player.jbuf = 0; }
+        else if (player.jbuf > 0 && !onGround && perk === "sprung" && player.jumps === 1 && !player.jumpHeld) { player.vy = 7; player.jumps = 2; player.jbuf = 0; }
+
+        // Gravitation + weiche Landung
         player.vy -= 20 * dt;
         const newY = player.y + player.vy * dt;
-        if (newY <= support && player.vy <= 0) { player.y = support; player.vy = 0; player.jumps = 0; }
-        else player.y = Math.max(0, newY);
+        if (newY <= support && player.vy <= 0) {
+          if (player.vy < -7) { player.landDip = 0.16; sLand(); }
+          player.y = support; player.vy = 0; player.jumps = 0;
+        } else player.y = Math.max(0, newY);
+
+        // Horizontal + Step-Up + butterweiches Mantling
+        const dxm = player.vx * dt, dzm = player.vz * dt;
+        const bx = player.x, bz = player.z;
+        if (player.mantleTarget == null) moveWithCollide(player, dxm, dzm, 0.5, player.y);
+        const blockedX = Math.abs(player.x - (bx + dxm)) > 0.001;
+        const blockedZ = Math.abs(player.z - (bz + dzm)) > 0.001;
+        if ((blockedX || blockedZ) && player.mantleTarget == null) {
+          const probeTop = getSupport(
+            bx + (blockedX ? Math.sign(dxm) * 0.7 : 0),
+            bz + (blockedZ ? Math.sign(dzm) * 0.7 : 0),
+            player.y + 2
+          );
+          const dh = probeTop - player.y;
+          if (dh > 0.02 && dh <= 0.55 && onGround) {
+            player.y = probeTop; // Step-Up: kleine Kanten ohne Sprung
+          } else if (dh > 0.55 && dh <= 1.5 && !player.crouch && onGround && wl > 0.01) {
+            player.mantleTarget = probeTop + 0.02;
+            player.vy = 0; player.jumps = 0;
+          } else {
+            if (blockedX) player.vx = 0;
+            if (blockedZ) player.vz = 0;
+          }
+        }
+        if (player.mantleTarget != null) {
+          player.y += (player.mantleTarget - player.y) * Math.min(1, 10 * dt);
+          moveWithCollide(player, dxm * 1.5, dzm * 1.5, 0.5, player.y);
+          if (Math.abs(player.mantleTarget - player.y) < 0.04) { player.y = player.mantleTarget; player.mantleTarget = null; }
+        }
+
+        // Footsteps
+        const speedNow = Math.hypot(player.vx, player.vz);
+        if (onGround && speedNow > 1.5 && !sliding) {
+          player.stepAcc += speedNow * dt;
+          if (player.stepAcc > 2.4) { player.stepAcc = 0; sStep(); }
+        }
 
         if (player.reloading > 0) { player.reloading -= dt; if (player.reloading <= 0) player.ammo = 24; }
         if (keys["KeyR"] && player.ammo < 24 && player.reloading <= 0) player.reloading = 1.2;
         if (mouseDown) shoot();
 
-        // Gun-Bob
-        const moving = l > 0.01;
-        gun.position.y = -0.28 + (moving ? Math.sin(gameTime * 10) * 0.012 : 0);
+        // Gun-Bob + Sway aus echtem Bewegungsphasenwert
+        const gspd = Math.hypot(player.vx, player.vz);
+        gun.position.y = -0.28 + Math.sin(player.bobPhase) * Math.min(0.014, gspd * 0.0018);
+        gun.position.x = 0.3 + Math.cos(player.bobPhase * 0.5) * Math.min(0.01, gspd * 0.0012);
       }
-      yaw.position.set(player.x, 1.7 + player.y, player.z);
+
+      // ===== Kamera-Flow: Maus-Smoothing, Stance-Höhe, Bob, Lande-Dip, FOV-Kick =====
+      yaw.rotation.y += (targetYaw - yaw.rotation.y) * Math.min(1, 34 * dt);
+      pitch.rotation.x += (targetPitch - pitch.rotation.x) * Math.min(1, 34 * dt);
+      const heightT = player.prone ? 0.55 : player.crouch ? 1.15 : 1.7;
+      player.camH += (heightT - player.camH) * Math.min(1, 12 * dt);
+      const camSpd = Math.hypot(player.vx, player.vz);
+      const camGrounded = player.y <= getSupport(player.x, player.z, player.y) + 0.05;
+      if (camGrounded && camSpd > 1) player.bobPhase += camSpd * dt * 1.7;
+      const bob = camGrounded ? Math.sin(player.bobPhase) * Math.min(0.045, camSpd * 0.005) : 0;
+      player.landDip = Math.max(0, player.landDip - dt * 0.5);
+      yaw.position.set(player.x, player.camH + player.y + bob - player.landDip * 0.4, player.z);
+      const fovT = player.slideT > 0 ? 84 : keys["ShiftLeft"] && camSpd > 6 && !player.crouch ? 81 : player.prone ? 70 : 75;
+      if (Math.abs(camera.fov - fovT) > 0.1) {
+        camera.fov += (fovT - camera.fov) * Math.min(1, 9 * dt);
+        camera.updateProjectionMatrix();
+      }
 
       if (!tactics) {
         for (const b of bots) botTick(b, dt);
@@ -881,9 +973,11 @@ export function RealGame() {
             Three.js-Engine: echte 3D-Physik, Hitscan-Gunplay mit Tracern &amp; Partikeln,
             <span className="text-primary"> persistente 3D-Destruction</span> (BRECHER-7 reißt Löcher in die Arena),
             Bot-KI mit Line-of-Sight. Steuerung: <span className="font-mono text-foreground">Klick</span> = Maus fangen,{" "}
-            <span className="font-mono text-foreground">WASD</span>, <span className="font-mono text-foreground">Space</span> Jump,{" "}
-            <span className="font-mono text-foreground">Shift</span> Sprint, <span className="font-mono text-foreground">Q/1/2</span> Waffen,{" "}
-            <span className="font-mono text-foreground">R</span> laden.
+            <span className="font-mono text-foreground">WASD</span>, <span className="font-mono text-foreground">Shift</span> Sprint,{" "}
+            <span className="font-mono text-foreground">C</span> Ducken (aus dem Sprint = <span className="text-primary">Slide</span>),{" "}
+            <span className="font-mono text-foreground">X</span> Hinlegen, <span className="font-mono text-foreground">Space</span> Springen,{" "}
+            <span className="font-mono text-foreground">Q/1/2</span> Waffen, <span className="font-mono text-foreground">R</span> laden,{" "}
+            <span className="font-mono text-foreground">T</span> Taktik. Klettern &amp; Mantling laufen automatisch im Bewegungsfluss.
           </p>
           {/* Arena-Wahl */}
           <div className="grid grid-cols-2 gap-3 mb-6">
