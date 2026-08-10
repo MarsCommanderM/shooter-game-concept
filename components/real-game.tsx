@@ -27,9 +27,10 @@ const LOAD_KEY = "wirrwarr-loadout";
 function loadProfile(): { xp: number } {
   try { return JSON.parse(localStorage.getItem(PROF_KEY) ?? "null") ?? { xp: 0 }; } catch { return { xp: 0 }; }
 }
-function loadLoadout(): { streaks: string[]; skin: string } {
-  try { return JSON.parse(localStorage.getItem(LOAD_KEY) ?? "null") ?? { streaks: ["recon", "mortar", "rage"], skin: "green" }; }
-  catch { return { streaks: ["recon", "mortar", "rage"], skin: "green" }; }
+interface LoadoutData { streaks: string[]; skin: string; attach: Record<string, string[]>; }
+function loadLoadout(): LoadoutData {
+  try { return JSON.parse(localStorage.getItem(LOAD_KEY) ?? "null") ?? { streaks: ["recon", "mortar", "rage"], skin: "green", attach: {} }; }
+  catch { return { streaks: ["recon", "mortar", "rage"], skin: "green", attach: {} }; }
 }
 const KSTREAKS = [
   { num: 3, id: "recon", name: "Recon-Puls", level: 1, desc: "Markiert alle Feinde 5 s lang" },
@@ -39,6 +40,12 @@ const KSTREAKS = [
   { num: 10, id: "rage", name: "Biomass-Rage", level: 8, desc: "10 s: +50 % Schaden, +Tempo, Schild voll" },
 ];
 const WEAPON_LEVEL: Record<string, number> = { dorn: 1, brecher: 2, richter: 4 };
+const ATTACHMENTS = [
+  { id: "optic", name: "Zieloptik", level: 3, desc: "-30 % Bloom, -5 % Tempo" },
+  { id: "grip", name: "Vertikalgriff", level: 4, desc: "-50 % Recoil" },
+  { id: "leicht", name: "Leichter Lauf", level: 5, desc: "+8 % Tempo, +15 % Bloom" },
+  { id: "schwer", name: "Schwerer Lauf", level: 6, desc: "+15 % Schaden, +30 % Recoil" },
+];
 interface UpgDef { id: string; path: string; tier: number; name: string; desc: string; cost: number; }
 const UPG_DEFS: UpgDef[] = [
   { id: "s1", path: "sinne", tier: 1, name: "Schwarm-Sinn", desc: "Feinde als Glow durch Wände sichtbar", cost: 1 },
@@ -58,7 +65,7 @@ const PERKS: { id: PerkId; name: string; desc: string }[] = [
 ];
 
 type VsMode = "tdm" | "ffa";
-type GameKind = VsMode | "m1" | "m2" | "m3" | "m4";
+type GameKind = VsMode | "m1" | "m2" | "m3" | "m4" | "range";
 type ArenaId = "sektor" | "garten" | "stahl" | "orbital";
 
 interface Mission {
@@ -312,7 +319,7 @@ export function RealGame() {
 
   const initEngine = (
     mode: GameKind, arenaId: ArenaId, perk: PerkId,
-    loadout: { streaks: string[]; skin: string }, level: number,
+    loadout: LoadoutData, level: number,
     addXp: (n: number, msg?: string) => void,
     quality: "low" | "med" | "high" = "med"
   ) => {
@@ -585,6 +592,7 @@ export function RealGame() {
       skinColor: SKINS.find((s) => s.id === loadout.skin && level >= s.level)?.color ?? "#22ff55",
       rageT: 0, bonusXp: 0, usedStreaks: [] as number[],
       spawnShield: 2, killcam: null as { botId: number; t: number } | null,
+      rangeT: 60, rangeHits: 0, shots: 0,
     };
     yaw.position.set(player.x, 1.7, player.z);
 
@@ -664,7 +672,13 @@ export function RealGame() {
           localStorage.setItem(STAT_KEY, JSON.stringify(st));
         } catch { /* ignore */ }
       }
-      if (mode === "ffa") { if (killerId < 6) ffaScore[killerId]++; }
+      if (mode === "range") {
+        if (killerId === 0) {
+          player.rangeHits++;
+          const vb = bots.find((x) => x.id === victimId);
+          if (vb) vb.respawnAt = gameTime + 0.4;
+        }
+      } else if (mode === "ffa") { if (killerId < 6) ffaScore[killerId]++; }
       else teamScore[killerId === 0 || killerId >= 100 ? 0 : bots.find((x) => x.id === killerId)!.team]++;
       pushFeed(`${nameOf(killerId)} ⚡ ${nameOf(victimId)}`);
     };
@@ -847,13 +861,19 @@ export function RealGame() {
       sShot(player.weapon);
       muzzleLight.intensity = 3;
 
+      // Attachment-Effekte
+      const att = loadout.attach?.[player.weapon] ?? [];
+      const bloomMul = (att.includes("optic") ? 0.7 : 1) * (att.includes("leicht") ? 1.15 : 1);
+      const recoilMul = (att.includes("grip") ? 0.5 : 1) * (att.includes("schwer") ? 1.3 : 1);
+      const dmgMul = att.includes("schwer") ? 1.15 : 1;
       // Spread-Bloom + Recoil-Kick
       raycaster.setFromCamera(
-        new THREE.Vector2((Math.random() - 0.5) * player.bloom * 0.07, (Math.random() - 0.5) * player.bloom * 0.07),
+        new THREE.Vector2((Math.random() - 0.5) * player.bloom * 0.07 * bloomMul, (Math.random() - 0.5) * player.bloom * 0.07 * bloomMul),
         camera
       );
       player.bloom = Math.min(1, player.bloom + (player.weapon === "dorn" ? 0.16 : 0.3));
-      targetPitch += player.weapon === "brecher" ? 0.014 : player.weapon === "richter" ? 0.01 : 0.004;
+      targetPitch += (player.weapon === "brecher" ? 0.014 : player.weapon === "richter" ? 0.01 : 0.004) * recoilMul;
+      player.shots++;
       const botMeshes: THREE.Object3D[] = [];
       for (const b of bots) if (b.alive) botMeshes.push(b.body, b.group.children[1]);
       const wallMeshes = walls.filter((w) => w.active).map((w) => w.mesh);
@@ -871,6 +891,7 @@ export function RealGame() {
           const head = h.object === botHit.group.children[1];
           let dmg = player.weapon === "brecher" ? 80 : player.weapon === "richter" ? 100 : 26;
           if (player.rageT > 0) dmg = Math.round(dmg * 1.5);
+          dmg = Math.round(dmg * dmgMul);
           if (head) { dmg = Math.round(dmg * 2.5); sHeadshot(); pushFeed("🎯 HEADSHOT!"); player.headshots++; }
           if (player.upg.s2) botHit.markedT = gameTime + 3;
           botHit.hp -= dmg;
@@ -1118,6 +1139,16 @@ export function RealGame() {
     };
 
     const botTick = (b: BotEnt, dt: number) => {
+      if (mode === "range") {
+        // Aim-Range: Ziele stehen, sterben, respawnen woanders
+        if (!b.alive && gameTime >= b.respawnAt) {
+          const rx = (Math.random() - 0.5) * 60, rz = (Math.random() - 0.5) * 60;
+          b.group.position.set(Math.max(-38, Math.min(38, rx)), 0, Math.max(-38, Math.min(38, rz)));
+          b.group.visible = true;
+          b.hp = 100; b.alive = true;
+        }
+        return;
+      }
       if (!b.alive) {
         if (gameTime >= b.respawnAt) {
           const sp = pickSpawn(b.group.position.x, b.group.position.z, false);
@@ -1358,7 +1389,8 @@ export function RealGame() {
         const sliding = player.slideT > 0 && onGround;
 
         const sprinting = !!keys["ShiftLeft"] && !player.crouch && speedNow0 > 4;
-        const maxSp = (player.prone ? 1.5 : player.crouch ? 2.6 : sprinting ? (perk === "sprint" ? 9.6 : 8.6) : 5.2) * (player.upg.l1 && sprinting ? 1.1 : 1) * (player.rageT > 0 ? 1.2 : 1);
+        const attNow = loadout.attach?.[player.weapon] ?? [];
+        const maxSp = (player.prone ? 1.5 : player.crouch ? 2.6 : sprinting ? (perk === "sprint" ? 9.6 : 8.6) : 5.2) * (player.upg.l1 && sprinting ? 1.1 : 1) * (player.rageT > 0 ? 1.2 : 1) * (attNow.includes("leicht") ? 1.08 : 1) * (attNow.includes("optic") ? 0.95 : 1);
 
         // Wish-Richtung + Acceleration (Air-Control)
         let wx = 0, wz = 0;
@@ -1518,6 +1550,18 @@ export function RealGame() {
         if (t.life <= 0) { scene.remove(t.line); t.line.geometry.dispose(); tracers.splice(i, 1); }
       }
 
+      // Range-Timer
+      if (mode === "range" && !ended) {
+        player.rangeT -= dt;
+        if (player.rangeT <= 0) {
+          ended = true;
+          const acc = player.shots > 0 ? Math.round((player.rangeHits / player.shots) * 100) : 0;
+          addXp(player.rangeHits * 5);
+          setWinner(`RANGE: ${player.rangeHits} Treffer · ${acc} % Genauigkeit`);
+          setScreen("end");
+        }
+      }
+
       // Siegbedingung
       if (!ended) {
         if (mission) {
@@ -1554,7 +1598,9 @@ export function RealGame() {
             : `GRÜN ${teamScore[0]} : ${teamScore[1]} ROT`,
           feed: [...feedRef.current],
           kills: player.kills,
-          objective: mission
+          objective: mode === "range"
+            ? `🎯 RANGE · ⏱ ${Math.max(0, Math.ceil(player.rangeT))} s · Treffer ${player.rangeHits} · Shots ${player.shots}`
+            : mission
             ? mission.type === "kills"
               ? `${mission.title} · Kills ${missionKills}/${mission.target}`
               : mission.type === "destroy"
@@ -1755,6 +1801,42 @@ export function RealGame() {
                 </p>
               </div>
             </div>
+            {/* Attachments pro Waffe */}
+            <div className="mt-4 space-y-2">
+              <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground">Attachments (2 pro Waffe)</p>
+              {(["dorn", "brecher", "richter"] as const).map((w) => (
+                <div key={w} className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-[10px] text-foreground w-16 uppercase">{w}</span>
+                  {ATTACHMENTS.map((at) => {
+                    const cur = loadout.attach?.[w] ?? [];
+                    const sel = cur.includes(at.id);
+                    const locked = level < at.level || (level < WEAPON_LEVEL[w]);
+                    return (
+                      <button
+                        key={at.id}
+                        type="button"
+                        disabled={locked}
+                        title={`${at.desc}${level < at.level ? ` · ab Lv ${at.level}` : ""}`}
+                        onClick={() => {
+                          setLoadout((lo) => {
+                            const have = lo.attach?.[w] ?? [];
+                            const next = sel ? have.filter((x) => x !== at.id) : have.length < 2 ? [...have, at.id] : have;
+                            const nl = { ...lo, attach: { ...lo.attach, [w]: next } };
+                            try { localStorage.setItem(LOAD_KEY, JSON.stringify(nl)); } catch { /* */ }
+                            return nl;
+                          });
+                        }}
+                        className={`font-mono text-[10px] rounded-sm border px-2 py-1.5 transition-all min-h-[30px] ${
+                          locked ? "opacity-40 cursor-not-allowed border-border/50 text-muted-foreground" : sel ? "border-primary/70 bg-primary/15 text-primary" : "border-border bg-secondary/40 text-secondary-foreground hover:border-primary/40"
+                        }`}
+                      >
+                        {locked ? "🔒" : sel ? "✓" : "+"} {at.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Stats */}
@@ -1844,6 +1926,14 @@ export function RealGame() {
             >
               <p className="font-bold text-foreground mb-1">Frei für alle</p>
               <p className="font-mono text-[11px] text-muted-foreground">6 Kämpfer – 8 Kills.</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => start("range")}
+              className="text-left border border-accent/50 bg-accent/5 rounded-sm p-4 hover:bg-accent/10 transition-all min-h-[44px]"
+            >
+              <p className="font-bold text-accent mb-1">🎯 Aim-Range</p>
+              <p className="font-mono text-[11px] text-muted-foreground">60 s Training: Treffer, Genauigkeit, XP.</p>
             </button>
           </div>
 
