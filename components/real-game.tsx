@@ -66,6 +66,9 @@ interface BotEnt {
   y: number;
   vy: number;
   mantle: number | null;
+  burstLeft: number;
+  reactT: number;
+  pauseT: number;
 }
 
 interface Particle {
@@ -93,11 +96,14 @@ function ac(): AudioContext | null {
   if (actx.state === "suspended") void actx.resume();
   return actx;
 }
-function sShot(kind: "dorn" | "brecher") {
+function sShot(kind: "dorn" | "brecher" | "richter") {
   const c = ac(); if (!c) return;
   const t = c.currentTime;
   const o = c.createOscillator(); const g = c.createGain();
-  if (kind === "brecher") {
+  if (kind === "richter") {
+    o.type = "square"; o.frequency.setValueAtTime(220, t); o.frequency.exponentialRampToValueAtTime(60, t + 0.16);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.26, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+  } else if (kind === "brecher") {
     o.type = "square"; o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(32, t + 0.2);
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.32, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.24);
   } else {
@@ -118,6 +124,14 @@ function sBoom() {
   const g = c.createGain(); g.gain.setValueAtTime(0.55, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
   src.connect(f).connect(g).connect(c.destination); src.start(t);
 }
+function sHit() {
+  const c = ac(); if (!c) return;
+  const t = c.currentTime;
+  const o = c.createOscillator(); const g = c.createGain();
+  o.type = "sine"; o.frequency.setValueAtTime(1200, t); o.frequency.exponentialRampToValueAtTime(600, t + 0.05);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.07, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+  o.connect(g).connect(c.destination); o.start(t); o.stop(t + 0.07);
+}
 function sStep() {
   const c = ac(); if (!c) return;
   const t = c.currentTime;
@@ -125,6 +139,56 @@ function sStep() {
   o.type = "triangle"; o.frequency.setValueAtTime(95, t); o.frequency.exponentialRampToValueAtTime(55, t + 0.05);
   g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.05, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
   o.connect(g).connect(c.destination); o.start(t); o.stop(t + 0.07);
+}
+function sShieldHit() {
+  const c = ac(); if (!c) return;
+  const t = c.currentTime;
+  const o = c.createOscillator(); const g = c.createGain();
+  o.type = "sawtooth"; o.frequency.setValueAtTime(900, t); o.frequency.exponentialRampToValueAtTime(300, t + 0.08);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.09, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
+  o.connect(g).connect(c.destination); o.start(t); o.stop(t + 0.11);
+}
+function sHurt() {
+  const c = ac(); if (!c) return;
+  const t = c.currentTime;
+  const o = c.createOscillator(); const g = c.createGain();
+  o.type = "sine"; o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(60, t + 0.12);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.22, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
+  o.connect(g).connect(c.destination); o.start(t); o.stop(t + 0.16);
+}
+function sHeadshot() {
+  const c = ac(); if (!c) return;
+  const t = c.currentTime;
+  const o = c.createOscillator(); const g = c.createGain();
+  o.type = "square"; o.frequency.setValueAtTime(1600, t); o.frequency.exponentialRampToValueAtTime(2400, t + 0.06);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.1, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+  o.connect(g).connect(c.destination); o.start(t); o.stop(t + 0.1);
+}
+function sMelee() {
+  const c = ac(); if (!c) return;
+  const t = c.currentTime;
+  const o = c.createOscillator(); const g = c.createGain();
+  o.type = "triangle"; o.frequency.setValueAtTime(220, t); o.frequency.exponentialRampToValueAtTime(70, t + 0.09);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
+  o.connect(g).connect(c.destination); o.start(t); o.stop(t + 0.12);
+}
+function sPickup() {
+  const c = ac(); if (!c) return;
+  const t = c.currentTime;
+  [660, 990].forEach((f, i) => {
+    const o = c.createOscillator(); const g = c.createGain();
+    o.type = "sine"; o.frequency.setValueAtTime(f, t + i * 0.07);
+    g.gain.setValueAtTime(0.0001, t + i * 0.07); g.gain.exponentialRampToValueAtTime(0.09, t + i * 0.07 + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.07 + 0.12);
+    o.connect(g).connect(c.destination); o.start(t + i * 0.07); o.stop(t + i * 0.07 + 0.13);
+  });
+}
+function sThrow() {
+  const c = ac(); if (!c) return;
+  const t = c.currentTime;
+  const o = c.createOscillator(); const g = c.createGain();
+  o.type = "sine"; o.frequency.setValueAtTime(400, t); o.frequency.exponentialRampToValueAtTime(700, t + 0.08);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.07, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
+  o.connect(g).connect(c.destination); o.start(t); o.stop(t + 0.11);
 }
 function sLand() {
   const c = ac(); if (!c) return;
@@ -151,6 +215,7 @@ export function RealGame() {
   const [hud, setHud] = useState({
     hp: 100, ammo: 24, reloading: false, weapon: "DORN",
     scores: "", feed: [] as string[], kills: 0, objective: "", tactics: false,
+    shield: 100, bloom: 0, grenades: 2, dmgDirs: [] as { a: number; age: number }[],
   });
   const apiRef = useRef<{ dispose: () => void } | null>(null);
   const feedRef = useRef<string[]>([]);
@@ -349,6 +414,7 @@ export function RealGame() {
         hp: 100, alive: true, respawnAt: 0, cd: 1 + Math.random(),
         kills: 0, strafeDir: 1, strafeT: 0, color,
         y: 0, vy: 0, mantle: null,
+        burstLeft: 0, reactT: 0, pauseT: 0,
       });
     };
     const botCount = mission ? mission.botCount : 5;
@@ -389,12 +455,14 @@ export function RealGame() {
       x: SPAWNS[0][0], z: SPAWNS[0][1], y: 0, vy: 0,
       vx: 0, vz: 0,
       hp: 100, ammo: 24, reloading: 0, fireCd: 0,
-      weapon: "dorn" as "dorn" | "brecher",
+      weapon: "dorn" as "dorn" | "brecher" | "richter",
       kills: 0, deaths: 0, respawnAt: 0,
       jumps: 0, jumpHeld: false, jbuf: 0, coyote: 0,
       crouch: false, prone: false, proneHeld: false, prevCrouch: false,
       slideT: 0, camH: 1.7, bobPhase: 0, landDip: 0, stepAcc: 0,
       mantleTarget: null as number | null,
+      shield: 100, lastDmg: -99, bloom: 0, meleeCd: 0, nadeCd: 0, grenades: 2,
+      dmgDirs: [] as { a: number; t: number }[],
     };
     yaw.position.set(player.x, 1.7, player.z);
 
@@ -446,6 +514,27 @@ export function RealGame() {
       pushFeed(`${nameOf(killerId)} ⚡ ${nameOf(victimId)}`);
     };
 
+    const hurtPlayer = (dmg: number, fx: number, fz: number, killerId: number) => {
+      player.lastDmg = gameTime;
+      const rel = Math.atan2(fx - player.x, fz - player.z) - yaw.rotation.y - Math.PI;
+      player.dmgDirs.push({ a: rel, t: gameTime });
+      if (player.dmgDirs.length > 4) player.dmgDirs.shift();
+      if (player.shield > 0) {
+        player.shield -= dmg;
+        sShieldHit();
+        if (player.shield < 0) { player.hp += player.shield; player.shield = 0; sHurt(); }
+      } else {
+        player.hp -= dmg;
+        sHurt();
+      }
+      if (player.hp <= 0) {
+        if (killerId === 0 || killerId === -1) {
+          player.hp = 0; player.deaths++; player.respawnAt = gameTime + 3;
+          pushFeed(killerId === -1 ? "💀 Selbst zerlegt" : "💀 DU");
+        } else kill(killerId, 0);
+      }
+    };
+
     /* ---------- Input ---------- */
     const keys: Record<string, boolean> = {};
     let mouseDown = false;
@@ -460,19 +549,25 @@ export function RealGame() {
         pushFeed(tactics ? "🧠 TAKTIK // Zeit eingefroren" : "Taktik beendet – Zeit läuft");
         return;
       }
+      if (e.code === "KeyG") throwNade();
+      if (e.code === "KeyV") melee();
       if (tactics) {
         if (e.code === "Digit1") { allies.forEach((a) => { a.wp = null; }); pushFeed("Befehl: FOLGEN"); }
         if (e.code === "Digit2") { allies.forEach((a) => { a.wp = { x: a.group.position.x, z: a.group.position.z, cmd: "hold" }; }); pushFeed("Befehl: STELLUNG HALTEN"); }
         if (e.code === "Digit3") { allies.forEach((a) => { a.wp = a.wp ? { ...a.wp, cmd: "attack" } : { x: a.group.position.x, z: a.group.position.z, cmd: "hold" }; }); pushFeed("Befehl: WAYPOINT ANGREIFEN"); }
         return;
       }
-      if (e.code === "KeyQ" || e.code === "Digit1" || e.code === "Digit2") {
-        player.weapon = e.code === "KeyQ" ? (player.weapon === "dorn" ? "brecher" : "dorn") : e.code === "Digit1" ? "dorn" : "brecher";
-        player.ammo = 24; player.reloading = 0;
+      if (e.code === "KeyQ" || e.code === "Digit1" || e.code === "Digit2" || e.code === "Digit3") {
+        player.weapon = e.code === "KeyQ"
+          ? (player.weapon === "dorn" ? "brecher" : player.weapon === "brecher" ? "richter" : "dorn")
+          : e.code === "Digit1" ? "dorn" : e.code === "Digit2" ? "brecher" : "richter";
+        player.ammo = player.weapon === "richter" ? 5 : 24;
+        player.reloading = 0;
       }
     };
     const ku = (e: KeyboardEvent) => { keys[e.code] = false; };
     const md = (e: MouseEvent) => {
+      if (e.button === 2) { melee(); return; }
       if (tactics) {
         const r = el.getBoundingClientRect();
         const nx = ((e.clientX - r.left) / r.width) * 2 - 1;
@@ -499,9 +594,11 @@ export function RealGame() {
       }
       lastMX = e.clientX;
     };
+    const cm = (e: Event) => e.preventDefault();
     window.addEventListener("keydown", kd);
     window.addEventListener("keyup", ku);
     el.addEventListener("mousedown", md);
+    el.addEventListener("contextmenu", cm);
     window.addEventListener("mouseup", mu);
     window.addEventListener("mousemove", mm);
 
@@ -521,14 +618,20 @@ export function RealGame() {
     const raycaster = new THREE.Raycaster();
     const shoot = () => {
       if (tactics) return;
-      const rate = player.weapon === "brecher" ? 0.9 : 0.18;
+      const rate = player.weapon === "brecher" ? 0.9 : player.weapon === "richter" ? 1.1 : 0.18;
       if (player.fireCd > 0 || player.reloading > 0 || player.ammo <= 0) return;
       player.fireCd = rate;
       player.ammo--;
       sShot(player.weapon);
       muzzleLight.intensity = 3;
 
-      raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+      // Spread-Bloom + Recoil-Kick
+      raycaster.setFromCamera(
+        new THREE.Vector2((Math.random() - 0.5) * player.bloom * 0.07, (Math.random() - 0.5) * player.bloom * 0.07),
+        camera
+      );
+      player.bloom = Math.min(1, player.bloom + (player.weapon === "dorn" ? 0.16 : 0.3));
+      targetPitch += player.weapon === "brecher" ? 0.014 : player.weapon === "richter" ? 0.01 : 0.004;
       const botMeshes: THREE.Object3D[] = [];
       for (const b of bots) if (b.alive) botMeshes.push(b.body, b.group.children[1]);
       const wallMeshes = walls.filter((w) => w.active).map((w) => w.mesh);
@@ -543,9 +646,11 @@ export function RealGame() {
         end = h.point;
         const botHit = bots.find((b) => b.alive && (h.object === b.body || h.object.parent === b.group));
         if (botHit && (mode === "ffa" || botHit.team === 1)) {
-          const dmg = player.weapon === "brecher" ? 80 : 26;
+          const head = h.object === botHit.group.children[1];
+          let dmg = player.weapon === "brecher" ? 80 : player.weapon === "richter" ? 100 : 26;
+          if (head) { dmg = Math.round(dmg * 2.5); sHeadshot(); pushFeed("🎯 HEADSHOT!"); }
           botHit.hp -= dmg;
-          burst(h.point, 0xff5544, 6);
+          burst(h.point, head ? 0xffcc33 : 0xff5544, head ? 10 : 6);
           if (botHit.hp <= 0) kill(0, botHit.id);
         } else if (!botHit) {
           const wall = walls.find((w) => w.active && w.mesh === h.object);
@@ -569,8 +674,136 @@ export function RealGame() {
           }
         }
       }
-      tracer(muzzle, end, player.weapon === "brecher" ? 0xffcc33 : 0x22ff55);
+      tracer(muzzle, end, player.weapon === "brecher" ? 0xffcc33 : player.weapon === "richter" ? 0x33ccff : 0x22ff55);
       if (player.ammo === 0) player.reloading = 1.2;
+    };
+
+    /* ---------- Melee (Halo-DNA) ---------- */
+    const melee = () => {
+      if (player.meleeCd > 0 || player.hp <= 0 || tactics) return;
+      player.meleeCd = 0.6;
+      sMelee();
+      targetPitch += 0.02;
+      player.vx += -Math.sin(yaw.rotation.y) * 3.2;
+      player.vz += -Math.cos(yaw.rotation.y) * 3.2;
+      for (const b of bots) {
+        if (!b.alive) continue;
+        const dx = b.group.position.x - player.x, dz = b.group.position.z - player.z;
+        const d = Math.hypot(dx, dz);
+        if (d < 2.4) {
+          const vx_ = -Math.sin(yaw.rotation.y), vz_ = -Math.cos(yaw.rotation.y);
+          if ((dx / d) * vx_ + (dz / d) * vz_ > 0.5) {
+            b.hp -= 70;
+            burst(b.group.position.clone().add(new THREE.Vector3(0, 1.2, 0)), 0xffffff, 8);
+            sHit();
+            if (b.hp <= 0) kill(0, b.id);
+          }
+        }
+      }
+    };
+
+    /* ---------- Explosions-Licht ---------- */
+    const flashLight = new THREE.PointLight(0xffaa33, 0, 16);
+    scene.add(flashLight);
+
+    /* ---------- Granaten (3D, physikalisch) ---------- */
+    const nades3: { mesh: THREE.Mesh; vel: THREE.Vector3; t: number }[] = [];
+    const nadGeo = new THREE.SphereGeometry(0.12, 8, 8);
+    const throwNade = () => {
+      if (player.grenades <= 0 || player.nadeCd > 0 || player.hp <= 0 || tactics) return;
+      player.nadeCd = 0.5;
+      player.grenades--;
+      sThrow();
+      const mesh = new THREE.Mesh(nadGeo, new THREE.MeshStandardMaterial({ color: 0xffcc33, emissive: 0x664400 }));
+      const dir = new THREE.Vector3();
+      camera.getWorldDirection(dir);
+      mesh.position.set(player.x, player.y + 1.5, player.z);
+      scene.add(mesh);
+      nades3.push({ mesh, vel: dir.multiplyScalar(11).add(new THREE.Vector3(0, 3, 0)), t: 1.25 });
+    };
+    const explode3 = (pos: THREE.Vector3) => {
+      sBoom();
+      flashLight.position.copy(pos);
+      flashLight.intensity = 12;
+      burst(pos, 0xffcc33, 26);
+      burst(pos, 0xff5544, 14);
+      for (const b of bots) {
+        if (!b.alive) continue;
+        const d = Math.hypot(b.group.position.x - pos.x, b.group.position.z - pos.z);
+        if (d < 3.2) {
+          b.hp -= Math.round(95 * (1 - d / 3.6));
+          if (b.hp <= 0) kill(0, b.id);
+        }
+      }
+      const dP = Math.hypot(player.x - pos.x, player.z - pos.z);
+      if (dP < 3.2 && player.hp > 0) hurtPlayer(Math.round(70 * (1 - dP / 3.6)), pos.x, pos.z, -1);
+      for (const w of walls) {
+        if (!w.active || !w.destructible) continue;
+        const d = Math.hypot(w.mesh.position.x - pos.x, w.mesh.position.z - pos.z);
+        if (d < 2.4) {
+          w.hp -= 150;
+          if (w.hp <= 0) {
+            w.active = false; scene.remove(w.mesh);
+            burst(w.mesh.position.clone(), 0x22ff55, 24);
+            pushFeed("💥 BRESCHE GESPRENGT!");
+            missionDestroyed++;
+          } else (w.mesh.material as THREE.MeshStandardMaterial).color.setHex(0x7a4d1f);
+        }
+      }
+    };
+    const nadesTick3 = (dt: number) => {
+      for (let i = nades3.length - 1; i >= 0; i--) {
+        const n = nades3[i];
+        n.t -= dt;
+        n.vel.y -= 20 * dt;
+        const nx = n.mesh.position.x + n.vel.x * dt;
+        const nz = n.mesh.position.z + n.vel.z * dt;
+        if (collides(nx, n.mesh.position.z, 0.15, n.mesh.position.y)) n.vel.x *= -0.5;
+        else n.mesh.position.x = nx;
+        if (collides(n.mesh.position.x, nz, 0.15, n.mesh.position.y)) n.vel.z *= -0.5;
+        else n.mesh.position.z = nz;
+        n.mesh.position.y += n.vel.y * dt;
+        const sup = getSupport(n.mesh.position.x, n.mesh.position.z, n.mesh.position.y + 0.5);
+        if (n.mesh.position.y < sup + 0.12 && n.vel.y < 0) {
+          n.mesh.position.y = sup + 0.12;
+          n.vel.y *= -0.45; n.vel.x *= 0.75; n.vel.z *= 0.75;
+        }
+        if (n.t <= 0) {
+          const at = n.mesh.position.clone();
+          scene.remove(n.mesh);
+          nades3.splice(i, 1);
+          explode3(at);
+        }
+      }
+    };
+
+    /* ---------- Waffen-/Granaten-Pickups ---------- */
+    const pickups3: { x: number; z: number; type: "richter" | "nades"; active: boolean; respawnAt: number; group: THREE.Group }[] = [];
+    const mkPick = (x: number, z: number, type: "richter" | "nades") => {
+      const group = new THREE.Group();
+      const col = type === "richter" ? 0x33ccff : 0xffcc33;
+      const box = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 0.45), new THREE.MeshStandardMaterial({ color: col, emissive: new THREE.Color(col).multiplyScalar(0.7) }));
+      box.position.y = 0.6;
+      group.add(box);
+      group.position.set(x, 0, z);
+      scene.add(group);
+      pickups3.push({ x, z, type, active: true, respawnAt: 0, group });
+    };
+    mkPick(0, -18, "richter"); mkPick(0, 18, "richter"); mkPick(-20, 0, "nades"); mkPick(20, 0, "nades");
+    const pickupsTick = (dt: number) => {
+      for (const pk of pickups3) {
+        pk.group.rotation.y += dt * 1.5;
+        if (!pk.active) {
+          if (gameTime >= pk.respawnAt) { pk.active = true; pk.group.visible = true; }
+          continue;
+        }
+        if (player.hp > 0 && Math.hypot(player.x - pk.x, player.z - pk.z) < 1.1) {
+          pk.active = false; pk.group.visible = false; pk.respawnAt = gameTime + 15;
+          sPickup();
+          if (pk.type === "richter") { player.weapon = "richter"; player.ammo = 5; player.reloading = 0; pushFeed("RICHTER-50 aufgenommen 🎯"); }
+          else { player.grenades = Math.min(4, player.grenades + 2); pushFeed("💣 +2 Granaten"); }
+        }
+      }
     };
 
     /* ---------- Bot-AI ---------- */
@@ -666,18 +899,26 @@ export function RealGame() {
       b.group.rotation.y = Math.atan2(dx, dz);
 
       // Schießen
+      // Reaktion + Burst-Feuer (AAA-Bot-Feel)
+      if (!target) b.reactT = 0.22 + Math.random() * 0.3;
+      else if (b.reactT > 0) b.reactT -= dt;
+      if (b.pauseT > 0) b.pauseT -= dt;
+      if (target && b.reactT <= 0 && b.pauseT <= 0 && b.burstLeft <= 0) {
+        b.burstLeft = 3 + Math.floor(Math.random() * 3);
+      }
       b.cd -= dt;
-      if (target && b.cd <= 0) {
-        b.cd = 0.6 + Math.random() * 0.6;
+      if (target && b.burstLeft > 0 && b.cd <= 0 && b.reactT <= 0) {
+        b.cd = 0.13;
+        b.burstLeft--;
+        if (b.burstLeft === 0) b.pauseT = 0.5 + Math.random() * 0.8;
         const from = bp.clone().add(new THREE.Vector3(0, 1.4, 0));
         const to = new THREE.Vector3(target.x, target.y, target.z);
         tracer(from, to, b.color.getHex());
         sShot("dorn");
-        const stanceMul = player.prone ? 0.6 : player.crouch ? 0.8 : 1;
-        const dmg = (7 + Math.random() * 9) * (perk === "panzer" ? 0.7 : 1) * stanceMul;
+        const stanceMul = player.prone ? 0.5 : player.crouch ? 0.75 : 1;
+        const dmg = (6 + Math.random() * 8) * (perk === "panzer" ? 0.7 : 1) * stanceMul;
         if (target.id === 0) {
-          player.hp -= dmg;
-          if (player.hp <= 0) kill(b.id, 0);
+          hurtPlayer(dmg, bp.x, bp.z, b.id);
         } else if (target.id >= 100) {
           const a = allies.find((x) => x.id === target!.id)!;
           a.hp -= dmg;
@@ -776,7 +1017,7 @@ export function RealGame() {
       // Spieler
       if (player.hp <= 0) {
         if (gameTime >= player.respawnAt) {
-          player.hp = 100; player.x = SPAWNS[0][0]; player.z = SPAWNS[0][1]; player.ammo = 24;
+          player.hp = 100; player.shield = 100; player.x = SPAWNS[0][0]; player.z = SPAWNS[0][1]; player.ammo = 24;
         }
       } else {
         // ===== Bewegungsfluss: Stance, Slide, Acceleration, Friction =====
@@ -867,8 +1108,9 @@ export function RealGame() {
           if (player.stepAcc > 2.4) { player.stepAcc = 0; sStep(); }
         }
 
-        if (player.reloading > 0) { player.reloading -= dt; if (player.reloading <= 0) player.ammo = 24; }
-        if (keys["KeyR"] && player.ammo < 24 && player.reloading <= 0) player.reloading = 1.2;
+        if (player.reloading > 0) { player.reloading -= dt; if (player.reloading <= 0) player.ammo = player.weapon === "richter" ? 5 : 24; }
+        const maxAm = player.weapon === "richter" ? 5 : 24;
+        if (keys["KeyR"] && player.ammo < maxAm && player.reloading <= 0) player.reloading = player.weapon === "richter" ? 1.6 : 1.2;
         if (mouseDown) shoot();
 
         // Gun-Bob + Sway aus echtem Bewegungsphasenwert
@@ -893,6 +1135,18 @@ export function RealGame() {
         camera.fov += (fovT - camera.fov) * Math.min(1, 9 * dt);
         camera.updateProjectionMatrix();
       }
+
+      // Shield-Regeneration (Halo-DNA) + Bloom-Decay
+      if (gameTime - player.lastDmg > 3 && player.shield < 100 && player.hp > 0) {
+        player.shield = Math.min(100, player.shield + 26 * dt);
+      }
+      player.bloom = Math.max(0, player.bloom - 2.2 * dt);
+      player.meleeCd = Math.max(0, player.meleeCd - dt);
+      player.nadeCd = Math.max(0, player.nadeCd - dt);
+      player.dmgDirs = player.dmgDirs.filter((d) => gameTime - d.t < 0.8);
+      nadesTick3(dt);
+      pickupsTick(dt);
+      flashLight.intensity = Math.max(0, flashLight.intensity - 30 * dt);
 
       if (!tactics) {
         for (const b of bots) botTick(b, dt);
@@ -956,6 +1210,10 @@ export function RealGame() {
                 : `${mission.title} · Halte durch · ⏱ ${Math.max(0, mission.target - gameTime).toFixed(0)} s`
             : "",
           tactics,
+          shield: Math.max(0, Math.round(player.shield)),
+          bloom: player.bloom,
+          grenades: player.grenades,
+          dmgDirs: player.dmgDirs.map((d) => ({ a: d.a, age: gameTime - d.t })),
         });
       }
 
@@ -979,6 +1237,7 @@ export function RealGame() {
         window.removeEventListener("mousemove", mm);
         window.removeEventListener("resize", onResize);
         el.removeEventListener("mousedown", md);
+        el.removeEventListener("contextmenu", cm);
         if (document.pointerLockElement === el) document.exitPointerLock();
         renderer.dispose();
         if (el.parentElement === mount) mount.removeChild(el);
@@ -1017,8 +1276,9 @@ export function RealGame() {
             <span className="font-mono text-foreground">WASD</span>, <span className="font-mono text-foreground">Shift</span> Sprint,{" "}
             <span className="font-mono text-foreground">C</span> Ducken (aus dem Sprint = <span className="text-primary">Slide</span>),{" "}
             <span className="font-mono text-foreground">X</span> Hinlegen, <span className="font-mono text-foreground">Space</span> Springen,{" "}
-            <span className="font-mono text-foreground">Q/1/2</span> Waffen, <span className="font-mono text-foreground">R</span> laden,{" "}
-            <span className="font-mono text-foreground">T</span> Taktik. Klettern &amp; Mantling laufen automatisch im Bewegungsfluss.
+            <span className="font-mono text-foreground">Q/1/2/3</span> Waffen, <span className="font-mono text-foreground">G</span> Granate,{" "}
+            <span className="font-mono text-foreground">V</span> Melee, <span className="font-mono text-foreground">R</span> laden,{" "}
+            <span className="font-mono text-foreground">T</span> Taktik. Regenerierender Schild, Headshots, Waffen-Pickups – Halo-Feel.
           </p>
           {/* Arena-Wahl */}
           <div className="grid grid-cols-2 gap-3 mb-6">
@@ -1121,6 +1381,29 @@ export function RealGame() {
   return (
     <div className="relative h-screen w-full bg-black overflow-hidden select-none">
       <div ref={mountRef} className="w-full h-full" />
+      {/* AAA-Look: Vignette + dezente Scanlines */}
+      <div className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.55) 100%)" }} />
+      <div className="pointer-events-none absolute inset-0" style={{ background: "repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(34,255,85,0.02) 3px, rgba(34,255,85,0.02) 4px)" }} />
+      {/* Crosshair mit Bloom */}
+      <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+        <div className="relative w-0 h-0">
+          <div className="absolute rounded-full bg-primary" style={{ width: 2, height: 8, left: -1, top: -(6 + hud.bloom * 16) - 8, boxShadow: "0 0 6px rgba(34,255,85,0.9)" }} />
+          <div className="absolute rounded-full bg-primary" style={{ width: 2, height: 8, left: -1, top: 6 + hud.bloom * 16, boxShadow: "0 0 6px rgba(34,255,85,0.9)" }} />
+          <div className="absolute rounded-full bg-primary" style={{ width: 8, height: 2, top: -1, left: -(6 + hud.bloom * 16) - 8, boxShadow: "0 0 6px rgba(34,255,85,0.9)" }} />
+          <div className="absolute rounded-full bg-primary" style={{ width: 8, height: 2, top: -1, left: 6 + hud.bloom * 16, boxShadow: "0 0 6px rgba(34,255,85,0.9)" }} />
+          <div className="absolute rounded-full bg-primary" style={{ width: 2, height: 2, left: -1, top: -1 }} />
+        </div>
+      </div>
+      {/* Damage-Richtungsanzeige */}
+      {hud.dmgDirs.map((d, i) => (
+        <div
+          key={i}
+          className="pointer-events-none absolute left-1/2 top-1/2"
+          style={{ transform: `translate(-50%,-50%) rotate(${d.a}rad)`, opacity: Math.max(0, 1 - d.age / 0.8) }}
+        >
+          <div className="w-1.5 h-7 rounded-full bg-destructive" style={{ transform: "translateY(-52px)", boxShadow: "0 0 10px rgba(255,60,60,0.9)" }} />
+        </div>
+      ))}
       <div className="absolute top-3 left-1/2 -translate-x-1/2 text-center pointer-events-none max-w-[80%]">
         <p className="font-mono text-sm text-primary glow-neon-sm tracking-wider">{hud.scores}</p>
         {hud.objective && <p className="font-mono text-[10px] text-foreground/90 tracking-wider mt-1">{hud.objective}</p>}
@@ -1139,14 +1422,23 @@ export function RealGame() {
         ))}
       </div>
       <div className="absolute bottom-3 left-3 pointer-events-none">
-        <p className="font-mono text-[10px] text-muted-foreground tracking-wider">INTEGRITÄT</p>
+        <p className="font-mono text-[10px] text-muted-foreground tracking-wider">SCHILD // INTEGRITÄT</p>
+        <div className="w-40 h-1 rounded-full overflow-hidden mt-1 bg-secondary">
+          <div className="h-full rounded-full transition-all duration-150" style={{ width: `${hud.shield}%`, background: "#33ccff", boxShadow: "0 0 8px rgba(51,204,255,0.8)" }} />
+        </div>
         <div className="w-40 h-1.5 bg-secondary rounded-full overflow-hidden mt-1">
           <div className={`h-full rounded-full ${hud.hp > 35 ? "bg-primary" : "bg-destructive"}`} style={{ width: `${hud.hp}%` }} />
         </div>
-        <p className="font-mono text-xl text-primary leading-none mt-1">{hud.hp}</p>
+        <p className="font-mono text-xl leading-none mt-1">
+          <span className="text-[#33ccff]">{hud.shield}</span>
+          <span className="text-muted-foreground text-sm"> + </span>
+          <span className="text-primary">{hud.hp}</span>
+        </p>
       </div>
       <div className="absolute bottom-3 right-3 text-right pointer-events-none">
-        <p className="font-mono text-[10px] text-muted-foreground tracking-wider">{hud.weapon} <span className="text-primary">[Q]</span></p>
+        <p className="font-mono text-[10px] text-muted-foreground tracking-wider">
+          {hud.weapon} <span className="text-primary">[Q]</span> · 💣 {hud.grenades} <span className="text-primary">[G]</span> · 👊 <span className="text-primary">[V]</span>
+        </p>
         <p className="font-mono text-2xl text-foreground leading-none">
           {hud.reloading ? <span className="text-primary">LÄDT…</span> : <>{hud.ammo}<span className="text-muted-foreground text-sm">/∞</span></>}
         </p>
