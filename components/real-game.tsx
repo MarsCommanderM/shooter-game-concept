@@ -42,6 +42,29 @@ const KSTREAKS = [
 interface CineScene { cam: [number, number, number]; look: [number, number, number]; dur: number; speaker?: string; text?: string; }
 interface StoryEvent { trigger: "time" | "kills" | "destroyed"; at: number; speaker: string; text: string; shake?: boolean; }
 const STORY: Record<string, { intro: CineScene[]; debrief: string; events: StoryEvent[] }> = {
+  m0: {
+    intro: [
+      { cam: [0, 30, 4], look: [0, 0, -10], dur: 4, speaker: "???", text: "Mayday. Mayday. Dropship K-11 geht nieder – Sektor 7 ist nicht evakuiert. Ist nicht evakuiert worden." },
+      { cam: [4, 1.6, 12], look: [0, 1, -16], dur: 3.5, speaker: "DU", text: "Atmen. Aufstehen. Irgendwo da vorn liegt meine Waffe." },
+    ],
+    debrief: "Kontakt bestätigt. Die Biomass hat dich markiert – und etwas in dir hat zurückgesehen.",
+    events: [
+      { trigger: "time", at: 2, speaker: "SYSTEM", text: "WASD bewegen · Shift sprinten · C ducken · Space springen" },
+      { trigger: "time", at: 12, speaker: "VEGA", text: "Signatur erkannt: Deine DORN liegt vorne bei der Markierung. Hol sie." },
+    ],
+  },
+  m5: {
+    intro: [
+      { cam: [0, 24, -20], look: [0, 0, 6], dur: 4.5, speaker: "DR. MAREN [FLÜSTERN]", text: "Die Terminals sind hier. Drei Downloads. Dann sind wir weg – leise." },
+      { cam: [8, 2, -10], look: [-6, 1.5, 6], dur: 3.5, speaker: "DU", text: "Wachen patrouillieren. Messer raus. Funk aus." },
+    ],
+    debrief: "Drei Downloads. Eine Wahrheit: Die KORP hat die Erde selbst geerntet. Und dein KOMMANDO steckt drin.",
+    events: [
+      { trigger: "destroyed", at: 1, speaker: "KOMMANDO [FUNK]", text: "Soldat. Stoppen Sie die Übertragung. Das ist ein Befehl.", shake: true },
+      { trigger: "destroyed", at: 3, speaker: "DR. MAREN", text: "ER weiß es. RAUS. Zum nördlichen Extraktionspunkt – JETZT!", shake: true },
+    ],
+  },
+
   m1: {
     intro: [
       { cam: [-34, 16, -34], look: [0, 0, 0], dur: 4.5, speaker: "KOMMANDO [FUNK]", text: "Soldat. Die Biomass hat Sektor 7 erreicht. Sie sieht mit tausend Augen – also leih ihr keines deiner." },
@@ -86,6 +109,22 @@ function sRadio() {
     o.connect(g).connect(c.destination); o.start(t + i * 0.09); o.stop(t + i * 0.09 + 0.1);
   });
 }
+const STORY_KEY = "wirrwarr-story";
+const FRAG_KEY = "wirrwarr-frags";
+function loadStory(): { done: string[] } {
+  try { return JSON.parse(localStorage.getItem(STORY_KEY) ?? "null") ?? { done: [] }; } catch { return { done: [] }; }
+}
+function loadFrags(): number {
+  try { return JSON.parse(localStorage.getItem(FRAG_KEY) ?? "0") || 0; } catch { return 0; }
+}
+const CODEX = [
+  { at: 1, title: "KORP-Memo 004", text: "„Die Probe wächst auch ohne Licht. Lieferung wie bestellt. – K.“" },
+  { at: 3, title: "Fracht-Manifest", text: "Container 77: ‚Saatgut‘. Empfänger: gelöscht. Absender: KORP Terraforming Div." },
+  { at: 5, title: "Funkspruch (gebrochen)", text: "„…kein Unfall. Wiederhole: KEIN Unfall. Die Ernte war geplant…“" },
+  { at: 7, title: "Dr. Marens Notiz", text: "„Sie ist nicht aggressiv. Sie ist verängstigt. Und sie verteidigt sich gegen UNS.“" },
+  { at: 9, title: "KORP-Direktive 9", text: "„Alle Zeugen in Sektor 7 sind entbehrlich. Auch die eigenen.“" },
+  { at: 11, title: "Die Koordinate", text: "Unter dem Nest: ein Terminal. Menschlichen Designs. Es sendet … nach oben." },
+];
 const WEAPON_LEVEL: Record<string, number> = { dorn: 1, brecher: 2, richter: 4 };
 const ATTACHMENTS = [
   { id: "optic", name: "Zieloptik", level: 3, desc: "-30 % Bloom, -5 % Tempo" },
@@ -112,7 +151,7 @@ const PERKS: { id: PerkId; name: string; desc: string }[] = [
 ];
 
 type VsMode = "tdm" | "ffa";
-type GameKind = VsMode | "m1" | "m2" | "m3" | "m4" | "range";
+type GameKind = VsMode | "m0" | "m1" | "m2" | "m3" | "m4" | "m5" | "range";
 type ArenaId = "sektor" | "garten" | "stahl" | "orbital";
 
 interface Mission {
@@ -122,6 +161,8 @@ interface Mission {
 }
 
 const MISSIONS: Mission[] = [
+  { id: "m0", title: "Prolog // Kontakt", briefing: "Dein Dropship ist gefallen. Finde deine Waffe. Überlebe die erste Ernte.", type: "kills", target: 3, botCount: 3 },
+  { id: "m5", title: "M5 // Die Koordinate", briefing: "Infiltration: 3 Terminals herunterladen, dann raus. Wer dich sieht, schlägt Alarm.", type: "destroy", target: 3, botCount: 6 },
   { id: "m1", title: "M1 // Erste Ernte", briefing: "Die Biomass testet dich. Eliminiere 8 Eindringlinge – sie kommen immer wieder.", type: "kills", target: 8, botCount: 4 },
   { id: "m2", title: "M2 // Abrissunternehmen", briefing: "Sprenge 6 sprengbare Strukturen in 3 Minuten. Der BRECHER-7 ist dein bester Freund.", type: "destroy", target: 6, timeLimit: 180, botCount: 4 },
   { id: "m3", title: "M3 // Stellung halten", briefing: "Halte 120 Sekunden gegen endlose Wellen. Niemand kommt zu dir durch. Niemand.", type: "survive", target: 120, botCount: 6 },
@@ -329,11 +370,11 @@ export function RealGame() {
   const [loadout, setLoadout] = useState(() => loadLoadout());
   const level = levelFromXp(profile.xp);
   const feedExtraRef = useRef<string[]>([]);
-  const endInfoExt = useRef<null | { debrief?: string; medals: string[]; kills: number; deaths: number; hs: number }>(null);
-  const [doneMissions, setDoneMissions] = useState<string[]>([]);
+  const endInfoExt = useRef<null | { debrief?: string; medals: string[]; kills: number; deaths: number; hs: number; frags?: number; rank?: string }>(null);
+  const [doneMissions, setDoneMissions] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem(STORY_KEY) ?? "null")?.done ?? []; } catch { return []; } });
   const [failed, setFailed] = useState(false);
   useEffect(() => {
-    if (screen === "menu" || screen === "end") setDoneMissions(loadCampaign());
+    if (screen === "menu" || screen === "end") setDoneMissions(loadStory().done);
   }, [screen]);
   const [hud, setHud] = useState({
     hp: 100, ammo: 24, reloading: false, weapon: "DORN",
@@ -640,6 +681,8 @@ export function RealGame() {
       skinColor: SKINS.find((s) => s.id === loadout.skin && level >= s.level)?.color ?? "#22ff55",
       rageT: 0, bonusXp: 0, usedStreaks: [] as number[],
       bestStreakM: 0, shakeT: 0,
+      noGun: false, dornFound: false, frags: 0, terminals: 0, termProg: 0,
+      alarm: false, seenT: 0,
       spawnShield: 2, killcam: null as { botId: number; t: number } | null,
       rangeT: 60, rangeHits: 0, shots: 0,
     };
@@ -847,6 +890,7 @@ export function RealGame() {
         const next = e.code === "KeyQ"
           ? (player.weapon === "dorn" ? "brecher" : player.weapon === "brecher" ? "richter" : "dorn")
           : e.code === "Digit1" ? "dorn" : e.code === "Digit2" ? "brecher" : "richter";
+        if (player.noGun) return;
         if (level < (WEAPON_LEVEL[next] ?? 1)) { pushFeed(`🔒 ${next.toUpperCase()} braucht Level ${WEAPON_LEVEL[next]}`); return; }
         player.weapon = next;
         player.ammo = player.weapon === "richter" ? 5 : 24;
@@ -915,7 +959,7 @@ export function RealGame() {
     /* ---------- Schießen ---------- */
     const raycaster = new THREE.Raycaster();
     const shoot = () => {
-      if (tactics) return;
+      if (tactics || player.noGun) return;
       const rate = player.weapon === "brecher" ? 0.9 : player.weapon === "richter" ? 1.1 : 0.18;
       if (player.fireCd > 0 || player.reloading > 0 || player.ammo <= 0) return;
       player.fireCd = rate;
@@ -934,6 +978,11 @@ export function RealGame() {
         camera
       );
       player.bloom = Math.min(1, player.bloom + (player.weapon === "dorn" ? 0.16 : 0.3));
+      if (mode === "m5" && !player.alarm) {
+        player.alarm = true;
+        pushFeed("⚠ ALARM! Schusswechsel gehört – sie kommen!");
+        sRadio(); player.shakeT = 0.5;
+      }
       targetPitch += (player.weapon === "brecher" ? 0.014 : player.weapon === "richter" ? 0.01 : 0.004) * recoilMul;
       player.shots++;
       const botMeshes: THREE.Object3D[] = [];
@@ -1002,7 +1051,9 @@ export function RealGame() {
         if (d < 2.4) {
           const vx_ = -Math.sin(yaw.rotation.y), vz_ = -Math.cos(yaw.rotation.y);
           if ((dx / d) * vx_ + (dz / d) * vz_ > 0.5) {
+            const silent = mode === "m5" && !player.alarm && b.hp <= 70;
             b.hp -= 70;
+            if (silent) { pushFeed("🗡 Lautlos ausgeschaltet. +50 XP"); addXp(50); }
             burst(b.group.position.clone().add(new THREE.Vector3(0, 1.2, 0)), 0xffffff, 8);
             sHit();
             if (b.hp <= 0) kill(0, b.id);
@@ -1158,10 +1209,10 @@ export function RealGame() {
     };
 
     /* ---------- Waffen-/Granaten-Pickups ---------- */
-    const pickups3: { x: number; z: number; type: "richter" | "nades"; active: boolean; respawnAt: number; group: THREE.Group }[] = [];
-    const mkPick = (x: number, z: number, type: "richter" | "nades") => {
+    const pickups3: { x: number; z: number; type: "richter" | "nades" | "dorn" | "fragment"; active: boolean; respawnAt: number; group: THREE.Group }[] = [];
+    const mkPick = (x: number, z: number, type: "richter" | "nades" | "dorn" | "fragment") => {
       const group = new THREE.Group();
-      const col = type === "richter" ? 0x33ccff : 0xffcc33;
+      const col = type === "richter" ? 0x33ccff : type === "nades" ? 0xffcc33 : type === "dorn" ? 0x22ff55 : 0xcc66ff;
       const box = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 0.45), new THREE.MeshStandardMaterial({ color: col, emissive: new THREE.Color(col).multiplyScalar(0.7) }));
       box.position.y = 0.6;
       group.add(box);
@@ -1169,7 +1220,15 @@ export function RealGame() {
       scene.add(group);
       pickups3.push({ x, z, type, active: true, respawnAt: 0, group });
     };
-    mkPick(0, -18, "richter"); mkPick(0, 18, "richter"); mkPick(-20, 0, "nades"); mkPick(20, 0, "nades");
+    if (mode === "m0") {
+      mkPick(0, -14, "dorn");
+    } else {
+      mkPick(0, -18, "richter"); mkPick(0, 18, "richter"); mkPick(-20, 0, "nades"); mkPick(20, 0, "nades");
+      if (mission) {
+        const fragSpots: [number, number][] = [[-6, -6], [6, 6], [4, 14]];
+        for (const [fx, fz] of fragSpots) mkPick(fx, fz, "fragment");
+      }
+    }
     const pickupsTick = (dt: number) => {
       for (const pk of pickups3) {
         pk.group.rotation.y += dt * 1.5;
@@ -1181,7 +1240,21 @@ export function RealGame() {
           pk.active = false; pk.group.visible = false; pk.respawnAt = gameTime + 15;
           sPickup();
           if (pk.type === "richter") { player.weapon = "richter"; player.ammo = 5; player.reloading = 0; pushFeed("RICHTER-50 aufgenommen 🎯"); }
-          else { player.grenades = Math.min(4, player.grenades + 2); pushFeed("💣 +2 Granaten"); }
+          else if (pk.type === "nades") { player.grenades = Math.min(4, player.grenades + 2); pushFeed("💣 +2 Granaten"); }
+          else if (pk.type === "dorn") {
+            player.noGun = false; player.dornFound = true;
+            player.weapon = "dorn"; player.ammo = 24;
+            pushFeed("🔫 DORN geborgen. Hallo, alte Freundin.");
+            sPickup();
+          } else {
+            player.frags++;
+            try {
+              const total = loadFrags() + 1;
+              localStorage.setItem(FRAG_KEY, JSON.stringify(total));
+            } catch { /* */ }
+            pushFeed(`◆ Lore-Fragment geborgen (${player.frags}/3)`);
+            sPickup();
+          }
         }
       }
     };
@@ -1307,6 +1380,31 @@ export function RealGame() {
       b.group.rotation.y = Math.atan2(dx, dz);
 
       // Schießen
+      // m5-Infiltration: Patrouille + Sichtkegel + Alarm
+      if (mode === "m5" && !player.alarm) {
+        target = null;
+        const dP2 = Math.hypot(player.x - bp.x, player.z - bp.z);
+        const detect = keys["ShiftLeft"] ? 16 : player.crouch ? 7 : 11;
+        if (player.hp > 0 && dP2 < detect) {
+          const vx_ = Math.sin(b.group.rotation.y), vz_ = Math.cos(b.group.rotation.y);
+          const dxp = (player.x - bp.x) / (dP2 || 1), dzp = (player.z - bp.z) / (dP2 || 1);
+          const dot = vx_ * dxp + vz_ * dzp;
+          if (dot > 0.35 && losClear(bp, new THREE.Vector3(player.x, player.y, player.z))) {
+            player.seenT += dt;
+            if (player.seenT > 1.1) {
+              player.alarm = true;
+              pushFeed("⚠ ALARM! Du wurdest entdeckt!");
+              sRadio(); player.shakeT = 0.5;
+            }
+          } else player.seenT = Math.max(0, player.seenT - dt);
+        } else player.seenT = Math.max(0, player.seenT - dt);
+        // Patrol-Wanderung
+        if (!b.flankT || b.flankT <= 0) {
+          b.flankX = (Math.random() - 0.5) * 60;
+          b.flankZ = (Math.random() - 0.5) * 60;
+          b.flankT = 2.5 + Math.random() * 2;
+        }
+      }
       // Reaktion + Burst-Feuer (AAA-Bot-Feel) – Spawn-Schutz respektieren
       if (player.spawnShield > 0 && target && target.id === 0) target = null;
       if (!target) b.reactT = 0.22 + Math.random() * 0.3;
@@ -1326,7 +1424,7 @@ export function RealGame() {
         tracer(from, to, b.color.getHex());
         sShot("dorn");
         const stanceMul = player.prone ? 0.5 : player.crouch ? 0.75 : 1;
-        const adapt = Math.max(0.75, Math.min(1.25, 1 + (player.deaths - player.kills) * 0.02));
+        const adapt = Math.max(0.75, Math.min(1.25, 1 + (player.deaths - player.kills) * 0.02)) * (mode === "m0" ? 0.5 : 1);
         const dmg = (6 + Math.random() * 8) * adapt * (perk === "panzer" ? 0.7 : 1) * stanceMul;
         if (target.id === 0) {
           hurtPlayer(dmg, bp.x, bp.z, b.id);
@@ -1433,19 +1531,28 @@ export function RealGame() {
       if (cine.t >= sc.dur) { cine.t = 0; cine.i++; if (cine.i >= cine.list.length) { cine.active = false; hudSubtitle = null; } }
     };
     const fillEnd = () => {
+      // Story-Flag speichern
+      if (mission && !ended) {
+        try {
+          const st = loadStory();
+          if (!st.done.includes(mission.id)) st.done.push(mission.id);
+          localStorage.setItem(STORY_KEY, JSON.stringify(st));
+        } catch { /* */ }
+      }
+      const rank = player.deaths === 0 && player.frags >= 3 ? "S" : player.deaths <= 1 ? "A" : player.deaths <= 3 ? "B" : "C";
       const medals: string[] = [];
       if (player.headshots >= 3) medals.push("🎯 Headhunter – 3+ Headshots");
       if (player.melees >= 2) medals.push("👊 Nahkampf-Dämon – 2+ Melee-Kills");
       if (missionDestroyed >= 2) medals.push("💥 Abrissbirne – 2+ Wände gesprengt");
       if (player.bestStreakM >= 5) medals.push("🔥 Spree-Meister – 5er-Streak");
       if (player.deaths === 0 && player.kills >= 5) medals.push("🛡 Unberührbar – 5 Kills, 0 Tode");
-      endInfoExt.current = { debrief: mission ? STORY[mission.id]?.debrief : undefined, medals, kills: player.kills, deaths: player.deaths, hs: player.headshots };
+      endInfoExt.current = { debrief: mission ? STORY[mission.id]?.debrief : undefined, medals, kills: player.kills, deaths: player.deaths, hs: player.headshots, frags: player.frags, rank: mission ? rank : undefined };
     };
     const storyTick = () => {
       if (!story || cine.active) return;
       for (const ev of story.events) {
         if (firedEvents.includes(ev)) continue;
-        const val = ev.trigger === "time" ? gameTime : ev.trigger === "kills" ? player.kills : missionDestroyed;
+        const val = ev.trigger === "time" ? gameTime : ev.trigger === "kills" ? player.kills : mode === "m5" ? player.terminals : missionDestroyed;
         if (val >= ev.at) {
           firedEvents.push(ev);
           pushFeed(`📻 ${ev.speaker}: ${ev.text}`);
@@ -1656,6 +1763,29 @@ export function RealGame() {
         hm.emissiveIntensity = marked ? 1.2 : 0.6;
       }
 
+      // m5: Terminals channeln + Extraktion
+      if (mode === "m5" && mission) {
+        const TERMS: [number, number][] = [[-6, 6], [6, -6], [0, -14]];
+        const nextT = TERMS[player.terminals];
+        if (nextT && player.terminals < 3) {
+          if (Math.hypot(player.x - nextT[0], player.z - nextT[1]) < 1.6) {
+            player.termProg += dt;
+            if (player.termProg >= 1.5) {
+              player.termProg = 0;
+              player.terminals++;
+              missionDestroyed = player.terminals;
+              pushFeed(`⬇ Terminal ${player.terminals}/3 heruntergeladen`);
+              sRadio();
+            }
+          } else player.termProg = 0;
+        }
+        if (player.terminals >= 3 && Math.hypot(player.x - 0, player.z - 34) < 3.5) {
+          fillEnd();
+          ended = true;
+          setWinner("EXFILTRATION ERFOLGREICH");
+          setScreen("end");
+        }
+      }
       storyTick();
       player.shakeT = Math.max(0, player.shakeT - dt);
       if (cine.active) cineTick(dt);
@@ -1697,7 +1827,7 @@ export function RealGame() {
       if (!ended) {
         if (mission) {
           if (mission.type === "kills" && missionKills >= mission.target) finishMission(true);
-          else if (mission.type === "destroy" && missionDestroyed >= mission.target) finishMission(true);
+          else if (mission.type === "destroy" && mode !== "m5" && missionDestroyed >= mission.target) finishMission(true);
           else if (mission.type === "survive" && gameTime >= mission.target) finishMission(true);
           else if (mission.timeLimit && gameTime >= mission.timeLimit) finishMission(false);
         } else {
@@ -1730,7 +1860,11 @@ export function RealGame() {
           feed: [...feedRef.current],
           kills: player.kills,
           objective: mode === "range"
-            ? `🎯 RANGE · ⏱ ${Math.max(0, Math.ceil(player.rangeT))} s · Treffer ${player.rangeHits} · Shots ${player.shots}`
+            ? `🎯 RANGE ·  ${Math.max(0, Math.ceil(player.rangeT))} s · Treffer ${player.rangeHits} · Shots ${player.shots}`
+            : mode === "m5"
+              ? player.alarm
+                ? `🚨 ALARM · Terminals ${player.terminals}/3 · ${player.terminals >= 3 ? "RAUS ZUR EXTRAKTION (Norden)!" : "Sie kommen!"}`
+                : `🤫 LEISE · Terminals ${player.terminals}/3 ${player.termProg > 0 ? "· LÄDT…" : ""} · ${player.terminals >= 3 ? "Extraktion: Norden!" : "Bleib ungesehen."}`
             : mission
             ? mission.type === "kills"
               ? `${mission.title} · Kills ${missionKills}/${mission.target}`
@@ -1825,8 +1959,16 @@ export function RealGame() {
               {endInfoExt.current.debrief && (
                 <p className="text-sm text-muted-foreground italic leading-relaxed mb-3">„{endInfoExt.current.debrief}"</p>
               )}
+              {endInfoExt.current.rank && (
+                <p className="mb-2">
+                  <span className={`font-mono text-3xl font-bold ${endInfoExt.current.rank === "S" ? "text-accent glow-neon" : endInfoExt.current.rank === "A" ? "text-primary" : "text-foreground"}`}>
+                    {endInfoExt.current.rank}
+                  </span>
+                  <span className="font-mono text-[10px] text-muted-foreground tracking-wider uppercase ml-2">Rang</span>
+                </p>
+              )}
               <p className="font-mono text-[11px] text-foreground mb-2">
-                K/D: {endInfoExt.current.kills}/{endInfoExt.current.deaths} · Headshots: {endInfoExt.current.hs}
+                K/D: {endInfoExt.current.kills}/{endInfoExt.current.deaths} · Headshots: {endInfoExt.current.hs} · Fragmente: {endInfoExt.current.frags ?? 0}/3
               </p>
               <div className="flex flex-wrap gap-2">
                 {endInfoExt.current.medals.length > 0 ? (
@@ -1987,6 +2129,25 @@ export function RealGame() {
                   })}
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Kodex / Lore-Fragmente */}
+          <div className="border border-border bg-card rounded-sm p-4 mb-6">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <p className="font-mono text-[10px] tracking-[0.25em] uppercase text-primary glow-neon-sm">📼 Kodex // Lore-Fragmente</p>
+              <p className="font-mono text-[11px] text-muted-foreground">Gesamt: <span className="text-primary">{typeof window !== "undefined" ? loadFrags() : 0}</span></p>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-2">
+              {CODEX.map((c) => {
+                const open = (typeof window !== "undefined" ? loadFrags() : 0) >= c.at;
+                return (
+                  <div key={c.at} className={`rounded-sm border p-2.5 ${open ? "border-primary/40 bg-primary/5" : "border-border/50 opacity-50"}`}>
+                    <p className="font-mono text-[10px] text-foreground mb-0.5">{open ? "▸ " : "🔒 "}{c.title} <span className="text-muted-foreground">({c.at}◆)</span></p>
+                    <p className="text-[11px] text-muted-foreground italic leading-relaxed">{open ? c.text : "Fragmente sammeln, um diesen Eintrag zu entschlüsseln."}</p>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
