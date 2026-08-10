@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react";
 /* ================================================================== */
 
 type ModeId = "tdm" | "ffa" | "hq" | "sabotage" | "ctf" | "domination";
-type MapId = "spire" | "garten" | "stahl";
+type MapId = "spire" | "garten" | "stahl" | "orbital";
 
 const MODE_INFO: { id: ModeId; name: string; desc: string }[] = [
   { id: "tdm", name: "Team-Deathmatch", desc: "3v3 – erstes Team mit 10 Kills gewinnt." },
@@ -23,6 +23,7 @@ const MAP_INFO: { id: MapId; name: string; desc: string }[] = [
   { id: "spire", name: "Sektor 7", desc: "Vier Blöcke, vier Barrikaden – alles sprengbar." },
   { id: "garten", name: "Biomass-Garten", desc: "Offene Kuppeln mit Säulenwald, mehr Sightlines." },
   { id: "stahl", name: "Stahlwiege", desc: "Fabrikhallen mit dünnen Doppelwänden – Brecher-Paradies." },
+  { id: "orbital", name: "Orbitaldock", desc: "Offene Dockflächen mit Containerzeilen und langen Sichtlinien." },
 ];
 
 interface Bot {
@@ -87,12 +88,18 @@ function buildMap(id: MapId): number[][] {
     rect(5, 12, 1, 1, 2); rect(18, 12, 1, 1, 2);
     rect(6, 17, 1, 1, 2); rect(12, 18, 1, 1, 2); rect(17, 17, 1, 1, 2);
     rect(11, 11, 2, 2, 1);
-  } else {
+  } else if (id === "stahl") {
     // Stahlwiege: drei Hallen, dünne sprengbare Doppelwände
     rect(8, 4, 1, 7, 2); rect(15, 4, 1, 7, 2);
     rect(8, 13, 1, 7, 2); rect(15, 13, 1, 7, 2);
     rect(4, 11, 3, 1, 2); rect(17, 11, 3, 1, 2);
     rect(11, 11, 2, 1, 1);
+  } else {
+    // Orbitaldock: Containerzeilen, lange Lanes
+    rect(6, 6, 4, 1, 2); rect(14, 6, 4, 1, 2);
+    rect(6, 17, 4, 1, 2); rect(14, 17, 4, 1, 2);
+    rect(11, 9, 2, 1, 2); rect(11, 14, 2, 1, 2);
+    rect(4, 11, 1, 2, 1); rect(19, 11, 1, 2, 1);
   }
   return m;
 }

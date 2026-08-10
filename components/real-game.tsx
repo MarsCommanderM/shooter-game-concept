@@ -9,6 +9,26 @@ import * as THREE from "three";
 /* ================================================================== */
 
 type VsMode = "tdm" | "ffa";
+type GameKind = VsMode | "m1" | "m2" | "m3" | "m4";
+type ArenaId = "sektor" | "garten";
+
+interface Mission {
+  id: GameKind; title: string; briefing: string;
+  type: "kills" | "destroy" | "survive";
+  target: number; timeLimit?: number; botCount: number;
+}
+
+const MISSIONS: Mission[] = [
+  { id: "m1", title: "M1 // Erste Ernte", briefing: "Die Biomass testet dich. Eliminiere 8 Eindringlinge – sie kommen immer wieder.", type: "kills", target: 8, botCount: 4 },
+  { id: "m2", title: "M2 // Abrissunternehmen", briefing: "Sprenge 6 sprengbare Strukturen in 3 Minuten. Der BRECHER-7 ist dein bester Freund.", type: "destroy", target: 6, timeLimit: 180, botCount: 4 },
+  { id: "m3", title: "M3 // Stellung halten", briefing: "Halte 120 Sekunden gegen endlose Wellen. Niemand kommt zu dir durch. Niemand.", type: "survive", target: 120, botCount: 6 },
+  { id: "m4", title: "M4 // Das Nest", briefing: "Das Finale: 15 Eindringlinge zwischen dir und dem Nest. Brenn es nieder.", type: "kills", target: 15, botCount: 6 },
+];
+
+const CAMP_KEY = "wirrwarr-campaign-done";
+function loadCampaign(): string[] {
+  try { return JSON.parse(localStorage.getItem(CAMP_KEY) ?? "[]") as string[]; } catch { return []; }
+}
 
 interface WallBox {
   mesh: THREE.Mesh;
@@ -93,22 +113,30 @@ export function RealGame() {
   const mountRef = useRef<HTMLDivElement>(null);
   const [screen, setScreen] = useState<"menu" | "game" | "end">("menu");
   const [winner, setWinner] = useState("");
+  const [arena, setArena] = useState<ArenaId>("sektor");
+  const [doneMissions, setDoneMissions] = useState<string[]>([]);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (screen === "menu" || screen === "end") setDoneMissions(loadCampaign());
+  }, [screen]);
   const [hud, setHud] = useState({
     hp: 100, ammo: 24, reloading: false, weapon: "DORN",
-    scores: "", feed: [] as string[], kills: 0,
+    scores: "", feed: [] as string[], kills: 0, objective: "",
   });
   const apiRef = useRef<{ dispose: () => void } | null>(null);
   const feedRef = useRef<string[]>([]);
 
   useEffect(() => () => apiRef.current?.dispose(), []);
 
-  const start = (mode: VsMode) => {
+  const start = (kind: GameKind) => {
+    setFailed(false);
     setScreen("game");
     // Engine startet im nächsten Frame, sobald das DIV gemountet ist
-    requestAnimationFrame(() => initEngine(mode));
+    requestAnimationFrame(() => initEngine(kind, arena));
   };
 
-  const initEngine = (mode: VsMode) => {
+  const initEngine = (mode: GameKind, arenaId: ArenaId) => {
+    const mission = MISSIONS.find((m) => m.id === mode) ?? null;
     const mount = mountRef.current;
     if (!mount) return;
 
@@ -171,24 +199,46 @@ export function RealGame() {
     addWall(0, 2, ARENA, ARENA * 2, 4, 1, false);
     addWall(-ARENA, 2, 0, 1, 4, ARENA * 2, false);
     addWall(ARENA, 2, 0, 1, 4, ARENA * 2, false);
-    // Deckungen & sprengbare Strukturen
-    const structs: [number, number, number, number, number, number, boolean][] = [
-      [0, 1.5, 0, 6, 3, 4, true],      // Zentralblock
-      [-14, 1.5, -10, 8, 3, 1.2, true],
-      [14, 1.5, 10, 8, 3, 1.2, true],
-      [-14, 1.5, 12, 1.2, 3, 8, true],
-      [14, 1.5, -12, 1.2, 3, 8, true],
-      [-30, 2, 0, 2, 4, 10, false],
-      [30, 2, 0, 2, 4, 10, false],
-      [0, 2, -26, 10, 4, 2, false],
-      [0, 2, 26, 10, 4, 2, false],
-      [-8, 1, 8, 2, 2, 2, true],
-      [8, 1, -8, 2, 2, 2, true],
-      [-24, 1, -24, 3, 2, 3, true],
-      [24, 1, 24, 3, 2, 3, true],
-      [24, 1, -24, 3, 2, 3, true],
-      [-24, 1, 24, 3, 2, 3, true],
-    ];
+    // Deckungen & sprengbare Strukturen (pro Arena)
+    const structs: [number, number, number, number, number, number, boolean][] =
+      arenaId === "sektor"
+        ? [
+            [0, 1.5, 0, 6, 3, 4, true],      // Zentralblock
+            [-14, 1.5, -10, 8, 3, 1.2, true],
+            [14, 1.5, 10, 8, 3, 1.2, true],
+            [-14, 1.5, 12, 1.2, 3, 8, true],
+            [14, 1.5, -12, 1.2, 3, 8, true],
+            [-30, 2, 0, 2, 4, 10, false],
+            [30, 2, 0, 2, 4, 10, false],
+            [0, 2, -26, 10, 4, 2, false],
+            [0, 2, 26, 10, 4, 2, false],
+            [-8, 1, 8, 2, 2, 2, true],
+            [8, 1, -8, 2, 2, 2, true],
+            [-24, 1, -24, 3, 2, 3, true],
+            [24, 1, 24, 3, 2, 3, true],
+            [24, 1, -24, 3, 2, 3, true],
+            [-24, 1, 24, 3, 2, 3, true],
+          ]
+        : [
+            // Biomass-Garten: Säulenring + zentrale Kuppel
+            [0, 1.5, 0, 4, 3, 4, true],
+            [-10, 1, -10, 2, 2, 2, true],
+            [10, 1, -10, 2, 2, 2, true],
+            [-10, 1, 10, 2, 2, 2, true],
+            [10, 1, 10, 2, 2, 2, true],
+            [-20, 1.5, 0, 1.5, 3, 6, true],
+            [20, 1.5, 0, 1.5, 3, 6, true],
+            [0, 1.5, -20, 6, 3, 1.5, true],
+            [0, 1.5, 20, 6, 3, 1.5, true],
+            [-16, 1, 0, 2, 2, 2, true],
+            [16, 1, 0, 2, 2, 2, true],
+            [0, 1, -14, 2, 2, 2, true],
+            [0, 1, 14, 2, 2, 2, true],
+            [-30, 2, 0, 2, 4, 10, false],
+            [30, 2, 0, 2, 4, 10, false],
+            [0, 2, -26, 10, 4, 2, false],
+            [0, 2, 26, 10, 4, 2, false],
+          ];
     for (const [x, y, z, w, h, d, des] of structs) addWall(x, y, z, w, h, d, des);
 
     /* ---------- Partikel / Tracer Pools ---------- */
@@ -259,7 +309,8 @@ export function RealGame() {
         kills: 0, strafeDir: 1, strafeT: 0, color,
       });
     };
-    for (let i = 0; i < 5; i++) makeBot(i, i % 2 === 0 ? 1 : 0);
+    const botCount = mission ? mission.botCount : 5;
+    for (let i = 0; i < botCount; i++) makeBot(i, mission ? 1 : i % 2 === 0 ? 1 : 0);
 
     /* ---------- Spieler-State ---------- */
     const player = {
@@ -274,6 +325,21 @@ export function RealGame() {
     const ffaScore = Array(6).fill(0);
     let gameTime = 0;
     let ended = false;
+    let missionKills = 0;
+    let missionDestroyed = 0;
+    const finishMission = (win: boolean) => {
+      ended = true;
+      setFailed(!win);
+      if (win && mission) {
+        try {
+          const done = loadCampaign();
+          if (!done.includes(mission.id)) done.push(mission.id);
+          localStorage.setItem(CAMP_KEY, JSON.stringify(done));
+        } catch { /* ignore */ }
+      }
+      setWinner(win ? `MISSION ${mission ? mission.id.toUpperCase() : ""} ERFÜLLT` : "MISSION GESCHEITERT");
+      setScreen("end");
+    };
 
     const pushFeed = (t: string) => {
       feedRef.current.push(t);
@@ -291,7 +357,7 @@ export function RealGame() {
         b.group.visible = false;
       }
       if (killerId > 0) bots.find((x) => x.id === killerId)!.kills++;
-      if (killerId === 0) player.kills++;
+      if (killerId === 0) { player.kills++; missionKills++; }
       if (mode === "ffa") ffaScore[killerId]++;
       else teamScore[killerId === 0 ? 0 : bots.find((x) => x.id === killerId)!.team]++;
       pushFeed(`${kName} ⚡ ${vName}`);
@@ -382,6 +448,7 @@ export function RealGame() {
                 sBoom();
                 burst(wall.mesh.position.clone(), 0x22ff55, 30);
                 pushFeed("💥 BRESCHE GESPRENGT!");
+                missionDestroyed++;
               }
             } else {
               burst(h.point, 0x88ffaa, 4);
@@ -543,13 +610,20 @@ export function RealGame() {
 
       // Siegbedingung
       if (!ended) {
-        const limit = mode === "ffa" ? 8 : 10;
-        if (mode === "ffa") {
-          const best = ffaScore.indexOf(Math.max(...ffaScore));
-          if (ffaScore[best] >= limit) { ended = true; setWinner(best === 0 ? "DU" : BOT_NAMES[best - 1]); setScreen("end"); }
+        if (mission) {
+          if (mission.type === "kills" && missionKills >= mission.target) finishMission(true);
+          else if (mission.type === "destroy" && missionDestroyed >= mission.target) finishMission(true);
+          else if (mission.type === "survive" && gameTime >= mission.target) finishMission(true);
+          else if (mission.timeLimit && gameTime >= mission.timeLimit) finishMission(false);
         } else {
-          if (teamScore[0] >= limit) { ended = true; setWinner("TEAM GRÜN"); setScreen("end"); }
-          if (teamScore[1] >= limit) { ended = true; setWinner("TEAM ROT"); setScreen("end"); }
+          const limit = mode === "ffa" ? 8 : 10;
+          if (mode === "ffa") {
+            const best = ffaScore.indexOf(Math.max(...ffaScore));
+            if (ffaScore[best] >= limit) { ended = true; setWinner(best === 0 ? "DU" : BOT_NAMES[best - 1]); setScreen("end"); }
+          } else {
+            if (teamScore[0] >= limit) { ended = true; setWinner("TEAM GRÜN"); setScreen("end"); }
+            if (teamScore[1] >= limit) { ended = true; setWinner("TEAM ROT"); setScreen("end"); }
+          }
         }
       }
 
@@ -567,6 +641,13 @@ export function RealGame() {
             : `GRÜN ${teamScore[0]} : ${teamScore[1]} ROT`,
           feed: [...feedRef.current],
           kills: player.kills,
+          objective: mission
+            ? mission.type === "kills"
+              ? `${mission.title} · Kills ${missionKills}/${mission.target}`
+              : mission.type === "destroy"
+                ? `${mission.title} · Strukturen ${missionDestroyed}/${mission.target} · ⏱ ${Math.max(0, (mission.timeLimit ?? 0) - gameTime).toFixed(0)} s`
+                : `${mission.title} · Halte durch · ⏱ ${Math.max(0, mission.target - gameTime).toFixed(0)} s`
+            : "",
         });
       }
 
@@ -607,11 +688,20 @@ export function RealGame() {
           </p>
           <h1 className="text-4xl md:text-5xl font-bold mb-3">
             {screen === "end" ? (
-              <>Sieg: <span className="text-primary glow-neon">{winner}</span></>
+              failed ? (
+                <><span className="text-destructive">✖</span> <span className="text-destructive glow-neon-sm">{winner}</span></>
+              ) : (
+                <>Sieg: <span className="text-primary glow-neon">{winner}</span></>
+              )
             ) : (
               <>Das <span className="text-primary glow-neon">echte Game</span> startet hier</>
             )}
           </h1>
+          {screen === "end" && !failed && winner.startsWith("MISSION") && (
+            <p className="font-mono text-xs text-accent tracking-wider uppercase mb-4">
+              // Nächste Mission im Kampagnen-Block freigeschaltet
+            </p>
+          )}
           <p className="text-muted-foreground mb-8 leading-relaxed">
             Three.js-Engine: echte 3D-Physik, Hitscan-Gunplay mit Tracern &amp; Partikeln,
             <span className="text-primary"> persistente 3D-Destruction</span> (BRECHER-7 reißt Löcher in die Arena),
@@ -620,6 +710,29 @@ export function RealGame() {
             <span className="font-mono text-foreground">Shift</span> Sprint, <span className="font-mono text-foreground">Q/1/2</span> Waffen,{" "}
             <span className="font-mono text-foreground">R</span> laden.
           </p>
+          {/* Arena-Wahl */}
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            {(
+              [
+                ["sektor", "Sektor 7", "Barrikaden & Zentralblock"],
+                ["garten", "Biomass-Garten", "Säulenring & Kuppel"],
+              ] as [ArenaId, string, string][]
+            ).map(([id, name, sub]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setArena(id)}
+                aria-pressed={arena === id}
+                className={`text-left rounded-sm border p-3 transition-all min-h-[44px] ${
+                  arena === id ? "border-primary/70 bg-primary/10 box-glow-neon" : "border-border bg-card hover:border-primary/30"
+                }`}
+              >
+                <p className={`font-bold text-sm ${arena === id ? "text-primary glow-neon-sm" : "text-foreground"}`}>{name}</p>
+                <p className="font-mono text-[10px] text-muted-foreground">{sub}</p>
+              </button>
+            ))}
+          </div>
+
           <div className="grid sm:grid-cols-2 gap-3 mb-8">
             <button
               type="button"
@@ -638,6 +751,37 @@ export function RealGame() {
               <p className="font-mono text-[11px] text-muted-foreground">6 Kämpfer – 8 Kills.</p>
             </button>
           </div>
+
+          {/* Kampagne */}
+          <p className="font-mono text-xs tracking-[0.3em] uppercase text-primary glow-neon-sm mb-3">
+            Kampagne // Biomass-Protokoll
+          </p>
+          <div className="grid sm:grid-cols-2 gap-3 mb-8">
+            {MISSIONS.map((m, i) => {
+              const done = doneMissions.includes(m.id);
+              const unlocked = i === 0 || doneMissions.includes(MISSIONS[i - 1].id);
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  disabled={!unlocked}
+                  onClick={() => start(m.id)}
+                  className={`text-left rounded-sm border p-4 transition-all min-h-[44px] ${
+                    !unlocked
+                      ? "border-border/50 bg-card/40 opacity-40 cursor-not-allowed"
+                      : done
+                        ? "border-accent/50 bg-accent/5 hover:bg-accent/10"
+                        : "border-primary/50 bg-primary/10 hover:bg-primary/20 box-glow-neon"
+                  }`}
+                >
+                  <p className={`font-bold mb-1 ${done ? "text-accent" : unlocked ? "text-primary glow-neon-sm" : "text-muted-foreground"}`}>
+                    {done ? "✅ " : unlocked ? "" : "🔒 "}{m.title}
+                  </p>
+                  <p className="font-mono text-[11px] text-muted-foreground leading-relaxed">{m.briefing}</p>
+                </button>
+              );
+            })}
+          </div>
           <a href="/" className="font-mono text-xs tracking-wider uppercase text-muted-foreground hover:text-primary transition-colors">
             ← Zurück zum GDD
           </a>
@@ -649,8 +793,9 @@ export function RealGame() {
   return (
     <div className="relative h-screen w-full bg-black overflow-hidden select-none">
       <div ref={mountRef} className="w-full h-full" />
-      <div className="absolute top-3 left-1/2 -translate-x-1/2 text-center pointer-events-none">
+      <div className="absolute top-3 left-1/2 -translate-x-1/2 text-center pointer-events-none max-w-[80%]">
         <p className="font-mono text-sm text-primary glow-neon-sm tracking-wider">{hud.scores}</p>
+        {hud.objective && <p className="font-mono text-[10px] text-foreground/90 tracking-wider mt-1">{hud.objective}</p>}
       </div>
       <div className="absolute top-12 left-3 pointer-events-none space-y-1">
         {hud.feed.map((f, i) => (
