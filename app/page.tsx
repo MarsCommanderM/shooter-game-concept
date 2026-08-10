@@ -8,6 +8,9 @@ import { MultiplayerSection } from "@/components/multiplayer-section";
 import { ArsenalSection } from "@/components/arsenal-section";
 import { MapsSection } from "@/components/maps-section";
 import { EvolutionSection } from "@/components/evolution-section";
+import { HudSection } from "@/components/hud-section";
+import { SoundSection } from "@/components/sound-section";
+import { LiveOpsSection } from "@/components/liveops-section";
 import { RoadmapSection } from "@/components/roadmap-section";
 import { SiteFooter } from "@/components/site-footer";
 
@@ -25,6 +28,9 @@ export default function Page() {
         <ArsenalSection />
         <MapsSection />
         <EvolutionSection />
+        <HudSection />
+        <SoundSection />
+        <LiveOpsSection />
         <RoadmapSection />
       </main>
       <SiteFooter />

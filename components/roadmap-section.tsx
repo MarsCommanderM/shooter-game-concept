@@ -120,7 +120,7 @@ export function RoadmapSection() {
           }`}
         >
           <span className="font-mono text-xs tracking-[0.3em] uppercase text-primary glow-neon-sm">
-            09 // Roadmap
+            12 // Roadmap
           </span>
           <div className="flex-1 h-px bg-gradient-to-r from-primary/40 to-transparent" />
         </div>

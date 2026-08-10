@@ -9,8 +9,11 @@ const navLinks = [
   { label: "Charakter", href: "#character" },
   { label: "Multiplayer", href: "#multiplayer" },
   { label: "Arsenal", href: "#arsenal" },
-  { label: "Evolution", href: "#evolution" },
+  { label: "Evo", href: "#evolution" },
   { label: "Karten", href: "#maps" },
+  { label: "HUD", href: "#hud" },
+  { label: "Sound", href: "#sound" },
+  { label: "Live-Ops", href: "#liveops" },
   { label: "Roadmap", href: "#roadmap" },
 ];
 
@@ -44,12 +47,12 @@ export function SiteNav() {
         </a>
 
         {/* Desktop Nav */}
-        <div className="hidden lg:flex items-center gap-5">
+        <div className="hidden lg:flex items-center gap-4">
           {navLinks.map((link) => (
             <a
               key={link.href}
               href={link.href}
-              className="font-mono text-xs tracking-wider uppercase text-muted-foreground hover:text-primary transition-colors min-h-[44px] flex items-center"
+              className="font-mono text-[11px] tracking-wider uppercase text-muted-foreground hover:text-primary transition-colors min-h-[44px] flex items-center"
             >
               {link.label}
             </a>
