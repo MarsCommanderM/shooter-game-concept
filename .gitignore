@@ -11,3 +11,8 @@ node_modules/
 .env*.local
 .DS_Store
 .vercel
+
+# Build-Artefakte
+package-lock.json
+tsconfig.tsbuildinfo
+next-env.d.ts

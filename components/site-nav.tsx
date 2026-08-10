@@ -7,6 +7,7 @@ const navLinks = [
   { label: "Setting", href: "#setting" },
   { label: "Mechanik", href: "#mechanics" },
   { label: "Charakter", href: "#character" },
+  { label: "Multiplayer", href: "#multiplayer" },
 ];
 
 export function SiteNav() {

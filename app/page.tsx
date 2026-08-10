@@ -4,6 +4,7 @@ import { USPSection } from "@/components/usp-section";
 import { SettingSection } from "@/components/setting-section";
 import { MechanicsSection } from "@/components/mechanics-section";
 import { CharacterSection } from "@/components/character-section";
+import { MultiplayerSection } from "@/components/multiplayer-section";
 import { SiteFooter } from "@/components/site-footer";
 
 export default function Page() {
@@ -16,6 +17,7 @@ export default function Page() {
         <SettingSection />
         <MechanicsSection />
         <CharacterSection />
+        <MultiplayerSection />
       </main>
       <SiteFooter />
     </>
