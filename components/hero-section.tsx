@@ -79,18 +79,27 @@ export function HeroSection() {
           </span>
         </p>
 
-        {/* USP Badge */}
+        {/* CTA + USP Badge */}
         <div
-          className={`inline-flex items-center gap-3 border border-primary/30 bg-card/50 backdrop-blur-sm px-6 py-3 rounded-sm box-glow-neon transition-all duration-1000 delay-700 ${
+          className={`flex flex-col sm:flex-row items-center justify-center gap-4 transition-all duration-1000 delay-700 ${
             isVisible
               ? "opacity-100 translate-y-0"
               : "opacity-0 translate-y-6"
           }`}
         >
-          <span className="w-2 h-2 rounded-full bg-primary animate-pulse-neon" />
-          <span className="font-mono text-xs sm:text-sm tracking-wider uppercase text-primary">
-            Dynamic Destructibility
-          </span>
+          <a
+            href="/play"
+            className="inline-flex items-center gap-3 bg-primary text-primary-foreground font-mono text-sm tracking-widest uppercase font-bold px-8 py-4 rounded-sm hover:bg-primary/90 transition-colors box-glow-neon min-h-[44px]"
+          >
+            Jetzt Spielen
+            <span aria-hidden="true">&rarr;</span>
+          </a>
+          <div className="inline-flex items-center gap-3 border border-primary/30 bg-card/50 backdrop-blur-sm px-6 py-3 rounded-sm min-h-[44px]">
+            <span className="w-2 h-2 rounded-full bg-primary animate-pulse-neon" />
+            <span className="font-mono text-xs sm:text-sm tracking-wider uppercase text-primary">
+              Dynamic Destructibility
+            </span>
+          </div>
         </div>
 
         {/* Scroll indicator */}

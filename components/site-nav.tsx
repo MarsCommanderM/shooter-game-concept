@@ -7,16 +7,39 @@ const navLinks = [
   { label: "Setting", href: "#setting" },
   { label: "Mechanik", href: "#mechanics" },
   { label: "Charakter", href: "#character" },
+  { label: "Arsenal", href: "#arsenal" },
+  { label: "Gegner", href: "#enemies" },
 ];
 
 export function SiteNav() {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState("");
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 50);
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
+    const sections = navLinks
+      .map((link) => document.querySelector(link.href))
+      .filter((el): el is Element => el !== null);
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setActiveSection(`#${entry.target.id}`);
+          }
+        }
+      },
+      { rootMargin: "-40% 0px -55% 0px" }
+    );
+
+    for (const section of sections) observer.observe(section);
+    return () => observer.disconnect();
   }, []);
 
   return (
@@ -44,11 +67,21 @@ export function SiteNav() {
             <a
               key={link.href}
               href={link.href}
-              className="font-mono text-xs tracking-wider uppercase text-muted-foreground hover:text-primary transition-colors min-h-[44px] flex items-center"
+              className={`font-mono text-xs tracking-wider uppercase transition-colors min-h-[44px] flex items-center ${
+                activeSection === link.href
+                  ? "text-primary glow-neon-sm"
+                  : "text-muted-foreground hover:text-primary"
+              }`}
             >
               {link.label}
             </a>
           ))}
+          <a
+            href="/play"
+            className="font-mono text-xs tracking-widest uppercase font-bold bg-primary text-primary-foreground px-4 py-2 rounded-sm hover:bg-primary/90 transition-colors"
+          >
+            Spielen
+          </a>
         </div>
 
         {/* Mobile Menu Button */}
@@ -56,7 +89,7 @@ export function SiteNav() {
           type="button"
           onClick={() => setMenuOpen(!menuOpen)}
           className="md:hidden flex flex-col gap-1.5 p-2 min-w-[44px] min-h-[44px] items-center justify-center"
-          aria-label="Men\u00fc \u00f6ffnen"
+          aria-label="Menü öffnen"
         >
           <span
             className={`w-5 h-0.5 bg-foreground transition-transform ${
@@ -85,11 +118,22 @@ export function SiteNav() {
                 key={link.href}
                 href={link.href}
                 onClick={() => setMenuOpen(false)}
-                className="font-mono text-sm tracking-wider uppercase text-muted-foreground hover:text-primary transition-colors py-3 min-h-[44px] flex items-center"
+                className={`font-mono text-sm tracking-wider uppercase transition-colors py-3 min-h-[44px] flex items-center ${
+                  activeSection === link.href
+                    ? "text-primary"
+                    : "text-muted-foreground hover:text-primary"
+                }`}
               >
                 {link.label}
               </a>
             ))}
+            <a
+              href="/play"
+              onClick={() => setMenuOpen(false)}
+              className="font-mono text-sm tracking-widest uppercase font-bold bg-primary text-primary-foreground px-4 py-3 rounded-sm text-center mt-2 min-h-[44px] flex items-center justify-center"
+            >
+              Jetzt Spielen
+            </a>
           </div>
         </div>
       )}
