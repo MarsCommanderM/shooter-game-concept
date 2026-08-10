@@ -72,6 +72,12 @@ export function SiteNav() {
         >
           🎮 3D-Game
         </a>
+        <a
+          href="/online"
+          className="hidden lg:inline-flex items-center gap-2 font-mono text-[11px] tracking-wider uppercase text-primary border border-primary/60 rounded-sm px-3 py-2 hover:bg-primary/10 transition-colors min-h-[36px]"
+        >
+          📡 Online
+        </a>
 
         {/* Mobile Menu Button */}
         <button

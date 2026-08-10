@@ -8,6 +8,13 @@ import * as THREE from "three";
 /* Phase 1: Destruction + Gunfeel + Bots in einer Arena                */
 /* ================================================================== */
 
+type PerkId = "sprint" | "panzer" | "sprung";
+const PERKS: { id: PerkId; name: string; desc: string }[] = [
+  { id: "sprint", name: "Myzel-Sprint", desc: "+20 % Sprint-Tempo" },
+  { id: "panzer", name: "Chitin-Panzer", desc: "-30 % erlittener Schaden" },
+  { id: "sprung", name: "Mantis-Sprung", desc: "Doppelsprung" },
+];
+
 type VsMode = "tdm" | "ffa";
 type GameKind = VsMode | "m1" | "m2" | "m3" | "m4";
 type ArenaId = "sektor" | "garten";
@@ -34,6 +41,8 @@ interface WallBox {
   mesh: THREE.Mesh;
   hw: number;
   hd: number;
+  hh: number;
+  top: number;
   hp: number;
   maxHp: number;
   destructible: boolean;
@@ -114,6 +123,7 @@ export function RealGame() {
   const [screen, setScreen] = useState<"menu" | "game" | "end">("menu");
   const [winner, setWinner] = useState("");
   const [arena, setArena] = useState<ArenaId>("sektor");
+  const [perk, setPerk] = useState<PerkId>("sprint");
   const [doneMissions, setDoneMissions] = useState<string[]>([]);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -121,7 +131,7 @@ export function RealGame() {
   }, [screen]);
   const [hud, setHud] = useState({
     hp: 100, ammo: 24, reloading: false, weapon: "DORN",
-    scores: "", feed: [] as string[], kills: 0, objective: "",
+    scores: "", feed: [] as string[], kills: 0, objective: "", tactics: false,
   });
   const apiRef = useRef<{ dispose: () => void } | null>(null);
   const feedRef = useRef<string[]>([]);
@@ -132,10 +142,10 @@ export function RealGame() {
     setFailed(false);
     setScreen("game");
     // Engine startet im nächsten Frame, sobald das DIV gemountet ist
-    requestAnimationFrame(() => initEngine(kind, arena));
+    requestAnimationFrame(() => initEngine(kind, arena, perk));
   };
 
-  const initEngine = (mode: GameKind, arenaId: ArenaId) => {
+  const initEngine = (mode: GameKind, arenaId: ArenaId, perk: PerkId) => {
     const mission = MISSIONS.find((m) => m.id === mode) ?? null;
     const mount = mountRef.current;
     if (!mount) return;
@@ -192,7 +202,7 @@ export function RealGame() {
       const mesh = new THREE.Mesh(getGeo(w, h, d), mat);
       mesh.position.set(x, y, z);
       scene.add(mesh);
-      walls.push({ mesh, hw: w / 2, hd: d / 2, hp, maxHp: hp, destructible, active: true });
+      walls.push({ mesh, hw: w / 2, hd: d / 2, hh: h / 2, top: y + h / 2, hp, maxHp: hp, destructible, active: true });
     };
     // Außenwände (massiv)
     addWall(0, 2, -ARENA, ARENA * 2, 4, 1, false);
@@ -269,18 +279,30 @@ export function RealGame() {
     };
 
     /* ---------- Kollision ---------- */
-    const collides = (x: number, z: number, r: number) => {
+    const collides = (x: number, z: number, r: number, y: number) => {
       for (const w of walls) {
         if (!w.active) continue;
+        if (w.top <= y + 0.5) continue; // drüber -> keine horizontale Blockade
         const p = w.mesh.position;
         const hw = w.hw + r, hd = w.hd + r;
         if (x > p.x - hw && x < p.x + hw && z > p.z - hd && z < p.z + hd) return true;
       }
       return false;
     };
-    const moveWithCollide = (pos: { x: number; z: number }, dx: number, dz: number, r: number) => {
-      if (!collides(pos.x + dx, pos.z, r)) pos.x += dx;
-      if (!collides(pos.x, pos.z + dz, r)) pos.z += dz;
+    const moveWithCollide = (pos: { x: number; z: number }, dx: number, dz: number, r: number, y: number) => {
+      if (!collides(pos.x + dx, pos.z, r, y)) pos.x += dx;
+      if (!collides(pos.x, pos.z + dz, r, y)) pos.z += dz;
+    };
+    const getSupport = (x: number, z: number, fromY: number) => {
+      let g = 0;
+      for (const w of walls) {
+        if (!w.active) continue;
+        const p = w.mesh.position;
+        if (x > p.x - w.hw - 0.4 && x < p.x + w.hw + 0.4 && z > p.z - w.hd - 0.4 && z < p.z + w.hd + 0.4) {
+          if (w.top <= fromY + 0.001 && w.top > g) g = w.top;
+        }
+      }
+      return g;
     };
 
     /* ---------- Bots ---------- */
@@ -312,12 +334,42 @@ export function RealGame() {
     const botCount = mission ? mission.botCount : 5;
     for (let i = 0; i < botCount; i++) makeBot(i, mission ? 1 : i % 2 === 0 ? 1 : 0);
 
+    /* ---------- KI-Kameraden ---------- */
+    interface AllyEnt {
+      id: number; name: string; group: THREE.Group; body: THREE.Mesh;
+      hp: number; alive: boolean; respawnAt: number; cd: number; kills: number;
+      wp: { x: number; z: number; cmd: "hold" | "attack" } | null;
+    }
+    const allies: AllyEnt[] = [];
+    const ALLY_HEX = [0x33ccff, 0x66ffcc];
+    const ALLY_NAMES = ["VEGA", "JUNO"];
+    for (let i = 0; i < 2; i++) {
+      const group = new THREE.Group();
+      const color = new THREE.Color(ALLY_HEX[i]);
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(0.7, 1.5, 0.4),
+        new THREE.MeshStandardMaterial({ color, roughness: 0.6, emissive: color.clone().multiplyScalar(0.3) })
+      );
+      body.position.y = 0.75;
+      const head = new THREE.Mesh(
+        new THREE.BoxGeometry(0.4, 0.4, 0.4),
+        new THREE.MeshStandardMaterial({ color: 0x111111, emissive: color.clone().multiplyScalar(0.6) })
+      );
+      head.position.y = 1.75;
+      group.add(body, head);
+      group.position.set(SPAWNS[0][0] + (i === 0 ? 1.5 : -1.5), 0, SPAWNS[0][1] + 1.5);
+      scene.add(group);
+      allies.push({ id: 101 + i, name: ALLY_NAMES[i], group, body, hp: 100, alive: true, respawnAt: 0, cd: 1, kills: 0, wp: null });
+    }
+    let tactics = false;
+
     /* ---------- Spieler-State ---------- */
     const player = {
       x: SPAWNS[0][0], z: SPAWNS[0][1], y: 0, vy: 0,
       hp: 100, ammo: 24, reloading: 0, fireCd: 0,
       weapon: "dorn" as "dorn" | "brecher",
       kills: 0, deaths: 0, respawnAt: 0,
+      jumps: 0, jumpHeld: false,
     };
     yaw.position.set(player.x, 1.7, player.z);
 
@@ -346,21 +398,27 @@ export function RealGame() {
       if (feedRef.current.length > 5) feedRef.current.shift();
     };
 
+    const nameOf = (id: number) =>
+      id === 0 ? "DU" : id >= 100 ? ALLY_NAMES[id - 101] ?? "?" : BOT_NAMES[id - 1] ?? "?";
     const kill = (killerId: number, victimId: number) => {
-      const kName = killerId === 0 ? "DU" : BOT_NAMES[killerId - 1] ?? "?";
-      const vName = victimId === 0 ? "DU" : BOT_NAMES[victimId - 1] ?? "?";
       if (victimId === 0) { player.hp = 0; player.deaths++; player.respawnAt = gameTime + 3; }
-      else {
+      else if (victimId >= 100) {
+        const a = allies.find((x) => x.id === victimId)!;
+        a.hp = 0; a.alive = false; a.respawnAt = gameTime + 5;
+        burst(a.group.position.clone().add(new THREE.Vector3(0, 1, 0)), 0x33ccff, 14);
+        a.group.visible = false;
+      } else {
         const b = bots.find((x) => x.id === victimId)!;
         b.hp = 0; b.alive = false; b.respawnAt = gameTime + 3;
         burst(b.group.position.clone().add(new THREE.Vector3(0, 1, 0)), b.color.getHex(), 18);
         b.group.visible = false;
       }
-      if (killerId > 0) bots.find((x) => x.id === killerId)!.kills++;
+      if (killerId >= 100) allies.find((x) => x.id === killerId)!.kills++;
+      else if (killerId > 0) bots.find((x) => x.id === killerId)!.kills++;
       if (killerId === 0) { player.kills++; missionKills++; }
-      if (mode === "ffa") ffaScore[killerId]++;
-      else teamScore[killerId === 0 ? 0 : bots.find((x) => x.id === killerId)!.team]++;
-      pushFeed(`${kName} ⚡ ${vName}`);
+      if (mode === "ffa") { if (killerId < 6) ffaScore[killerId]++; }
+      else teamScore[killerId === 0 || killerId >= 100 ? 0 : bots.find((x) => x.id === killerId)!.team]++;
+      pushFeed(`${nameOf(killerId)} ⚡ ${nameOf(victimId)}`);
     };
 
     /* ---------- Input ---------- */
@@ -370,13 +428,40 @@ export function RealGame() {
     const el = renderer.domElement;
     const kd = (e: KeyboardEvent) => {
       keys[e.code] = true;
+      if (e.code === "KeyT") {
+        tactics = !tactics;
+        pushFeed(tactics ? "🧠 TAKTIK // Zeit eingefroren" : "Taktik beendet – Zeit läuft");
+        return;
+      }
+      if (tactics) {
+        if (e.code === "Digit1") { allies.forEach((a) => { a.wp = null; }); pushFeed("Befehl: FOLGEN"); }
+        if (e.code === "Digit2") { allies.forEach((a) => { a.wp = { x: a.group.position.x, z: a.group.position.z, cmd: "hold" }; }); pushFeed("Befehl: STELLUNG HALTEN"); }
+        if (e.code === "Digit3") { allies.forEach((a) => { a.wp = a.wp ? { ...a.wp, cmd: "attack" } : { x: a.group.position.x, z: a.group.position.z, cmd: "hold" }; }); pushFeed("Befehl: WAYPOINT ANGREIFEN"); }
+        return;
+      }
       if (e.code === "KeyQ" || e.code === "Digit1" || e.code === "Digit2") {
         player.weapon = e.code === "KeyQ" ? (player.weapon === "dorn" ? "brecher" : "dorn") : e.code === "Digit1" ? "dorn" : "brecher";
         player.ammo = 24; player.reloading = 0;
       }
     };
     const ku = (e: KeyboardEvent) => { keys[e.code] = false; };
-    const md = () => { mouseDown = true; try { el.requestPointerLock(); } catch { /* */ } };
+    const md = (e: MouseEvent) => {
+      if (tactics) {
+        const r = el.getBoundingClientRect();
+        const nx = ((e.clientX - r.left) / r.width) * 2 - 1;
+        const ny = -((e.clientY - r.top) / r.height) * 2 + 1;
+        raycaster.setFromCamera(new THREE.Vector2(nx, ny), camera);
+        const t = new THREE.Vector3();
+        if (raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), t)) {
+          const cmd = allies[0]?.wp?.cmd === "hold" ? "hold" : "attack";
+          allies.forEach((a) => { a.wp = { x: t.x, z: t.z, cmd }; });
+          pushFeed("📍 Waypoint gesetzt");
+        }
+        return;
+      }
+      mouseDown = true;
+      try { el.requestPointerLock(); } catch { /* */ }
+    };
     const mu = () => { mouseDown = false; };
     const mm = (e: MouseEvent) => {
       if (document.pointerLockElement === el) {
@@ -408,6 +493,7 @@ export function RealGame() {
     /* ---------- Schießen ---------- */
     const raycaster = new THREE.Raycaster();
     const shoot = () => {
+      if (tactics) return;
       const rate = player.weapon === "brecher" ? 0.9 : 0.18;
       if (player.fireCd > 0 || player.reloading > 0 || player.ammo <= 0) return;
       player.fireCd = rate;
@@ -490,6 +576,13 @@ export function RealGame() {
       if (dP < 30 && enemy(0) && player.hp > 0 && losClear(bp, new THREE.Vector3(player.x, 0, player.z))) {
         target = { x: player.x, z: player.z, id: 0, dist: dP };
       }
+      for (const a of allies) {
+        if (!a.alive) continue;
+        const d = Math.hypot(a.group.position.x - bp.x, a.group.position.z - bp.z);
+        if (d < 30 && (!target || d < target.dist) && losClear(bp, a.group.position)) {
+          target = { x: a.group.position.x, z: a.group.position.z, id: a.id, dist: d };
+        }
+      }
       for (const o of bots) {
         if (o.id === b.id || !o.alive || !enemy(o.team)) continue;
         const d = Math.hypot(o.group.position.x - bp.x, o.group.position.z - bp.z);
@@ -519,9 +612,9 @@ export function RealGame() {
       b.strafeT -= dt;
       if (b.strafeT <= 0) { b.strafeT = 0.7 + Math.random(); b.strafeDir = Math.random() < 0.5 ? -1 : 1; }
       const p2 = { x: bp.x, z: bp.z };
-      if (!target && dist > 1) moveWithCollide(p2, (dx / dist) * 4.5 * dt, (dz / dist) * 4.5 * dt, 0.5);
-      else if (target && target.dist > 8) moveWithCollide(p2, (dx / dist) * 4 * dt, (dz / dist) * 4 * dt, 0.5);
-      if (target) moveWithCollide(p2, (-dz / dist) * b.strafeDir * 2.2 * dt, (dx / dist) * b.strafeDir * 2.2 * dt, 0.5);
+      if (!target && dist > 1) moveWithCollide(p2, (dx / dist) * 4.5 * dt, (dz / dist) * 4.5 * dt, 0.5, 0);
+      else if (target && target.dist > 8) moveWithCollide(p2, (dx / dist) * 4 * dt, (dz / dist) * 4 * dt, 0.5, 0);
+      if (target) moveWithCollide(p2, (-dz / dist) * b.strafeDir * 2.2 * dt, (dx / dist) * b.strafeDir * 2.2 * dt, 0.5, 0);
       b.group.position.x = p2.x;
       b.group.position.z = p2.z;
       b.group.rotation.y = Math.atan2(dx, dz);
@@ -534,15 +627,73 @@ export function RealGame() {
         const to = new THREE.Vector3(target.x, 1.4, target.z);
         tracer(from, to, b.color.getHex());
         sShot("dorn");
-        const dmg = 7 + Math.random() * 9;
+        const dmg = (7 + Math.random() * 9) * (perk === "panzer" ? 0.7 : 1);
         if (target.id === 0) {
           player.hp -= dmg;
           if (player.hp <= 0) kill(b.id, 0);
+        } else if (target.id >= 100) {
+          const a = allies.find((x) => x.id === target!.id)!;
+          a.hp -= dmg;
+          if (a.hp <= 0) kill(b.id, a.id);
         } else {
           const v = bots.find((x) => x.id === target!.id)!;
           v.hp -= dmg;
           if (v.hp <= 0) kill(b.id, v.id);
         }
+      }
+    };
+
+    /* ---------- Kameraden-KI ---------- */
+    const allyTick = (a: (typeof allies)[number], dt: number) => {
+      if (!a.alive) {
+        if (gameTime >= a.respawnAt) {
+          a.group.position.set(player.x + (a.id === 101 ? 1.5 : -1.5), 0, player.z + 1.5);
+          a.group.visible = true;
+          a.hp = 100; a.alive = true;
+          pushFeed(`${a.name} wieder einsatzbereit`);
+        }
+        return;
+      }
+      const bp = a.group.position;
+      // Ziel: nächster sichtbarer Bot
+      let target: { x: number; z: number; id: number; dist: number } | null = null;
+      for (const o of bots) {
+        if (!o.alive) continue;
+        const d = Math.hypot(o.group.position.x - bp.x, o.group.position.z - bp.z);
+        if (d < 28 && (!target || d < target.dist) && losClear(bp, o.group.position)) {
+          target = { x: o.group.position.x, z: o.group.position.z, id: o.id, dist: d };
+        }
+      }
+      // Bewegungsziel laut Befehl
+      let tx = player.x + (a.id === 101 ? 1.5 : -1.5);
+      let tz = player.z + 1.5;
+      if (a.wp) {
+        if (a.wp.cmd === "hold") { tx = a.wp.x; tz = a.wp.z; }
+        else {
+          tx = a.wp.x; tz = a.wp.z;
+          if (Math.hypot(tx - bp.x, tz - bp.z) < 1.2) a.wp = { x: a.wp.x, z: a.wp.z, cmd: "hold" };
+        }
+      }
+      const dx = tx - bp.x, dz = tz - bp.z;
+      const dist = Math.hypot(dx, dz) || 0.001;
+      const holdStill = a.wp?.cmd === "hold" && dist < 0.5;
+      if (!holdStill && dist > 1.1 && !(target && target.dist < 6)) {
+        const p2 = { x: bp.x, z: bp.z };
+        moveWithCollide(p2, (dx / dist) * 5.2 * dt, (dz / dist) * 5.2 * dt, 0.5, 0);
+        bp.x = p2.x; bp.z = p2.z;
+      }
+      if (target) a.group.rotation.y = Math.atan2(target.x - bp.x, target.z - bp.z);
+      else if (dist > 1.1) a.group.rotation.y = Math.atan2(dx, dz);
+      // Feuern
+      a.cd -= dt;
+      if (target && a.cd <= 0) {
+        a.cd = 0.5 + Math.random() * 0.4;
+        const from = bp.clone().add(new THREE.Vector3(0, 1.4, 0));
+        tracer(from, new THREE.Vector3(target.x, 1.4, target.z), 0x33ccff);
+        sShot("dorn");
+        const v = bots.find((x) => x.id === target!.id)!;
+        v.hp -= 12;
+        if (v.hp <= 0) kill(a.id, v.id);
       }
     };
 
@@ -564,7 +715,8 @@ export function RealGame() {
           player.hp = 100; player.x = SPAWNS[0][0]; player.z = SPAWNS[0][1]; player.ammo = 24;
         }
       } else {
-        const sprint = keys["ShiftLeft"] ? 1.5 : 1;
+        const sprintMul = perk === "sprint" ? 1.7 : 1.5;
+        const sprint = keys["ShiftLeft"] ? sprintMul : 1;
         const sp = 7 * dt * sprint;
         let fx = 0, fz = 0;
         const fy_ = yaw.rotation.y;
@@ -573,12 +725,31 @@ export function RealGame() {
         if (keys["KeyA"]) { fx -= Math.cos(fy_); fz += Math.sin(fy_); }
         if (keys["KeyD"]) { fx += Math.cos(fy_); fz -= Math.sin(fy_); }
         const l = Math.hypot(fx, fz);
-        if (l > 0.01) moveWithCollide(player, (fx / l) * sp, (fz / l) * sp, 0.5);
-        // Jump/Gravity
-        if (keys["Space"] && player.y === 0) player.vy = 7.5;
+        if (l > 0.01) {
+          const bx = player.x, bz = player.z;
+          const dxm = (fx / l) * sp, dzm = (fz / l) * sp;
+          moveWithCollide(player, dxm, dzm, 0.5, player.y);
+          // Mantling: vorne blockiert + Kante erreichbar -> hochziehen
+          const blocked = Math.abs(player.x - (bx + dxm)) > 0.001 || Math.abs(player.z - (bz + dzm)) > 0.001;
+          if (blocked) {
+            const top = getSupport(bx + (fx / l) * 0.7, bz + (fz / l) * 0.7, player.y + 2);
+            if (top > player.y + 0.3 && top - player.y <= 1.5) {
+              player.y = top + 0.02;
+              player.vy = 0;
+              player.jumps = 0;
+            }
+          }
+        }
+        // Parkour-Physik: Support, Jump, Double-Jump
+        const support = getSupport(player.x, player.z, player.y);
+        const onGround = player.y <= support + 0.02;
+        if (keys["Space"] && onGround && !player.jumpHeld) { player.vy = 7.5; player.jumps = 1; }
+        else if (keys["Space"] && !onGround && perk === "sprung" && player.jumps === 1 && !player.jumpHeld) { player.vy = 7; player.jumps = 2; }
+        player.jumpHeld = !!keys["Space"];
         player.vy -= 20 * dt;
-        player.y = Math.max(0, player.y + player.vy * dt);
-        if (player.y === 0) player.vy = 0;
+        const newY = player.y + player.vy * dt;
+        if (newY <= support && player.vy <= 0) { player.y = support; player.vy = 0; player.jumps = 0; }
+        else player.y = Math.max(0, newY);
 
         if (player.reloading > 0) { player.reloading -= dt; if (player.reloading <= 0) player.ammo = 24; }
         if (keys["KeyR"] && player.ammo < 24 && player.reloading <= 0) player.reloading = 1.2;
@@ -590,7 +761,10 @@ export function RealGame() {
       }
       yaw.position.set(player.x, 1.7 + player.y, player.z);
 
-      for (const b of bots) botTick(b, dt);
+      if (!tactics) {
+        for (const b of bots) botTick(b, dt);
+        for (const a of allies) allyTick(a, dt);
+      }
 
       // Partikel & Tracer
       for (let i = particles.length - 1; i >= 0; i--) {
@@ -648,6 +822,7 @@ export function RealGame() {
                 ? `${mission.title} · Strukturen ${missionDestroyed}/${mission.target} · ⏱ ${Math.max(0, (mission.timeLimit ?? 0) - gameTime).toFixed(0)} s`
                 : `${mission.title} · Halte durch · ⏱ ${Math.max(0, mission.target - gameTime).toFixed(0)} s`
             : "",
+          tactics,
         });
       }
 
@@ -733,6 +908,24 @@ export function RealGame() {
             ))}
           </div>
 
+          {/* Perks */}
+          <div className="grid grid-cols-3 gap-3 mb-6">
+            {PERKS.map((pk) => (
+              <button
+                key={pk.id}
+                type="button"
+                onClick={() => setPerk(pk.id)}
+                aria-pressed={perk === pk.id}
+                className={`text-left rounded-sm border p-3 transition-all min-h-[44px] ${
+                  perk === pk.id ? "border-primary/70 bg-primary/10 box-glow-neon" : "border-border bg-card hover:border-primary/30"
+                }`}
+              >
+                <p className={`font-bold text-sm ${perk === pk.id ? "text-primary glow-neon-sm" : "text-foreground"}`}>{pk.name}</p>
+                <p className="font-mono text-[10px] text-muted-foreground">{pk.desc}</p>
+              </button>
+            ))}
+          </div>
+
           <div className="grid sm:grid-cols-2 gap-3 mb-8">
             <button
               type="button"
@@ -797,6 +990,14 @@ export function RealGame() {
         <p className="font-mono text-sm text-primary glow-neon-sm tracking-wider">{hud.scores}</p>
         {hud.objective && <p className="font-mono text-[10px] text-foreground/90 tracking-wider mt-1">{hud.objective}</p>}
       </div>
+      {hud.tactics && (
+        <div className="absolute inset-x-0 top-16 flex justify-center pointer-events-none">
+          <div className="border border-primary/60 bg-black/70 box-glow-neon rounded-sm px-4 py-2.5 text-center">
+            <p className="font-mono text-xs text-primary tracking-[0.25em] uppercase animate-pulse-neon">🧠 Taktik // Zeit eingefroren</p>
+            <p className="font-mono text-[10px] text-muted-foreground mt-1">Klick = Waypoint · 1 Folgen · 2 Halten · 3 Angreifen · T = Beenden</p>
+          </div>
+        </div>
+      )}
       <div className="absolute top-12 left-3 pointer-events-none space-y-1">
         {hud.feed.map((f, i) => (
           <p key={i} className="font-mono text-[10px] text-primary/90">{f}</p>
