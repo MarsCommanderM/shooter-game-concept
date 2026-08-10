@@ -63,6 +63,9 @@ interface BotEnt {
   strafeDir: number;
   strafeT: number;
   color: THREE.Color;
+  y: number;
+  vy: number;
+  mantle: number | null;
 }
 
 interface Particle {
@@ -345,6 +348,7 @@ export function RealGame() {
         id: i + 1, name: BOT_NAMES[i], team, group, body,
         hp: 100, alive: true, respawnAt: 0, cd: 1 + Math.random(),
         kills: 0, strafeDir: 1, strafeT: 0, color,
+        y: 0, vy: 0, mantle: null,
       });
     };
     const botCount = mission ? mission.botCount : 5;
@@ -355,6 +359,7 @@ export function RealGame() {
       id: number; name: string; group: THREE.Group; body: THREE.Mesh;
       hp: number; alive: boolean; respawnAt: number; cd: number; kills: number;
       wp: { x: number; z: number; cmd: "hold" | "attack" } | null;
+      y: number; vy: number; mantle: number | null;
     }
     const allies: AllyEnt[] = [];
     const ALLY_HEX = [0x33ccff, 0x66ffcc];
@@ -375,7 +380,7 @@ export function RealGame() {
       group.add(body, head);
       group.position.set(SPAWNS[0][0] + (i === 0 ? 1.5 : -1.5), 0, SPAWNS[0][1] + 1.5);
       scene.add(group);
-      allies.push({ id: 101 + i, name: ALLY_NAMES[i], group, body, hp: 100, alive: true, respawnAt: 0, cd: 1, kills: 0, wp: null });
+      allies.push({ id: 101 + i, name: ALLY_NAMES[i], group, body, hp: 100, alive: true, respawnAt: 0, cd: 1, kills: 0, wp: null, y: 0, vy: 0, mantle: null });
     }
     let tactics = false;
 
@@ -570,9 +575,11 @@ export function RealGame() {
 
     /* ---------- Bot-AI ---------- */
     const losClear = (from: THREE.Vector3, to: THREE.Vector3) => {
-      const d = to.clone().sub(from);
+      const a = from.clone(); a.y += 1.4;
+      const b = to.clone(); b.y += 1.4;
+      const d = b.clone().sub(a);
       const len = d.length();
-      raycaster.set(from.clone().add(new THREE.Vector3(0, 1.4, 0)), d.normalize());
+      raycaster.set(a, d.normalize());
       raycaster.far = len;
       const meshes = walls.filter((w) => w.active).map((w) => w.mesh);
       const hit = raycaster.intersectObjects(meshes, false);
@@ -591,25 +598,25 @@ export function RealGame() {
         return;
       }
       // Ziel suchen
-      let target: { x: number; z: number; id: number; dist: number } | null = null;
+      let target: { x: number; z: number; y: number; id: number; dist: number } | null = null;
       const bp = b.group.position;
       const dP = Math.hypot(player.x - bp.x, player.z - bp.z);
       const enemy = (team: number) => (mode === "ffa" ? team !== b.team : team !== b.team);
-      if (dP < 30 && enemy(0) && player.hp > 0 && losClear(bp, new THREE.Vector3(player.x, 0, player.z))) {
-        target = { x: player.x, z: player.z, id: 0, dist: dP };
+      if (dP < 30 && enemy(0) && player.hp > 0 && losClear(bp, new THREE.Vector3(player.x, player.y, player.z))) {
+        target = { x: player.x, z: player.z, y: player.y, id: 0, dist: dP };
       }
       for (const a of allies) {
         if (!a.alive) continue;
         const d = Math.hypot(a.group.position.x - bp.x, a.group.position.z - bp.z);
         if (d < 30 && (!target || d < target.dist) && losClear(bp, a.group.position)) {
-          target = { x: a.group.position.x, z: a.group.position.z, id: a.id, dist: d };
+          target = { x: a.group.position.x, z: a.group.position.z, y: a.group.position.y, id: a.id, dist: d };
         }
       }
       for (const o of bots) {
         if (o.id === b.id || !o.alive || !enemy(o.team)) continue;
         const d = Math.hypot(o.group.position.x - bp.x, o.group.position.z - bp.z);
         if (d < 30 && (!target || d < target.dist) && losClear(bp, o.group.position)) {
-          target = { x: o.group.position.x, z: o.group.position.z, id: o.id, dist: d };
+          target = { x: o.group.position.x, z: o.group.position.z, y: o.group.position.y, id: o.id, dist: d };
         }
       }
 
@@ -634,11 +641,28 @@ export function RealGame() {
       b.strafeT -= dt;
       if (b.strafeT <= 0) { b.strafeT = 0.7 + Math.random(); b.strafeDir = Math.random() < 0.5 ? -1 : 1; }
       const p2 = { x: bp.x, z: bp.z };
-      if (!target && dist > 1) moveWithCollide(p2, (dx / dist) * 4.5 * dt, (dz / dist) * 4.5 * dt, 0.5, 0);
-      else if (target && target.dist > 8) moveWithCollide(p2, (dx / dist) * 4 * dt, (dz / dist) * 4 * dt, 0.5, 0);
-      if (target) moveWithCollide(p2, (-dz / dist) * b.strafeDir * 2.2 * dt, (dx / dist) * b.strafeDir * 2.2 * dt, 0.5, 0);
-      b.group.position.x = p2.x;
-      b.group.position.z = p2.z;
+      const wantX = !target && dist > 1 ? (dx / dist) * 4.5 * dt : target && target.dist > 8 ? (dx / dist) * 4 * dt : 0;
+      const wantZ = !target && dist > 1 ? (dz / dist) * 4.5 * dt : target && target.dist > 8 ? (dz / dist) * 4 * dt : 0;
+      moveWithCollide(p2, wantX, wantZ, 0.5, b.y);
+      const blockedB = (wantX !== 0 && Math.abs(p2.x - (bp.x + wantX)) > 0.001) || (wantZ !== 0 && Math.abs(p2.z - (bp.z + wantZ)) > 0.001);
+      if (target) moveWithCollide(p2, (-dz / dist) * b.strafeDir * 2.2 * dt, (dx / dist) * b.strafeDir * 2.2 * dt, 0.5, b.y);
+      // Bot-Parkour: Mantling, wenn die Verfolgung blockiert ist
+      if (blockedB && b.mantle == null && dist > 0.5) {
+        const probeTop = getSupport(bp.x + (dx / dist) * 0.7, bp.z + (dz / dist) * 0.7, b.y + 2);
+        const dh = probeTop - b.y;
+        if (dh > 0.1 && dh <= 1.5) { b.mantle = probeTop + 0.02; b.vy = 0; }
+      }
+      if (b.mantle != null) {
+        b.y += (b.mantle - b.y) * Math.min(1, 8 * dt);
+        moveWithCollide(p2, (dx / dist) * 2 * dt, (dz / dist) * 2 * dt, 0.5, b.y);
+        if (Math.abs(b.mantle - b.y) < 0.05) { b.y = b.mantle; b.mantle = null; }
+      } else {
+        b.vy -= 20 * dt;
+        const nyB = b.y + b.vy * dt;
+        const supB = getSupport(p2.x, p2.z, b.y);
+        if (nyB <= supB && b.vy <= 0) { b.y = supB; b.vy = 0; } else b.y = Math.max(0, nyB);
+      }
+      b.group.position.set(p2.x, b.y, p2.z);
       b.group.rotation.y = Math.atan2(dx, dz);
 
       // Schießen
@@ -646,7 +670,7 @@ export function RealGame() {
       if (target && b.cd <= 0) {
         b.cd = 0.6 + Math.random() * 0.6;
         const from = bp.clone().add(new THREE.Vector3(0, 1.4, 0));
-        const to = new THREE.Vector3(target.x, 1.4, target.z);
+        const to = new THREE.Vector3(target.x, target.y, target.z);
         tracer(from, to, b.color.getHex());
         sShot("dorn");
         const stanceMul = player.prone ? 0.6 : player.crouch ? 0.8 : 1;
@@ -672,19 +696,19 @@ export function RealGame() {
         if (gameTime >= a.respawnAt) {
           a.group.position.set(player.x + (a.id === 101 ? 1.5 : -1.5), 0, player.z + 1.5);
           a.group.visible = true;
-          a.hp = 100; a.alive = true;
+          a.hp = 100; a.alive = true; a.y = 0; a.vy = 0; a.mantle = null;
           pushFeed(`${a.name} wieder einsatzbereit`);
         }
         return;
       }
       const bp = a.group.position;
       // Ziel: nächster sichtbarer Bot
-      let target: { x: number; z: number; id: number; dist: number } | null = null;
+      let target: { x: number; z: number; y: number; id: number; dist: number } | null = null;
       for (const o of bots) {
         if (!o.alive) continue;
         const d = Math.hypot(o.group.position.x - bp.x, o.group.position.z - bp.z);
         if (d < 28 && (!target || d < target.dist) && losClear(bp, o.group.position)) {
-          target = { x: o.group.position.x, z: o.group.position.z, id: o.id, dist: d };
+          target = { x: o.group.position.x, z: o.group.position.z, y: o.group.position.y, id: o.id, dist: d };
         }
       }
       // Bewegungsziel laut Befehl
@@ -702,9 +726,26 @@ export function RealGame() {
       const holdStill = a.wp?.cmd === "hold" && dist < 0.5;
       if (!holdStill && dist > 1.1 && !(target && target.dist < 6)) {
         const p2 = { x: bp.x, z: bp.z };
-        moveWithCollide(p2, (dx / dist) * 5.2 * dt, (dz / dist) * 5.2 * dt, 0.5, 0);
+        const wx_ = (dx / dist) * 5.2 * dt, wz_ = (dz / dist) * 5.2 * dt;
+        moveWithCollide(p2, wx_, wz_, 0.5, a.y);
+        const blockedA = Math.abs(p2.x - (bp.x + wx_)) > 0.001 || Math.abs(p2.z - (bp.z + wz_)) > 0.001;
+        if (blockedA && a.mantle == null) {
+          const probeTop = getSupport(bp.x + (dx / dist) * 0.7, bp.z + (dz / dist) * 0.7, a.y + 2);
+          const dh = probeTop - a.y;
+          if (dh > 0.1 && dh <= 1.5) { a.mantle = probeTop + 0.02; a.vy = 0; }
+        }
         bp.x = p2.x; bp.z = p2.z;
       }
+      if (a.mantle != null) {
+        a.y += (a.mantle - a.y) * Math.min(1, 8 * dt);
+        if (Math.abs(a.mantle - a.y) < 0.05) { a.y = a.mantle; a.mantle = null; }
+      } else {
+        a.vy -= 20 * dt;
+        const nyA = a.y + a.vy * dt;
+        const supA = getSupport(bp.x, bp.z, a.y);
+        if (nyA <= supA && a.vy <= 0) { a.y = supA; a.vy = 0; } else a.y = Math.max(0, nyA);
+      }
+      bp.y = a.y;
       if (target) a.group.rotation.y = Math.atan2(target.x - bp.x, target.z - bp.z);
       else if (dist > 1.1) a.group.rotation.y = Math.atan2(dx, dz);
       // Feuern
