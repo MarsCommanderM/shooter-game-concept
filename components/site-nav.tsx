@@ -9,6 +9,7 @@ const navLinks = [
   { label: "Charakter", href: "#character" },
   { label: "Multiplayer", href: "#multiplayer" },
   { label: "Arsenal", href: "#arsenal" },
+  { label: "Evolution", href: "#evolution" },
   { label: "Karten", href: "#maps" },
   { label: "Roadmap", href: "#roadmap" },
 ];
@@ -43,7 +44,7 @@ export function SiteNav() {
         </a>
 
         {/* Desktop Nav */}
-        <div className="hidden lg:flex items-center gap-6">
+        <div className="hidden lg:flex items-center gap-5">
           {navLinks.map((link) => (
             <a
               key={link.href}

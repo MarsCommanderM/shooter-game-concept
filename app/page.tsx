@@ -7,6 +7,7 @@ import { CharacterSection } from "@/components/character-section";
 import { MultiplayerSection } from "@/components/multiplayer-section";
 import { ArsenalSection } from "@/components/arsenal-section";
 import { MapsSection } from "@/components/maps-section";
+import { EvolutionSection } from "@/components/evolution-section";
 import { RoadmapSection } from "@/components/roadmap-section";
 import { SiteFooter } from "@/components/site-footer";
 
@@ -23,6 +24,7 @@ export default function Page() {
         <MultiplayerSection />
         <ArsenalSection />
         <MapsSection />
+        <EvolutionSection />
         <RoadmapSection />
       </main>
       <SiteFooter />
