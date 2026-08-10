@@ -90,6 +90,30 @@ const STORY: Record<string, { intro: CineScene[]; debrief: string; events: Story
     debrief: "Stellung gehalten. Die Biomass zieht sich zurück – wie ein Ozean vor dem Sturm.",
     events: [{ trigger: "time", at: 60, speaker: "JUNO", text: "Zweite Welle! Sie haben deine Taktik gelesen.", shake: true }],
   },
+  m6: {
+    intro: [
+      { cam: [-10, 3, -16], look: [4, 1.5, 8], dur: 4.5, speaker: "DR. MAREN", text: "Ich habe die Ernte mitdesignt. Deshalb wissen sie, dass ich komme. Und deshalb musst DU jetzt schnell sein." },
+      { cam: [6, 2, 6], look: [-6, 1.5, -6], dur: 3.5, speaker: "DU", text: "Regel eins: Du bleibst hinter mir. Regel zwei: Es gibt keine Regel zwei." },
+    ],
+    debrief: "Maren lebt. Und sie redet. Akt 2 beginnt mit einem Namen: DIREKTOR HALE.",
+    events: [{ trigger: "time", at: 45, speaker: "DR. MAREN", text: "Sie funken meine Position! LAUF!", shake: true }],
+  },
+  m7: {
+    intro: [
+      { cam: [0, 18, -18], look: [0, 1, 10], dur: 4.5, speaker: "DR. MAREN [FUNK]", text: "KORP schickt Mechs, die Biomass schickt Sporen. Beide hassen dich. Beide hassen einander. Nutz das." },
+      { cam: [8, 2, 4], look: [-8, 1.5, 4], dur: 3.5, speaker: "DU", text: "Lockdrocks. Wir hetzen sie aufeinander und ernten die Reste." },
+    ],
+    debrief: "Zehn Abschüsse. Doch die Mechs haben etwas gelernt: Sie haben NICHT auf die Drocks reagiert. Jemand steuert sie neu.",
+    events: [{ trigger: "kills", at: 5, speaker: "JUNO", text: "Hälfte down! Aber die Mechs rotieren – sie lernen dein Muster!", shake: true }],
+  },
+  m8: {
+    intro: [
+      { cam: [0, 14, -14], look: [0, 1, 0], dur: 4.5, speaker: "KOMMANDO [FUNK – VERZERRT]", text: "…Vergiss die Wissenschaftlerin. Der Kern ist die Mission. Der Kern IST die Mission…" },
+      { cam: [2, 2, -6], look: [0, 1.5, 2], dur: 3.5, speaker: "VEGA [SCHWACH]", text: "…ich wüsste wirklich gern, wie dein Gesicht aussieht, wenn du dich entscheidest…" },
+    ],
+    debrief: "",
+    events: [{ trigger: "time", at: 70, speaker: "JUNO", text: "Strukturintegrity 40 %! Das Dach kommt!", shake: true }],
+  },
   m4: {
     intro: [
       { cam: [0, 26, 0.1], look: [0, 0, 0], dur: 5, speaker: "KOMMANDO [FUNK]", text: "Das Nest. Es schläft nicht. Es wartet auf dich." },
@@ -111,8 +135,9 @@ function sRadio() {
 }
 const STORY_KEY = "wirrwarr-story";
 const FRAG_KEY = "wirrwarr-frags";
-function loadStory(): { done: string[] } {
-  try { return JSON.parse(localStorage.getItem(STORY_KEY) ?? "null") ?? { done: [] }; } catch { return { done: [] }; }
+interface StoryData { done: string[]; flags: Record<string, boolean>; }
+function loadStory(): StoryData {
+  try { return JSON.parse(localStorage.getItem(STORY_KEY) ?? "null") ?? { done: [], flags: {} }; } catch { return { done: [], flags: {} }; }
 }
 function loadFrags(): number {
   try { return JSON.parse(localStorage.getItem(FRAG_KEY) ?? "0") || 0; } catch { return 0; }
@@ -151,7 +176,7 @@ const PERKS: { id: PerkId; name: string; desc: string }[] = [
 ];
 
 type VsMode = "tdm" | "ffa";
-type GameKind = VsMode | "m0" | "m1" | "m2" | "m3" | "m4" | "m5" | "range";
+type GameKind = VsMode | "m0" | "m1" | "m2" | "m3" | "m4" | "m5" | "m6" | "m7" | "m8" | "range";
 type ArenaId = "sektor" | "garten" | "stahl" | "orbital";
 
 interface Mission {
@@ -163,6 +188,9 @@ interface Mission {
 const MISSIONS: Mission[] = [
   { id: "m0", title: "Prolog // Kontakt", briefing: "Dein Dropship ist gefallen. Finde deine Waffe. Überlebe die erste Ernte.", type: "kills", target: 3, botCount: 3 },
   { id: "m5", title: "M5 // Die Koordinate", briefing: "Infiltration: 3 Terminals herunterladen, dann raus. Wer dich sieht, schlägt Alarm.", type: "destroy", target: 3, botCount: 6 },
+  { id: "m6", title: "M6 // Defector", briefing: "Dr. Maren defectiert. Eskortiere sie lebend zur Extraktion. F = Befehl (Folgen/Waiten).", type: "kills", target: 999, botCount: 6 },
+  { id: "m7", title: "M7 // Zwei Fronten", briefing: "KORP-Mechs UND Biomass. Wirf Lockdrocks (H) und lass sie einander zerfleischen. 10 Kills.", type: "kills", target: 10, botCount: 8 },
+  { id: "m8", title: "M8 // Das Labor brennt", briefing: "Das Labor brennt. Kapsel UND Datenkern vorn. Du kannst nur eines tragen. Wähle.", type: "kills", target: 999, botCount: 5 },
   { id: "m1", title: "M1 // Erste Ernte", briefing: "Die Biomass testet dich. Eliminiere 8 Eindringlinge – sie kommen immer wieder.", type: "kills", target: 8, botCount: 4 },
   { id: "m2", title: "M2 // Abrissunternehmen", briefing: "Sprenge 6 sprengbare Strukturen in 3 Minuten. Der BRECHER-7 ist dein bester Freund.", type: "destroy", target: 6, timeLimit: 180, botCount: 4 },
   { id: "m3", title: "M3 // Stellung halten", briefing: "Halte 120 Sekunden gegen endlose Wellen. Niemand kommt zu dir durch. Niemand.", type: "survive", target: 120, botCount: 6 },
@@ -371,6 +399,7 @@ export function RealGame() {
   const level = levelFromXp(profile.xp);
   const feedExtraRef = useRef<string[]>([]);
   const endInfoExt = useRef<null | { debrief?: string; medals: string[]; kills: number; deaths: number; hs: number; frags?: number; rank?: string }>(null);
+  const chooseM8Ref = useRef<(v: "vega" | "data") => void>(() => {});
   const [doneMissions, setDoneMissions] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem(STORY_KEY) ?? "null")?.done ?? []; } catch { return []; } });
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -382,6 +411,7 @@ export function RealGame() {
     shield: 100, bloom: 0, grenades: 2, dmgDirs: [] as { a: number; age: number }[],
     codes: 0, upg: [] as string[], bioOpen: false, announce: null as string | null, skin: "#22ff55",
     fps: 60, killcam: null as string | null, subtitle: null as { speaker: string; text: string } | null,
+    m8Offer: null as "vega" | "data" | null, marenHp: -1,
   });
   const apiRef = useRef<{ dispose: () => void; upgrade?: (id: string) => void } | null>(null);
   const feedRef = useRef<string[]>([]);
@@ -630,7 +660,20 @@ export function RealGame() {
       });
     };
     const botCount = mission ? mission.botCount : 5;
-    for (let i = 0; i < botCount; i++) makeBot(i, mission ? 1 : i % 2 === 0 ? 1 : 0);
+    for (let i = 0; i < botCount; i++) {
+      makeBot(i, mission ? 1 : i % 2 === 0 ? 1 : 0);
+      if (mode === "m7") {
+        const b = bots[bots.length - 1];
+        if (i % 2 === 1) {
+          b.team = 2;
+          (b.body.material as THREE.MeshStandardMaterial).color.setHex(0x8899aa);
+          (b.body.material as THREE.MeshStandardMaterial).emissive.setHex(0x334455);
+          b.name = `MECH-${i}`;
+        } else {
+          b.name = `SPORE-${i}`;
+        }
+      }
+    }
 
     /* ---------- KI-Kameraden ---------- */
     interface AllyEnt {
@@ -661,6 +704,44 @@ export function RealGame() {
       allies.push({ id: 101 + i, name: ALLY_NAMES[i], group, body, hp: 100, alive: true, respawnAt: 0, cd: 1, kills: 0, wp: null, y: 0, vy: 0, mantle: null });
     }
     let tactics = false;
+
+    /* ---------- Dr. Maren (Escort, M6) ---------- */
+    const maren = {
+      group: new THREE.Group(),
+      hp: 100, alive: mode === "m6",
+      mode: "follow" as "follow" | "wait",
+    };
+    if (mode === "m6") {
+      const col = new THREE.Color(0xff99cc);
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.5, 0.4), new THREE.MeshStandardMaterial({ color: col, emissive: col.clone().multiplyScalar(0.4) }));
+      body.position.y = 0.75;
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), new THREE.MeshStandardMaterial({ color: 0x222222, emissive: col.clone().multiplyScalar(0.5) }));
+      head.position.y = 1.75;
+      maren.group.add(body, head);
+      maren.group.position.set(SPAWNS[0][0] + 2, 0, SPAWNS[0][1] + 2);
+      scene.add(maren.group);
+    }
+
+    /* ---------- Lockdrock (M7) ---------- */
+    interface Drock { x: number; z: number; until: number; }
+    const drocks: Drock[] = [];
+    const throwDrock = () => {
+      if (mode !== "m7" || player.nadeCd > 0) return;
+      player.nadeCd = 1.2;
+      const dir = new THREE.Vector3();
+      camera.getWorldDirection(dir);
+      const at = new THREE.Vector3(player.x, 0, player.z).addScaledVector(new THREE.Vector3(dir.x, 0, dir.z).normalize(), 14);
+      drocks.push({ x: at.x, z: at.z, until: gameTime + 6 });
+      sThrow();
+      burst(new THREE.Vector3(at.x, 0.5, at.z), 0x8899ff, 12);
+      pushFeed(" Lockdrock aktiv – sie riechen es.");
+      for (const b of bots) {
+        if (b.alive && Math.hypot(b.group.position.x - at.x, b.group.position.z - at.z) < 16) {
+          b.hp -= 15;
+          if (b.hp <= 0) kill(0, b.id);
+        }
+      }
+    };
 
     /* ---------- Spieler-State ---------- */
     const player = {
@@ -877,6 +958,11 @@ export function RealGame() {
         return;
       }
       if (e.code === "KeyG") throwNade();
+      if (e.code === "KeyH") throwDrock();
+      if (e.code === "KeyF" && mode === "m6") {
+        maren.mode = maren.mode === "follow" ? "wait" : "follow";
+        pushFeed(maren.mode === "follow" ? "👩‍🔬 MAREN: ‚Ich folge dir.‘" : "👩‍🔬 MAREN: ‚Ich warte hier. Beeil dich.‘");
+      }
       if (e.code === "KeyV") melee();
       if (e.code === "KeyB") player.bioOpen = !player.bioOpen;
       if ((e.code === "Enter" || e.code === "Escape") && cine.active) { cine.active = false; hudSubtitle = null; }
@@ -1298,7 +1384,7 @@ export function RealGame() {
       let target: { x: number; z: number; y: number; id: number; dist: number } | null = null;
       const bp = b.group.position;
       const dP = Math.hypot(player.x - bp.x, player.z - bp.z);
-      const enemy = (team: number) => (mode === "ffa" ? team !== b.team : team !== b.team);
+      const enemy = (team: number) => (mode === "ffa" || mode === "m7" ? team !== b.team : team !== b.team);
       if (dP < 30 && enemy(0) && player.hp > 0 && losClear(bp, new THREE.Vector3(player.x, player.y, player.z))) {
         target = { x: player.x, z: player.z, y: player.y, id: 0, dist: dP };
       }
@@ -1380,6 +1466,37 @@ export function RealGame() {
       b.group.rotation.y = Math.atan2(dx, dz);
 
       // Schießen
+      // Lockdrock-Taunt: Bots laufen zum Drock
+      const drock = drocks.find((d) => d.until > gameTime && Math.hypot(bp.x - d.x, bp.z - d.z) < 18);
+      if (drock && mode === "m7") {
+        const ddx = drock.x - bp.x, ddz = drock.z - bp.z;
+        const dd = Math.hypot(ddx, ddz) || 0.001;
+        if (dd > 1.5) {
+          const pp = { x: bp.x, z: bp.z };
+          moveWithCollide(pp, (ddx / dd) * 4 * dt, (ddz / dd) * 4 * dt, 0.5, b.y);
+          bp.x = pp.x; bp.z = pp.z;
+        }
+        b.cd -= dt;
+        if (b.cd <= 0) {
+          b.cd = 0.4;
+          for (const o of bots) {
+            if (o.id !== b.id && o.alive && o.team !== b.team && Math.hypot(o.group.position.x - bp.x, o.group.position.z - bp.z) < 8) {
+              tracer(bp.clone().add(new THREE.Vector3(0, 1.4, 0)), o.group.position.clone().add(new THREE.Vector3(0, 1.2, 0)), b.color.getHex());
+              o.hp -= 8;
+              if (o.hp <= 0) kill(b.id, o.id);
+              break;
+            }
+          }
+        }
+        return;
+      }
+      // Maren als Ziel (M6)
+      if (mode === "m6" && maren.alive) {
+        const dm = Math.hypot(maren.group.position.x - bp.x, maren.group.position.z - bp.z);
+        if (dm < 30 && (!target || dm < target.dist) && losClear(bp, maren.group.position)) {
+          target = { x: maren.group.position.x, z: maren.group.position.z, y: 0, id: 200, dist: dm };
+        }
+      }
       // m5-Infiltration: Patrouille + Sichtkegel + Alarm
       if (mode === "m5" && !player.alarm) {
         target = null;
@@ -1428,6 +1545,18 @@ export function RealGame() {
         const dmg = (6 + Math.random() * 8) * adapt * (perk === "panzer" ? 0.7 : 1) * stanceMul;
         if (target.id === 0) {
           hurtPlayer(dmg, bp.x, bp.z, b.id);
+        } else if (target.id === 200) {
+          maren.hp -= dmg;
+          if (maren.hp <= 0 && maren.alive) {
+            maren.alive = false;
+            maren.group.visible = false;
+            pushFeed("💔 MAREN gefallen.");
+            fillEnd();
+            ended = true;
+            setFailed(true);
+            setWinner("MISSION GESCHEITERT – MAREN VERLOREN");
+            setScreen("end");
+          }
         } else if (target.id >= 100) {
           const a = allies.find((x) => x.id === target!.id)!;
           a.hp -= dmg;
@@ -1513,8 +1642,25 @@ export function RealGame() {
 
     /* ---------- Cinematic-Engine (Story-Beats) ---------- */
     const story = STORY[mode];
+    let m8Choice: "" | "vega" | "data" = "";
+    let m8ChoiceDone = false;
     const firedEvents: StoryEvent[] = [];
     let hudSubtitle: { speaker: string; text: string } | null = null;
+    let m8OfferState: "vega" | "data" | null = null;
+    const setM8Offer = (v: "vega" | "data") => { m8OfferState = v; };
+    const chooseM8 = (v: "vega" | "data") => {
+      m8Choice = v; m8ChoiceDone = true; m8OfferState = null;
+      try {
+        const st = loadStory();
+        st.flags = st.flags ?? {};
+        st.flags.save_vega_chosen = true;
+        st.flags.save_vega = v === "vega";
+        localStorage.setItem(STORY_KEY, JSON.stringify(st));
+      } catch { /* */ }
+      pushFeed(v === "vega" ? "❤ VEGA: ‚…du Idiot. Danke.‘" : "📀 DATEN: Der Kern surrt in deiner Tasche. VEGA sieht weg.");
+      sRadio();
+    };
+    chooseM8Ref.current = chooseM8;
     const cine = {
       active: !!(story && story.intro.length),
       list: story?.intro ?? [],
@@ -1536,6 +1682,7 @@ export function RealGame() {
         try {
           const st = loadStory();
           if (!st.done.includes(mission.id)) st.done.push(mission.id);
+          if (!st.flags) st.flags = {};
           localStorage.setItem(STORY_KEY, JSON.stringify(st));
         } catch { /* */ }
       }
@@ -1546,7 +1693,14 @@ export function RealGame() {
       if (missionDestroyed >= 2) medals.push("💥 Abrissbirne – 2+ Wände gesprengt");
       if (player.bestStreakM >= 5) medals.push("🔥 Spree-Meister – 5er-Streak");
       if (player.deaths === 0 && player.kills >= 5) medals.push("🛡 Unberührbar – 5 Kills, 0 Tode");
-      endInfoExt.current = { debrief: mission ? STORY[mission.id]?.debrief : undefined, medals, kills: player.kills, deaths: player.deaths, hs: player.headshots, frags: player.frags, rank: mission ? rank : undefined };
+      let debrief = mission ? STORY[mission.id]?.debrief : undefined;
+      if (mission?.id === "m8") {
+        const sv = loadStory().flags?.save_vega;
+        debrief = sv
+          ? "VEGA lebt. Der Datenkern schmort im Labor. Manche Türen öffnen sich nur mit einem Herzschlag."
+          : "Der Datenkern ist gesichert. VEGAs Kapsel schloss sich lautlos. Manche Türen öffnen sich nie wieder.";
+      }
+      endInfoExt.current = { debrief, medals, kills: player.kills, deaths: player.deaths, hs: player.headshots, frags: player.frags, rank: mission ? rank : undefined };
     };
     const storyTick = () => {
       if (!story || cine.active) return;
@@ -1763,6 +1917,54 @@ export function RealGame() {
         hm.emissiveIntensity = marked ? 1.2 : 0.6;
       }
 
+      // M6: Maren folgt/wartet + Extraktion
+      if (mode === "m6" && maren.alive) {
+        const mp = maren.group.position;
+        if (maren.mode === "follow") {
+          const dxm2 = player.x - mp.x, dzm2 = player.z - mp.z;
+          const dm2 = Math.hypot(dxm2, dzm2);
+          if (dm2 > 2.5) {
+            const pp = { x: mp.x, z: mp.z };
+            moveWithCollide(pp, (dxm2 / dm2) * 4.6 * dt, (dzm2 / dm2) * 4.6 * dt, 0.5, 0);
+            mp.x = pp.x; mp.z = pp.z;
+          }
+          maren.group.rotation.y = Math.atan2(dxm2, dzm2);
+        }
+        if (Math.hypot(mp.x - 0, mp.z - 34) < 3.5 && Math.hypot(player.x - 0, player.z - 34) < 4.5) {
+          fillEnd();
+          ended = true;
+          setWinner("EXFILTRATION MIT DR. MAREN");
+          setScreen("end");
+        }
+      }
+      // M8: Wahl + Zonen + Feuer-Timer
+      if (mode === "m8") {
+        player.rangeT -= dt; // Timer zweckentfremdet
+        if (player.rangeT <= 80 && !player.alarm) {
+          player.alarm = true;
+          pushFeed("🔥 Das Labor brennt! Struktur kollabiert!");
+          sRadio(); player.shakeT = 0.8;
+        }
+        if (player.rangeT <= 0 && !ended) {
+          fillEnd(); ended = true; setFailed(true);
+          setWinner("IM FEUER VERLOREN");
+          setScreen("end");
+        }
+        if (!ended) {
+          const chosen = loadStory().flags.save_vega_chosen;
+          if (!m8Choice) {
+            const nearCapsule = Math.hypot(player.x - -4, player.z - 0) < 1.8;
+            const nearCore = Math.hypot(player.x - 4, player.z - 0) < 1.8;
+            if (nearCapsule || nearCore) setM8Offer(nearCapsule ? "vega" : "data");
+          } else if (m8ChoiceDone) {
+            if (Math.hypot(player.x - 0, player.z - 34) < 3.5) {
+              fillEnd(); ended = true;
+              setWinner(m8Choice === "vega" ? "VEGA GERETTET" : "DATEN GESICHERT");
+              setScreen("end");
+            }
+          }
+        }
+      }
       // m5: Terminals channeln + Extraktion
       if (mode === "m5" && mission) {
         const TERMS: [number, number][] = [[-6, 6], [6, -6], [0, -14]];
@@ -1859,7 +2061,13 @@ export function RealGame() {
             : `GRÜN ${teamScore[0]} : ${teamScore[1]} ROT`,
           feed: [...feedRef.current],
           kills: player.kills,
-          objective: mode === "range"
+          m8Offer: mode === "m8" && !m8ChoiceDone ? m8OfferState : null,
+          marenHp: mode === "m6" ? Math.max(0, Math.round(maren.hp)) : -1,
+          objective: mode === "m8"
+            ? `🔥 LABOR-BRAND · ⏱ ${Math.max(0, Math.ceil(player.rangeT))} s · ${m8ChoiceDone ? "Raus zur Extraktion (Norden)!" : "Kapsel (links) ODER Datenkern (rechts)?"}`
+            : mode === "m6"
+              ? `👩‍🔬 Eskortiere DR. MAREN zur Extraktion (Norden) · F = Befehl · Maren: ${Math.max(0, Math.round(maren.hp))} %`
+            : mode === "range"
             ? `🎯 RANGE ·  ${Math.max(0, Math.ceil(player.rangeT))} s · Treffer ${player.rangeHits} · Shots ${player.shots}`
             : mode === "m5"
               ? player.alarm
@@ -2346,6 +2554,34 @@ export function RealGame() {
           <p className="font-mono text-4xl md:text-6xl font-bold text-primary glow-neon tracking-[0.25em] uppercase animate-pulse-neon">
             {hud.announce}
           </p>
+        </div>
+      )}
+      {/* M8: DIE ENTSCHEIDUNG */}
+      {hud.m8Offer && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+          <div className="border border-primary/50 bg-black/90 box-glow-neon rounded-sm p-6 max-w-md w-[92%] text-center">
+            <p className="font-mono text-xs tracking-[0.3em] uppercase text-destructive animate-pulse-neon mb-2">Das Labor stirbt. Eine Hand voll Zeit.</p>
+            <p className="text-lg text-foreground font-bold mb-4">Was trägst du raus?</p>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => chooseM8Ref.current("vega")}
+                className="border border-primary/60 bg-primary/10 hover:bg-primary/25 rounded-sm p-4 transition-all min-h-[44px]"
+              >
+                <p className="font-bold text-primary glow-neon-sm mb-1">❤ VEGA retten</p>
+                <p className="font-mono text-[10px] text-muted-foreground">Der Kamerad. Die Stimme im Ohr.</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => chooseM8Ref.current("data")}
+                className="border border-border bg-secondary/40 hover:bg-secondary/70 rounded-sm p-4 transition-all min-h-[44px]"
+              >
+                <p className="font-bold text-foreground mb-1">📀 Daten sichern</p>
+                <p className="font-mono text-[10px] text-muted-foreground">Die Wahrheit. Der Beweis gegen KORP.</p>
+              </button>
+            </div>
+            <p className="font-mono text-[9px] text-muted-foreground mt-3 uppercase tracking-wider">Diese Entscheidung ist permanent.</p>
+          </div>
         </div>
       )}
       {hud.bioOpen && (
