@@ -21,6 +21,31 @@ const getRoom = (key) => {
 
 let nextId = 1;
 
+/* ---------- Server-autoritative Hit-Validation (Anti-Cheat-Basis) ---------- */
+const posMap = new Map(); // id -> {x,z}
+const MAX_RANGE = 75;
+const MAX_HITS_PER_SEC = 12;
+const MAX_DMG = 30;
+
+function validateHit(ws, m) {
+  const now = Date.now();
+  if (typeof m.dmg !== "number" || m.dmg > MAX_DMG || m.dmg <= 0) {
+    return { ok: false, reason: "dmg unplausibel" };
+  }
+  ws.hitTimes = (ws.hitTimes || []).filter((t) => now - t < 1000);
+  ws.hitTimes.push(now);
+  if (ws.hitTimes.length > MAX_HITS_PER_SEC) {
+    return { ok: false, reason: " Feuerrate" };
+  }
+  const a = posMap.get(ws.pid);
+  const b = posMap.get(m.target);
+  if (a && b) {
+    const d = Math.hypot(a.x - b.x, a.z - b.z);
+    if (d > MAX_RANGE) return { ok: false, reason: `Reichweite ${Math.round(d)}` };
+  }
+  return { ok: true };
+}
+
 wss.on("connection", (ws, req, roomKey) => {
   const room = getRoom(roomKey);
   room.clients.add(ws);
@@ -49,6 +74,19 @@ wss.on("connection", (ws, req, roomKey) => {
         }
       }
       ws.send(JSON.stringify({ t: "you", id: ws.pid, team: ws.team }));
+    } else if (m.t === "state") {
+      posMap.set(ws.pid, { x: m.x, z: m.z });
+      m.id = ws.pid;
+      broadcast(m, ws);
+    } else if (m.t === "hit") {
+      const v = validateHit(ws, m);
+      if (!v.ok) {
+        ws.warns = (ws.warns || 0) + 1;
+        ws.send(JSON.stringify({ t: "warn", reason: v.reason, warns: ws.warns }));
+        return; // Treffer wird NICHT verteilt – server-authoritativ
+      }
+      m.id = ws.pid;
+      broadcast(m, ws);
     } else {
       m.id = ws.pid;
       broadcast(m, ws);

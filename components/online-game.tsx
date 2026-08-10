@@ -241,6 +241,8 @@ export function OnlineGame() {
               }
             }
           }
+        } else if (m.t === "warn") {
+          pushFeed(`⚠ Anti-Cheat: Treffer verworfen (${m.reason})`);
         } else if (m.t === "leave") {
           const r = remotes.get(id);
           if (r) { scene.remove(r.group); remotes.delete(id); pushFeed(`${r.name} verlassen`); }
