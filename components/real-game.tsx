@@ -39,6 +39,53 @@ const KSTREAKS = [
   { num: 7, id: "orbital", name: "Orbital-Schlag", level: 5, desc: "3-fache Detonation – sprengt Wände" },
   { num: 10, id: "rage", name: "Biomass-Rage", level: 8, desc: "10 s: +50 % Schaden, +Tempo, Schild voll" },
 ];
+interface CineScene { cam: [number, number, number]; look: [number, number, number]; dur: number; speaker?: string; text?: string; }
+interface StoryEvent { trigger: "time" | "kills" | "destroyed"; at: number; speaker: string; text: string; shake?: boolean; }
+const STORY: Record<string, { intro: CineScene[]; debrief: string; events: StoryEvent[] }> = {
+  m1: {
+    intro: [
+      { cam: [-34, 16, -34], look: [0, 0, 0], dur: 4.5, speaker: "KOMMANDO [FUNK]", text: "Soldat. Die Biomass hat Sektor 7 erreicht. Sie sieht mit tausend Augen – also leih ihr keines deiner." },
+      { cam: [12, 2.5, 20], look: [-12, 1.5, -12], dur: 4, speaker: "VEGA", text: "Das Glitzern in der Luft? Das ist kein Nebel. Das sind Sporen. Und sie fallen nicht – sie suchen." },
+      { cam: [0, 1.8, 10], look: [0, 1.6, -24], dur: 3.5, speaker: "DU", text: "Dann atmen wir schneller, als sie wachsen. Erste Ernte beginnt." },
+    ],
+    debrief: "Sektor 7 gesichert. Die Proben zeigen: Die Biomass reagiert auf deine Präsenz. Sie lernt.",
+    events: [{ trigger: "kills", at: 4, speaker: "KOMMANDO [FUNK]", text: "Vier bestätigt. Sie funken um Verstärkung – oder nach dir." }],
+  },
+  m2: {
+    intro: [
+      { cam: [0, 20, 26], look: [0, 2, 0], dur: 4.5, speaker: "KOMMANDO [FUNK]", text: "Die Strukturen sind infiziert. In drei Minuten sporen sie aus. Reiß sie nieder – alle sechs." },
+      { cam: [6, 2, 8], look: [0, 2, 0], dur: 3.5, speaker: "VEGA", text: "Der BRECHER-7 ist heute dein Skalpell. Und dein Hammer." },
+    ],
+    debrief: "Sechs Strukturen gefallen. Unter der dritten Schicht haben wir etwas gefunden: Es hat zurückgefunkt.",
+    events: [{ trigger: "destroyed", at: 3, speaker: "VEGA", text: "⚠ Das Nest registriert deine Sprengungen. Es wird unruhig.", shake: true }],
+  },
+  m3: {
+    intro: [
+      { cam: [-20, 10, 24], look: [0, 1, 0], dur: 4.5, speaker: "KOMMANDO [FUNK]", text: "Halte die Stellung. Was auch kommt – es kommt zuerst zu dir." },
+      { cam: [4, 1.8, -8], look: [-8, 1.5, 12], dur: 3.5, speaker: "JUNO", text: "Meine Sensoren: Bewegung. Viel Bewegung." },
+    ],
+    debrief: "Stellung gehalten. Die Biomass zieht sich zurück – wie ein Ozean vor dem Sturm.",
+    events: [{ trigger: "time", at: 60, speaker: "JUNO", text: "Zweite Welle! Sie haben deine Taktik gelesen.", shake: true }],
+  },
+  m4: {
+    intro: [
+      { cam: [0, 26, 0.1], look: [0, 0, 0], dur: 5, speaker: "KOMMANDO [FUNK]", text: "Das Nest. Es schläft nicht. Es wartet auf dich." },
+      { cam: [8, 2, 10], look: [0, 2, 0], dur: 3.5, speaker: "DU", text: "Dann lassen wir es nicht warten." },
+    ],
+    debrief: "Das Nest ist gefallen. Doch seine letzte Botschaft war kein Schrei. Es war eine Koordinate.",
+    events: [{ trigger: "kills", at: 8, speaker: "???", text: "D A S   N E S T   E R W A C H T.", shake: true }],
+  },
+};
+function sRadio() {
+  const c = ac(); if (!c) return;
+  const t = c.currentTime;
+  [880, 660].forEach((f, i) => {
+    const o = c.createOscillator(); const g = c.createGain();
+    o.type = "square"; o.frequency.setValueAtTime(f, t + i * 0.09);
+    g.gain.setValueAtTime(0.0001, t + i * 0.09); g.gain.exponentialRampToValueAtTime(0.045, t + i * 0.09 + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.09 + 0.09);
+    o.connect(g).connect(c.destination); o.start(t + i * 0.09); o.stop(t + i * 0.09 + 0.1);
+  });
+}
 const WEAPON_LEVEL: Record<string, number> = { dorn: 1, brecher: 2, richter: 4 };
 const ATTACHMENTS = [
   { id: "optic", name: "Zieloptik", level: 3, desc: "-30 % Bloom, -5 % Tempo" },
@@ -282,6 +329,7 @@ export function RealGame() {
   const [loadout, setLoadout] = useState(() => loadLoadout());
   const level = levelFromXp(profile.xp);
   const feedExtraRef = useRef<string[]>([]);
+  const endInfoExt = useRef<null | { debrief?: string; medals: string[]; kills: number; deaths: number; hs: number }>(null);
   const [doneMissions, setDoneMissions] = useState<string[]>([]);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -292,7 +340,7 @@ export function RealGame() {
     scores: "", feed: [] as string[], kills: 0, objective: "", tactics: false,
     shield: 100, bloom: 0, grenades: 2, dmgDirs: [] as { a: number; age: number }[],
     codes: 0, upg: [] as string[], bioOpen: false, announce: null as string | null, skin: "#22ff55",
-    fps: 60, killcam: null as string | null,
+    fps: 60, killcam: null as string | null, subtitle: null as { speaker: string; text: string } | null,
   });
   const apiRef = useRef<{ dispose: () => void; upgrade?: (id: string) => void } | null>(null);
   const feedRef = useRef<string[]>([]);
@@ -591,6 +639,7 @@ export function RealGame() {
       headshots: 0, melees: 0,
       skinColor: SKINS.find((s) => s.id === loadout.skin && level >= s.level)?.color ?? "#22ff55",
       rageT: 0, bonusXp: 0, usedStreaks: [] as number[],
+      bestStreakM: 0, shakeT: 0,
       spawnShield: 2, killcam: null as { botId: number; t: number } | null,
       rangeT: 60, rangeHits: 0, shots: 0,
     };
@@ -604,6 +653,7 @@ export function RealGame() {
     let missionDestroyed = 0;
     const finishMission = (win: boolean) => {
       if (win) addXp(250);
+      fillEnd();
       ended = true;
       setFailed(!win);
       if (win && mission) {
@@ -643,6 +693,7 @@ export function RealGame() {
         player.kills++; missionKills++; player.codes++;
         // Streak / Spree
         player.streak++;
+        player.bestStreakM = Math.max(player.bestStreakM, player.streak);
         if (player.streak === 3) { player.announce = { text: "RAMPAGE!", t: gameTime }; sAnnounce(); }
         if (player.streak === 5) { player.announce = { text: "UNSTOPPBAR!", t: gameTime }; sAnnounce(); }
         if (player.streak === 8) { player.announce = { text: "GOTTGLEICH!", t: gameTime }; sAnnounce(); }
@@ -785,6 +836,7 @@ export function RealGame() {
       if (e.code === "KeyG") throwNade();
       if (e.code === "KeyV") melee();
       if (e.code === "KeyB") player.bioOpen = !player.bioOpen;
+      if ((e.code === "Enter" || e.code === "Escape") && cine.active) { cine.active = false; hudSubtitle = null; }
       if (tactics) {
         if (e.code === "Digit1") { allies.forEach((a) => { a.wp = null; }); pushFeed("Befehl: FOLGEN"); }
         if (e.code === "Digit2") { allies.forEach((a) => { a.wp = { x: a.group.position.x, z: a.group.position.z, cmd: "hold" }; }); pushFeed("Befehl: STELLUNG HALTEN"); }
@@ -840,10 +892,20 @@ export function RealGame() {
 
     /* ---------- Waffen-Viewmodel ---------- */
     const gun = new THREE.Group();
-    const gunBody = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.7), new THREE.MeshStandardMaterial({ color: 0x1a1f1a, emissive: 0x0a2a10 }));
+    const gunBodyMat = new THREE.MeshStandardMaterial({ color: 0x1a1f1a, emissive: 0x0a2a10, roughness: 0.6, metalness: 0.4 });
+    const gunBody = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.7), gunBodyMat);
+    const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.35), new THREE.MeshStandardMaterial({ color: 0x111511, metalness: 0.7, roughness: 0.35 }));
+    barrel.position.set(0, 0.03, -0.5);
+    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.22, 0.12), gunBodyMat);
+    mag.position.set(0, -0.16, -0.05);
+    mag.rotation.x = 0.35;
+    const sightM = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.05, 0.03), new THREE.MeshStandardMaterial({ color: 0x22ff55, emissive: 0x22ff55, emissiveIntensity: 1.4 }));
+    sightM.position.set(0, 0.11, -0.2);
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.125, 0.02, 0.5), new THREE.MeshBasicMaterial({ color: 0x22ff55 }));
+    stripe.position.set(0, -0.06, -0.1);
     const gunTip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.2), new THREE.MeshStandardMaterial({ color: 0x22ff55, emissive: 0x22ff55 }));
     gunTip.position.set(0, 0.02, -0.45);
-    gun.add(gunBody, gunTip);
+    gun.add(gunBody, barrel, mag, sightM, stripe, gunTip);
     gun.position.set(0.3, -0.28, -0.6);
     camera.add(gun);
     const muzzleLight = new THREE.PointLight(0x88ff88, 0, 6);
@@ -1264,7 +1326,8 @@ export function RealGame() {
         tracer(from, to, b.color.getHex());
         sShot("dorn");
         const stanceMul = player.prone ? 0.5 : player.crouch ? 0.75 : 1;
-        const dmg = (6 + Math.random() * 8) * (perk === "panzer" ? 0.7 : 1) * stanceMul;
+        const adapt = Math.max(0.75, Math.min(1.25, 1 + (player.deaths - player.kills) * 0.02));
+        const dmg = (6 + Math.random() * 8) * adapt * (perk === "panzer" ? 0.7 : 1) * stanceMul;
         if (target.id === 0) {
           hurtPlayer(dmg, bp.x, bp.z, b.id);
         } else if (target.id >= 100) {
@@ -1350,6 +1413,48 @@ export function RealGame() {
       }
     };
 
+    /* ---------- Cinematic-Engine (Story-Beats) ---------- */
+    const story = STORY[mode];
+    const firedEvents: StoryEvent[] = [];
+    let hudSubtitle: { speaker: string; text: string } | null = null;
+    const cine = {
+      active: !!(story && story.intro.length),
+      list: story?.intro ?? [],
+      i: 0, t: 0,
+      lookCur: new THREE.Vector3(0, 2, 0),
+    };
+    const cineTick = (dt: number) => {
+      const sc = cine.list[cine.i];
+      cine.t += dt;
+      camera.position.lerp(new THREE.Vector3(...sc.cam), Math.min(1, dt * 2.2));
+      cine.lookCur.lerp(new THREE.Vector3(...sc.look), Math.min(1, dt * 2.5));
+      camera.lookAt(cine.lookCur);
+      hudSubtitle = sc.speaker && sc.text ? { speaker: sc.speaker, text: sc.text } : null;
+      if (cine.t >= sc.dur) { cine.t = 0; cine.i++; if (cine.i >= cine.list.length) { cine.active = false; hudSubtitle = null; } }
+    };
+    const fillEnd = () => {
+      const medals: string[] = [];
+      if (player.headshots >= 3) medals.push("🎯 Headhunter – 3+ Headshots");
+      if (player.melees >= 2) medals.push("👊 Nahkampf-Dämon – 2+ Melee-Kills");
+      if (missionDestroyed >= 2) medals.push("💥 Abrissbirne – 2+ Wände gesprengt");
+      if (player.bestStreakM >= 5) medals.push("🔥 Spree-Meister – 5er-Streak");
+      if (player.deaths === 0 && player.kills >= 5) medals.push("🛡 Unberührbar – 5 Kills, 0 Tode");
+      endInfoExt.current = { debrief: mission ? STORY[mission.id]?.debrief : undefined, medals, kills: player.kills, deaths: player.deaths, hs: player.headshots };
+    };
+    const storyTick = () => {
+      if (!story || cine.active) return;
+      for (const ev of story.events) {
+        if (firedEvents.includes(ev)) continue;
+        const val = ev.trigger === "time" ? gameTime : ev.trigger === "kills" ? player.kills : missionDestroyed;
+        if (val >= ev.at) {
+          firedEvents.push(ev);
+          pushFeed(`📻 ${ev.speaker}: ${ev.text}`);
+          sRadio();
+          if (ev.shake) player.shakeT = 0.6;
+        }
+      }
+    };
+
     /* ---------- Loop ---------- */
     const clock = new THREE.Clock();
     let raf = 0;
@@ -1371,7 +1476,7 @@ export function RealGame() {
           player.usedStreaks = [];
           player.spawnShield = 2;
         }
-      } else {
+      } else if (!cine.active) {
         // ===== Bewegungsfluss: Stance, Slide, Acceleration, Friction =====
         const support = getSupport(player.x, player.z, player.y);
         const onGround = player.y <= support + 0.02;
@@ -1421,7 +1526,10 @@ export function RealGame() {
         player.vy -= 20 * dt;
         const newY = player.y + player.vy * dt;
         if (newY <= support && player.vy <= 0) {
-          if (player.vy < -7) { player.landDip = 0.16; sLand(); }
+          if (player.vy < -7) {
+            player.landDip = 0.16; sLand();
+            burst(new THREE.Vector3(player.x, support + 0.1, player.z), 0x88aa88, 8);
+          }
           player.y = support; player.vy = 0; player.jumps = 0;
         } else player.y = Math.max(0, newY);
 
@@ -1472,7 +1580,21 @@ export function RealGame() {
         gun.position.x = 0.3 + Math.cos(player.bobPhase * 0.5) * Math.min(0.01, gspd * 0.0012);
       }
 
+      // ===== Killcam: Perspektive des Killers =====
+      if (player.killcam) {
+        const kb = bots.find((b) => b.id === player.killcam!.botId);
+        player.killcam.t -= dt;
+        if (kb && kb.alive && player.killcam.t > 0) {
+          yaw.position.set(kb.group.position.x, kb.group.position.y + 1.7, kb.group.position.z);
+          yaw.rotation.y += (kb.group.rotation.y - yaw.rotation.y) * Math.min(1, 10 * dt);
+          pitch.rotation.x *= 1 - Math.min(1, 8 * dt);
+        } else {
+          player.killcam = null;
+        }
+      }
+
       // ===== Kamera-Flow: Maus-Smoothing, Stance-Höhe, Bob, Lande-Dip, FOV-Kick =====
+      if (!player.killcam && !cine.active) {
       yaw.rotation.y += (targetYaw - yaw.rotation.y) * Math.min(1, 34 * dt);
       pitch.rotation.x += (targetPitch - pitch.rotation.x) * Math.min(1, 34 * dt);
       const heightT = player.prone ? 0.55 : player.crouch ? 1.15 : 1.7;
@@ -1487,6 +1609,11 @@ export function RealGame() {
       if (Math.abs(camera.fov - fovT) > 0.1) {
         camera.fov += (fovT - camera.fov) * Math.min(1, 9 * dt);
         camera.updateProjectionMatrix();
+      }
+      if (player.shakeT > 0) {
+        camera.position.x += (Math.random() - 0.5) * player.shakeT * 0.15;
+        camera.position.y += (Math.random() - 0.5) * player.shakeT * 0.12;
+      }
       }
 
       // Shield-Regeneration (Halo-DNA) + Bloom-Decay
@@ -1529,7 +1656,10 @@ export function RealGame() {
         hm.emissiveIntensity = marked ? 1.2 : 0.6;
       }
 
-      if (!tactics && !player.bioOpen) {
+      storyTick();
+      player.shakeT = Math.max(0, player.shakeT - dt);
+      if (cine.active) cineTick(dt);
+      if (!tactics && !player.bioOpen && !cine.active) {
         for (const b of bots) botTick(b, dt);
         for (const a of allies) allyTick(a, dt);
       }
@@ -1555,6 +1685,7 @@ export function RealGame() {
         player.rangeT -= dt;
         if (player.rangeT <= 0) {
           ended = true;
+          fillEnd();
           const acc = player.shots > 0 ? Math.round((player.rangeHits / player.shots) * 100) : 0;
           addXp(player.rangeHits * 5);
           setWinner(`RANGE: ${player.rangeHits} Treffer · ${acc} % Genauigkeit`);
@@ -1573,10 +1704,10 @@ export function RealGame() {
           const limit = mode === "ffa" ? 8 : 10;
           if (mode === "ffa") {
             const best = ffaScore.indexOf(Math.max(...ffaScore));
-            if (ffaScore[best] >= limit) { ended = true; setWinner(best === 0 ? "DU" : BOT_NAMES[best - 1]); setScreen("end"); }
+            if (ffaScore[best] >= limit) { ended = true; fillEnd(); setWinner(best === 0 ? "DU" : BOT_NAMES[best - 1]); setScreen("end"); }
           } else {
-            if (teamScore[0] >= limit) { ended = true; setWinner("TEAM GRÜN"); setScreen("end"); }
-            if (teamScore[1] >= limit) { ended = true; setWinner("TEAM ROT"); setScreen("end"); }
+            if (teamScore[0] >= limit) { ended = true; fillEnd(); setWinner("TEAM GRÜN"); setScreen("end"); }
+            if (teamScore[1] >= limit) { ended = true; fillEnd(); setWinner("TEAM ROT"); setScreen("end"); }
           }
         }
       }
@@ -1619,6 +1750,7 @@ export function RealGame() {
           skin: player.skinColor,
           fps: fpsVal,
           killcam: player.killcam ? (bots.find((b) => b.id === player.killcam!.botId)?.name ?? "?") : null,
+          subtitle: hudSubtitle,
         });
       }
 
@@ -1687,6 +1819,25 @@ export function RealGame() {
             <p className="font-mono text-xs text-accent tracking-wider uppercase mb-4">
               // Nächste Mission im Kampagnen-Block freigeschaltet
             </p>
+          )}
+          {screen === "end" && endInfoExt.current && (
+            <div className="border border-border bg-card rounded-sm p-4 mb-6 text-left max-w-xl mx-auto">
+              {endInfoExt.current.debrief && (
+                <p className="text-sm text-muted-foreground italic leading-relaxed mb-3">„{endInfoExt.current.debrief}"</p>
+              )}
+              <p className="font-mono text-[11px] text-foreground mb-2">
+                K/D: {endInfoExt.current.kills}/{endInfoExt.current.deaths} · Headshots: {endInfoExt.current.hs}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {endInfoExt.current.medals.length > 0 ? (
+                  endInfoExt.current.medals.map((m) => (
+                    <span key={m} className="font-mono text-[10px] text-accent border border-accent/50 bg-accent/10 rounded-sm px-2 py-1">{m}</span>
+                  ))
+                ) : (
+                  <span className="font-mono text-[10px] text-muted-foreground">Keine Medaillen dieses Mal.</span>
+                )}
+              </div>
+            </div>
           )}
           <p className="text-muted-foreground mb-8 leading-relaxed">
             Three.js-Engine: echte 3D-Physik, Hitscan-Gunplay mit Tracern &amp; Partikeln,
@@ -2005,6 +2156,20 @@ export function RealGame() {
         <p className="font-mono text-sm text-primary glow-neon-sm tracking-wider">{hud.scores}</p>
         {hud.objective && <p className="font-mono text-[10px] text-foreground/90 tracking-wider mt-1">{hud.objective}</p>}
       </div>
+      {/* Cinematic: Letterbox + Subtitles */}
+      {hud.subtitle && (
+        <>
+          <div className="absolute inset-x-0 top-0 h-[9%] bg-black pointer-events-none" />
+          <div className="absolute inset-x-0 bottom-0 h-[9%] bg-black pointer-events-none" />
+          <div className="absolute inset-x-0 bottom-[11%] flex justify-center pointer-events-none px-6">
+            <p className="text-center max-w-2xl">
+              <span className="font-mono text-[10px] tracking-[0.3em] uppercase text-primary glow-neon-sm">{hud.subtitle.speaker}</span>
+              <span className="block text-base md:text-lg text-foreground leading-relaxed">{hud.subtitle.text}</span>
+            </p>
+          </div>
+          <p className="absolute top-[10%] right-4 font-mono text-[9px] text-muted-foreground tracking-wider uppercase pointer-events-none">Enter = überspringen</p>
+        </>
+      )}
       {hud.killcam && (
         <div className="absolute inset-x-0 bottom-24 flex justify-center pointer-events-none">
           <p className="font-mono text-sm tracking-[0.3em] uppercase text-destructive border border-destructive/50 bg-black/70 px-4 py-2 rounded-sm">
