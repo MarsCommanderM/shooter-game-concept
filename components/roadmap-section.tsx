@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-type PhaseStatus = "aktiv" | "geplant" | "später";
+type PhaseStatus = "done" | "aktiv" | "geplant" | "später";
 
 interface Phase {
   id: string;
@@ -18,7 +18,7 @@ const PHASES: Phase[] = [
     id: "p0",
     title: "Phase 0 – Konzept & GDD",
     window: "Jetzt",
-    status: "aktiv",
+    status: "done",
     summary:
       "Das vollständige Design-Dokument: Kernmechaniken, Multiplayer-Modi, Arsenal, Karten und Infrastruktur sind definiert und abgestimmt.",
     items: [
@@ -31,7 +31,7 @@ const PHASES: Phase[] = [
     id: "p1",
     title: "Phase 1 – Vertical Slice",
     window: "Q4 2026",
-    status: "geplant",
+    status: "aktiv",
     summary:
       "Ein spielbarer Querschnitt beweist die Fantasie: Zerstörung, Gunplay und Parkour in einer Arena – feel first, features second.",
     items: [
@@ -82,6 +82,10 @@ const PHASES: Phase[] = [
 ];
 
 const STATUS_STYLE: Record<PhaseStatus, { label: string; cls: string }> = {
+  done: {
+    label: "Abgeschlossen",
+    cls: "border-accent/60 text-accent bg-accent/10",
+  },
   aktiv: {
     label: "Aktiv",
     cls: "border-primary text-primary bg-primary/10 box-glow-neon",

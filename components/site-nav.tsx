@@ -62,9 +62,15 @@ export function SiteNav() {
         {/* Demo CTA (desktop) */}
         <a
           href="/play"
-          className="hidden lg:inline-flex items-center gap-2 font-mono text-[11px] tracking-wider uppercase text-primary-foreground bg-primary rounded-sm px-3 py-2 box-glow-neon hover:opacity-90 transition-opacity min-h-[36px]"
+          className="hidden lg:inline-flex items-center gap-2 font-mono text-[11px] tracking-wider uppercase text-muted-foreground border border-border rounded-sm px-3 py-2 hover:text-primary hover:border-primary/40 transition-colors min-h-[36px]"
         >
           ▶ Demo
+        </a>
+        <a
+          href="/game"
+          className="hidden lg:inline-flex items-center gap-2 font-mono text-[11px] tracking-wider uppercase text-primary-foreground bg-primary rounded-sm px-3 py-2 box-glow-neon hover:opacity-90 transition-opacity min-h-[36px]"
+        >
+          🎮 3D-Game
         </a>
 
         {/* Mobile Menu Button */}

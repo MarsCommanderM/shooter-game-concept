@@ -105,8 +105,14 @@ export function HeroSection() {
           >
             ▶ Prototyp spielen
           </a>
+          <a
+            href="/game"
+            className="inline-flex items-center gap-3 border border-primary/60 text-primary font-mono text-sm tracking-[0.2em] uppercase px-8 py-4 rounded-sm hover:bg-primary/10 transition-colors min-h-[44px] ml-3"
+          >
+            🎮 Echtes 3D-Game
+          </a>
           <p className="font-mono text-[10px] text-muted-foreground tracking-wider uppercase mt-3">
-            Web-Demo // alle 6 Modi gegen Bots
+            Web-Demo: 6 Modi vs. Bots · 3D: Vertical Slice mit Destruction
           </p>
         </div>
 
