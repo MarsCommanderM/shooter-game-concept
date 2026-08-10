@@ -8,6 +8,9 @@ const navLinks = [
   { label: "Mechanik", href: "#mechanics" },
   { label: "Charakter", href: "#character" },
   { label: "Multiplayer", href: "#multiplayer" },
+  { label: "Arsenal", href: "#arsenal" },
+  { label: "Karten", href: "#maps" },
+  { label: "Roadmap", href: "#roadmap" },
 ];
 
 export function SiteNav() {
@@ -40,7 +43,7 @@ export function SiteNav() {
         </a>
 
         {/* Desktop Nav */}
-        <div className="hidden md:flex items-center gap-8">
+        <div className="hidden lg:flex items-center gap-6">
           {navLinks.map((link) => (
             <a
               key={link.href}
@@ -56,7 +59,7 @@ export function SiteNav() {
         <button
           type="button"
           onClick={() => setMenuOpen(!menuOpen)}
-          className="md:hidden flex flex-col gap-1.5 p-2 min-w-[44px] min-h-[44px] items-center justify-center"
+          className="lg:hidden flex flex-col gap-1.5 p-2 min-w-[44px] min-h-[44px] items-center justify-center"
           aria-label="Men\u00fc \u00f6ffnen"
         >
           <span
@@ -79,7 +82,7 @@ export function SiteNav() {
 
       {/* Mobile Menu */}
       {menuOpen && (
-        <div className="md:hidden bg-background/95 backdrop-blur-md border-b border-border">
+        <div className="lg:hidden bg-background/95 backdrop-blur-md border-b border-border">
           <div className="px-6 py-4 flex flex-col gap-1">
             {navLinks.map((link) => (
               <a
