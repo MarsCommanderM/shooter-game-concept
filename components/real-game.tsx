@@ -1486,6 +1486,7 @@ export function RealGame() {
               m.color.setHex(0x7a4d1f);
               if (wall.hp <= 0) {
                 wall.active = false;
+                occDirty = true;
                 scene.remove(wall.mesh);
                 sBoom();
                 burst(wall.mesh.position.clone(), 0x22ff55, 30);
@@ -1613,7 +1614,7 @@ export function RealGame() {
     scene.add(flashLight);
 
     /* ---------- Granaten (3D, physikalisch) ---------- */
-    const nades3: { mesh: THREE.Mesh; vel: THREE.Vector3; t: number }[] = [];
+    const nades3: { mesh: THREE.Mesh; vel: THREE.Vector3; t: number; killer: number }[] = [];
     const nadGeo = new THREE.SphereGeometry(0.12, 8, 8);
     const throwNade = () => {
       if (player.grenades <= 0 || player.nadeCd > 0 || player.hp <= 0 || tactics) return;
@@ -1625,7 +1626,7 @@ export function RealGame() {
       camera.getWorldDirection(dir);
       mesh.position.set(player.x, player.y + 1.5, player.z);
       scene.add(mesh);
-      nades3.push({ mesh, vel: dir.multiplyScalar(11).add(new THREE.Vector3(0, 3, 0)), t: 1.25 });
+      nades3.push({ mesh, vel: dir.multiplyScalar(11).add(new THREE.Vector3(0, 3, 0)), t: 1.25, killer: 0 });
     };
     const explode3 = (pos: THREE.Vector3) => {
       sBoom();
@@ -1837,17 +1838,31 @@ export function RealGame() {
       moveWithCollide(p2, wantX, wantZ, 0.5, b.y);
       const blockedB = (wantX !== 0 && Math.abs(p2.x - (bp.x + wantX)) > 0.001) || (wantZ !== 0 && Math.abs(p2.z - (bp.z + wantZ)) > 0.001);
       if (target) moveWithCollide(p2, (-dz / dist) * b.strafeDir * 2.2 * dt, (dx / dist) * b.strafeDir * 2.2 * dt, 0.5, b.y);
-      // Bot-Parkour + Flanking: Mantling ODER Umweg um massive Waende
+      // Bot-Parkour + Flanking: A* durch Breschen, Mantling, sonst Seitwaerts
       if (blockedB && b.mantle == null && dist > 0.5) {
         const probeTop = getSupport(bp.x + (dx / dist) * 0.7, bp.z + (dz / dist) * 0.7, b.y + 2);
         const dh = probeTop - b.y;
         if (dh > 0.1 && dh <= 1.5) { b.mantle = probeTop + 0.02; b.vy = 0; }
-        else if (!b.flankT || b.flankT <= 0) {
-          // seitlichen Flank-Punkt waehlen (quer zur Zielrichtung)
-          const side = Math.random() < 0.5 ? 1 : -1;
-          b.flankX = bp.x + (-dz / dist) * 8 * side + (dx / dist) * 4;
-          b.flankZ = bp.z + (dx / dist) * 8 * side + (dz / dist) * 4;
-          b.flankT = 1.2 + Math.random() * 0.8;
+        else {
+          const st = (b as unknown as { pathT?: number; px?: number; pz?: number });
+          st.pathT = (st.pathT ?? 0) - dt;
+          if ((st.pathT ?? 0) <= 0) {
+            st.pathT = 2;
+            const wp = astar(bp.x, bp.z, tx, tz);
+            if (wp) { st.px = wp.x; st.pz = wp.z; }
+          }
+          if (st.px !== undefined && st.pz !== undefined && Math.hypot(st.px - bp.x, st.pz - bp.z) > 1) {
+            const p3 = { x: bp.x, z: bp.z };
+            const fdx = st.px - bp.x, fdz = st.pz - bp.z;
+            const fd = Math.hypot(fdx, fdz) || 0.001;
+            moveWithCollide(p3, (fdx / fd) * 4.5 * dt, (fdz / fd) * 4.5 * dt, 0.5, b.y);
+            bp.x = p3.x; bp.z = p3.z;
+          } else if (!b.flankT || b.flankT <= 0) {
+            const side = Math.random() < 0.5 ? 1 : -1;
+            b.flankX = bp.x + (-dz / dist) * 8 * side + (dx / dist) * 4;
+            b.flankZ = bp.z + (dx / dist) * 8 * side + (dz / dist) * 4;
+            b.flankT = 1.2 + Math.random() * 0.8;
+          }
         }
       }
       if (b.flankT && b.flankT > 0) {
@@ -1944,6 +1959,39 @@ export function RealGame() {
         b.burstLeft = 3 + Math.floor(Math.random() * 3);
       }
       b.shieldT = Math.max(0, (b.shieldT ?? 0) - dt);
+      // ===== BOT-UTILITY: Granaten & Deckungs-Breaching =====
+      const util = (b as unknown as { nadeCd2?: number; wallCd?: number });
+      util.nadeCd2 = (util.nadeCd2 ?? 4 + Math.random() * 4) - dt;
+      if (target && target.id === 0 && util.nadeCd2 <= 0 && target.dist > 5 && target.dist < 14 && nades3.length < 6) {
+        util.nadeCd2 = 7 + Math.random() * 6;
+        const ddn = target.dist || 1;
+        nades3.push({ mesh: new THREE.Mesh(nadGeo, new THREE.MeshStandardMaterial({ color: 0xff5544, emissive: 0x661111 })), vel: new THREE.Vector3((dx / ddn) * 8, 3.2, (dz / ddn) * 8), t: 1.0, killer: b.id });
+        pushFeed(`💣 ${b.name} wirft eine Granate!`);
+      }
+      util.wallCd = (util.wallCd ?? 5) - dt;
+      if (util.wallCd <= 0 && target && target.id === 0 && target.dist > 3 && target.dist < 12 && !losClear(bp, new THREE.Vector3(player.x, player.y, player.z))) {
+        util.wallCd = 4 + Math.random() * 3;
+        // naechste sprengbare Wand zwischen Bot und Spieler beschiessen
+        const wbs = walls.filter((w) => w.active && w.destructible);
+        let bestW: (typeof wbs)[number] | null = null; let bdW = 1e9;
+        for (const w of wbs) {
+          const d1 = Math.hypot(w.mesh.position.x - bp.x, w.mesh.position.z - bp.z);
+          const d2 = Math.hypot(w.mesh.position.x - player.x, w.mesh.position.z - player.z);
+          if (d1 + d2 < bdW && d2 < 6) { bdW = d1 + d2; bestW = w; }
+        }
+        if (bestW) {
+          bestW.hp -= 100;
+          burst(bestW.mesh.position.clone(), 0xff5544, 10);
+          sShot("brecher");
+          pushFeed(`⚠ ${b.name} beschießt deine Deckung!`);
+          if (bestW.hp <= 0) {
+            bestW.active = false; occDirty = true; scene.remove(bestW.mesh);
+            burst(bestW.mesh.position.clone(), 0x22ff55, 20);
+            sBoom();
+            pushFeed(`💥 ${b.name} hat eine Wand gesprengt!`);
+          } else (bestW.mesh.material as THREE.MeshStandardMaterial).color.setHex(0x7a4d1f);
+        }
+      }
       // ===== BOSS-LOGIK =====
       if (b.isBoss) {
         const hpFrac = b.hp / (b.bossHp || 1);
@@ -2094,6 +2142,55 @@ export function RealGame() {
         v.hp -= 12;
         if (v.hp <= 0) kill(a.id, v.id);
       }
+    };
+
+    /* ---------- A*-Pathfinding: Bots nutzen Breschen ---------- */
+    const GRID = 81; // -40..40
+    let occ = new Uint8Array(GRID * GRID);
+    let occDirty = true;
+    const gIdx = (x: number, z: number) => (Math.min(GRID - 1, Math.max(0, Math.round(z + 40))) * GRID + Math.min(GRID - 1, Math.max(0, Math.round(x + 40))));
+    const rebuildOcc = () => {
+      occ = new Uint8Array(GRID * GRID);
+      for (const w of walls) {
+        if (!w.active) continue; // gesprengt = offen = Bot weiss es!
+        const x0 = Math.max(0, Math.round(w.mesh.position.x - w.hw - 0.4) + 40);
+        const x1 = Math.min(GRID - 1, Math.round(w.mesh.position.x + w.hw + 0.4) + 40);
+        const z0 = Math.max(0, Math.round(w.mesh.position.z - w.hd - 0.4) + 40);
+        const z1 = Math.min(GRID - 1, Math.round(w.mesh.position.z + w.hd + 0.4) + 40);
+        for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) occ[z * GRID + x] = 1;
+      }
+      occDirty = false;
+    };
+    const astar = (sx: number, sz: number, tx: number, tz: number): { x: number; z: number } | null => {
+      if (occDirty) rebuildOcc();
+      const start = gIdx(sx, sz), goal = gIdx(tx, tz);
+      if (occ[goal]) return null;
+      const open: number[] = [start];
+      const came = new Int32Array(GRID * GRID).fill(-1);
+      const gScore = new Float32Array(GRID * GRID).fill(Infinity);
+      gScore[start] = 0;
+      const f = (i: number) => gScore[i] + Math.abs((i % GRID) - (goal % GRID)) + Math.abs(Math.floor(i / GRID) - Math.floor(goal / GRID));
+      let guard = 0;
+      while (open.length && guard++ < 2500) {
+        open.sort((a, b) => f(a) - f(b));
+        const cur = open.shift()!;
+        if (cur === goal) {
+          // Pfad zurueck: ersten Schritt nach Start finden
+          let node = goal;
+          while (came[node] !== start && came[node] !== -1) node = came[node];
+          return { x: (node % GRID) - 40, z: Math.floor(node / GRID) - 40 };
+        }
+        const cx = cur % GRID, cz = Math.floor(cur / GRID);
+        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+          const nx = cx + dx, nz = cz + dz;
+          if (nx < 0 || nz < 0 || nx >= GRID || nz >= GRID) continue;
+          const ni = nz * GRID + nx;
+          if (occ[ni]) continue;
+          const ng = gScore[cur] + (dx !== 0 && dz !== 0 ? 1.4 : 1);
+          if (ng < gScore[ni]) { gScore[ni] = ng; came[ni] = cur; if (!open.includes(ni)) open.push(ni); }
+        }
+      }
+      return null;
     };
 
     /* ---------- Replay-Recorder ---------- */
