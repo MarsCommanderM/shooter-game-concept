@@ -557,7 +557,47 @@ function ac(): AudioContext | null {
   if (actx.state === "suspended") void actx.resume();
   return actx;
 }
-function sShot(kind: "dorn" | "brecher" | "richter") {
+/* ---- Spatial Audio (HRTF): Listener an der Kamera + 3D-Panner für Gegner-Schüsse/Explosionen ---- */
+const _awp = new THREE.Vector3();
+const _awd = new THREE.Vector3();
+function updateAudioCam(x: number, y: number, z: number, fx: number, fy: number, fz: number) {
+  if (!actx) return;
+  const L = actx.listener as AudioListener & {
+    positionX?: AudioParam; positionY?: AudioParam; positionZ?: AudioParam;
+    forwardX?: AudioParam; forwardY?: AudioParam; forwardZ?: AudioParam;
+    setPosition?: (x: number, y: number, z: number) => void;
+    setOrientation?: (fx: number, fy: number, fz: number, ux: number, uy: number, uz: number) => void;
+  };
+  try {
+    if (L.positionX && L.positionY && L.positionZ) {
+      L.positionX.value = x; L.positionY.value = y; L.positionZ.value = z;
+      if (L.forwardX && L.forwardY && L.forwardZ) {
+        L.forwardX.value = fx; L.forwardY.value = fy; L.forwardZ.value = fz;
+      }
+    } else {
+      L.setPosition?.(x, y, z);
+      L.setOrientation?.(fx, fy, fz, 0, 1, 0);
+    }
+  } catch { /* Browser ohne Spatial-Support: Sounds bleiben mono */ }
+}
+function spatialize(c: AudioContext, pos: { x: number; y: number; z: number }): AudioNode {
+  try {
+    const p = c.createPanner();
+    p.panningModel = "HRTF";
+    p.distanceModel = "inverse";
+    p.refDistance = 3;
+    p.maxDistance = 140;
+    p.rolloffFactor = 1.1;
+    const px = p as PannerNode & { setPosition?: (x: number, y: number, z: number) => void };
+    if (p.positionX && p.positionY && p.positionZ) {
+      p.positionX.value = pos.x; p.positionY.value = pos.y; p.positionZ.value = pos.z;
+    } else px.setPosition?.(pos.x, pos.y, pos.z);
+    return p;
+  } catch {
+    return c.destination;
+  }
+}
+function sShot(kind: "dorn" | "brecher" | "richter", pos?: { x: number; y: number; z: number }) {
   const c = ac(); if (!c) return;
   const t = c.currentTime;
   const o = c.createOscillator(); const g = c.createGain();
@@ -571,9 +611,12 @@ function sShot(kind: "dorn" | "brecher" | "richter") {
     o.type = "triangle"; o.frequency.setValueAtTime(700, t); o.frequency.exponentialRampToValueAtTime(170, t + 0.07);
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.15, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
   }
-  o.connect(g).connect(c.destination); o.start(t); o.stop(t + 0.3);
+  o.connect(g);
+  if (pos) { const p = spatialize(c, pos); g.connect(p); p.connect(c.destination); }
+  else g.connect(c.destination);
+  o.start(t); o.stop(t + 0.3);
 }
-function sBoom() {
+function sBoom(pos?: { x: number; y: number; z: number }) {
   const c = ac(); if (!c) return;
   const t = c.currentTime;
   const len = Math.floor(c.sampleRate * 0.6);
@@ -583,7 +626,10 @@ function sBoom() {
   const src = c.createBufferSource(); src.buffer = buf;
   const f = c.createBiquadFilter(); f.type = "lowpass"; f.frequency.setValueAtTime(800, t); f.frequency.exponentialRampToValueAtTime(60, t + 0.6);
   const g = c.createGain(); g.gain.setValueAtTime(0.55, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
-  src.connect(f).connect(g).connect(c.destination); src.start(t);
+  src.connect(f); f.connect(g);
+  if (pos) { const p = spatialize(c, pos); g.connect(p); p.connect(c.destination); }
+  else g.connect(c.destination);
+  src.start(t);
 }
 function sStepPan(dist: number, pan: number) {
   const c = ac(); if (!c) return;
@@ -1859,7 +1905,7 @@ export function RealGame() {
                 wall.active = false;
                 occDirty = true;
                 scene.remove(wall.mesh);
-                sBoom();
+                sBoom(wall.mesh.position);
                 burst(wall.mesh.position.clone(), 0x22ff55, 30);
                 pushFeed("💥 BRESCHE GESPRENGT!");
                 missionDestroyed++;
@@ -2000,7 +2046,7 @@ export function RealGame() {
       nades3.push({ mesh, vel: dir.multiplyScalar(11).add(new THREE.Vector3(0, 3, 0)), t: 1.25, killer: 0 });
     };
     const explode3 = (pos: THREE.Vector3) => {
-      sBoom();
+      sBoom(pos);
       flashLight.position.copy(pos);
       flashLight.intensity = 12;
       burst(pos, 0xffcc33, 26);
@@ -2160,7 +2206,7 @@ export function RealGame() {
         if (b.alive && b.cd <= 0 && d < 14 && player.hp > 0 && losClear(b.group.position, new THREE.Vector3(player.x, player.y, player.z))) {
           b.cd = 1.5;
           player.hp -= 12;
-          sShot("dorn");
+          sShot("dorn", b.group.position);
           if (player.hp <= 0) kill(b.id, 0);
         }
         return;
@@ -2401,12 +2447,12 @@ export function RealGame() {
         if (bestW) {
           bestW.hp -= 100;
           burst(bestW.mesh.position.clone(), 0xff5544, 10);
-          sShot("brecher");
+          sShot("brecher", b.group.position);
           pushFeed(`⚠ ${b.name} beschießt deine Deckung!`);
           if (bestW.hp <= 0) {
             bestW.active = false; occDirty = true; scene.remove(bestW.mesh);
             burst(bestW.mesh.position.clone(), 0x22ff55, 20);
-            sBoom();
+            sBoom(bestW.mesh.position);
             pushFeed(`💥 ${b.name} hat eine Wand gesprengt!`);
           } else (bestW.mesh.material as THREE.MeshStandardMaterial).color.setHex(0x7a4d1f);
         }
@@ -2443,7 +2489,7 @@ export function RealGame() {
                 const w = des[Math.floor(Math.random() * des.length)];
                 w.active = false; scene.remove(w.mesh);
                 burst(w.mesh.position.clone(), 0x22ff55, 20);
-                sBoom();
+                sBoom(w.mesh.position);
                 pushFeed("⚠ Die Arena zerfällt!");
               }
             }
@@ -2462,7 +2508,7 @@ export function RealGame() {
         const from = bp.clone().add(new THREE.Vector3(0, 1.4, 0));
         const to = new THREE.Vector3(target.x, target.y, target.z);
         tracer(from, to, b.color.getHex());
-        sShot("dorn");
+        sShot("dorn", from);
         const stanceMul = player.prone ? 0.5 : player.crouch ? 0.75 : 1;
         const adapt = Math.max(0.75, Math.min(1.25, 1 + (player.deaths - player.kills) * 0.02)) * (mode === "m0" ? 0.5 : 1) * (ngOn && ngMods.includes("aggro") ? 1.5 : 1);
         const dmg = (6 + Math.random() * 8) * adapt * (perk === "panzer" ? 0.7 : 1) * stanceMul * ((b as unknown as { dmgMul?: number }).dmgMul ?? 1) * (b.isBoss ? 2.2 : 1) * (b.persona === "sniper" && target.dist > 10 ? 1.7 : 1) * (b.persona === "rush" ? 0.8 : 1);
@@ -2556,7 +2602,7 @@ export function RealGame() {
         a.cd = 0.5 + Math.random() * 0.4;
         const from = bp.clone().add(new THREE.Vector3(0, 1.4, 0));
         tracer(from, new THREE.Vector3(target.x, 1.4, target.z), 0x33ccff);
-        sShot("dorn");
+        sShot("dorn", from);
         const v = bots.find((x) => x.id === target!.id)!;
         v.hp -= 12;
         if (v.hp <= 0) kill(a.id, v.id);
@@ -3266,6 +3312,9 @@ const banterCd: Record<string, number> = {};
         camera.position.lerp(new THREE.Vector3(player.x, 3.0, player.z), Math.min(1, dt * 6));
         camera.lookAt(streakCam.pos.clone().add(new THREE.Vector3(0, 1.2, 0)));
       }
+      // ---- Spatial-Audio-Listener folgt der Kamera (HRTF-Richtungshören) ----
+      camera.getWorldPosition(_awp); camera.getWorldDirection(_awd);
+      updateAudioCam(_awp.x, _awp.y, _awp.z, _awd.x, _awd.y, _awd.z);
       if (composer) composer.render();
       else renderer.render(scene, camera);
     };
