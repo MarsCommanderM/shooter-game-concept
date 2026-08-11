@@ -291,7 +291,7 @@ export function OnlineGame() {
       addWall(-22, 0, 8, 1.2, 3); addWall(22, 0, 8, 1.2, 3);
       addWall(0, -6, 6, 1.2, 2); addWall(0, 6, 6, 1.2, 2);
       addWall(0, 0, 4, 4, 3);
-    } else {
+    } else if (mapSel === "orbital") {
       addWall(-8, -8, 6, 1.1, 2.5); addWall(8, 8, 6, 1.1, 2.5);
       addWall(-8, 8, 6, 1.1, 2.5); addWall(8, -8, 6, 1.1, 2.5);
       addWall(0, -16, 8, 1.2, 3); addWall(0, 16, 8, 1.2, 3);
