@@ -246,6 +246,13 @@ const BANTER: Record<string, { spk: string; text: string }[]> = {
     { spk: "VEGA", text: "Panzerungsanalyse läuft. Schwachpunkte kommen." },
   ],
 };
+const DIFF_KEY = "wirrwarr-diff";
+const DIFFS = [
+  { id: "recruit", name: "REKRUT", mul: 0.7, desc: "Entspannt · Story genießen" },
+  { id: "veteran", name: "VETERAN", mul: 1, desc: "Wie intended" },
+  { id: "apex", name: "APEX", mul: 1.35, desc: "Bots: +35 % Schaden, schneller" },
+];
+function loadDiff() { try { return localStorage.getItem(DIFF_KEY) ?? "veteran"; } catch { return "veteran"; } }
 const NG_KEY = "wirrwarr-ngplus";
 const NG_MODS = [
   { id: "aggro", name: "Aggressive Biomass", desc: "Bots: +50 % Schaden, +20 % Tempo" },
@@ -684,6 +691,7 @@ export function RealGame() {
   ) => {
     const mission = MISSIONS.find((m) => m.id === mode) ?? null;
     const xpMul = weeklyEvent().id === "2xp" ? 2 : 1;
+    const diffMul = DIFFS.find((d) => d.id === loadDiff())?.mul ?? 1;
     const breachMul = weeklyEvent().id === "breach" ? 2 : 1;
     const mount = mountRef.current;
     if (!mount) return;
@@ -1823,7 +1831,7 @@ export function RealGame() {
       b.strafeT -= dt;
       if (b.strafeT <= 0) { b.strafeT = 0.7 + Math.random(); b.strafeDir = Math.random() < 0.5 ? -1 : 1; }
       const p2 = { x: bp.x, z: bp.z };
-      const bSpeed = (b as unknown as { bossSpeed?: number }).bossSpeed ?? 4.5;
+      const bSpeed = ((b as unknown as { bossSpeed?: number }).bossSpeed ?? 4.5) * (weeklyEvent().id === "spore" ? 1.1 : 1) * (diffMul === 1.35 ? 1.15 : 1);
       const wantX = !target && dist > 1 ? (dx / dist) * bSpeed * dt : target && target.dist > 8 ? (dx / dist) * bSpeed * dt : 0;
       const wantZ = !target && dist > 1 ? (dz / dist) * bSpeed * dt : target && target.dist > 8 ? (dz / dist) * bSpeed * dt : 0;
       moveWithCollide(p2, wantX, wantZ, 0.5, b.y);
@@ -3001,6 +3009,22 @@ export function RealGame() {
             <p className="font-mono text-[11px] text-foreground">Headshots: <span className="text-primary">{stats.headshots}</span></p>
             <p className="font-mono text-[11px] text-foreground">Melee: <span className="text-primary">{stats.melees}</span></p>
             <p className="font-mono text-[11px] text-foreground">Beste Streak: <span className="text-primary">{stats.bestStreak}</span></p>
+          </div>
+
+          {/* Schwierigkeit */}
+          <div className="flex flex-wrap items-center gap-2 mb-6">
+            <span className="font-mono text-[10px] tracking-[0.25em] uppercase text-muted-foreground mr-1">Schwierigkeit:</span>
+            {DIFFS.map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                title={d.desc}
+                onClick={() => { try { localStorage.setItem(DIFF_KEY, d.id); } catch { /* */ } setDailyTick((t) => t + 1); }}
+                className={`font-mono text-[11px] tracking-wider uppercase rounded-sm border px-3 py-2 transition-all min-h-[36px] ${loadDiff() === d.id ? "border-primary/70 bg-primary/10 text-primary box-glow-neon" : "border-border bg-card text-muted-foreground hover:border-primary/30"}`}
+              >
+                {d.name}
+              </button>
+            ))}
           </div>
 
           {/* Performance */}

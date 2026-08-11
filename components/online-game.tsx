@@ -28,6 +28,14 @@ interface Remote {
 }
 
 const ARENA = 40;
+const TURN_KEY = "wirrwarr-turn";
+function loadTurn(): { url: string; user: string; cred: string } | null {
+  try {
+    const t = JSON.parse(localStorage.getItem(TURN_KEY) ?? "null");
+    if (t && t.url) return t;
+  } catch { /* */ }
+  return null;
+}
 const TEAM_HEX = [0x22ff55, 0xff5544];
 
 function makeLabel(text: string, color: string): THREE.Sprite {
@@ -109,7 +117,13 @@ export function OnlineGame() {
     let myId = -1;
     const pcs = new Map<number, RTCPeerConnection>();
     const audios = new Map<number, HTMLAudioElement>();
-    const CFG: RTCConfiguration = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+    const turn = loadTurn();
+    const CFG: RTCConfiguration = {
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        ...(turn ? [{ urls: turn.url, username: turn.user, credential: turn.cred }] : []),
+      ],
+    };
     const sendVc = (m: Record<string, unknown>) => sendRef.current(m);
     const attach = (pc: RTCPeerConnection, id: number) => {
       pc.onicecandidate = (e) => { if (e.candidate) sendVc({ t: "vc-ice", to: id, cand: e.candidate }); };
@@ -689,6 +703,7 @@ export function OnlineGame() {
               <p className="font-mono text-[11px] text-muted-foreground">Server teilt Teams zu – erstes Team mit 10 Kills.</p>
             </button>
           </div>
+          <TurnSettings />
           <a href="/" className="font-mono text-xs tracking-wider uppercase text-muted-foreground hover:text-primary transition-colors">
             ← Zurück zum GDD
           </a>
@@ -803,6 +818,37 @@ export function OnlineGame() {
       >
         ✕ Verlassen
       </button>
+    </div>
+  );
+}
+
+function TurnSettings() {
+  const [open, setOpen] = useState(false);
+  const [url, setUrl] = useState("");
+  const [user, setUser] = useState("");
+  const [cred, setCred] = useState("");
+  const [saved, setSaved] = useState(false);
+  return (
+    <div className="border border-border bg-card rounded-sm p-3 mb-6">
+      <button type="button" onClick={() => setOpen(!open)} className="font-mono text-[10px] tracking-wider uppercase text-muted-foreground hover:text-primary min-h-[32px]">
+        🎙 Voice-Settings {open ? "▲" : "▼"} <span className="text-muted-foreground/60">(optional: TURN für strenge NATs/Firmennetz)</span>
+      </button>
+      {open && (
+        <div className="grid sm:grid-cols-3 gap-2 mt-3">
+          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="turn:dein.turn:3478" className="bg-black/60 border border-border rounded-sm px-2 py-1.5 font-mono text-[10px] outline-none" />
+          <input value={user} onChange={(e) => setUser(e.target.value)} placeholder="username" className="bg-black/60 border border-border rounded-sm px-2 py-1.5 font-mono text-[10px] outline-none" />
+          <input value={cred} onChange={(e) => setCred(e.target.value)} placeholder="credential" type="password" className="bg-black/60 border border-border rounded-sm px-2 py-1.5 font-mono text-[10px] outline-none" />
+          <button
+            type="button"
+            onClick={() => {
+              try { localStorage.setItem(TURN_KEY, JSON.stringify({ url, user, cred })); setSaved(true); } catch { /* */ }
+            }}
+            className="sm:col-span-3 font-mono text-[10px] border border-primary/50 text-primary bg-primary/10 hover:bg-primary/20 rounded-sm px-2 py-1.5 min-h-[32px]"
+          >
+            {saved ? "✓ Gespeichert" : "TURN speichern (ohne = nur STUN, reicht für die meisten)"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
