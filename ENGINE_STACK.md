@@ -1,5 +1,11 @@
 # WIRRWARR — Engine- & Architektur-Entscheidung
 
+> **UPDATE 2026-08-11: EIGENE ENGINE BESCHLOSSEN.** Statt Unity/Unreal-Port bauen wir die
+> **STW-ENGINE** (`stw-engine/`): SDL2 + OpenGL 4.5 + GLM + glTF 2.0, Forward+, Renderer-Interface
+> austauschbar (Web-Backend später). **Phase 1 (Engine-Kernel) kompiliert bereits**: Fenster, Game-Loop,
+> Pointer-Lock-Input, glTF-Loader mit Binary-Cache, PBR-Shader (GGX + ACES). Siehe `stw-engine/README.md`.
+> Der Browser-Prototyp bleibt Gameplay-Labor + Web-Backend-Referenz.
+
 > Antwort auf die Frage „WebGL im Browser oder Pixel-Streaming?" und die Stack-Empfehlung (Unity/Unreal + Netcode + Audio + VFX-LOD).
 > Stand: 2026-08-11 · Status: **Entscheidung getroffen, Phase 1 läuft live.**
 
