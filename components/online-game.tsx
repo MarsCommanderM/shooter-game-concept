@@ -140,6 +140,8 @@ export function OnlineGame() {
   const [rangeTop, setRangeTop] = useState<{ name: string; acc: number }[]>([]);
   const [profileCard, setProfileCard] = useState<null | { name: string; kills: number; deaths: number; me: boolean }>(null);
   const [clanTop, setClanTop] = useState<{ tag: string; kills: number }[]>([]);
+  const [pregameUi, setPregameUi] = useState(0);
+  const [myVote, setMyVote] = useState<MapSel | null>(null);
   const vcCtx = useRef<{ team: () => number; has: (pid: number) => number | undefined; pids: () => number[] }>({ team: () => -1, has: () => undefined, pids: () => [] });
   const [name] = useState(() => {
     let cn = "";
@@ -256,6 +258,15 @@ export function OnlineGame() {
       window.removeEventListener("wirrwarr-vc", onMsg);
     };
   }, [screen]);
+  useEffect(() => {
+    if (screen !== "game") return;
+    const iv = window.setInterval(() => {
+      // pregame countdown liest engine via shared ref
+      setPregameUi(pregameRef.current);
+    }, 250);
+    return () => window.clearInterval(iv);
+  }, [screen]);
+  const pregameRef = useRef(0);
   useEffect(() => () => apiRef.current?.dispose(), []);
   useEffect(() => {
     if (screen !== "game") return;
@@ -413,6 +424,10 @@ export function OnlineGame() {
       return e;
     };
     let kc: { id: number; t: number } | null = null;
+    let pregame = gameMode === "inv" ? 0 : 12;
+    pregameRef.current = pregame;
+    const votes: Record<string, number> = {};
+    const votedSet = new Set<number>();
     const vega = { on: false, x: me.x + 2, z: me.z + 2, cd: 0 };
     const vegaMesh = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.5, 0.4), new THREE.MeshStandardMaterial({ color: 0xff99cc, emissive: 0x883366 }));
     vegaMesh.position.y = 0.75;
@@ -549,10 +564,17 @@ export function OnlineGame() {
           if (m.by === me.id) { me.kills++; banterOnline("kill"); }
           orec.events.push({ t: Math.round(orec.t * 10) / 10, e: `kill:SPORE-${m.id}` });
           pushFeed(`${m.by === me.id ? "DU" : remotes.get(m.by as number)?.name ?? "?"} ⚡ SPORE-${m.id}`);
+        } else if (m.t === "mapvote") {
+          if (!votedSet.has(m.from as number)) {
+            votedSet.add(m.from as number);
+            votes[String(m.map)] = (votes[String(m.map)] ?? 0) + 1;
+          }
+        } else if (m.t === "prestart") {
+          pregame = 0;
         } else if (m.t === "setmap") {
           activeMap = m.map as MapSel;
           buildWalls(activeMap);
-          pushFeed(`🗺️ ARENA-ROTATION: ${activeMap.toUpperCase()}`);
+          pushFeed(`🗺️ ARENA: ${activeMap.toUpperCase()}`);
         } else if (m.t === "pdmg") {
           if (m.target === me.id && me.hp > 0) {
             me.hp -= m.dmg as number;
@@ -626,7 +648,7 @@ export function OnlineGame() {
     /* ---------- Schießen ---------- */
     const raycaster = new THREE.Raycaster();
     const shoot = () => {
-      if (me.spec) return;
+      if (me.spec || pregame > 0) return;
       if (me.fireCd > 0 || me.reloading > 0 || me.ammo <= 0 || me.hp <= 0) return;
       me.fireCd = 0.18;
       me.ammo--;
@@ -847,6 +869,20 @@ export function OnlineGame() {
           if (d2 > 3) { vega.x += ((me.x - vega.x) / d2) * 5.5 * dt; vega.z += ((me.z - vega.z) / d2) * 5.5 * dt; }
         }
         vegaMesh.position.x = vega.x; vegaMesh.position.z = vega.z;
+      }
+      if (pregame > 0) {
+        pregame -= dt;
+        const pids2 = [me.id, ...remotes.keys()];
+        const isHost2 = me.id === Math.min(...pids2);
+        pregameRef.current = Math.max(0, pregame);
+        if (isHost2 && pregame <= 0) {
+          let bestMap: MapSel = mapSel; let bestN = -1;
+          for (const [mm, n] of Object.entries(votes)) if (n > bestN) { bestN = n; bestMap = mm as MapSel; }
+          if (bestMap !== activeMap) { activeMap = bestMap; buildWalls(activeMap); }
+          send({ t: "setmap", map: activeMap });
+          send({ t: "prestart" });
+          pushFeed(`🗺️ ARENA: ${activeMap.toUpperCase()} – LOS!`);
+        }
       }
       orec.t += dt;
       orec.acc += dt;
@@ -1260,6 +1296,28 @@ export function OnlineGame() {
         </button>
         {micErr && <p className="font-mono text-[9px] text-destructive">{micErr}</p>}
       </div>
+      {pregameUi > 0 && (
+        <div className="absolute inset-x-0 top-[18%] flex justify-center pointer-events-none">
+          <div className="border border-primary/60 bg-black/85 box-glow-neon rounded-sm p-4 text-center pointer-events-auto">
+            <p className="font-mono text-lg text-primary glow-neon mb-2">🗺️ MAP-VOTE · {Math.ceil(pregameUi)} s</p>
+            <div className="flex gap-2 justify-center">
+              {(["sector", "stahl", "orbital", "garten"] as MapSel[]).map((mm) => (
+                <button
+                  key={mm}
+                  type="button"
+                  onClick={() => {
+                    setMyVote(mm);
+                    sendRef.current({ t: "mapvote", map: mm });
+                  }}
+                  className={`font-mono text-[10px] uppercase rounded-sm border px-2.5 py-1.5 min-h-[32px] ${myVote === mm ? "border-primary bg-primary/20 text-primary" : "border-border text-muted-foreground"}`}
+                >
+                  {mm === "sector" ? "Sektor" : mm === "stahl" ? "Stahl" : mm === "orbital" ? "Orbital" : "Garten"}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
       <p className="absolute bottom-3 left-1/2 -translate-x-1/2 font-mono text-[9px] text-muted-foreground tracking-wider uppercase pointer-events-none">Enter = Chat · U = Team-Chat · Voice = WebRTC-P2P</p>
       <Scoreboard hud={hud} top10={top10} onCard={(p) => setProfileCard(p)} />
       {profileCard && (

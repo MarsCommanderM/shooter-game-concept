@@ -286,6 +286,13 @@ export function seasonSkinOn(): boolean {
 export function loadUpgOwned(): string[] {
   try { return JSON.parse(localStorage.getItem(UPG_KEY) ?? "null") ?? []; } catch { return []; }
 }
+function attachOf(w: string): string[] {
+  return loadLoadout().attach?.[w] ?? [];
+}
+function maxAmmoFor(w: string): number {
+  const a = attachOf(w);
+  return w === "richter" ? 5 + (a.includes("extmag") ? 2 : 0) : 24 + (a.includes("extmag") ? 8 : 0);
+}
 const NG_KEY = "wirrwarr-ngplus";
 const NG_MODS = [
   { id: "aggro", name: "Aggressive Biomass", desc: "Bots: +50 % Schaden, +20 % Tempo" },
@@ -307,6 +314,8 @@ const WEAPON_LEVEL: Record<string, number> = { dorn: 1, brecher: 2, richter: 4 }
 const ATTACHMENTS = [
   { id: "optic", name: "Zieloptik", level: 3, desc: "-30 % Bloom, -5 % Tempo" },
   { id: "grip", name: "Vertikalgriff", level: 4, desc: "-50 % Recoil" },
+  { id: "extmag", name: "Erw. Magazin", level: 3, desc: "+8 Schuss (DORN/BRECHER)" },
+  { id: "suppressor", name: "Suppressor", level: 5, desc: "Schüsse alarmieren nur noch nah (6 m)" },
   { id: "leicht", name: "Leichter Lauf", level: 5, desc: "+8 % Tempo, +15 % Bloom" },
   { id: "schwer", name: "Schwerer Lauf", level: 6, desc: "+15 % Schaden, +30 % Recoil" },
 ];
@@ -1424,6 +1433,23 @@ export function RealGame() {
     const kd = (e: KeyboardEvent) => {
       keys[e.code] = true;
       if (e.code === "KeyT") {
+        if (!tactics) {
+          const near = bots.filter((b) => b.alive && Math.hypot(b.group.position.x - player.x, b.group.position.z - player.z) < 25);
+          if (near.length) {
+            const nb = near[0];
+            const dx = nb.group.position.x - player.x, dz = nb.group.position.z - player.z;
+            const side = (-Math.sin(yaw.rotation.y) * dx + -Math.cos(yaw.rotation.y) * dz) > 0 ? "VOR dir" : "HINTER dir";
+            const lr = (-Math.cos(yaw.rotation.y) * dx + Math.sin(yaw.rotation.y) * dz) > 0 ? "rechts" : "links";
+            pushFeed(`🎙 VEGA: „${near.length} Feinde, nächster ${side} ${lr}. Flanken empfohlen.“`);
+            sRadio();
+          } else {
+            pushFeed("🎙 VEGA: „Keine Signaturen in 25 m. Atem holen.“");
+            sRadio();
+          }
+        } else {
+          pushFeed("🎙 JUNO: „Zeit läuft wieder. Viel Spaß.“");
+          sRadio();
+        }
         tactics = !tactics;
         pushFeed(tactics ? "🧠 TAKTIK // Zeit eingefroren" : "Taktik beendet – Zeit läuft");
         return;
@@ -1450,7 +1476,7 @@ export function RealGame() {
         if (player.noGun) return;
         if (level < (WEAPON_LEVEL[next] ?? 1)) { pushFeed(`🔒 ${next.toUpperCase()} braucht Level ${WEAPON_LEVEL[next]}`); return; }
         player.weapon = next;
-        player.ammo = player.weapon === "richter" ? 5 : 24;
+        player.ammo = maxAmmoFor(player.weapon);
         player.reloading = 0;
       }
     };
@@ -1458,6 +1484,7 @@ export function RealGame() {
     const md = (e: MouseEvent) => {
       if (e.button === 2) { melee(); return; }
       if (tactics) {
+        pushFeed("🎙 JUNO: „Verstanden. Wege gesetzt.“");
         const r = el.getBoundingClientRect();
         const nx = ((e.clientX - r.left) / r.width) * 2 - 1;
         const ny = -((e.clientY - r.top) / r.height) * 2 + 1;
@@ -1535,6 +1562,12 @@ export function RealGame() {
         camera
       );
       player.bloom = Math.min(1, player.bloom + (player.weapon === "dorn" ? 0.16 : 0.3));
+      const alertR = attachOf(player.weapon).includes("suppressor") ? 6 : 16;
+      for (const b of bots) {
+        if (b.alive && Math.hypot(b.group.position.x - player.x, b.group.position.z - player.z) < alertR) {
+          (b as unknown as { alertT?: number }).alertT = 2;
+        }
+      }
       if ((mode === "m5" || mode === "m13") && !player.alarm) {
         player.alarm = true;
         banter("boss");
@@ -2064,6 +2097,11 @@ export function RealGame() {
         b.burstLeft = 3 + Math.floor(Math.random() * 3);
       }
       b.shieldT = Math.max(0, (b.shieldT ?? 0) - dt);
+      const al = (b as unknown as { alertT?: number }).alertT ?? 0;
+      if (al > 0) {
+        (b as unknown as { alertT?: number }).alertT = al - dt;
+        if (!target && dP < 20 && player.hp > 0) target = { x: player.x, y: player.y, z: player.z, id: 0, dist: dP } as unknown as typeof target;
+      }
       // Persona-Modifikatoren
       if (b.persona === "sniper" && target && target.dist < 7) {
         const away = 4 * dt;
@@ -2535,8 +2573,8 @@ export function RealGame() {
           if (player.stepAcc > 2.4) { player.stepAcc = 0; sStep(); }
         }
 
-        if (player.reloading > 0) { player.reloading -= dt; if (player.reloading <= 0) player.ammo = player.weapon === "richter" ? 5 : 24; }
-        const maxAm = player.weapon === "richter" ? 5 : 24;
+        if (player.reloading > 0) { player.reloading -= dt; if (player.reloading <= 0) player.ammo = maxAmmoFor(player.weapon); }
+        const maxAm = maxAmmoFor(player.weapon);
         if (keys["KeyR"] && player.ammo < maxAm && player.reloading <= 0) player.reloading = player.weapon === "richter" ? 1.6 : 1.2;
         if (mouseDown) shoot();
 
@@ -3155,7 +3193,22 @@ export function RealGame() {
                 </div>
               </div>
               <div>
-                <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground mb-1.5">Waffen-Unlocks</p>
+                <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground mb-1.5">Waffen-Unlocks + Stats</p>
+                <div className="space-y-1.5 mb-2">
+                  {(["dorn", "brecher", "richter"] as const).map((w) => {
+                    const a = attachOf(w);
+                    const dmg = Math.round((w === "dorn" ? 26 : w === "brecher" ? 80 : 100) * (a.includes("schwer") ? 1.15 : 1));
+                    const bloom = Math.round(100 * (a.includes("optic") ? 0.7 : 1) * (a.includes("leicht") ? 1.15 : 1));
+                    const recoil = Math.round(100 * (a.includes("grip") ? 0.5 : 1) * (a.includes("schwer") ? 1.3 : 1));
+                    const mag = maxAmmoFor(w);
+                    const unlocked = level >= (WEAPON_LEVEL[w] ?? 1);
+                    return (
+                      <div key={w} className={`font-mono text-[9px] ${unlocked ? "text-muted-foreground" : "text-muted-foreground/40"}`}>
+                        {w.toUpperCase()} {unlocked ? "" : "🔒"} · DMG {dmg} · BLOOM {bloom}% · RECOIL {recoil}% · MAG {mag}{a.includes("suppressor") ? " · 🤫" : ""}
+                      </div>
+                    );
+                  })}
+                </div>
                 <p className="font-mono text-[11px] text-foreground">
                   DORN <span className="text-primary">Lv1</span> · BRECHER {level >= 2 ? <span className="text-primary">✓</span> : <span className="text-muted-foreground">🔒 Lv2</span>} · RICHTER {level >= 4 ? <span className="text-primary">✓</span> : <span className="text-muted-foreground">🔒 Lv4</span>}
                 </p>
