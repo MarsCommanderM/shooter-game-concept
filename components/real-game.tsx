@@ -177,6 +177,32 @@ function loadStory(): StoryData {
 function loadFrags(): number {
   try { return JSON.parse(localStorage.getItem(FRAG_KEY) ?? "0") || 0; } catch { return 0; }
 }
+const BANTER: Record<string, { spk: string; text: string }[]> = {
+  headshot: [
+    { spk: "VEGA", text: "Notiert. Angeber." },
+    { spk: "JUNO", text: "WOW. Nochmal. Sofort." },
+  ],
+  death: [
+    { spk: "VEGA", text: "Respawn-Protokoll aktiv. Atmen, Soldat." },
+    { spk: "JUNO", text: "Das hat mir auch wehgetan." },
+  ],
+  lowhp: [
+    { spk: "VEGA", text: "Vitalwerte kritisch. Deckung. Jetzt." },
+    { spk: "JUNO", text: "Bleib bei mir, verdammt!" },
+  ],
+  frag: [
+    { spk: "JUNO", text: "Das Fragment singt. Hörst du es?" },
+    { spk: "VEGA", text: "Datenpaket gesichert. Interessant …" },
+  ],
+  streak: [
+    { spk: "VEGA", text: "Drei in Folge. Die KORP loggt deine Muster." },
+    { spk: "JUNO", text: "Du bist heute ein Naturereignis!" },
+  ],
+  boss: [
+    { spk: "JUNO", text: "Das Ding … ist groß. Wirklich groß." },
+    { spk: "VEGA", text: "Panzerungsanalyse läuft. Schwachpunkte kommen." },
+  ],
+};
 const NG_KEY = "wirrwarr-ngplus";
 const NG_MODS = [
   { id: "aggro", name: "Aggressive Biomass", desc: "Bots: +50 % Schaden, +20 % Tempo" },
@@ -464,9 +490,100 @@ function sLand() {
 
 /* ================================================================== */
 
+const REPLAY_WALLS: [number, number, number, number, number, number][] = [
+  [0, 2, -40, 80, 4, 1], [0, 2, 40, 80, 4, 1], [-40, 2, 0, 1, 4, 80], [40, 2, 0, 1, 4, 80],
+  [0, 1.5, 0, 6, 3, 4], [-14, 1.5, -10, 8, 3, 1.2], [14, 1.5, 10, 8, 3, 1.2], [-14, 1.5, 12, 1.2, 3, 8],
+  [14, 1.5, -12, 1.2, 3, 8], [-30, 2, 0, 2, 4, 10], [30, 2, 0, 2, 4, 10], [0, 2, -26, 10, 4, 2], [0, 2, 26, 10, 4, 2],
+  [-8, 1, 8, 2, 2, 2], [8, 1, -8, 2, 2, 2], [-24, 1, -24, 3, 2, 3], [24, 1, 24, 3, 2, 3], [24, 1, -24, 3, 2, 3], [-24, 1, 24, 3, 2, 3],
+];
+
+function ReplayView({ data, onExit }: { data: { mode: string; frames: number[][]; events: { t: number; e: string }[] }; onExit: () => void }) {
+  const mountRef = useRef<HTMLDivElement>(null);
+  const [speed, setSpeed] = useState(1);
+  const speedRef = useRef(1);
+  speedRef.current = speed;
+  const [ui, setUi] = useState({ t: 0, feed: [] as string[], done: false });
+
+  useEffect(() => {
+    const mount = mountRef.current;
+    if (!mount) return;
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(mount.clientWidth, mount.clientHeight);
+    mount.appendChild(renderer.domElement);
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x050705);
+    scene.fog = new THREE.FogExp2(0x050705, 0.028);
+    const camera = new THREE.PerspectiveCamera(75, mount.clientWidth / mount.clientHeight, 0.1, 300);
+    scene.add(new THREE.HemisphereLight(0x22ff55, 0x000000, 0.5));
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(160, 160), new THREE.MeshStandardMaterial({ color: 0x0a0f0a }));
+    ground.rotation.x = -Math.PI / 2;
+    scene.add(ground);
+    scene.add(new THREE.GridHelper(80, 40, 0x1a4d24, 0x10240f));
+    for (const [x, y, z, w, h, d] of REPLAY_WALLS) {
+      const msh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color: 0x2f7a3a, emissive: 0x0a2a10 }));
+      msh.position.set(x, y, z);
+      scene.add(msh);
+    }
+    let raf = 0;
+    let t = 0;
+    let last = performance.now();
+    let ptr = 0;
+    let evIdx = 0;
+    let uiAcc = 0;
+    const feedLocal: string[] = [];
+    const fr = data.frames;
+    const loop = () => {
+      raf = requestAnimationFrame(loop);
+      const now = performance.now();
+      t += ((now - last) / 1000) * speedRef.current;
+      last = now;
+      if (fr.length > 1) {
+        while (ptr < fr.length - 2 && fr[ptr + 1][0] <= t) ptr++;
+        const a = fr[ptr];
+        const b = fr[Math.min(ptr + 1, fr.length - 1)];
+        const f = b[0] > a[0] ? Math.max(0, Math.min(1, (t - a[0]) / (b[0] - a[0]))) : 0;
+        camera.position.set(a[1] + (b[1] - a[1]) * f, 1.7, a[2] + (b[2] - a[2]) * f);
+        camera.rotation.set(0, a[3] + (b[3] - a[3]) * f, 0, "YXZ");
+      }
+      while (evIdx < data.events.length && data.events[evIdx].t <= t) {
+        feedLocal.push(`[${data.events[evIdx].t}s] ${data.events[evIdx].e}`);
+        evIdx++;
+      }
+      uiAcc += 0.25;
+      if (uiAcc >= 0.25) {
+        uiAcc = 0;
+        setUi({ t, feed: feedLocal.slice(-5), done: t > (fr[fr.length - 1]?.[0] ?? 0) });
+      }
+      renderer.render(scene, camera);
+    };
+    loop();
+    return () => { cancelAnimationFrame(raf); renderer.dispose(); if (renderer.domElement.parentElement === mount) mount.removeChild(renderer.domElement); };
+  }, [data]);
+
+  return (
+    <div className="relative h-screen w-full bg-black overflow-hidden">
+      <div ref={mountRef} className="w-full h-full" />
+      <div className="absolute inset-x-0 top-0 h-[9%] bg-black pointer-events-none" />
+      <div className="absolute inset-x-0 bottom-0 h-[9%] bg-black pointer-events-none" />
+      <p className="absolute top-[10%] left-4 font-mono text-xs text-destructive tracking-[0.3em] uppercase animate-pulse-neon">● REPLAY // {data.mode} // {ui.t.toFixed(1)} s</p>
+      <div className="absolute top-[10%] right-4 flex gap-2">
+        {[1, 2, 4].map((s) => (
+          <button key={s} type="button" onClick={() => setSpeed(s)} className={`font-mono text-[10px] px-2 py-1 rounded-sm border min-h-[28px] ${speed === s ? "border-primary text-primary" : "border-border text-muted-foreground"}`}>{s}×</button>
+        ))}
+        <button type="button" onClick={onExit} className="font-mono text-[10px] px-2 py-1 rounded-sm border border-border text-muted-foreground min-h-[28px]">✕ EXIT</button>
+      </div>
+      <div className="absolute bottom-[10%] left-4 space-y-0.5 pointer-events-none">
+        {ui.feed.map((f, i) => (<p key={i} className="font-mono text-[10px] text-primary/90">{f}</p>))}
+      </div>
+      {ui.done && <p className="absolute inset-x-0 top-1/2 text-center font-mono text-xl text-primary glow-neon tracking-[0.3em] uppercase">REPLAY ENDE</p>}
+    </div>
+  );
+}
+
 export function RealGame() {
   const mountRef = useRef<HTMLDivElement>(null);
-  const [screen, setScreen] = useState<"menu" | "game" | "end">("menu");
+  const [screen, setScreen] = useState<"menu" | "game" | "end" | "replay">("menu");
+  const [replayData, setReplayData] = useState<null | { mode: string; frames: number[][]; events: { t: number; e: string }[] }>(null);
   const [winner, setWinner] = useState("");
   const [arena, setArena] = useState<ArenaId>("sektor");
   const [perk, setPerk] = useState<PerkId>("sprint");
@@ -932,7 +1049,7 @@ export function RealGame() {
     const nameOf = (id: number) =>
       id === 0 ? "DU" : id >= 100 ? ALLY_NAMES[id - 101] ?? "?" : BOT_NAMES[id - 1] ?? "?";
     const kill = (killerId: number, victimId: number) => {
-      if (victimId === 0) { player.hp = 0; player.deaths++; player.respawnAt = gameTime + 3; player.streak = 0; player.revengeTarget = killerId; }
+      if (victimId === 0) { player.hp = 0; player.deaths++; player.respawnAt = gameTime + 3; player.streak = 0; player.revengeTarget = killerId; banter("death"); }
       else if (victimId >= 100) {
         const a = allies.find((x) => x.id === victimId)!;
         a.hp = 0; a.alive = false; a.respawnAt = gameTime + 5;
@@ -956,6 +1073,7 @@ export function RealGame() {
         // Streak / Spree
         player.streak++;
         player.bestStreakM = Math.max(player.bestStreakM, player.streak);
+        if (player.streak === 3) banter("streak");
         if (player.streak === 3) { player.announce = { text: "RAMPAGE!", t: gameTime }; sAnnounce(); }
         if (player.streak === 5) { player.announce = { text: "UNSTOPPBAR!", t: gameTime }; sAnnounce(); }
         if (player.streak === 8) { player.announce = { text: "GOTTGLEICH!", t: gameTime }; sAnnounce(); }
@@ -1057,6 +1175,7 @@ export function RealGame() {
       // AimPunch: Treffer kickt die Ansicht (tight feel)
       targetPitch += 0.012 + Math.random() * 0.006;
       targetYaw += (Math.random() - 0.5) * 0.012;
+      if (player.hp < 30 && player.hp > 0) banter("lowhp");
       if (player.shield > 0) {
         player.shield -= dmg;
         sShieldHit();
@@ -1204,6 +1323,7 @@ export function RealGame() {
       player.bloom = Math.min(1, player.bloom + (player.weapon === "dorn" ? 0.16 : 0.3));
       if (mode === "m5" && !player.alarm) {
         player.alarm = true;
+        banter("boss");
         pushFeed("⚠ ALARM! Schusswechsel gehört – sie kommen!");
         sRadio(); player.shakeT = 0.5;
       }
@@ -1507,6 +1627,7 @@ export function RealGame() {
             } catch { /* */ }
             pushFeed(`◆ Lore-Fragment geborgen (${player.frags}/3)`);
             sPickup();
+            banter("frag");
           }
         }
       }
@@ -1859,6 +1980,16 @@ export function RealGame() {
     /* ---------- Replay-Recorder ---------- */
     const rec = { frames: [] as number[][], events: [] as { t: number; e: string }[], acc: 0 };
     const recEvent = (e: string) => { rec.events.push({ t: Math.round(gameTime * 10) / 10, e }); };
+    const banterCd: Record<string, number> = {};
+    const banter = (ctx: string) => {
+      if ((banterCd[ctx] ?? 0) > gameTime) return;
+      if (Math.random() > 0.65) return;
+      banterCd[ctx] = gameTime + 12;
+      const pool = BANTER[ctx];
+      const line = pool[Math.floor(Math.random() * pool.length)];
+      pushFeed(`🎙 ${line.spk}: „${line.text}“`);
+      sRadio();
+    };
 
     /* ---------- Cinematic-Engine (Story-Beats) ---------- */
     const story = STORY[mode];
@@ -1930,6 +2061,9 @@ export function RealGame() {
           : "Der Datenkern ist gesichert. VEGAs Kapsel schloss sich lautlos. Manche Türen öffnen sich nie wieder.";
       }
       replayRef.current = { mode, frames: rec.frames, events: rec.events, date: new Date().toISOString() };
+      try {
+        if (rec.frames.length < 8000) localStorage.setItem("wirrwarr-lastreplay", JSON.stringify(replayRef.current));
+      } catch { /* */ }
       endInfoExt.current = { debrief, medals, kills: player.kills, deaths: player.deaths, hs: player.headshots, frags: player.frags, rank: mission ? rank : undefined };
     };
     const storyTick = () => {
@@ -2418,6 +2552,9 @@ export function RealGame() {
 
   /* ================= UI ================= */
   const stats = typeof window !== "undefined" ? loadStats() : { kills: 0, headshots: 0, melees: 0, bestStreak: 0 };
+  if (screen === "replay" && replayData) {
+    return <ReplayView data={replayData} onExit={() => setScreen("menu")} />;
+  }
   if (screen === "menu" || screen === "end") {
     return (
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-6 py-16">
@@ -2776,6 +2913,22 @@ export function RealGame() {
               <p className="font-bold text-foreground mb-1">Frei für alle</p>
               <p className="font-mono text-[11px] text-muted-foreground">6 Kämpfer – 8 Kills.</p>
             </button>
+            {typeof window !== "undefined" && localStorage.getItem("wirrwarr-lastreplay") && (
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    const r = JSON.parse(localStorage.getItem("wirrwarr-lastreplay")!);
+                    setReplayData(r);
+                    setScreen("replay");
+                  } catch { /* */ }
+                }}
+                className="text-left border border-border bg-card rounded-sm p-4 hover:border-primary/60 transition-all min-h-[44px]"
+              >
+                <p className="font-bold text-foreground mb-1">🎥 Replay</p>
+                <p className="font-mono text-[11px] text-muted-foreground">Letztes Match in der Engine abspielen.</p>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => start("range")}

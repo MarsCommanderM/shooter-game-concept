@@ -1,6 +1,8 @@
 /* WIRRWARR Online-Server: Next-Handler + WebSocket auf Port 3000 (/ws) */
 /* Räume: /ws?mode=ffa (Standard) & /ws?mode=tdm (Teams werden vergeben)  */
 import { createServer } from "http";
+import fs from "fs";
+import path from "path";
 import next from "next";
 import { WebSocketServer } from "ws";
 
@@ -20,6 +22,19 @@ const getRoom = (key) => {
 };
 
 let nextId = 1;
+
+/* ---------- Leaderboards (persistent pro Modus) ---------- */
+const SCORE_FILE = path.join(process.cwd(), "scores.json");
+function loadScores() {
+  try { return JSON.parse(fs.readFileSync(SCORE_FILE, "utf-8")); } catch { return {}; }
+}
+function saveScores(s) {
+  try { fs.writeFileSync(SCORE_FILE, JSON.stringify(s)); } catch { /* */ }
+}
+function topFor(mode) {
+  const s = loadScores();
+  return (s[mode] ?? []).slice(0, 10);
+}
 
 /* ---------- Server-autoritative Hit-Validation (Anti-Cheat-Basis) ---------- */
 const posMap = new Map(); // id -> {x,z}
@@ -85,6 +100,19 @@ wss.on("connection", (ws, req, roomKey) => {
         if (msg.teamChat && c.team !== ws.team && c !== ws) continue;
         c.send(JSON.stringify(msg));
       }
+      return;
+    } else if (m.t === "score") {
+      const s = loadScores();
+      const mode = String(m.mode ?? "ffa");
+      s[mode] = s[mode] ?? [];
+      s[mode].push({ name: String(m.name ?? "?").slice(0, 12), kills: Number(m.kills) || 0, date: Date.now() });
+      s[mode].sort((a, b) => b.kills - a.kills);
+      s[mode] = s[mode].slice(0, 100);
+      saveScores(s);
+      ws.send(JSON.stringify({ t: "top", mode, top: topFor(mode) }));
+      return;
+    } else if (m.t === "top") {
+      ws.send(JSON.stringify({ t: "top", mode: m.mode, top: topFor(String(m.mode ?? "ffa")) }));
       return;
     } else if (m.t === "ping") {
       ws.send(JSON.stringify({ t: "pong", ts: m.ts }));

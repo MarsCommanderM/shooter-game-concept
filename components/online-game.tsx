@@ -96,6 +96,7 @@ export function OnlineGame() {
   const [chatOpen, setChatOpen] = useState<null | "all" | "team">(null);
   const [chatText, setChatText] = useState("");
   const [chatLog, setChatLog] = useState<{ name: string; text: string; teamChat: boolean; own: boolean }[]>([]);
+  const [top10, setTop10] = useState<{ name: string; kills: number }[]>([]);
   const [name] = useState(() => `KAEMPFER-${Math.floor(10 + Math.random() * 89)}`);
 
   useEffect(() => () => apiRef.current?.dispose(), []);
@@ -206,6 +207,7 @@ export function OnlineGame() {
     try { ws = new WebSocket(`${proto}//${location.host}/ws?mode=${gameMode}`); } catch { setStatus("error"); }
     const send = (m: unknown) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); };
     sendRef.current = send;
+    send({ t: "top", mode: gameMode });
 
     const announce = (text: string) => {
       me.announce = { text, t: performance.now() / 1000 };
@@ -290,6 +292,8 @@ export function OnlineGame() {
               }
             }
           }
+        } else if (m.t === "top") {
+          setTop10((m.top as { name: string; kills: number }[]) ?? []);
         } else if (m.t === "chat") {
           setChatLog((l) => [...l.slice(-7), { name: String(m.name), text: String(m.text), teamChat: !!m.teamChat, own: m.id === me.id }]);
         } else if (m.t === "warn") {
@@ -550,6 +554,7 @@ export function OnlineGame() {
     apiRef.current = {
       dispose: () => {
         cancelAnimationFrame(raf);
+        if (me.kills > 0) send({ t: "score", name, kills: me.kills, mode: gameMode });
         ws?.close();
         window.removeEventListener("keydown", kd);
         window.removeEventListener("keyup", ku);
@@ -693,7 +698,7 @@ export function OnlineGame() {
         </form>
       )}
       <p className="absolute bottom-3 left-1/2 -translate-x-1/2 font-mono text-[9px] text-muted-foreground tracking-wider uppercase pointer-events-none">Enter = Chat · U = Team-Chat</p>
-      <Scoreboard hud={hud} />
+      <Scoreboard hud={hud} top10={top10} />
       <button
         type="button"
         onClick={() => setScreen("menu")}
@@ -705,7 +710,7 @@ export function OnlineGame() {
   );
 }
 
-function Scoreboard({ hud }: { hud: { players: { name: string; kills: number; deaths: number; me: boolean }[] } }) {
+function Scoreboard({ hud, top10 }: { hud: { players: { name: string; kills: number; deaths: number; me: boolean }[] }; top10: { name: string; kills: number }[] }) {
   const [tab, setTab] = useState(false);
   useEffect(() => {
     const d = (e: KeyboardEvent) => { if (e.key === "Tab") { e.preventDefault(); setTab(true); } };
@@ -719,6 +724,14 @@ function Scoreboard({ hud }: { hud: { players: { name: string; kills: number; de
     <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-center pointer-events-none">
       <div className="bg-black/85 border border-primary/40 rounded-sm p-4 min-w-[300px] box-glow-neon">
         <p className="font-mono text-[10px] tracking-[0.25em] uppercase text-primary mb-2">Live-Scoreboard</p>
+        {top10.length > 0 && (
+          <div className="mb-2 pb-2 border-b border-border/50">
+            <p className="font-mono text-[9px] text-muted-foreground uppercase tracking-wider mb-1">🏆 Top-10 ({top10.length ? "Server" : ""})</p>
+            {top10.slice(0, 5).map((t, i) => (
+              <p key={i} className="font-mono text-[10px] text-muted-foreground">{i + 1}. {t.name} – {t.kills}</p>
+            ))}
+          </div>
+        )}
         {hud.players.map((p) => (
           <div key={p.name} className={`flex justify-between gap-6 font-mono text-[11px] py-0.5 ${p.me ? "text-primary" : "text-foreground"}`}>
             <span>{p.name}</span>
