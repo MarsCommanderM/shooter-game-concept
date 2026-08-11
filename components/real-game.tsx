@@ -1963,6 +1963,16 @@ export function RealGame() {
     el.addEventListener("contextmenu", cm);
     window.addEventListener("mouseup", mu);
     window.addEventListener("mousemove", mm);
+    // ---- Screen-Fixierung: kein Pull-to-Refresh, kein Pinch-Zoom, kein Scroll-Bounce ----
+    const blockGesture = (e: Event) => e.preventDefault();
+    document.addEventListener("gesturestart", blockGesture);
+    document.addEventListener("touchmove", blockGesture, { passive: false });
+    try { const fs = document.documentElement.requestFullscreen?.(); if (fs) void fs.catch(() => {}); } catch { /* iOS kann kein Fullscreen-API */ }
+    try {
+      const so = window.screen.orientation as unknown as { lock?: (o: string) => Promise<void> };
+      const lockP = so.lock?.("landscape");
+      if (lockP) void lockP.catch(() => {});
+    } catch { /* iOS kennt kein Orientation-Lock */ }
 
     /* ---------- Waffen-Viewmodel ---------- */
     const gun = new THREE.Group();
@@ -3566,6 +3576,9 @@ const banterCd: Record<string, number> = {};
         mount.removeEventListener("touchend", tEnd);
         mount.removeEventListener("touchcancel", tEnd);
         joyBase.remove();
+        document.removeEventListener("gesturestart", blockGesture);
+        document.removeEventListener("touchmove", blockGesture);
+        try { window.screen.orientation.unlock(); } catch { /* */ }
         window.removeEventListener("keydown", kd);
         window.removeEventListener("keyup", ku);
         window.removeEventListener("mouseup", mu);

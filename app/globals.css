@@ -2,6 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Gaming-Fixierung: kein Pull-to-Refresh / Rubber-Band-Scroll auf Mobile */
+html,
+body {
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
