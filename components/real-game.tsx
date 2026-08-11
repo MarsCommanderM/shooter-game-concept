@@ -1660,6 +1660,48 @@ export function RealGame() {
       lastMX = e.clientX;
     };
     const cm = (e: Event) => e.preventDefault();
+    // Touch: linker Stick = bewegen, rechte Hälfte = schauen
+    const tJoy = { id: -1, ox: 0, oy: 0 };
+    const tLook = { id: -1, lx: 0, ly: 0 };
+    const tStart = (e: TouchEvent) => {
+      const r = mount.getBoundingClientRect();
+      for (const t of Array.from(e.changedTouches)) {
+        if (t.clientX - r.left < r.width / 2 && tJoy.id === -1) tJoy.id = t.identifier, tJoy.ox = t.clientX, tJoy.oy = t.clientY;
+        else if (tLook.id === -1) tLook.id = t.identifier, tLook.lx = t.clientX, tLook.ly = t.clientY;
+      }
+    };
+    const tMove = (e: TouchEvent) => {
+      for (const t of Array.from(e.changedTouches)) {
+        if (t.identifier === tJoy.id) {
+          gpMove.x = Math.max(-1, Math.min(1, (t.clientX - tJoy.ox) / 50));
+          gpMove.y = Math.max(-1, Math.min(1, (t.clientY - tJoy.oy) / 50));
+        } else if (t.identifier === tLook.id) {
+          targetYaw -= (t.clientX - tLook.lx) * 0.005;
+          targetPitch = Math.max(-1.2, Math.min(1.2, targetPitch - (t.clientY - tLook.ly) * 0.004));
+          tLook.lx = t.clientX; tLook.ly = t.clientY;
+        }
+      }
+      e.preventDefault();
+    };
+    const tEnd = (e: TouchEvent) => {
+      for (const t of Array.from(e.changedTouches)) {
+        if (t.identifier === tJoy.id) { tJoy.id = -1; gpMove.x = 0; gpMove.y = 0; }
+        if (t.identifier === tLook.id) tLook.id = -1;
+      }
+    };
+    mount.addEventListener("touchstart", tStart, { passive: true });
+    mount.addEventListener("touchmove", tMove, { passive: false });
+    mount.addEventListener("touchend", tEnd);
+    // Button-Bridge fuer Touch-UI
+    (window as unknown as Record<string, unknown>).__ww = {
+      fire: (v: boolean) => { mouseDown = v; },
+      jump: (v: boolean) => { keys["Space"] = v; },
+      duck: (v: boolean) => { keys["KeyC"] = v; },
+      reload: () => { keys["KeyR"] = true; window.setTimeout(() => { keys["KeyR"] = false; }, 200); },
+      weap: () => { player.weapon = player.weapon === "dorn" ? "brecher" : player.weapon === "brecher" ? "richter" : "dorn"; player.ammo = maxAmmoFor(player.weapon); },
+      nade: () => throwNade(),
+      melee: () => melee(),
+    };
     window.addEventListener("keydown", kd);
     window.addEventListener("keyup", ku);
     el.addEventListener("mousedown", md);
@@ -3211,6 +3253,9 @@ const banterCd: Record<string, number> = {};
       upgrade: buyUpg,
       dispose: () => {
         cancelAnimationFrame(raf);
+        mount.removeEventListener("touchstart", tStart);
+        mount.removeEventListener("touchmove", tMove);
+        mount.removeEventListener("touchend", tEnd);
         window.removeEventListener("keydown", kd);
         window.removeEventListener("keyup", ku);
         window.removeEventListener("mouseup", mu);
@@ -4047,9 +4092,11 @@ const banterCd: Record<string, number> = {};
     );
   }
 
+  const isTouch = typeof window !== "undefined" && "ontouchstart" in window;
+  const ww = () => (window as unknown as Record<string, any>).__ww as { fire: (v: boolean) => void; jump: (v: boolean) => void; duck: (v: boolean) => void; reload: () => void; weap: () => void; nade: () => void; melee: () => void } | undefined;
   return (
     <div className="relative h-screen w-full bg-black overflow-hidden select-none">
-      <div ref={mountRef} className="w-full h-full" />
+      <div ref={mountRef} className="w-full h-full" style={{ touchAction: "none" }} />
       {/* AAA-Look: Vignette + dezente Scanlines */}
       <div className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.55) 100%)" }} />
       <div className="pointer-events-none absolute inset-0" style={{ background: "repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(34,255,85,0.02) 3px, rgba(34,255,85,0.02) 4px)" }} />
@@ -4227,6 +4274,24 @@ const banterCd: Record<string, number> = {};
           {hud.reloading ? <span className="text-primary">LÄDT…</span> : <>{hud.ammo}<span className="text-muted-foreground text-sm">/∞</span></>}
         </p>
       </div>
+      {isTouch && (
+        <>
+          <button type="button" className="absolute bottom-24 right-5 w-20 h-20 rounded-full border-2 border-primary/60 bg-primary/20 text-primary font-mono text-xs active:bg-primary/50"
+            onTouchStart={(e) => { e.preventDefault(); ww()?.fire(true); }} onTouchEnd={() => ww()?.fire(false)}>FEUER</button>
+          <button type="button" className="absolute bottom-40 right-8 w-14 h-14 rounded-full border-2 border-border bg-secondary/40 text-foreground font-mono text-[10px] active:bg-secondary/70"
+            onTouchStart={(e) => { e.preventDefault(); ww()?.jump(true); }} onTouchEnd={() => ww()?.jump(false)}>JUMP</button>
+          <button type="button" className="absolute bottom-8 right-28 w-14 h-14 rounded-full border-2 border-border bg-secondary/40 text-foreground font-mono text-[10px] active:bg-secondary/70"
+            onTouchStart={(e) => { e.preventDefault(); ww()?.duck(true); }} onTouchEnd={() => ww()?.duck(false)}>DUCK</button>
+          <button type="button" className="absolute bottom-24 right-28 w-12 h-12 rounded-full border border-border bg-secondary/40 text-foreground font-mono text-[9px]"
+            onTouchStart={(e) => { e.preventDefault(); ww()?.nade(); }}>NADE</button>
+          <button type="button" className="absolute bottom-40 right-28 w-12 h-12 rounded-full border border-border bg-secondary/40 text-foreground font-mono text-[9px]"
+            onTouchStart={(e) => { e.preventDefault(); ww()?.melee(); }}>MELEE</button>
+          <button type="button" className="absolute bottom-52 right-5 w-12 h-12 rounded-full border border-border bg-secondary/40 text-foreground font-mono text-[9px]"
+            onTouchStart={(e) => { e.preventDefault(); ww()?.weap(); }}>WAFFE</button>
+          <button type="button" className="absolute bottom-52 right-20 w-12 h-12 rounded-full border border-border bg-secondary/40 text-foreground font-mono text-[9px]"
+            onTouchStart={(e) => { e.preventDefault(); ww()?.reload(); }}>LOAD</button>
+        </>
+      )}
       <button
         type="button"
         onClick={() => setScreen("menu")}

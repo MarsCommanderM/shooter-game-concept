@@ -670,6 +670,44 @@ export function OnlineGame() {
       } else if (mouseDown) targetYaw -= (e.clientX - lastMX) * 0.004;
       lastMX = e.clientX;
     };
+    // Touch-Sticks
+    const tJoy = { id: -1, ox: 0, oy: 0 };
+    const tLook = { id: -1, lx: 0, ly: 0 };
+    const tStart = (e: TouchEvent) => {
+      const r = mount.getBoundingClientRect();
+      for (const t of Array.from(e.changedTouches)) {
+        if (t.clientX - r.left < r.width / 2 && tJoy.id === -1) { tJoy.id = t.identifier; tJoy.ox = t.clientX; tJoy.oy = t.clientY; }
+        else if (tLook.id === -1) { tLook.id = t.identifier; tLook.lx = t.clientX; tLook.ly = t.clientY; }
+      }
+    };
+    const tMove = (e: TouchEvent) => {
+      for (const t of Array.from(e.changedTouches)) {
+        if (t.identifier === tJoy.id) {
+          gpMoveO.x = Math.max(-1, Math.min(1, (t.clientX - tJoy.ox) / 50));
+          gpMoveO.y = Math.max(-1, Math.min(1, (t.clientY - tJoy.oy) / 50));
+        } else if (t.identifier === tLook.id) {
+          targetYaw -= (t.clientX - tLook.lx) * 0.005;
+          targetPitch = Math.max(-1.2, Math.min(1.2, targetPitch - (t.clientY - tLook.ly) * 0.004));
+          tLook.lx = t.clientX; tLook.ly = t.clientY;
+        }
+      }
+      e.preventDefault();
+    };
+    const tEnd = (e: TouchEvent) => {
+      for (const t of Array.from(e.changedTouches)) {
+        if (t.identifier === tJoy.id) { tJoy.id = -1; gpMoveO.x = 0; gpMoveO.y = 0; }
+        if (t.identifier === tLook.id) tLook.id = -1;
+      }
+    };
+    mount.addEventListener("touchstart", tStart, { passive: true });
+    mount.addEventListener("touchmove", tMove, { passive: false });
+    mount.addEventListener("touchend", tEnd);
+    (window as unknown as Record<string, unknown>).__wwo = {
+      fire: (v: boolean) => { mouseDown = v; },
+      jump: (v: boolean) => { keys["Space"] = v; },
+      duck: (v: boolean) => { keys["KeyC"] = v; },
+      reload: () => { keys["KeyR"] = true; window.setTimeout(() => { keys["KeyR"] = false; }, 200); },
+    };
     window.addEventListener("keydown", kd);
     window.addEventListener("keyup", ku);
     el.addEventListener("mousedown", md);
@@ -1149,6 +1187,9 @@ export function OnlineGame() {
         }
       } catch { /* */ }
         ws?.close();
+        mount.removeEventListener("touchstart", tStart);
+        mount.removeEventListener("touchmove", tMove);
+        mount.removeEventListener("touchend", tEnd);
         window.removeEventListener("keydown", kd);
         window.removeEventListener("keyup", ku);
         window.removeEventListener("mouseup", mu);
@@ -1327,9 +1368,11 @@ export function OnlineGame() {
     );
   }
 
+  const isTouch = typeof window !== "undefined" && "ontouchstart" in window;
+  const wwo = () => (window as unknown as Record<string, any>).__wwo as { fire: (v: boolean) => void; jump: (v: boolean) => void; duck: (v: boolean) => void; reload: () => void } | undefined;
   return (
     <div className="relative h-screen w-full bg-black overflow-hidden select-none">
-      <div ref={mountRef} className="w-full h-full" />
+      <div ref={mountRef} className="w-full h-full" style={{ touchAction: "none" }} />
       {status === "connecting" && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/70">
           <p className="font-mono text-sm text-primary tracking-[0.3em] uppercase animate-pulse-neon">Verbinde mit Server …</p>
@@ -1498,6 +1541,18 @@ export function OnlineGame() {
             <button type="button" onClick={() => setProfileCard(null)} className="mt-3 font-mono text-[10px] border border-border text-muted-foreground rounded-sm px-2 py-1 min-h-[28px] w-full">SCHLIESSEN</button>
           </div>
         </div>
+      )}
+      {isTouch && (
+        <>
+          <button type="button" className="absolute bottom-24 right-5 w-20 h-20 rounded-full border-2 border-primary/60 bg-primary/20 text-primary font-mono text-xs active:bg-primary/50"
+            onTouchStart={(e) => { e.preventDefault(); wwo()?.fire(true); }} onTouchEnd={() => wwo()?.fire(false)}>FEUER</button>
+          <button type="button" className="absolute bottom-40 right-8 w-14 h-14 rounded-full border-2 border-border bg-secondary/40 text-foreground font-mono text-[10px] active:bg-secondary/70"
+            onTouchStart={(e) => { e.preventDefault(); wwo()?.jump(true); }} onTouchEnd={() => wwo()?.jump(false)}>JUMP</button>
+          <button type="button" className="absolute bottom-8 right-28 w-14 h-14 rounded-full border-2 border-border bg-secondary/40 text-foreground font-mono text-[10px] active:bg-secondary/70"
+            onTouchStart={(e) => { e.preventDefault(); wwo()?.duck(true); }} onTouchEnd={() => wwo()?.duck(false)}>DUCK</button>
+          <button type="button" className="absolute bottom-40 right-28 w-12 h-12 rounded-full border border-border bg-secondary/40 text-foreground font-mono text-[9px]"
+            onTouchStart={(e) => { e.preventDefault(); wwo()?.reload(); }}>LOAD</button>
+        </>
       )}
       <button
         type="button"
