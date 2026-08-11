@@ -210,6 +210,8 @@ const WEEKLY_EVENTS = [
   { id: "spore", name: "SPORENSTURM", desc: "3× Sporen in der Luft · Bots +10 % Tempo" },
   { id: "2xp", name: "DOPPEL-XP-WOCHE", desc: "Alle XP-Quellen ×2" },
   { id: "breach", name: "BREACH-PROTOKOLL", desc: "Strukturen halten nur die halbe Zeit" },
+  { id: "sniper", name: "SNIPER-WOCHE", desc: "Nur RICHTER-50 erlaubt" },
+  { id: "turbo", name: "TURBO", desc: "+30 % Bewegungstempo für alle" },
 ];
 const weeklyEvent = () => WEEKLY_EVENTS[weekIdx() % WEEKLY_EVENTS.length];
 interface DailyState { date: string; progress: Record<string, number>; claimed: Record<string, boolean>; }
@@ -292,6 +294,28 @@ function attachOf(w: string): string[] {
 function maxAmmoFor(w: string): number {
   const a = attachOf(w);
   return w === "richter" ? 5 + (a.includes("extmag") ? 2 : 0) : 24 + (a.includes("extmag") ? 8 : 0);
+}
+const ADAPT_KEY = "wirrwarr-madapt";
+function adaptFor(missionId: string): number {
+  try {
+    const a = JSON.parse(localStorage.getItem(ADAPT_KEY) ?? "null") ?? {};
+    const fails = a[missionId] ?? 0;
+    return Math.max(0.6, 1 - fails * 0.12);
+  } catch { return 1; }
+}
+function recordFail(missionId: string) {
+  try {
+    const a = JSON.parse(localStorage.getItem(ADAPT_KEY) ?? "null") ?? {};
+    a[missionId] = (a[missionId] ?? 0) + 1;
+    localStorage.setItem(ADAPT_KEY, JSON.stringify(a));
+  } catch { /* */ }
+}
+function recordWin(missionId: string) {
+  try {
+    const a = JSON.parse(localStorage.getItem(ADAPT_KEY) ?? "null") ?? {};
+    a[missionId] = 0;
+    localStorage.setItem(ADAPT_KEY, JSON.stringify(a));
+  } catch { /* */ }
 }
 const NG_KEY = "wirrwarr-ngplus";
 const NG_MODS = [
@@ -756,6 +780,7 @@ export function RealGame() {
   const [, setDailyTick] = useState(0);
   const [callsign, setCallsign] = useState(() => loadCallsign());
   const [introDone, setIntroDone] = useState(() => { try { return !!localStorage.getItem("wirrwarr-intro"); } catch { return false; } });
+  const [actCard, setActCard] = useState<string | null>(null);
   const [introBeat, setIntroBeat] = useState(0);
   const [doneMissions, setDoneMissions] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem(STORY_KEY) ?? "null")?.done ?? []; } catch { return []; } });
   const [failed, setFailed] = useState(false);
@@ -777,6 +802,17 @@ export function RealGame() {
 
   const start = (kind: GameKind) => {
     setFailed(false);
+    const acts: [GameKind[], string][] = [
+      [["m0", "m1", "m2", "m3", "m4", "m5"], "AKT I // ERNTE"],
+      [["m6", "m7", "m8"], "AKT I // SPIEGEL"],
+      [["m9", "m10", "m11", "m12"], "AKT I // NEST"],
+      [["m13", "m14", "m15"], "AKT II // DIE KOORDINATE"],
+    ];
+    const act = acts.find(([ids]) => ids.includes(kind));
+    if (act) {
+      setActCard(act[1]);
+      window.setTimeout(() => setActCard(null), 3200);
+    }
     setScreen("game");
     requestAnimationFrame(() =>
       initEngine(kind, arena, perk, loadout, level, (xpGain: number, msg?: string) => {
@@ -803,7 +839,7 @@ export function RealGame() {
     const mission = MISSIONS.find((m) => m.id === mode) ?? null;
     const xpMul = weeklyEvent().id === "2xp" ? 2 : 1;
     const invWave = { n: 1 };
-    const diffMul = DIFFS.find((d) => d.id === loadDiff())?.mul ?? 1;
+    const diffMul = (DIFFS.find((d) => d.id === loadDiff())?.mul ?? 1) * (mission ? adaptFor(mission.id) : 1);
     const breachMul = weeklyEvent().id === "breach" ? 2 : 1;
     const mount = mountRef.current;
     if (!mount) return;
@@ -1239,6 +1275,7 @@ export function RealGame() {
     const ngOn = ngMods.length > 0;
     if (ngOn && ngMods.includes("half")) player.shield = 50;
     if (ngOn && ngMods.includes("iron")) player.noGun = true;
+    if (weeklyEvent().id === "sniper") { player.weapon = "richter"; player.ammo = 5; }
     yaw.position.set(player.x, 1.7, player.z);
 
     const teamScore = [0, 0];
@@ -1248,7 +1285,8 @@ export function RealGame() {
     let missionKills = 0;
     let missionDestroyed = 0;
     const finishMission = (win: boolean) => {
-      if (win) { addXp(250 * xpMul); updateDaily("wins"); }
+      if (win) { addXp(250 * xpMul); updateDaily("wins"); if (mission) recordWin(mission.id); }
+      else if (mission) recordFail(mission.id);
       fillEnd();
       ended = true;
       setFailed(!win);
@@ -1478,6 +1516,7 @@ export function RealGame() {
           ? (player.weapon === "dorn" ? "brecher" : player.weapon === "brecher" ? "richter" : "dorn")
           : e.code === "Digit1" ? "dorn" : e.code === "Digit2" ? "brecher" : "richter";
         if (player.noGun) return;
+        if (weeklyEvent().id === "sniper" && next !== "richter") { pushFeed("🏆 SNIPER-WOCHE: Nur RICHTER-50."); return; }
         if (level < (WEAPON_LEVEL[next] ?? 1)) { pushFeed(`🔒 ${next.toUpperCase()} braucht Level ${WEAPON_LEVEL[next]}`); return; }
         player.weapon = next;
         player.ammo = maxAmmoFor(player.weapon);
@@ -2506,7 +2545,7 @@ export function RealGame() {
 
         const sprinting = !!keys["ShiftLeft"] && !player.crouch && speedNow0 > 4;
         const attNow = loadout.attach?.[player.weapon] ?? [];
-        const maxSp = (player.prone ? 1.5 : player.crouch ? 2.6 : sprinting ? (perk === "sprint" ? 9.6 : 8.6) : 5.2) * (player.upg.l1 && sprinting ? 1.1 : 1) * (player.rageT > 0 ? 1.2 : 1) * (attNow.includes("leicht") ? 1.08 : 1) * (attNow.includes("optic") ? 0.95 : 1);
+        const maxSp = (player.prone ? 1.5 : player.crouch ? 2.6 : sprinting ? (perk === "sprint" ? 9.6 : 8.6) : 5.2) * (player.upg.l1 && sprinting ? 1.1 : 1) * (player.rageT > 0 ? 1.2 : 1) * (attNow.includes("leicht") ? 1.08 : 1) * (attNow.includes("optic") ? 0.95 : 1) * (weeklyEvent().id === "turbo" ? 1.3 : 1);
 
         // Wish-Richtung + Acceleration (Air-Control)
         let wx = 0, wz = 0;
@@ -3024,6 +3063,17 @@ export function RealGame() {
           <p className="font-mono text-sm text-primary tracking-[0.3em] uppercase animate-pulse-neon">[ Klicken zum Erwachen ]</p>
         )}
         <p className="absolute bottom-8 font-mono text-[9px] text-muted-foreground tracking-widest uppercase">Klick = weiter · Einmalig · Danach direkt ins Gefecht</p>
+      </div>
+    );
+  }
+  if (actCard && screen === "game") {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-center animate-fade-in">
+          <p className="font-mono text-[10px] tracking-[0.5em] uppercase text-muted-foreground mb-4">WIRRWARR</p>
+          <p className="font-mono text-4xl md:text-6xl font-bold tracking-[0.2em] text-primary glow-neon">{actCard}</p>
+          <div className="mt-6 h-px w-64 mx-auto bg-gradient-to-r from-transparent via-primary/60 to-transparent" />
+        </div>
       </div>
     );
   }

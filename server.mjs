@@ -133,6 +133,25 @@ wss.on("connection", (ws, req, roomKey) => {
       saveScores(s);
       ws.send(JSON.stringify({ t: "top", mode, top: topFor(mode) }));
       return;
+    } else if (m.t === "heat") {
+      const s = loadScores();
+      s.heat = s.heat ?? {};
+      const key = `${String(m.map ?? "sector")}`;
+      s.heat[key] = s.heat[key] ?? {};
+      for (const [cx, cz, n] of m.cells ?? []) {
+        const k = `${cx},${cz}`;
+        s.heat[key][k] = (s.heat[key][k] ?? 0) + n;
+      }
+      saveScores(s);
+      return;
+    } else if (m.t === "heattop") {
+      const s = loadScores();
+      const cells = Object.entries((s.heat ?? {})[String(m.map ?? "sector")] ?? {}).map(([k, n]) => {
+        const [x, z] = k.split(",").map(Number);
+        return [x, z, n];
+      }).sort((a, b) => b[2] - a[2]).slice(0, 60);
+      ws.send(JSON.stringify({ t: "heattop", cells }));
+      return;
     } else if (m.t === "clantop") {
       const s = loadScores();
       ws.send(JSON.stringify({ t: "clantop", top: (s.clans ?? []).filter((e) => e.season === seasonNow()).slice(0, 10) }));

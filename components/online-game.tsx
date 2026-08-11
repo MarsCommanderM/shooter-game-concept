@@ -140,6 +140,7 @@ export function OnlineGame() {
   const [rangeTop, setRangeTop] = useState<{ name: string; acc: number }[]>([]);
   const [profileCard, setProfileCard] = useState<null | { name: string; kills: number; deaths: number; me: boolean }>(null);
   const [clanTop, setClanTop] = useState<{ tag: string; kills: number }[]>([]);
+  const [heatCells, setHeatCells] = useState<number[][] | null>(null);
   const [pregameUi, setPregameUi] = useState(0);
   const [myVote, setMyVote] = useState<MapSel | null>(null);
   const vcCtx = useRef<{ team: () => number; has: (pid: number) => number | undefined; pids: () => number[] }>({ team: () => -1, has: () => undefined, pids: () => [] });
@@ -609,6 +610,8 @@ export function OnlineGame() {
           setRangeTop((m.top as { name: string; acc: number }[]) ?? []);
         } else if (m.t === "clantop") {
           setClanTop((m.top as { tag: string; kills: number }[]) ?? []);
+        } else if (m.t === "heattop") {
+          setHeatCells((m.cells as number[][]) ?? null);
         } else if (m.t === "chat") {
           setChatLog((l) => [...l.slice(-7), { name: String(m.name), text: String(m.text), teamChat: !!m.teamChat, own: m.id === me.id }]);
         } else if (m.t === "warn") {
@@ -1060,6 +1063,19 @@ export function OnlineGame() {
         cancelAnimationFrame(raf);
         if (!me.spec && me.kills > 0) send({ t: "score", name, kills: me.kills, mode: gameMode, season: seasonId() });
       try {
+        const cells: Record<string, number> = {};
+        for (const ev of orec.events) {
+          if (!ev.e.startsWith("kill")) continue;
+          const fr = orec.frames.find((f) => f[0] >= ev.t);
+          if (fr) {
+            const cx = Math.round(fr[1] / 10) * 10, cz = Math.round(fr[2] / 10) * 10;
+            cells[`${cx},${cz}`] = (cells[`${cx},${cz}`] ?? 0) + 1;
+          }
+        }
+        const cellArr = Object.entries(cells).map(([k, n]) => { const [x, z] = k.split(",").map(Number); return [x, z, n]; });
+        if (cellArr.length) send({ t: "heat", map: mapSel, cells: cellArr });
+      } catch { /* */ }
+      try {
         if (orec.frames.length > 20 && orec.frames.length < 9000) {
           localStorage.setItem("wirrwarr-online-replay", JSON.stringify({ mode: gameMode, map: mapSel, frames: orec.frames, botTrack: orec.rem, botsMeta: orec.remMeta, events: orec.events, date: new Date().toISOString() }));
         }
@@ -1203,6 +1219,28 @@ export function OnlineGame() {
               <p className="font-mono text-[10px] text-accent">
                 🏆 Clan-War: {clanTop.slice(0, 4).map((r, i) => `${i + 1}. [${r.tag}] ${r.kills}`).join(" · ")}
               </p>
+            )}
+          </div>
+          <div className="flex flex-wrap items-start gap-3 mb-6">
+            <button
+              type="button"
+              onClick={() => sendRef.current({ t: "heattop", map: mapSel })}
+              className="font-mono text-[10px] tracking-wider uppercase rounded-sm border border-destructive/50 text-destructive bg-destructive/10 hover:bg-destructive/20 px-3 py-2 min-h-[36px]"
+            >
+              🔥 Season-Heatmap laden
+            </button>
+            {heatCells && (
+              <svg viewBox="0 0 160 160" className="w-40 h-40 border border-border bg-black/60 rounded-sm">
+                {Array.from({ length: 8 }).map((_, x) =>
+                  Array.from({ length: 8 }).map((_, z) => {
+                    const wx = x * 10 - 40, wz = z * 10 - 40;
+                    const n = heatCells.filter(([cx, cz]) => cx >= wx && cx < wx + 10 && cz >= wz && cz < wz + 10).reduce((s, c) => s + c[2], 0);
+                    if (!n) return null;
+                    const max = Math.max(...heatCells.map((c) => c[2]), 1);
+                    return <rect key={`${x}-${z}`} x={x * 20} y={z * 20} width={20} height={20} fill={`rgba(255,60,60,${Math.min(0.9, n / max)})`} />;
+                  })
+                )}
+              </svg>
             )}
           </div>
           <TurnSettings />
