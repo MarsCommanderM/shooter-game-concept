@@ -3106,6 +3106,15 @@ export function RealGame() {
             <p className="font-mono text-[11px] text-foreground">Headshots: <span className="text-primary">{stats.headshots}</span></p>
             <p className="font-mono text-[11px] text-foreground">Melee: <span className="text-primary">{stats.melees}</span></p>
             <p className="font-mono text-[11px] text-foreground">Beste Streak: <span className="text-primary">{stats.bestStreak}</span></p>
+            {(() => {
+              const r = loadRange();
+              return (
+                <>
+                  <p className="font-mono text-[11px] text-foreground">Range-Accuracy: <span className="text-primary">{r.shots ? Math.round((r.hits / r.shots) * 100) : 0} %</span> (Best: {r.bestAcc} %)</p>
+                  <p className="font-mono text-[11px] text-foreground">Range-Sessions: <span className="text-primary">{r.sessions}</span> · HS dort: <span className="text-primary">{r.hs}</span></p>
+                </>
+              );
+            })()}
           </div>
 
           {/* Schwierigkeit */}
