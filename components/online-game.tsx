@@ -429,7 +429,14 @@ export function OnlineGame() {
     pregameRef.current = pregame;
     const votes: Record<string, number> = {};
     const votedSet = new Set<number>();
-    const vega = { on: false, x: me.x + 2, z: me.z + 2, cd: 0 };
+    const vega = { on: false, x: me.x + 2, z: me.z + 2, cd: 0, hold: false };
+    let bioAcc = 0;
+    const buildBio = (x: number, z: number) => {
+      const msh = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), new THREE.MeshStandardMaterial({ color: 0x2f9a3a, emissive: 0x1f6a2a }));
+      msh.position.set(x, 1, z);
+      scene.add(msh);
+      walls.push({ x, z, hw: 1, hd: 1, top: 2, mesh: msh });
+    };
     const vegaMesh = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.5, 0.4), new THREE.MeshStandardMaterial({ color: 0xff99cc, emissive: 0x883366 }));
     vegaMesh.position.y = 0.75;
     vegaMesh.visible = false;
