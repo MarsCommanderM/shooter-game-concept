@@ -9,7 +9,7 @@ import { updateDaily, loadCallsign, loadUpgOwned, loadDiff, seasonId, ReplayView
 /* ================================================================== */
 
 type OnlineMode = "ffa" | "tdm" | "hq" | "dom" | "inv";
-type MapSel = "sector" | "stahl" | "orbital" | "garten";
+type MapSel = "sector" | "stahl" | "orbital" | "garten" | "custom";
 
 interface Remote {
   id: number;
@@ -345,6 +345,7 @@ export function OnlineGame() {
           [-8, -8, 6, 1.1, 2.5], [8, 8, 6, 1.1, 2.5], [-8, 8, 6, 1.1, 2.5], [8, -8, 6, 1.1, 2.5],
           [0, -16, 8, 1.2, 3], [0, 16, 8, 1.2, 3], [-16, 0, 1.2, 8, 3], [16, 0, 1.2, 8, 3],
         ],
+        custom: [],
         garten: [
           [-10, -10, 2, 2, 3], [10, -10, 2, 2, 3], [-10, 10, 2, 2, 3], [10, 10, 2, 2, 3],
           [-20, 0, 1.5, 6, 3], [20, 0, 1.5, 6, 3], [0, -20, 6, 1.5, 3], [0, 20, 6, 1.5, 3],
@@ -357,7 +358,7 @@ export function OnlineGame() {
           if (!v) continue;
           const cx = (i % 20) * 2 - 20 + 1;
           const cz = Math.floor(i / 20) * 2 - 20 + 1;
-          addWall(cx, cz, 2, 2, 3, v === 2 ? 2 : 3);
+          addWall(cx, cz, 2, 2, v === 2 ? 2 : 3);
         }
         return;
       }
