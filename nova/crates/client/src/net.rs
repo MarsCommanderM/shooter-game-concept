@@ -2,9 +2,10 @@
 //! + Snapshot-Interpolation. Transport austauschbar:
 //! nativ = UDP, Browser/WASM = WebSocket (Port = UDP-Port + 1).
 use std::collections::VecDeque;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use crate::timec::Instant;
 
-use nova_core::protocol::{ClientMsg, PlayerState, ServerMsg};
+use nova_core::protocol::{ClientMsg, GameEvent, PlayerState, ServerMsg};
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::net::UdpSocket;
@@ -25,7 +26,9 @@ pub struct PendingInput {
     pub seq: u32,
     pub wish: [f32; 2], // [strafe, vor]
     pub yaw: f32,
+    pub pitch: f32,
     pub sprint: bool,
+    pub buttons: u8,
     pub predicted: [f32; 3],
 }
 
@@ -35,13 +38,21 @@ pub struct Net {
     #[cfg(target_arch = "wasm32")]
     ws: WebSocket,
     #[cfg(target_arch = "wasm32")]
-    inbox: Rc<RefCell<VecDeque<String>>>,
+    inbox: Rc<RefCell<VecDeque<Vec<u8>>>>,
     #[cfg(target_arch = "wasm32")]
     _onmsg: Closure<dyn FnMut(MessageEvent)>,
     pub id: u32,
     pub connected: bool,
     pending: VecDeque<PendingInput>,
     snaps: VecDeque<(Instant, Vec<PlayerState>)>,
+    events: Vec<GameEvent>,
+    my_hp: u32,
+    my_team: u8,
+    last_tick: u64,
+    ack: u32,
+    server_pos: Option<[f32; 3]>,
+    scores: [u32; 2],
+    names: Vec<(u32, String, u8)>,
 }
 
 impl Net {
@@ -56,6 +67,14 @@ impl Net {
             connected: false,
             pending: VecDeque::new(),
             snaps: VecDeque::new(),
+            events: Vec::new(),
+            my_hp: 100,
+            my_team: 0,
+            last_tick: 0,
+            ack: 0,
+            server_pos: None,
+            scores: [0, 0],
+            names: Vec::new(),
         };
         n.send(&ClientMsg::Join { name: "NOVA-PILOT".into() });
         Ok(n)
@@ -67,21 +86,26 @@ impl Net {
         let wport: u32 = p.parse::<u32>().map_err(|_| "Port ungültig")? + 1;
         let url = format!("ws://{}:{}", host, wport);
         let ws = WebSocket::new(&url).map_err(|_| "WebSocket fehlgeschlagen")?;
-        let inbox: Rc<RefCell<VecDeque<String>>> = Rc::new(RefCell::new(VecDeque::new()));
+        ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
+        let inbox: Rc<RefCell<VecDeque<Vec<u8>>>> = Rc::new(RefCell::new(VecDeque::new()));
         let inbox2 = inbox.clone();
         let onmsg = Closure::wrap(Box::new(move |e: MessageEvent| {
-            if let Some(txt) = e.data().as_string() {
-                inbox2.borrow_mut().push_back(txt);
+            if let Ok(ab) = e.data().dyn_into::<js_sys::ArrayBuffer>() {
+                let u8a = js_sys::Uint8Array::new(&ab);
+                let mut v = vec![0u8; u8a.length() as usize];
+                u8a.copy_to(&mut v);
+                inbox2.borrow_mut().push_back(v);
             }
         }) as Box<dyn FnMut(MessageEvent)>);
         ws.set_onmessage(Some(onmsg.as_ref().unchecked_ref()));
         // Join erst nach connect schicken
         let ws2 = ws.clone();
-        let onopen = Closure::wrap(Box::new(move |_| {
-            if let Ok(s) = serde_json::to_string(&ClientMsg::Join { name: "NOVA-PILOT".into() }) {
-                let _ = ws2.send_with_str(&s);
+        let onopen = Closure::wrap(Box::new(move |_: web_sys::Event| {
+            if let Ok(v) = bincode::serialize(&ClientMsg::Join { name: "NOVA-PILOT".into() }) {
+                let arr = js_sys::Uint8Array::from(&v[..]);
+                let _ = ws2.send_with_array_buffer(&arr.buffer());
             }
-        }) as Box<dyn FnMut(MessageEvent)>);
+        }) as Box<dyn FnMut(web_sys::Event)>);
         ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
         onopen.forget(); // lebt solange die Verbindung
         Ok(Net {
@@ -92,25 +116,37 @@ impl Net {
             connected: false,
             pending: VecDeque::new(),
             snaps: VecDeque::new(),
+            events: Vec::new(),
+            my_hp: 100,
+            my_team: 0,
+            last_tick: 0,
+            ack: 0,
+            server_pos: None,
+            scores: [0, 0],
+            names: Vec::new(),
         })
     }
 
     fn send(&self, m: &ClientMsg) {
-        let Ok(s) = serde_json::to_string(m) else { return };
+        let Ok(v) = bincode::serialize(m) else { return };
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let _ = self.sock.send(s.as_bytes());
+            let _ = self.sock.send(&v);
         }
         #[cfg(target_arch = "wasm32")]
         {
             if self.ws.ready_state() == WebSocket::OPEN {
-                let _ = self.ws.send_with_str(&s);
+                let arr = js_sys::Uint8Array::from(&v[..]);
+                let _ = self.ws.send_with_array_buffer(&arr.buffer());
             }
         }
     }
 
     pub fn send_input(&mut self, p: PendingInput) {
-        let msg = ClientMsg::Input { id: self.id, seq: p.seq, wish: p.wish, yaw: p.yaw, sprint: p.sprint };
+        let msg = ClientMsg::Input {
+            id: self.id, seq: p.seq, wish: p.wish, yaw: p.yaw, pitch: p.pitch,
+            sprint: p.sprint, buttons: p.buttons, last_server_tick: self.last_tick,
+        };
         self.pending.push_back(p);
         if self.pending.len() > 128 {
             self.pending.pop_front();
@@ -123,12 +159,12 @@ impl Net {
         {
             let mut buf = [0u8; 8192];
             let n = self.sock.recv(&mut buf).ok()?;
-            return serde_json::from_slice(&buf[..n]).ok();
+            return bincode::deserialize(&buf[..n]).ok();
         }
         #[cfg(target_arch = "wasm32")]
         {
-            let t = self.inbox.borrow_mut().pop_front()?;
-            return serde_json::from_str(&t).ok();
+            let v = self.inbox.borrow_mut().pop_front()?;
+            return bincode::deserialize(&v).ok();
         }
     }
 
@@ -138,11 +174,18 @@ impl Net {
         let mut correction = None;
         while let Some(msg) = self.recv_next() {
             match msg {
-                ServerMsg::Welcome { id, .. } => {
+                ServerMsg::Welcome { id, team, .. } => {
                     self.id = id;
+                    self.my_team = team;
                     self.connected = true;
                 }
-                ServerMsg::Snapshot { players, .. } => {
+                ServerMsg::Snapshot { players, events, scores, .. } => {
+                    self.scores = scores;
+                    self.events.extend(events);
+                    if let Some(me) = players.iter().find(|p| p.id == self.id) {
+                        self.my_hp = me.hp;
+                    }
+                    self.names = players.iter().map(|p| (p.id, p.name.clone(), p.team)).collect();
                     self.snaps.push_back((Instant::now(), players));
                     if self.snaps.len() > 90 {
                         self.snaps.pop_front();
@@ -172,9 +215,41 @@ impl Net {
         correction
     }
 
+    pub fn send_fire(&mut self, seq: u32, dir: [f32; 3], weapon: u8) {
+        self.send(&ClientMsg::Fire { id: self.id, seq, dir, weapon });
+    }
+
+    pub fn drain_events(&mut self) -> Vec<GameEvent> {
+        std::mem::take(&mut self.events)
+    }
+
+    pub fn my_hp(&self) -> u32 {
+        self.my_hp
+    }
+
+    pub fn name_of(&self, id: u32) -> String {
+        self.names.iter().find(|(i, _, _)| *i == id).map(|(_, n, _)| n.clone()).unwrap_or_else(|| format!("#{}", id))
+    }
+
+    pub fn team_of(&self, id: u32) -> u8 {
+        self.names.iter().find(|(i, _, _)| *i == id).map(|(_, _, t)| *t).unwrap_or(1)
+    }
+
+    pub fn my_team(&self) -> u8 {
+        self.my_team
+    }
+
+    pub fn take_server_pos(&mut self) -> Option<([f32; 3], u32)> {
+        self.server_pos.take().map(|p| (p, self.ack))
+    }
+
+    pub fn scores(&self) -> [u32; 2] {
+        self.scores
+    }
+
     /// Snapshot-Interpolation (§9): Render ~100 ms in der Vergangenheit,
     /// lerp zwischen den Snapshots, die den Zeitpunkt umspannen.
-    pub fn remotes(&self, delay: Duration) -> Vec<(u32, [f32; 3], f32)> {
+    pub fn remotes(&self, delay: Duration) -> Vec<(u32, [f32; 3], f32, u8)> {
         let t = Instant::now().checked_sub(delay).unwrap_or_else(Instant::now);
         let snaps: Vec<&(Instant, Vec<PlayerState>)> = self.snaps.iter().collect();
         if snaps.len() < 2 {
@@ -201,12 +276,12 @@ impl Net {
         let f = ((t - a.0).as_secs_f32() / span).clamp(0.0, 1.0);
         let mut out = Vec::new();
         for pb in &b.1 {
-            if pb.id == self.id {
+            if pb.id == self.id || pb.hp == 0 {
                 continue;
             }
             match a.1.iter().find(|p| p.id == pb.id) {
-                Some(pa) => out.push((pb.id, lerp3(pa.pos, pb.pos, f), pa.yaw + (pb.yaw - pa.yaw) * f)),
-                None => out.push((pb.id, pb.pos, pb.yaw)),
+                Some(pa) => out.push((pb.id, lerp3(pa.pos, pb.pos, f), pa.yaw + (pb.yaw - pa.yaw) * f, pb.team)),
+                None => out.push((pb.id, pb.pos, pb.yaw, pb.team)),
             }
         }
         out

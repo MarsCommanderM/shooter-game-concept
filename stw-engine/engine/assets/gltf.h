@@ -11,6 +11,7 @@ struct StwMesh {
   std::vector<float> pos;   // xyz
   std::vector<float> nrm;   // xyz
   std::vector<float> uv;    // uv
+  std::vector<float> tan;   // xyzw (tangent + handedness)
   std::vector<uint32_t> idx;
   float bmin[3] = {0, 0, 0};  // Bounds für Frustum-Culling
   float bmax[3] = {0, 0, 0};
@@ -20,6 +21,8 @@ struct StwMaterial {
   float base[4] = {0.8f, 0.8f, 0.8f, 1.0f};
   float metallic = 0.0f;
   float roughness = 0.9f;
+  float normalScale = 1.0f;
+  bool hasNormal = false;
 };
 
 struct StwModel {

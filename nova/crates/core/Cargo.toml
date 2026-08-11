@@ -7,3 +7,4 @@ edition = "2021"
 glam = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+bincode = "1.3"

@@ -1,7 +1,10 @@
 /* tslint:disable */
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
+export const nova_fire: (a: number) => void;
+export const nova_weap: () => void;
 export const main: (a: number, b: number) => number;
+export const wasm_start: () => void;
 export const wgpu_render_pass_draw: (a: number, b: number, c: number, d: number, e: number) => void;
 export const wgpu_render_pass_draw_indexed: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
 export const wgpu_render_pass_set_pipeline: (a: number, b: bigint) => void;
@@ -52,7 +55,7 @@ export const wgpu_render_bundle_set_index_buffer: (a: number, b: bigint, c: numb
 export const wgpu_render_bundle_push_debug_group: (a: number, b: number) => void;
 export const wgpu_render_pass_set_index_buffer: (a: number, b: bigint, c: number, d: bigint, e: bigint) => void;
 export const wasm_bindgen_eed726f88d256d00___convert__closures_____invoke___wasm_bindgen_eed726f88d256d00___JsValue__core_9b3796e30d99ddb7___result__Result_____wasm_bindgen_eed726f88d256d00___JsError___true_: (a: number, b: number, c: any) => [number, number];
-export const wasm_bindgen_eed726f88d256d00___convert__closures_____invoke___js_sys_967d33cf39d00c28___Array__web_sys_4a5aa68ed9bcca9d___features__gen_ResizeObserver__ResizeObserver______true_: (a: number, b: number, c: any, d: any) => void;
+export const wasm_bindgen_eed726f88d256d00___convert__closures_____invoke___js_sys_967d33cf39d00c28___Array__web_sys_a9799eafdf5f30de___features__gen_ResizeObserver__ResizeObserver______true_: (a: number, b: number, c: any, d: any) => void;
 export const wasm_bindgen_eed726f88d256d00___convert__closures_____invoke___wasm_bindgen_eed726f88d256d00___JsValue______true__1_: (a: number, b: number, c: any) => void;
 export const wasm_bindgen_eed726f88d256d00___convert__closures_____invoke___wasm_bindgen_eed726f88d256d00___JsValue______true_: (a: number, b: number, c: any) => void;
 export const wasm_bindgen_eed726f88d256d00___convert__closures_____invoke___js_sys_967d33cf39d00c28___Array______true_: (a: number, b: number, c: any) => void;

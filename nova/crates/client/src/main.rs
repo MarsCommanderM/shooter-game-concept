@@ -4,13 +4,162 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::time::Duration;
+use timec::Instant;
 
 mod net;
 use net::{Net, PendingInput};
-use std::time::Instant;
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3, Vec4};
+use nova_core::maps;
+#[cfg(target_arch = "wasm32")]
+use std::sync::atomic::{AtomicBool, Ordering};
+
+#[cfg(target_arch = "wasm32")]
+static FIRE_HELD: AtomicBool = AtomicBool::new(false);
+#[cfg(target_arch = "wasm32")]
+static WEAP_SWITCH: AtomicBool = AtomicBool::new(false);
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub fn nova_weap() {
+    WEAP_SWITCH.store(true, Ordering::SeqCst);
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub fn nova_fire(v: bool) {
+    FIRE_HELD.store(v, Ordering::SeqCst);
+}
+
+pub mod timec {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub use std::time::Instant;
+
+    #[cfg(target_arch = "wasm32")]
+    #[derive(Clone, Copy, PartialEq, PartialOrd)]
+    pub struct Instant(pub f64);
+    #[cfg(target_arch = "wasm32")]
+    impl Instant {
+        pub fn now() -> Self {
+            Instant(
+                web_sys::window()
+                    .and_then(|w| w.performance())
+                    .map(|p| p.now())
+                    .unwrap_or(0.0),
+            )
+        }
+        pub fn elapsed(&self) -> std::time::Duration {
+            Instant::now().duration_since(*self)
+        }
+        pub fn duration_since(&self, earlier: Instant) -> std::time::Duration {
+            std::time::Duration::from_secs_f64(((self.0 - earlier.0) / 1000.0).max(0.0))
+        }
+        pub fn checked_sub(&self, d: std::time::Duration) -> Option<Instant> {
+            let ms = self.0 - d.as_secs_f64() * 1000.0;
+            if ms < 0.0 { None } else { Some(Instant(ms)) }
+        }
+    }
+    #[cfg(target_arch = "wasm32")]
+    impl std::ops::Sub for Instant {
+        type Output = std::time::Duration;
+        fn sub(self, rhs: Instant) -> std::time::Duration {
+            std::time::Duration::from_secs_f64(((self.0 - rhs.0) / 1000.0).max(0.0))
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn log(t: &str) {
+    web_sys::console::log_1(&t.into());
+}
+#[cfg(not(target_arch = "wasm32"))]
+fn log(t: &str) { println!("{}", t); }
+
+#[cfg(target_arch = "wasm32")]
+mod audio {
+    use std::sync::OnceLock;
+    use web_sys::{AudioContext, OscillatorType};
+
+    fn ctx() -> &'static AudioContext {
+        static C: OnceLock<AudioContext> = OnceLock::new();
+        C.get_or_init(|| AudioContext::new().unwrap())
+    }
+
+    fn beep(f0: f32, f1: f32, dur: f32, vol: f32, kind: OscillatorType) {
+        let c = ctx();
+        let _ = c.resume();
+        let t = c.current_time();
+        let Ok(o) = c.create_oscillator() else { return };
+        let Ok(g) = c.create_gain() else { return };
+        o.set_type(kind);
+        let _ = o.frequency().set_value_at_time(f0, t);
+        let _ = o.frequency().exponential_ramp_to_value_at_time(f1.max(1.0), t + dur as f64);
+        let _ = g.gain().set_value_at_time(0.0001, t);
+        let _ = g.gain().exponential_ramp_to_value_at_time(vol, t + 0.01);
+        let _ = g.gain().exponential_ramp_to_value_at_time(0.0001, t + dur as f64);
+        let _ = o.connect_with_audio_node(&g);
+        let _ = g.connect_with_audio_node(&c.destination());
+        let _ = o.start_with_when(t);
+        let _ = o.stop_with_when(t + dur as f64 + 0.05);
+    }
+
+    use web_sys::AudioBuffer;
+
+    fn noise_buf() -> &'static AudioBuffer {
+        static N: OnceLock<AudioBuffer> = OnceLock::new();
+        N.get_or_init(|| {
+            let c = ctx();
+            let sr = c.sample_rate();
+            let buf = c.create_buffer(1, sr as u32, sr).unwrap();
+            let mut data = vec![0.0f32; sr as usize];
+            let mut seed = 0x1234567u32;
+            for v in data.iter_mut() {
+                seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+                *v = (seed as f32 / u32::MAX as f32) * 2.0 - 1.0;
+            }
+            buf.copy_to_channel(&mut data, 0).unwrap();
+            buf
+        })
+    }
+
+    /// Echter Gunshot: Noise-Burst + Lowpass + Sub-Thunk (kein Piu-Piu)
+    pub fn shot(w: u8) {
+        let (rate, filt, vol, dur): (f32, f32, f32, f32) = match w {
+            0 => (1.0f32, 2500.0, 0.5, 0.12),  // M16
+            1 => (0.8, 1800.0, 0.55, 0.14),    // AK
+            2 => (1.3, 3200.0, 0.4, 0.08),     // MP5
+            3 => (0.9, 2200.0, 0.5, 0.1),      // MG4
+            _ => (0.5, 900.0, 0.85, 0.3),      // PUMP
+        };
+        let c = ctx();
+        let _ = c.resume();
+        let t = c.current_time();
+        if let Ok(src) = c.create_buffer_source() {
+            src.set_buffer(Some(noise_buf()));
+            let _ = src.playback_rate().set_value(rate);
+            if let Ok(f) = c.create_biquad_filter() {
+                f.set_type(web_sys::BiquadFilterType::Lowpass);
+                let _ = f.frequency().set_value(filt);
+                if let Ok(g) = c.create_gain() {
+                    let _ = g.gain().set_value_at_time(vol, t);
+                    let _ = g.gain().exponential_ramp_to_value_at_time(0.0001, t + dur as f64);
+                    let _ = src.connect_with_audio_node(&f);
+                    let _ = f.connect_with_audio_node(&g);
+                    let _ = g.connect_with_audio_node(&c.destination());
+                    let _ = src.start_with_when(t);
+                    let _ = src.stop_with_when(t + dur as f64 + 0.05);
+                }
+            }
+        }
+        // Sub-Thunk (Brustkorb-Bass)
+        beep(110.0, 40.0, dur * 0.8, vol * 0.5, OscillatorType::Sine);
+    }
+    pub fn hurt() { beep(140.0, 60.0, 0.15, 0.24, OscillatorType::Sine); }
+    pub fn hitm() { beep(1200.0, 600.0, 0.06, 0.09, OscillatorType::Sine); }
+    pub fn kill() { beep(1600.0, 2400.0, 0.09, 0.11, OscillatorType::Square); }
+    pub fn win() { beep(660.0, 990.0, 0.4, 0.15, OscillatorType::Sine); }
+}
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
 use winit::event::{DeviceEvent, ElementState, Event, MouseButton, WindowEvent};
@@ -59,6 +208,52 @@ struct Material {
     base: [f32; 4],
     metallic: f32,
     roughness: f32,
+    emissive: f32,
+    win: f32,
+}
+
+const MAT_CONCRETE: Material = Material { base: [0.45, 0.45, 0.42, 1.0], metallic: 0.05, roughness: 0.9, emissive: 0.0, win: 0.0 };
+const MAT_BUILDING: Material = Material { base: [0.35, 0.37, 0.42, 1.0], metallic: 0.1, roughness: 0.8, emissive: 0.0, win: 1.0 };
+const MAT_TRUNK: Material = Material { base: [0.25, 0.16, 0.09, 1.0], metallic: 0.0, roughness: 0.95, emissive: 0.0, win: 0.0 };
+const MAT_LEAF: Material = Material { base: [0.08, 0.2, 0.07, 1.0], metallic: 0.0, roughness: 0.95, emissive: 0.0, win: 0.0 };
+const MAT_CAR: Material = Material { base: [0.4, 0.12, 0.08, 1.0], metallic: 0.7, roughness: 0.5, emissive: 0.0, win: 0.0 };
+const MAT_LAMP: Material = Material { base: [1.0, 0.75, 0.4, 1.0], metallic: 0.0, roughness: 0.4, emissive: 3.0, win: 0.0 };
+const MAT_METAL: Material = Material { base: [0.34, 0.42, 0.5, 1.0], metallic: 0.9, roughness: 0.3, emissive: 0.0, win: 0.0 };
+const MAT_CRATE: Material = Material { base: [0.75, 0.45, 0.15, 1.0], metallic: 0.3, roughness: 0.6, emissive: 0.15, win: 0.0 };
+const MAT_NEON: Material = Material { base: [0.13, 1.0, 0.33, 1.0], metallic: 0.0, roughness: 0.4, emissive: 2.4, win: 0.0 };
+const MAT_NEON_CYAN: Material = Material { base: [0.2, 0.8, 1.0, 1.0], metallic: 0.0, roughness: 0.4, emissive: 1.8, win: 0.0 };
+const MAT_TOWER: Material = Material { base: [0.1, 0.12, 0.14, 1.0], metallic: 0.7, roughness: 0.4, emissive: 0.0, win: 0.0 };
+
+fn boxm(x: f32, y: f32, z: f32, sx: f32, sy: f32, sz: f32, mat: Material) -> (Mat4, Material) {
+    (Mat4::from_translation(Vec3::new(x, y, z)) * Mat4::from_scale(Vec3::new(sx, sy, sz)), mat)
+}
+
+/// Shard City Lite: gemeinsame Map aus nova-core (Client rendert, Server simuliert)
+fn build_arena() -> Vec<(Mat4, Material)> {
+    let mut a = Vec::new();
+    for bd in maps::shard_city_lite() {
+        let mat = match bd.kind {
+            1 => MAT_NEON,
+            2 => MAT_CRATE,
+            3 => MAT_METAL,
+            4 => MAT_NEON_CYAN,
+            5 => MAT_TOWER,
+            _ => MAT_CONCRETE,
+        };
+        a.push((
+            Mat4::from_translation(Vec3::from(bd.pos)) * Mat4::from_scale(Vec3::from(bd.half) * 2.0),
+            mat,
+        ));
+    }
+    a
+}
+
+struct Tracer {
+    from: Vec3,
+    to: Vec3,
+    life: f32,
+    col: [f32; 3],
+    thick: f32,
 }
 
 struct ModelMesh {
@@ -170,8 +365,95 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
   let sh = shadow_factor(in.wpos, no_l);
   var col = (kd * draw.base.xyz / 3.14159265 + spec) * frame.light_col.xyz * frame.light_col.w * no_l * sh
             + frame.amb.xyz * draw.base.xyz;
+  if (draw.params.w > 1.5) { col += vec3<f32>(0.0); }
+  col += draw.base.xyz * draw.params.z; // Emissive (Neon)
+  col += draw.base.xyz * draw.params.z; // Emissive (Neon)
+  if (draw.params.w > 0.5) {
+    // Belebte Fassade: Fenster-Grid aus World-Pos, manche warm beleuchtet
+    let fp = vec2<f32>((in.wpos.x + in.wpos.z) * 0.35, in.wpos.y * 0.45);
+    let cell = floor(fp);
+    let fr = fract(fp);
+    let hsh = fract(sin(dot(cell, vec2<f32>(12.9898, 78.233))) * 43758.5453);
+    let inwin = step(0.18, fr.x) * step(fr.x, 0.82) * step(0.25, fr.y) * step(fr.y, 0.8);
+    let lit = step(0.55, hsh);
+    col += vec3<f32>(1.0, 0.75, 0.4) * inwin * lit * 1.6;
+    col = mix(col, col * 0.55, inwin * (1.0 - lit)); // dunkle Fenster
+  }
   col = aces(col);
   col = pow(col, vec3<f32>(1.0 / 2.2));
+  return vec4<f32>(col, 1.0);
+}
+
+@fragment
+fn fs_simple(in: VSOut) -> @location(0) vec4<f32> {
+  return vec4<f32>(in.nrm * 0.5 + 0.5, 1.0);
+}
+
+/* GLES-sicherer Lite-Shader: Lambert + Emissive + Distanz-Fade */
+@fragment
+fn fs_lite(in: VSOut) -> @location(0) vec4<f32> {
+  let n = normalize(in.nrm);
+  let l = normalize(-frame.light_dir.xyz);
+  let nl = max(dot(n, l), 0.0);
+  var col = draw.base.xyz * (0.35 + 1.1 * nl) * frame.light_col.xyz * 1.6;
+  col += draw.base.xyz * draw.params.z;
+  let d = length(frame.cam.xyz - in.wpos);
+  col = mix(col, vec3<f32>(0.05, 0.03, 0.02), smoothstep(40.0, 110.0, d));
+  return vec4<f32>(col, 1.0);
+}
+
+/* ---------- Sky-Dome ---------- */
+@fragment
+fn fs_sky(in: VSOut) -> @location(0) vec4<f32> {
+  let d = normalize(in.wpos - frame.cam.xyz);
+  let h = clamp(d.y, -1.0, 1.0);
+  var col = mix(vec3<f32>(0.38, 0.17, 0.08), vec3<f32>(0.015, 0.04, 0.11), pow(clamp(h * 2.2 + 0.25, 0.0, 1.0), 0.55));
+  let sund = normalize(vec3<f32>(-0.55, 0.3, -0.35));
+  let sd = max(dot(d, sund), 0.0);
+  col += vec3<f32>(1.0, 0.45, 0.18) * (pow(sd, 700.0) * 5.0 + pow(sd, 6.0) * 0.3);
+  let st = floor(d * 240.0);
+  let hsh = fract(sin(dot(st.xz + st.y, vec2<f32>(12.9898, 78.233))) * 43758.5453);
+  col += vec3<f32>(0.7, 0.8, 1.0) * step(0.9985, hsh) * clamp(h * 3.0, 0.0, 1.0) * 0.5;
+  return vec4<f32>(col, 1.0);
+}
+
+/* ---------- Post: Bloom-Bright + Composite ---------- */
+@group(0) @binding(0) var t_scene: texture_2d<f32>;
+@group(0) @binding(1) var t_bloom: texture_2d<f32>;
+@group(0) @binding(2) var post_smp: sampler;
+
+@vertex
+fn vs_post(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4<f32> {
+  var p = array<vec2<f32>, 3>(vec2<f32>(-1.0, -3.0), vec2<f32>(3.0, 1.0), vec2<f32>(-1.0, 1.0));
+  return vec4<f32>(p[vi], 0.0, 1.0);
+}
+@fragment
+fn fs_bright(@builtin(position) fc: vec4<f32>) -> @location(0) vec4<f32> {
+  let dims = textureDimensions(t_scene);
+  let uv = vec2<f32>(fc.x / f32(dims.x), 1.0 - fc.y / f32(dims.y));
+  let c = textureSample(t_scene, post_smp, uv).rgb;
+  let l = dot(c, vec3<f32>(0.299, 0.587, 0.114));
+  return vec4<f32>(c * smoothstep(0.4, 0.95, l), 1.0);
+}
+@fragment
+fn fs_comp(@builtin(position) fc: vec4<f32>) -> @location(0) vec4<f32> {
+  let dims = textureDimensions(t_scene);
+  let uv = vec2<f32>(fc.x / f32(dims.x), 1.0 - fc.y / f32(dims.y));
+  let bd = textureDimensions(t_bloom);
+  let tx = 1.0 / vec2<f32>(f32(bd.x), f32(bd.y));
+  var bloom = vec3<f32>(0.0);
+  for (var x = -2; x <= 2; x++) {
+    for (var y = -2; y <= 2; y++) {
+      bloom += textureSample(t_bloom, post_smp, uv + vec2<f32>(f32(x), f32(y)) * tx * 1.7).rgb;
+    }
+  }
+  bloom /= 25.0;
+  var col = textureSample(t_scene, post_smp, uv).rgb + bloom * 1.15;
+  let q = uv - 0.5;
+  col *= 1.0 - dot(q, q) * 0.6;
+  let luma = dot(col, vec3<f32>(0.299, 0.587, 0.114));
+  col = mix(vec3<f32>(luma), col, 1.12);
+  col = col * vec3<f32>(1.04, 1.0, 0.96);
   return vec4<f32>(col, 1.0);
 }
 "#;
@@ -191,6 +473,8 @@ struct State {
     frame_buf: wgpu::Buffer,
     draw_buf: wgpu::Buffer,
     meshes: Vec<ModelMesh>,
+    sky: Option<ModelMesh>,
+    arena: Vec<(Mat4, Material)>,
     // Kamera/Controller
     pos: Vec3,
     yaw: f32,
@@ -201,7 +485,32 @@ struct State {
     net: Option<Net>,
     seq: u32,
     unit_cube: usize,
+    sky_pipeline: Option<wgpu::RenderPipeline>,
+    bright_pipeline: Option<wgpu::RenderPipeline>,
+    comp_pipeline: Option<wgpu::RenderPipeline>,
+    post_bg: Option<wgpu::BindGroup>,
+    color_view: Option<wgpu::TextureView>,
+    color_tex: Option<wgpu::Texture>,
+    bloom_view: Option<wgpu::TextureView>,
+    bloom_tex: Option<wgpu::Texture>,
     touch: Rc<RefCell<TouchState>>,
+    hp: u32,
+    fire_cd: f32,
+    fire_held_native: bool,
+    tracers: Vec<Tracer>,
+    feed: Vec<(String, f32)>,
+    feed_clock: f32,
+    my_team: u8,
+    banner_t: f32,
+    banner_text: String,
+    weapon: u8,
+    hidden: Vec<bool>,
+    sim: nova_core::sim::PlayerSim,
+    arena_boxes: Vec<nova_core::maps::BoxDef>,
+    fx_full: bool,
+    fps_acc: f32,
+    fps_n: u32,
+    fps_val: u32,
 }
 
 fn ground_mesh_data() -> (Vec<f32>, Vec<u32>, Material) {
@@ -211,7 +520,7 @@ fn ground_mesh_data() -> (Vec<f32>, Vec<u32>, Material) {
         1.0, 0.0, 1.0, 1.0, -h, 0.0, h, 0.0, 1.0, 0.0, 0.0, 1.0,
     ];
     let idx = vec![0, 1, 2, 0, 2, 3];
-    (pos, idx, Material { base: [0.05, 0.09, 0.05, 1.0], metallic: 0.0, roughness: 0.95 })
+    (pos, idx, Material { base: [0.05, 0.09, 0.05, 1.0], metallic: 0.0, roughness: 0.95, emissive: 0.0, win: 0.0 })
 }
 
 fn cube_mesh_data() -> (Vec<f32>, Vec<u32>, Material) {
@@ -236,7 +545,7 @@ fn cube_mesh_data() -> (Vec<f32>, Vec<u32>, Material) {
         }
         idx.extend_from_slice(&[b, b + 1, b + 2, b, b + 2, b + 3]);
     }
-    (pos, idx, Material { base: [0.1, 0.55, 0.16, 1.0], metallic: 0.6, roughness: 0.4 })
+    (pos, idx, Material { base: [0.1, 0.55, 0.16, 1.0], metallic: 0.6, roughness: 0.4, emissive: 0.0, win: 0.0 })
 }
 
 fn load_gltf_meshes(path: &str) -> Option<Vec<(Vec<f32>, Vec<u32>, Material)>> {
@@ -251,7 +560,7 @@ fn load_gltf_meshes(path: &str) -> Option<Vec<(Vec<f32>, Vec<u32>, Material)>> {
             let indices: Vec<u32> = reader.read_indices()?.into_u32().collect();
             let pbr = prim.material().pbr_metallic_roughness();
             let bf = pbr.base_color_factor();
-            let mat = Material { base: bf, metallic: pbr.metallic_factor(), roughness: pbr.roughness_factor() };
+            let mat = Material { base: bf, metallic: pbr.metallic_factor(), roughness: pbr.roughness_factor(), emissive: 0.0, win: 0.0 };
             let mut pos = Vec::with_capacity(positions.len() * 8);
             for i in 0..positions.len() {
                 pos.extend_from_slice(&positions[i]);
@@ -265,13 +574,15 @@ fn load_gltf_meshes(path: &str) -> Option<Vec<(Vec<f32>, Vec<u32>, Material)>> {
 }
 
 impl State {
-    async fn new(window: Arc<winit::window::Window>) -> Self {
+    async fn new(window: Arc<winit::window::Window>, fx_full: bool) -> Self {
+        log("N1: instance");
         let size = window.inner_size();
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
             ..Default::default()
         });
         let surface = instance.create_surface(window.clone()).unwrap();
+        log("N3: adapter req");
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 compatible_surface: Some(&surface),
@@ -280,12 +591,17 @@ impl State {
             })
             .await
             .expect("kein GPU-Adapter gefunden");
+        log("N4: device req");
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: Some("nova"),
                     required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits::default(),
+                    required_limits: if cfg!(target_arch = "wasm32") {
+                        wgpu::Limits::downlevel_webgl2_defaults()
+                    } else {
+                        wgpu::Limits::default()
+                    },
                 },
                 None,
             )
@@ -297,11 +613,13 @@ impl State {
             .expect("Surface-Config");
         surface.configure(&device, &config);
 
+        log("N5: shader");
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("nova.wgsl"),
             source: wgpu::ShaderSource::Wgsl(SHADER_SRC.into()),
         });
 
+        log("N6: layouts");
         let bgl0 = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("bgl0"),
             entries: &[
@@ -362,6 +680,7 @@ impl State {
             ],
         };
 
+        log("N7: main pipeline");
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("main"),
             layout: Some(&layout),
@@ -372,7 +691,7 @@ impl State {
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: if cfg!(target_arch = "wasm32") { "fs_lite" } else { "fs_main" },
                 targets: &[Some(wgpu::ColorTargetState {
                     format: config.format,
                     blend: Some(wgpu::BlendState::REPLACE),
@@ -391,13 +710,14 @@ impl State {
             multiview: None,
         });
 
+        log("N8: shadow pipeline");
         let shadow_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("shadow"),
             layout: Some(&layout),
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: "vs_shadow",
-                buffers: &[vbuf_layout],
+                buffers: &[vbuf_layout.clone()],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -423,6 +743,116 @@ impl State {
             multiview: None,
         });
 
+        let mut sky_pipeline = None;
+        let mut bright_pipeline = None;
+        let mut comp_pipeline = None;
+        let mut post_bg = None;
+        let mut color_view = None;
+        let mut color_tex = None;
+        let mut bloom_view = None;
+        let mut bloom_tex = None;
+        let mut sky = None;
+        if fx_full {
+        // Sky-Pipeline (Front-Culling, invertierte Sphäre)
+        log("N9: sky pipeline");
+        let sky_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("sky"),
+            layout: Some(&layout),
+            vertex: wgpu::VertexState { module: &shader, entry_point: "vs_main", buffers: &[vbuf_layout.clone()] },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: "fs_sky",
+                targets: &[Some(wgpu::ColorTargetState { format: wgpu::TextureFormat::Rgba8Unorm, blend: Some(wgpu::BlendState::REPLACE), write_mask: wgpu::ColorWrites::ALL })],
+            }),
+            primitive: wgpu::PrimitiveState { cull_mode: Some(wgpu::Face::Front), ..Default::default() },
+            depth_stencil: Some(wgpu::DepthStencilState { format: wgpu::TextureFormat::Depth32Float, depth_write_enabled: false, depth_compare: wgpu::CompareFunction::LessEqual, bias: wgpu::DepthBiasState::default(), stencil: wgpu::StencilState::default() }),
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+        });
+
+        // Post-Processing
+        log("N10: post");
+        let post_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("post"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: true }, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false }, count: None },
+                wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: true }, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false }, count: None },
+                wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering), count: None },
+            ],
+        });
+        let post_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: Some("postl"), bind_group_layouts: &[&post_bgl], push_constant_ranges: &[] });
+        let mk_post = |entry: &str| device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some(entry),
+            layout: Some(&post_layout),
+            vertex: wgpu::VertexState { module: &shader, entry_point: "vs_post", buffers: &[] },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: entry,
+                targets: &[Some(wgpu::ColorTargetState { format: wgpu::TextureFormat::Rgba8Unorm, blend: Some(wgpu::BlendState::REPLACE), write_mask: wgpu::ColorWrites::ALL })],
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+        });
+        let bright_pipeline = mk_post("fs_bright");
+        let comp_pipeline = mk_post("fs_comp");
+
+        let (ww, hh) = (size.width.max(1), size.height.max(1));
+        log("N11: offscreen tex");
+        let color_tex = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("scene"), size: wgpu::Extent3d { width: ww, height: hh, depth_or_array_layers: 1 },
+            mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING, view_formats: &[],
+        });
+        let color_view = color_tex.create_view(&wgpu::TextureViewDescriptor::default());
+        let bloom_tex = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("bloom"), size: wgpu::Extent3d { width: (ww / 8).max(8), height: (hh / 8).max(8), depth_or_array_layers: 1 },
+            mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING, view_formats: &[],
+        });
+        let bloom_view = bloom_tex.create_view(&wgpu::TextureViewDescriptor::default());
+        let post_smp = device.create_sampler(&wgpu::SamplerDescriptor { label: Some("postsmp"), mag_filter: wgpu::FilterMode::Linear, min_filter: wgpu::FilterMode::Linear, ..Default::default() });
+        let post_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("postbg"), layout: &post_bgl,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&color_view) },
+                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&bloom_view) },
+                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&post_smp) },
+            ],
+        });
+
+        // Sky-Sphäre
+        sky = Some({
+            let (rings, sectors, rad) = (14usize, 24usize, 240.0f32);
+            let mut v: Vec<f32> = Vec::new();
+            let mut idx: Vec<u32> = Vec::new();
+            for r in 0..=rings {
+                let phi = std::f32::consts::PI * r as f32 / rings as f32;
+                for sc in 0..=sectors {
+                    let th = 2.0 * std::f32::consts::PI * sc as f32 / sectors as f32;
+                    let p = [rad * phi.sin() * th.cos(), rad * phi.cos(), rad * phi.sin() * th.sin()];
+                    v.extend_from_slice(&p);
+                    v.extend_from_slice(&[0.0, 1.0, 0.0]);
+                    v.extend_from_slice(&[0.0, 0.0]);
+                }
+            }
+            for r in 0..rings {
+                for sc in 0..sectors {
+                    let aa = (r * (sectors + 1) + sc) as u32;
+                    let bb = aa + sectors as u32 + 1;
+                    idx.extend_from_slice(&[aa, bb, aa + 1, aa + 1, bb, bb + 1]);
+                }
+            }
+            let vb = device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("skyvb"), contents: bytemuck::cast_slice(&v), usage: wgpu::BufferUsages::VERTEX });
+            let ib = device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("skyib"), contents: bytemuck::cast_slice(&idx), usage: wgpu::BufferUsages::INDEX });
+            ModelMesh { vb, ib, count: idx.len() as u32, mat: MAT_CONCRETE }
+        });
+
+        }
+        log("N12: shadowmap");
         // Shadow-Map 2048²
         let shadow_tex = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("shadowmap"),
@@ -451,8 +881,8 @@ impl State {
                 lvp: Mat4::IDENTITY,
                 cam: Vec4::new(0.0, 1.7, 4.0, 0.0),
                 light_dir: Vec4::new(0.4, -0.8, 0.3, 0.0),
-                light_col: Vec4::new(1.0, 0.98, 0.92, 3.0),
-                amb: Vec4::new(0.06, 0.09, 0.06, 0.0),
+                light_col: Vec4::new(1.0, 0.72, 0.45, 4.5),
+                amb: Vec4::new(0.10, 0.12, 0.18, 0.0),
             }]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
@@ -477,6 +907,7 @@ impl State {
         });
 
         // Depth für Main-Pass
+        log("N13: depth");
         let depth_tex = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("depth"),
             size: wgpu::Extent3d {
@@ -493,18 +924,9 @@ impl State {
         });
         let depth_view = depth_tex.create_view(&wgpu::TextureViewDescriptor::default());
 
-        // ---- Meshes: glTF laden, Fallback prozedural ----
-        let mut raw: Vec<(Vec<f32>, Vec<u32>, Material)> = Vec::new();
-        if let Some(m) = load_gltf_meshes("assets/test.gltf") {
-            println!("glTF geladen: {} Mesh(es)", m.len());
-            raw.extend(m);
-        } else {
-            println!("glTF nicht gefunden -> Fallback-Cubes");
-            raw.push(cube_mesh_data());
-        }
-        let unit_cube = raw.len();
-        raw.push(cube_mesh_data()); // Einheitswürfel für Remote-Player
-        raw.push(ground_mesh_data());
+        // Einheitswürfel = einzige Geometrie; die Arena ist prozedural instanziert
+        let raw: Vec<(Vec<f32>, Vec<u32>, Material)> = vec![cube_mesh_data()];
+        let unit_cube = 0usize;
 
         let meshes = raw
             .into_iter()
@@ -523,6 +945,11 @@ impl State {
             })
             .collect();
 
+        log("N16: struct init");
+        let arena_val = { log("N15b: arena build"); build_arena() };
+        log("N17: arena fertig");
+        let touch_val = Rc::new(RefCell::new(TouchState::default()));
+        log("N18: touch fertig");
         State {
             window,
             device,
@@ -538,26 +965,73 @@ impl State {
             frame_buf,
             draw_buf,
             meshes,
-            pos: Vec3::new(0.0, 1.7, 4.0),
-            yaw: 0.0,
-            pitch: 0.0,
+            sky,
+            arena: arena_val,
+            pos: Vec3::new(40.0, 1.7, 4.0),
+            yaw: std::f32::consts::FRAC_PI_2, // Blick Richtung City-Mitte
+            pitch: -0.12,                    // leicht nach unten, damit die City sichtbar ist
             keys: HashSet::new(),
             grabbed: false,
             last: Instant::now(),
             net: None,
             seq: 0,
             unit_cube,
-            touch: Rc::new(RefCell::new(TouchState::default())),
+            sky_pipeline,
+            bright_pipeline,
+            comp_pipeline,
+            post_bg,
+            color_view,
+            color_tex,
+            bloom_view,
+            bloom_tex,
+            touch: touch_val,
+            hp: 100,
+            fire_cd: 0.0,
+            fire_held_native: false,
+            tracers: Vec::new(),
+            feed: Vec::new(),
+            feed_clock: 0.0,
+            my_team: 0,
+            banner_t: 0.0,
+            banner_text: String::new(),
+            weapon: 0,
+            hidden: Vec::new(),
+            sim: nova_core::sim::PlayerSim { pos: [40.0, 0.0, 4.0], vel: [0.0, 0.0, 0.0], yaw: std::f32::consts::FRAC_PI_2, pitch: -0.12 },
+            arena_boxes: nova_core::maps::shard_city_lite(),
+            fx_full,
+            fps_acc: 0.0,
+            fps_n: 0,
+            fps_val: 0,
         }
     }
 
     fn resize(&mut self, size: PhysicalSize<u32>) {
+        log("RS1: resize start");
         if size.width == 0 || size.height == 0 {
             return;
         }
         self.config.width = size.width;
         self.config.height = size.height;
         self.surface.configure(&self.device, &self.config);
+        if self.color_tex.is_some() {
+            let (ww, hh) = (size.width.max(1), size.height.max(1));
+            let ct = self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("scene"), size: wgpu::Extent3d { width: ww, height: hh, depth_or_array_layers: 1 },
+                mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING, view_formats: &[],
+            });
+            self.color_view = Some(ct.create_view(&wgpu::TextureViewDescriptor::default()));
+            self.color_tex = Some(ct);
+            let bt = self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("bloom"), size: wgpu::Extent3d { width: (ww / 8).max(8), height: (hh / 8).max(8), depth_or_array_layers: 1 },
+                mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING, view_formats: &[],
+            });
+            self.bloom_view = Some(bt.create_view(&wgpu::TextureViewDescriptor::default()));
+            self.bloom_tex = Some(bt);
+        }
         let depth_tex = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("depth"),
             size: wgpu::Extent3d { width: size.width, height: size.height, depth_or_array_layers: 1 },
@@ -572,17 +1046,18 @@ impl State {
     }
 
     fn update(&mut self) {
+        log("U1: update");
         let now = Instant::now();
         let dt = now.duration_since(self.last).as_secs_f32().min(0.05);
         self.last = now;
 
-        let (sy, cy) = (self.yaw.sin(), self.yaw.cos());
-        let fwd = Vec3::new(-sy, 0.0, -cy);
-        let right = Vec3::new(cy, 0.0, -sy);
+        self.sim.yaw = self.yaw;
+        self.sim.pitch = self.pitch;
         // Touch: Look-Akku anwenden + Joystick-Wish
         let mut wf = (self.keys.contains(&KeyCode::KeyW) as i32 as f32) - (self.keys.contains(&KeyCode::KeyS) as i32 as f32);
         let mut wr = (self.keys.contains(&KeyCode::KeyD) as i32 as f32) - (self.keys.contains(&KeyCode::KeyA) as i32 as f32);
         let mut sprint = self.keys.contains(&KeyCode::ShiftLeft);
+        if self.hp == 0 { wf = 0.0; wr = 0.0; sprint = false; }
         {
             let mut t = self.touch.borrow_mut();
             if t.look_acc_x != 0.0 || t.look_acc_y != 0.0 {
@@ -600,22 +1075,116 @@ impl State {
                 }
             }
         }
-        let mut wish = Vec3::ZERO;
-        if wf != 0.0 { wish += fwd * wf; }
-        if wr != 0.0 { wish += right * wr; }
-        if wish.length() > 0.001 {
-            let speed = if sprint { 8.5 } else { 5.2 };
-            self.pos += wish.normalize() * speed * dt;
-        }
-        self.pos.y = 1.7;
+        let wl2 = (wr * wr + wf * wf).sqrt();
+        let wish_n = if wl2 > 1.0 { [wr / wl2, wf / wl2] } else { [wr, wf] };
+        let sample = nova_core::sim::InputSample { wish: wish_n, sprint };
+        nova_core::sim::step(&mut self.sim, &sample, dt, &self.arena_boxes);
+        self.pos = Vec3::new(self.sim.pos[0], self.sim.pos[1] + 1.6, self.sim.pos[2]);
 
-        // ---- Netcode: Client-Prediction + Server-Reconciliation (Bauplan §7/§8) ----
+        self.feed_clock += dt;
+        self.banner_t = (self.banner_t - dt).max(0.0);
+        self.fps_acc += dt;
+        self.fps_n += 1;
+        if self.fps_acc >= 0.5 {
+            self.fps_val = (self.fps_n as f32 / self.fps_acc) as u32;
+            self.fps_acc = 0.0;
+            self.fps_n = 0;
+        }
+        #[cfg(target_arch = "wasm32")]
+        if WEAP_SWITCH.swap(false, Ordering::SeqCst) {
+            self.weapon = (self.weapon + 1) % 5;
+        }
+        for (k, w) in [(KeyCode::Digit1, 0u8), (KeyCode::Digit2, 1), (KeyCode::Digit3, 2), (KeyCode::Digit4, 3), (KeyCode::Digit5, 4)] {
+            if self.keys.contains(&k) { self.weapon = w; }
+        }
+        if self.keys.contains(&KeyCode::KeyQ) { self.weapon = (self.weapon + 1) % 5; }
+        self.feed.retain(|(_, t)| self.feed_clock - *t < 5.0);
+        self.fire_cd -= dt;
+        for t in self.tracers.iter_mut() { t.life -= dt; }
+        self.tracers.retain(|t| t.life > 0.0);
+
+        // ---- Combat: Fire (Maus-Lock / Touch-Button), Server entscheidet ----
+        #[cfg(target_arch = "wasm32")]
+        let touch_fire = FIRE_HELD.load(Ordering::SeqCst);
+        #[cfg(not(target_arch = "wasm32"))]
+        let touch_fire = false;
+        let alive = self.hp > 0;
+        if alive && (self.fire_held_native || touch_fire) && self.fire_cd <= 0.0 {
+            let w = nova_core::protocol::WEAPONS[self.weapon as usize];
+            self.fire_cd = w.0;
+            let dir = self.forward();
+            let eye = self.pos + Vec3::Y * 1.5;
+            if let Some(net) = self.net.as_mut() {
+                self.seq += 1;
+                net.send_fire(self.seq, dir.to_array(), self.weapon);
+            }
+            let thick = if self.weapon == 4 { 0.06 } else { 0.03 };
+            self.tracers.push(Tracer { from: eye, to: eye + dir * 70.0, life: 0.07, col: [1.0, 0.85, 0.4], thick });
+            #[cfg(target_arch = "wasm32")]
+            audio::shot(self.weapon);
+        }
+
+        // ---- Events: Killfeed + Gegner-Tracer + HP ----
         if let Some(net) = self.net.as_mut() {
+            self.hp = net.my_hp();
+            self.my_team = net.my_team();
+            for ev in net.drain_events() {
+                match ev {
+                    nova_core::protocol::GameEvent::Kill { killer, victim } => {
+                        let a = net.name_of(killer);
+                        let b = net.name_of(victim);
+                        self.feed.push((format!("{} ⚡ {}", a, b), self.feed_clock));
+                        #[cfg(target_arch = "wasm32")]
+                        if killer == net.id { audio::kill(); }
+                    }
+                    nova_core::protocol::GameEvent::Break { bi } => {
+                        if (bi as usize) < self.hidden.len() {
+                            self.hidden[bi as usize] = true;
+                        }
+                    }
+                    nova_core::protocol::GameEvent::MatchEnd { winner, score } => {
+                        self.banner_t = 5.0;
+                        self.banner_text = format!("TEAM {} GEWINNT {} : {} — NEUE RUNDE", if winner == 0 { "GRÜN" } else { "ROT" }, score[0], score[1]);
+                        self.feed.push((self.banner_text.clone(), self.feed_clock));
+                        #[cfg(target_arch = "wasm32")]
+                        audio::win();
+                    }
+                    nova_core::protocol::GameEvent::Damage { from, to, hit, .. } => {
+                        if from != net.id {
+                            // Gegner-Schuss: Tracer von dessen Snapshot-Pos zum Hit
+                            if let Some(fp) = net.remotes(Duration::from_millis(100)).iter().find(|(id, _, _, _)| *id == from).map(|(_, p, _, _)| *p) {
+                                self.tracers.push(Tracer { from: Vec3::from(fp) + Vec3::Y * 1.4, to: Vec3::from(hit), life: 0.12, col: [1.0, 0.35, 0.25], thick: 0.03 });
+                            }
+                        }
+                        if to == net.id {
+                            self.feed.push((format!("DU getroffen von {}", net.name_of(from)), self.feed_clock));
+                            #[cfg(target_arch = "wasm32")]
+                            audio::hurt();
+                        } else if from == net.id {
+                            #[cfg(target_arch = "wasm32")]
+                            audio::hitm();
+                        }
+                    }
+                }
+            }
+        }
+
+        // ---- Reconciliation: Ack-Position vs. Predicted -> Snap ----
+        if let Some(net) = self.net.as_mut() {
+            if let Some((srv_pos, _ack)) = net.take_server_pos() {
+                let dx = srv_pos[0] - self.sim.pos[0];
+                let dz = srv_pos[2] - self.sim.pos[2];
+                if (dx * dx + dz * dz).sqrt() > 0.35 {
+                    self.sim.pos = srv_pos;
+                    self.sim.vel = [0.0, 0.0, 0.0];
+                    self.pos = Vec3::new(self.sim.pos[0], self.sim.pos[1] + 1.6, self.sim.pos[2]);
+                }
+            }
             self.seq += 1;
             let mut w2 = [wr, wf];
             let wl = (w2[0] * w2[0] + w2[1] * w2[1]).sqrt();
             if wl > 1.0 { w2 = [w2[0] / wl, w2[1] / wl]; }
-            net.send_input(PendingInput { seq: self.seq, wish: w2, yaw: self.yaw, sprint, predicted: self.pos.to_array() });
+            net.send_input(PendingInput { seq: self.seq, wish: w2, yaw: self.yaw, pitch: self.pitch, sprint, buttons: 0, predicted: self.pos.to_array() });
             if let Some((spos, pend)) = net.poll() {
                 self.pos = Vec3::from(spos);
                 self.pos.y = 1.7;
@@ -627,12 +1196,51 @@ impl State {
                 }
             }
         }
+
+        // ---- WASM: DOM-HUD (HP, Feed, Respawn) ----
+        #[cfg(target_arch = "wasm32")]
+        {
+            if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
+                if let Some(el) = doc.get_element_by_id("hpnum") {
+                    el.set_text_content(Some(&format!("{}  |  {}", self.hp, nova_core::protocol::WEAPON_NAMES[self.weapon as usize])));
+                }
+                if let Some(el) = doc.get_element_by_id("hpbar") {
+                    let _ = el.set_attribute("style", &format!("width:{}%;background:{};box-shadow:0 0 8px {}", self.hp, if self.hp > 35 { "#22ff55" } else { "#ff3b30" }, if self.hp > 35 { "rgba(34,255,85,.7)" } else { "rgba(255,59,48,.7)" }));
+                }
+                if let Some(el) = doc.get_element_by_id("feed") {
+                    let txt: Vec<String> = self.feed.iter().rev().take(4).map(|(t, _)| t.clone()).collect();
+                    el.set_text_content(Some(&txt.join("\n")));
+                }
+                if let Some(el) = doc.get_element_by_id("hud") {
+                    let n = self.net.as_ref().map(|n| (n.connected, n.id)).unwrap_or((false, 0));
+                    el.set_text_content(Some(&format!("STW // fps:{} draws:{} fx:{} conn:{}\nMAP: SHARD CITY\nSERVER: 169.58.152.88", self.fps_val, self.arena.len() + 2, if self.fx_full { "FULL" } else { "SAFE" }, if n.0 { format!("#{}", n.1) } else { "NEIN".into() })));
+                }
+                if let Some(el) = doc.get_element_by_id("score") {
+                    if let Some(n) = self.net.as_ref() {
+                        let sc = n.scores();
+                        el.set_text_content(Some(&format!("GRÜN {} : {} ROT", sc[0], sc[1])));
+                    }
+                }
+                if let Some(el) = doc.get_element_by_id("banner") {
+                    let show = self.banner_t > 0.0;
+                    let _ = el.set_attribute("style", &format!("display:{};position:fixed;inset:0;align-items:center;justify-content:center;z-index:13;pointer-events:none;background:rgba(0,0,0,.45);color:#22ff55;font:bold 22px monospace;letter-spacing:.25em;text-align:center", if show { "flex" } else { "none" }));
+                    el.set_text_content(Some(&self.banner_text));
+                }
+                if let Some(el) = doc.get_element_by_id("respawn") {
+                    let _ = el.set_attribute("style", &format!("display:{}", if self.hp == 0 { "flex" } else { "none" }));
+                }
+            }
+        }
     }
 
-    fn render(&mut self, remotes: &[(u32, [f32; 3], f32)]) {
+    fn render(&mut self, remotes: &[(u32, [f32; 3], f32, u8)]) {
+        log("R3: render start");
+        if self.hidden.len() != self.arena.len() {
+            self.hidden.resize(self.arena.len(), false);
+        }
         let vp = Mat4::perspective_rh(75.0f32.to_radians(), self.config.width as f32 / self.config.height.max(1) as f32, 0.1, 500.0)
-            * Mat4::look_to_rh(self.pos, self.forward(), Vec3::Y);
-        let ldir = Vec3::new(0.4, -0.8, 0.3).normalize();
+            * Mat4::look_to_rh(self.pos + Vec3::Y * 1.6, self.forward(), Vec3::Y);
+        let ldir = Vec3::new(0.55, -0.30, 0.35).normalize(); // Abendsonne
         let eye = -ldir * 60.0;
         let lvp = Mat4::orthographic_rh(-40.0, 40.0, -40.0, 40.0, 1.0, 140.0)
             * Mat4::look_at_rh(eye, Vec3::ZERO, Vec3::Y);
@@ -642,33 +1250,92 @@ impl State {
             lvp,
             cam: Vec4::new(self.pos.x, self.pos.y, self.pos.z, 0.0),
             light_dir: Vec4::new(ldir.x, ldir.y, ldir.z, 0.0),
-            light_col: Vec4::new(1.0, 0.98, 0.92, 3.0),
-            amb: Vec4::new(0.06, 0.09, 0.06, 0.0),
+            light_col: Vec4::new(1.0, 0.72, 0.45, 4.5),
+            amb: Vec4::new(0.10, 0.12, 0.18, 0.0),
         };
         self.queue.write_buffer(&self.frame_buf, 0, bytemuck::cast_slice(&[frame]));
 
-        // Draw-Liste: statische Meshes + interpolierte Remote-Player
+        // Draw-Liste: prozedurale Arena + interpolierte Remote-Player
         let mut draws: Vec<(usize, Mat4, Material)> = Vec::new();
-        for (i, m) in self.meshes.iter().enumerate() {
-            if i == self.unit_cube { continue; }
-            let model = if i + 1 == self.meshes.len() {
-                Mat4::IDENTITY // Ground
-            } else if i == 0 && self.meshes.len() > 1 {
-                Mat4::from_translation(Vec3::new(0.0, 0.5, -2.0))
-            } else {
-                Mat4::from_translation(Vec3::new((i as f32 - 1.0) * 2.0, 0.5, -2.0))
-            };
-            draws.push((i, model, m.mat));
+        for (k, (model, mat)) in self.arena.iter().enumerate() {
+            if self.hidden.get(k) == Some(&true) { continue; }
+            draws.push((self.unit_cube, *model, *mat));
         }
-        for (pid, p, yaw) in remotes {
-            let col = REMOTE_COLORS[(pid % 6) as usize];
+        for (pid, p, yaw, team) in remotes {
+            let enemy = *team != self.my_team;
+            let col: [f32; 4] = if enemy { [1.0, 0.16, 0.12, 1.0] } else { [0.2, 0.85, 1.0, 1.0] };
             let model = Mat4::from_translation(Vec3::new(p[0], p[1] + 0.85, p[2]))
                 * Mat4::from_rotation_y(*yaw)
                 * Mat4::from_scale(Vec3::new(0.7, 1.7, 0.7));
-            draws.push((self.unit_cube, model, Material { base: col, metallic: 0.2, roughness: 0.5 }));
+            draws.push((self.unit_cube, model, Material { base: col, metallic: 0.25, roughness: 0.45, emissive: if enemy { 0.35 } else { 0.5 }, win: 0.0 }));
+        }
+        for t in &self.tracers {
+            let dir = t.to - t.from;
+            let len = dir.length().max(0.01);
+            let dn = dir / len;
+            let rot = Mat4::look_to_rh(Vec3::ZERO, -dn, Vec3::Y);
+            let model = Mat4::from_translation((t.from + t.to) * 0.5) * rot * Mat4::from_scale(Vec3::new(t.thick, t.thick, len));
+            draws.push((self.unit_cube, model, Material { base: [t.col[0], t.col[1], t.col[2], 1.0], metallic: 0.0, roughness: 0.5, emissive: 3.0, win: 0.0 }));
         }
 
         let bg1s: Vec<wgpu::BindGroup> = draws.iter().map(|_| self.bg1()).collect();
+
+        // ---- Mobile-Safe-Mode: direkt auf Surface, ohne Offscreen/Bloom/Sky ----
+        if !self.fx_full {
+            log("R4: mobile pass");
+            // DIAG: Testboxen direkt vor der Kamera
+            let cam_p = self.pos + Vec3::Y * 1.6;
+            let fw = self.forward();
+            let rt = Vec3::new(fw.z, 0.0, -fw.x);
+            let tests: [(Vec3, Vec3, [f32; 3]); 4] = [
+                (cam_p + fw * 5.0, Vec3::new(1.0, 1.0, 1.0), [1.0, 0.0, 0.0]),
+                (cam_p + fw * 7.0 + rt * 2.5, Vec3::new(1.0, 1.0, 1.0), [0.0, 1.0, 0.0]),
+                (cam_p + fw * 7.0 - rt * 2.5, Vec3::new(1.0, 1.0, 1.0), [0.0, 0.0, 1.0]),
+                (Vec3::new(0.0, -0.25, 0.0), Vec3::new(200.0, 0.5, 200.0), [0.4, 0.4, 0.4]),
+            ];
+            for (tp, ts, tc) in tests.iter() {
+                draws.push((self.unit_cube, Mat4::from_translation(*tp) * Mat4::from_scale(*ts), Material { base: [tc[0], tc[1], tc[2], 1.0], metallic: 0.0, roughness: 0.5, emissive: 0.0, win: 0.0 }));
+            }
+            let out = match self.surface.get_current_texture() {
+                Ok(t) => t,
+                Err(_) => return,
+            };
+            let view = out.texture.create_view(&wgpu::TextureViewDescriptor::default());
+            let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("m") });
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("main"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.02, g: 0.03, b: 0.07, a: 1.0 }), store: wgpu::StoreOp::Store },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth_view,
+                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            pass.set_pipeline(&self.pipeline);
+            pass.set_bind_group(0, &self.bg0, &[]);
+            for (k, (mi, model, mat)) in draws.iter().enumerate() {
+                let m = &self.meshes[*mi];
+                let du = DrawU { model: *model, base: Vec4::from_array(mat.base), params: Vec4::new(mat.metallic, mat.roughness, mat.emissive, mat.win) };
+                self.queue.write_buffer(&self.draw_buf, 0, bytemuck::cast_slice(&[du]));
+                pass.set_bind_group(1, &bg1s[k], &[]);
+                pass.set_vertex_buffer(0, m.vb.slice(..));
+                pass.set_index_buffer(m.ib.slice(..), wgpu::IndexFormat::Uint32);
+                pass.draw_indexed(0..m.count, 0, 0..1);
+            }
+            drop(pass);
+            log("R5: submit");
+            self.queue.submit(std::iter::once(encoder.finish()));
+            log("R6: present");
+            out.present();
+            log("R7: frame done");
+            return;
+        }
 
         // ---- Pass 1: Shadow ----
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("frame") });
@@ -688,7 +1355,7 @@ impl State {
             pass.set_bind_group(0, &self.bg0, &[]);
             for (k, (mi, model, mat)) in draws.iter().enumerate() {
                 let m = &self.meshes[*mi];
-                let du = DrawU { model: *model, base: Vec4::from_array(mat.base), params: Vec4::new(mat.metallic, mat.roughness, 0.0, 0.0) };
+                let du = DrawU { model: *model, base: Vec4::from_array(mat.base), params: Vec4::new(mat.metallic, mat.roughness, mat.emissive, mat.win) };
                 self.queue.write_buffer(&self.draw_buf, 0, bytemuck::cast_slice(&[du]));
                 pass.set_bind_group(1, &bg1s[k], &[]);
                 pass.set_vertex_buffer(0, m.vb.slice(..));
@@ -698,18 +1365,13 @@ impl State {
         }
         self.queue.submit(std::iter::once(encoder.finish()));
 
-        // ---- Pass 2: Main ----
+        // ---- Pass 2: Main (offscreen) ----
         {
-            let out = match self.surface.get_current_texture() {
-                Ok(t) => t,
-                Err(_) => return,
-            };
-            let view = out.texture.create_view(&wgpu::TextureViewDescriptor::default());
             let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("frame2") });
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("main"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
+                    view: self.color_view.as_ref().unwrap(),
                     resolve_target: None,
                     ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.012, g: 0.02, b: 0.012, a: 1.0 }), store: wgpu::StoreOp::Store },
                 })],
@@ -721,17 +1383,74 @@ impl State {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
+            // Sky zuerst
+            pass.set_pipeline(self.sky_pipeline.as_ref().unwrap());
+            pass.set_bind_group(0, &self.bg0, &[]);
+            pass.set_bind_group(1, &bg1s[0], &[]);
+            let du_sky = DrawU { model: Mat4::from_translation(self.pos), base: Vec4::ZERO, params: Vec4::ZERO };
+            self.queue.write_buffer(&self.draw_buf, 0, bytemuck::cast_slice(&[du_sky]));
+            pass.set_vertex_buffer(0, self.sky.as_ref().unwrap().vb.slice(..));
+            pass.set_index_buffer(self.sky.as_ref().unwrap().ib.slice(..), wgpu::IndexFormat::Uint32);
+            pass.draw_indexed(0..self.sky.as_ref().unwrap().count, 0, 0..1);
+
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &self.bg0, &[]);
             for (k, (mi, model, mat)) in draws.iter().enumerate() {
                 let m = &self.meshes[*mi];
-                let du = DrawU { model: *model, base: Vec4::from_array(mat.base), params: Vec4::new(mat.metallic, mat.roughness, 0.0, 0.0) };
+                let du = DrawU { model: *model, base: Vec4::from_array(mat.base), params: Vec4::new(mat.metallic, mat.roughness, mat.emissive, mat.win) };
                 self.queue.write_buffer(&self.draw_buf, 0, bytemuck::cast_slice(&[du]));
                 pass.set_bind_group(1, &bg1s[k], &[]);
                 pass.set_vertex_buffer(0, m.vb.slice(..));
                 pass.set_index_buffer(m.ib.slice(..), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..m.count, 0, 0..1);
             }
+            drop(pass);
+            self.queue.submit(std::iter::once(encoder.finish()));
+        }
+
+        // ---- Pass 3: Bloom-Bright ----
+        {
+            let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("bright") });
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("bright"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: self.bloom_view.as_ref().unwrap(),
+                    resolve_target: None,
+                    ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            pass.set_pipeline(self.bright_pipeline.as_ref().unwrap());
+            pass.set_bind_group(0, self.post_bg.as_ref().unwrap(), &[]);
+            pass.draw(0..3, 0..1);
+            drop(pass);
+            self.queue.submit(std::iter::once(encoder.finish()));
+        }
+
+        // ---- Pass 4: Composite -> Surface ----
+        {
+            let out = match self.surface.get_current_texture() {
+                Ok(t) => t,
+                Err(_) => return,
+            };
+            let view = out.texture.create_view(&wgpu::TextureViewDescriptor::default());
+            let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("comp") });
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("comp"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            pass.set_pipeline(self.comp_pipeline.as_ref().unwrap());
+            pass.set_bind_group(0, self.post_bg.as_ref().unwrap(), &[]);
+            pass.draw(0..3, 0..1);
             drop(pass);
             self.queue.submit(std::iter::once(encoder.finish()));
             out.present();
@@ -752,6 +1471,7 @@ impl State {
 }
 
 fn handle(state: &mut State, event: Event<()>, elwt: &EventLoopWindowTarget<()>) {
+    log("H1: event");
     elwt.set_control_flow(ControlFlow::Poll);
     match event {
         Event::WindowEvent { event, .. } => match event {
@@ -768,9 +1488,15 @@ fn handle(state: &mut State, event: Event<()>, elwt: &EventLoopWindowTarget<()>)
                 }
             }
             WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => {
-                state.grabbed = !state.grabbed;
-                let mode = if state.grabbed { CursorGrabMode::Locked } else { CursorGrabMode::None };
-                let _ = state.window.set_cursor_grab(mode);
+                if !state.grabbed {
+                    state.grabbed = true;
+                    let _ = state.window.set_cursor_grab(CursorGrabMode::Locked);
+                } else {
+                    state.fire_held_native = true;
+                }
+            }
+            WindowEvent::MouseInput { state: ElementState::Released, button: MouseButton::Left, .. } => {
+                state.fire_held_native = false;
             }
             _ => {}
         },
@@ -781,6 +1507,8 @@ fn handle(state: &mut State, event: Event<()>, elwt: &EventLoopWindowTarget<()>)
             }
         }
         Event::AboutToWait => {
+            log("R1: frame");
+            log("R2: vor update");
             let remotes = state
                 .net
                 .as_ref()
@@ -803,7 +1531,7 @@ fn main() {
             .build(&event_loop)
             .expect("Fenster"),
     );
-    let mut state = pollster::block_on(State::new(window));
+    let mut state = pollster::block_on(State::new(window, true));
 
     let server_addr = std::env::args()
         .collect::<Vec<String>>()
@@ -830,6 +1558,12 @@ fn main() {
 }
 
 #[cfg(target_arch = "wasm32")]
+#[wasm_bindgen::prelude::wasm_bindgen(start)]
+pub fn wasm_start() {
+    main();
+}
+
+#[cfg(target_arch = "wasm32")]
 async fn async_main() {
     use winit::platform::web::WindowExtWebSys;
     let event_loop = EventLoop::new().expect("EventLoop");
@@ -849,7 +1583,21 @@ async fn async_main() {
             let _ = body.append_child(&canvas);
         }
     }
-    let mut state = State::new(window).await;
+    let ua = web_sys::window()
+        .and_then(|w| w.navigator().user_agent().ok())
+        .unwrap_or_default()
+        .to_lowercase();
+    log(&format!("A: ua={}", ua));
+    let has_webgpu = web_sys::window()
+        .map(|w| js_sys::Reflect::get(&w, &"gpu".into()).ok())
+        .flatten()
+        .map(|v| !v.is_undefined() && !v.is_null())
+        .unwrap_or(false);
+    log(&format!("A1: webgpu={}", has_webgpu));
+    let fx_full = has_webgpu; // Full-FX (Sky/Bloom) nur mit echter WebGPU, sonst Safe-Pfad
+    log("B: State::new start");
+    let mut state = State::new(window, fx_full).await;
+    log("C: State::new done");
 
     // ---- Touch-Controls (WASM): links Joystick, rechts Look ----
     {
@@ -929,10 +1677,12 @@ async fn async_main() {
         on_end.forget();
     }
 
+    log("A2: nach State::new");
     let host = web_sys::window()
         .and_then(|w| w.location().hostname().ok())
         .unwrap_or_else(|| "169.58.152.88".into());
     state.net = Net::connect(&format!("{}:27015", host)).ok();
+    log("A3: start run");
     event_loop
         .run(move |event, elwt| handle(&mut state, event, elwt))
         .expect("run");

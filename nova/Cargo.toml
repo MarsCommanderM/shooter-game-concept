@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/core", "crates/client", "crates/server"]
+members = ["crates/core", "crates/client", "crates/server", "crates/probe", "crates/glslcheck"]
 
 [workspace.dependencies]
 glam = { version = "0.28", features = ["bytemuck"] }

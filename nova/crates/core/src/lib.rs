@@ -2,7 +2,12 @@
 //! Dieselbe Simulation läuft headless auf dem Dedicated Server und als
 //! Prediction-Spielebild auf dem Client.
 pub mod ecs;
+pub mod history;
+pub mod ids;
+pub mod maps;
+pub mod sim;
 pub mod protocol;
+pub mod weapons;
 
 pub use glam;
 

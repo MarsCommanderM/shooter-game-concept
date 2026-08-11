@@ -59,10 +59,10 @@
   const hud = document.getElementById('hud');
   const hint = document.getElementById('hint');
   try {
-    const mod = await import('/nova/nova-client.js?v=k10');
+    const mod = await import('./nova-client.js?v=k3');
     const init = mod.default;
     hud.textContent = 'NOVA // lade Engine (2.3 MB)…';
-    const wasm = await fetch('/nova/nova-client_bg.wasm?v=k10');
+    const wasm = await fetch('./nova-client_bg.wasm?v=k3');
     const buf = await wasm.arrayBuffer();
     hud.textContent = 'NOVA // starte Engine…';
     await init(buf);
@@ -80,7 +80,7 @@
     setTimeout(() => { hint.style.display = 'none'; }, 7000);
     if (!hud.textContent.includes('CRUMB')) hud.textContent = 'SAVE THE WORLD // NOVA\nMAP: SHARD CITY LITE\nSERVER: ' + location.hostname;
   } catch (e) {
-    hud.textContent = 'FEHLER: ' + e + '\nURL pruefen: http://169.58.152.88:3000/nova/';
+    hud.textContent = 'FEHLER: ' + e + '\nURL pruefen: http://169.58.152.88:3000./';
     console.error(e);
   }
 </script>

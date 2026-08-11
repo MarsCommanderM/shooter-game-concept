@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "gltf.h"
+#include "render/IBL.hpp"
 
 namespace stw {
 
@@ -24,6 +25,9 @@ class IRenderer {
   virtual void SetLight(const Light& l) = 0;
   virtual uint32_t UploadMesh(const StwMesh& m) = 0;  // gibt Handle
   virtual void Draw(uint32_t mesh, const StwMaterial& mat, const float model[16]) = 0;
+  virtual void SetIBL(const IBLResources& r) { (void)r; }
+  virtual uint32_t UploadTextureRGBA(const unsigned char* px, int w, int h) { (void)px; (void)w; (void)h; return 0; }
+  virtual void SetNormalTexture(uint32_t t) { (void)t; }
   virtual void EndFrame() = 0;
   virtual void Shutdown() = 0;
 };

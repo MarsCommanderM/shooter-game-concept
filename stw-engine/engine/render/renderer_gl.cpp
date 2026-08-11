@@ -1,6 +1,7 @@
 // STW-ENGINE: OpenGL-4.5-Backend (Forward+, PBR metallic/roughness, ACES)
 // Phase 2+: Render-Paesse getrennt (Shadow-Depth -> Main), Frustum-Culling, PCF-Shadows
 #include "renderer.h"
+#include "render/IBL.hpp"
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
@@ -47,6 +48,7 @@ PFNGLUNIFORM3FPROC glUniform3f_ = nullptr;
 PFNGLUNIFORMMATRIX4FVPROC glUniformMatrix4fv_ = nullptr;
 PFNGLDELETEBUFFERSPROC glDeleteBuffers_ = nullptr;
 PFNGLDELETEVERTEXARRAYSPROC glDeleteVertexArrays_ = nullptr;
+PFNGLGENERATEMIPMAPPROC glGenerateMipmap_ = nullptr;
 PFNGLGENFRAMEBUFFERSPROC glGenFramebuffers_ = nullptr;
 PFNGLBINDFRAMEBUFFERPROC glBindFramebuffer_ = nullptr;
 PFNGLFRAMEBUFFERTEXTURE2DPROC glFramebufferTexture2D_ = nullptr;
@@ -82,6 +84,7 @@ bool LoadGL() {
   glDeleteFramebuffers_ = Load<PFNGLDELETEFRAMEBUFFERSPROC>("glDeleteFramebuffers");
   glDeleteBuffers_ = Load<PFNGLDELETEBUFFERSPROC>("glDeleteBuffers");
   glDeleteVertexArrays_ = Load<PFNGLDELETEVERTEXARRAYSPROC>("glDeleteVertexArrays");
+  glGenerateMipmap_ = Load<PFNGLGENERATEMIPMAPPROC>("glGenerateMipmap");
   return glGenVertexArrays_ && glBindVertexArray_ && glGenBuffers_ && glBufferData_ &&
          glVertexAttribPointer_ && glCreateShader_ && glCreateProgram_ && glGenFramebuffers_;
 }
@@ -92,13 +95,18 @@ const char* kVS = R"(
 layout(location=0) in vec3 aPos;
 layout(location=1) in vec3 aNrm;
 layout(location=2) in vec2 aUV;
+layout(location=3) in vec4 aTan;
 uniform mat4 uM;
 uniform mat4 uVP;
-out vec3 vN; out vec3 vW; out vec2 vUV;
+out vec3 vN; out vec3 vW; out vec2 vUV; out vec3 vT; out float vTS;
 void main() {
   vec4 w = uM * vec4(aPos, 1.0);
   vW = w.xyz;
-  vN = mat3(uM) * aNrm;
+  mat3 nm = mat3(uM);
+  vec3 N = normalize(nm * aNrm);
+  vec3 T = normalize(nm * aTan.xyz);
+  T = normalize(T - N * dot(N, T));
+  vN = N; vT = T; vTS = aTan.w;
   vUV = aUV;
   gl_Position = uVP * w;
 }
@@ -106,11 +114,15 @@ void main() {
 
 const char* kFS = R"(
 #version 330 core
-in vec3 vN; in vec3 vW; in vec2 vUV;
+in vec3 vN; in vec3 vW; in vec2 vUV; in vec3 vT; in float vTS;
 uniform vec3 uCam;
 uniform vec3 uBase; uniform float uMetal; uniform float uRough;
+uniform float uHasNormal; uniform float uNormalScale;
+uniform float uHasIBL; uniform float uMaxLod;
 uniform vec3 uLightDir; uniform vec3 uLightCol; uniform vec3 uAmb; uniform float uStrength;
 uniform sampler2D uShadow; uniform mat4 uLightVP;
+uniform sampler2D uNormalTex;
+uniform samplerCube uIrradiance; uniform samplerCube uPrefilter; uniform sampler2D uBrdfLut;
 out vec4 oCol;
 
 const float PI = 3.14159265;
@@ -141,8 +153,18 @@ float shadowFactor(vec3 w, float NoL) {
     }
   return mix(0.3, 1.0, sh / 9.0);
 }
-void main() {
+vec3 getNormal() {
   vec3 N = normalize(vN);
+  if (uHasNormal < 0.5) return N;
+  vec3 T = normalize(vT);
+  vec3 B = normalize(cross(N, T)) * vTS;
+  mat3 TBN = mat3(T, B, N);
+  vec3 tn = texture(uNormalTex, vUV).xyz * 2.0 - 1.0;
+  tn.xy *= uNormalScale;
+  return normalize(TBN * normalize(tn));
+}
+void main() {
+  vec3 N = getNormal();
   vec3 V = normalize(uCam - vW);
   vec3 L = normalize(-uLightDir);
   vec3 H = normalize(V + L);
@@ -157,7 +179,21 @@ void main() {
   vec3 spec = D * G * F / (4.0 * NoV * NoL + 1e-4);
   vec3 kD = (1.0 - F) * (1.0 - uMetal);
   float sh = shadowFactor(vW, NoL);
-  vec3 col = (kD * uBase / PI + spec) * uLightCol * uStrength * NoL * sh + uAmb * uBase;
+  vec3 direct = (kD * uBase / PI + spec) * uLightCol * uStrength * NoL * sh;
+  vec3 ambient;
+  if (uHasIBL > 0.5) {
+    vec3 Fi = FSchlick(NoV, F0);
+    vec3 irr = texture(uIrradiance, N).rgb;
+    vec3 diffIBL = irr * uBase;
+    vec3 R = reflect(-V, N);
+    vec3 pre = textureLod(uPrefilter, R, uRough * uMaxLod).rgb;
+    vec2 brdf = texture(uBrdfLut, vec2(NoV, uRough)).rg;
+    vec3 specIBL = pre * (Fi * brdf.x + brdf.y);
+    ambient = (1.0 - Fi) * (1.0 - uMetal) * diffIBL + specIBL;
+  } else {
+    ambient = uAmb * uBase;
+  }
+  vec3 col = ambient + direct;
   col = aces(col);
   col = pow(col, vec3(1.0 / 2.2));
   oCol = vec4(col, 1.0);
@@ -236,6 +272,20 @@ class GLRenderer : public IRenderer {
     uAmb_ = glGetUniformLocation_(prog_, "uAmb");
     uStr_ = glGetUniformLocation_(prog_, "uStrength");
     uShadow_ = glGetUniformLocation_(prog_, "uShadow");
+    uHasNormal_ = glGetUniformLocation_(prog_, "uHasNormal");
+    uNormalScale_ = glGetUniformLocation_(prog_, "uNormalScale");
+    uNormalTex_ = glGetUniformLocation_(prog_, "uNormalTex");
+    uHasIBL_ = glGetUniformLocation_(prog_, "uHasIBL");
+    uMaxLod_ = glGetUniformLocation_(prog_, "uMaxLod");
+    uIrr_ = glGetUniformLocation_(prog_, "uIrradiance");
+    uPre_ = glGetUniformLocation_(prog_, "uPrefilter");
+    uBrdf_ = glGetUniformLocation_(prog_, "uBrdfLut");
+    // 1x1 weiße Default-Normalmap
+    glGenTextures(1, &whiteTex_);
+    glBindTexture(GL_TEXTURE_2D, whiteTex_);
+    { const unsigned char w[4] = {128, 128, 255, 255};
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, w); }
+    normalTex_ = whiteTex_;
     uLVP_ = glGetUniformLocation_(prog_, "uLightVP");
     sM_ = glGetUniformLocation_(shadowProg_, "uM");
     sLVP_ = glGetUniformLocation_(shadowProg_, "uLVP");
@@ -299,14 +349,20 @@ class GLRenderer : public IRenderer {
         blk.insert(blk.end(), {m.uv[i * 2], m.uv[i * 2 + 1]});
       else
         blk.insert(blk.end(), {0, 0});
+      if (m.tan.size() >= (i + 1) * 4)
+        blk.insert(blk.end(), {m.tan[i * 4], m.tan[i * 4 + 1], m.tan[i * 4 + 2], m.tan[i * 4 + 3]});
+      else
+        blk.insert(blk.end(), {1, 0, 0, 1});
     }
     glBufferData_(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(blk.size() * 4), blk.data(), GL_STATIC_DRAW);
     glEnableVertexAttribArray_(0);
-    glVertexAttribPointer_(0, 3, GL_FLOAT, GL_FALSE, 8 * 4, (void*)0);
+    glVertexAttribPointer_(0, 3, GL_FLOAT, GL_FALSE, 12 * 4, (void*)0);
     glEnableVertexAttribArray_(1);
-    glVertexAttribPointer_(1, 3, GL_FLOAT, GL_FALSE, 8 * 4, (void*)(3 * 4));
+    glVertexAttribPointer_(1, 3, GL_FLOAT, GL_FALSE, 12 * 4, (void*)(3 * 4));
     glEnableVertexAttribArray_(2);
-    glVertexAttribPointer_(2, 2, GL_FLOAT, GL_FALSE, 8 * 4, (void*)(6 * 4));
+    glVertexAttribPointer_(2, 2, GL_FLOAT, GL_FALSE, 12 * 4, (void*)(6 * 4));
+    glEnableVertexAttribArray_(3);
+    glVertexAttribPointer_(3, 4, GL_FLOAT, GL_FALSE, 12 * 4, (void*)(8 * 4));
     glBindBuffer_(GL_ELEMENT_ARRAY_BUFFER, g.ibo);
     glBufferData_(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(m.idx.size() * 4), m.idx.data(), GL_STATIC_DRAW);
     g.count = static_cast<GLsizei>(m.idx.size());
@@ -315,6 +371,11 @@ class GLRenderer : public IRenderer {
   }
 
   void Draw(uint32_t h, const StwMaterial& mat, const float model[16]) override {
+    glUniform1f_(uHasNormal_, mat.hasNormal ? 1.0f : 0.0f);
+    glUniform1f_(uNormalScale_, mat.normalScale);
+    glActiveTexture(GL_TEXTURE4);
+    glBindTexture(GL_TEXTURE_2D, mat.hasNormal ? normalTex_ : whiteTex_);
+    glUniform1i_(uNormalTex_, 4);
     cmds_.push_back({h, mat, {}});
     std::memcpy(cmds_.back().model, model, sizeof(float) * 16);
   }
@@ -360,6 +421,21 @@ class GLRenderer : public IRenderer {
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, shadowTex_);
     glUniform1i_(uShadow_, 0);
+    if (ibl_.ready) {
+      glActiveTexture(GL_TEXTURE1);
+      glBindTexture(GL_TEXTURE_CUBE_MAP, ibl_.irradiance);
+      glUniform1i_(uIrr_, 1);
+      glActiveTexture(GL_TEXTURE2);
+      glBindTexture(GL_TEXTURE_CUBE_MAP, ibl_.prefiltered);
+      glUniform1i_(uPre_, 2);
+      glActiveTexture(GL_TEXTURE3);
+      glBindTexture(GL_TEXTURE_2D, ibl_.brdfLut);
+      glUniform1i_(uBrdf_, 3);
+      glUniform1f_(uHasIBL_, 1.0f);
+      glUniform1f_(uMaxLod_, ibl_.maxReflectionLod);
+    } else {
+      glUniform1f_(uHasIBL_, 0.0f);
+    }
     for (const auto& c : cmds_) {
       if (c.mesh >= meshes_.size()) continue;
       const GLMesh& g = meshes_[c.mesh];
@@ -432,6 +508,25 @@ class GLRenderer : public IRenderer {
   GLuint prog_ = 0, shadowProg_ = 0;
   GLuint shadowFbo_ = 0, shadowTex_ = 0;
   GLint uM_ = 0, uVP_ = 0, uCam_ = 0, uBase_ = 0, uMetal_ = 0, uRough_ = 0, uLD_ = 0, uLC_ = 0, uAmb_ = 0, uStr_ = 0, uShadow_ = 0, uLVP_ = 0;
+  GLint uHasNormal_ = 0, uNormalScale_ = 0, uNormalTex_ = 0, uHasIBL_ = 0, uMaxLod_ = 0, uIrr_ = 0, uPre_ = 0, uBrdf_ = 0;
+  GLuint whiteTex_ = 0, normalTex_ = 0;
+  IBLResources ibl_;
+
+ public:
+  void SetIBL(const IBLResources& r) override { ibl_ = r; }
+  uint32_t UploadTextureRGBA(const unsigned char* px, int w, int h) override {
+    GLuint t = 0;
+    glGenTextures(1, &t);
+    glBindTexture(GL_TEXTURE_2D, t);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, px);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glGenerateMipmap_(GL_TEXTURE_2D);
+    return t;
+  }
+  void SetNormalTexture(uint32_t t) override { normalTex_ = t ? t : whiteTex_; }
+
+ private:
   GLint sM_ = 0, sLVP_ = 0;
   float vp_[16] = {};
   bool vpDirty_ = false;

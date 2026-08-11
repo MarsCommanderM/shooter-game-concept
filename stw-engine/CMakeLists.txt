@@ -12,10 +12,22 @@ find_package(OpenGL REQUIRED)
 
 add_executable(stw
   src/main.cpp
-  src/json_mini.cpp
-  src/gltf.cpp
-  src/renderer_gl.cpp
+  engine/assets/json_mini.cpp
+  engine/assets/gltf.cpp
+  engine/assets/TangentGenerator.cpp
+  engine/assets/HdrLoader.cpp
+  engine/render/renderer_gl.cpp
+  engine/render/IBL.cpp
 )
-target_include_directories(stw PRIVATE src)
+target_include_directories(stw PRIVATE src engine engine/render engine/assets engine/platform engine/core game game/player game/weapons game/world)
 target_link_libraries(stw PRIVATE SDL2::SDL2 OpenGL::GL)
 target_compile_options(stw PRIVATE -Wall)
+
+add_executable(cache_builder
+  tools/cache_builder.cpp
+  engine/assets/json_mini.cpp
+  engine/assets/gltf.cpp
+  engine/assets/TangentGenerator.cpp
+)
+target_include_directories(cache_builder PRIVATE engine engine/assets)
+target_compile_options(cache_builder PRIVATE -Wall)

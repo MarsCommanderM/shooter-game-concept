@@ -1,4 +1,6 @@
 #include "gltf.h"
+#include "assets/TangentGenerator.hpp"
+#include "assets/StwcFormat.hpp"
 #include "json_mini.h"
 
 #include <sys/stat.h>
@@ -74,15 +76,26 @@ float RF(std::ifstream& f) {
   return v;
 }
 
+// FNV-1a 64 – reicht als Source-Hash gegen stille Format-Drifts
+static uint64_t FnvHash(const std::vector<uint8_t>& d) {
+  uint64_t h = 1469598103934665603ull;
+  for (uint8_t b : d) { h ^= b; h *= 1099511628211ull; }
+  return h;
+}
+constexpr uint32_t CACHE_VERSION = stw::STWC_VERSION; // v3: +tangents, +normalScale
 bool TryCache(const std::string& src, StwModel& out) {
   const std::string cp = src + ".stwc";
   if (MTime(cp) <= MTime(src)) return false;
+  auto raw = ReadFile(src);
+  uint64_t src_hash = FnvHash(raw);
   std::ifstream f(cp, std::ios::binary);
   char magic[4];
   f.read(magic, 4);
   if (!f || std::memcmp(magic, "STWC", 4) != 0) return false;
   uint32_t ver = R32(f);
-  if (ver != 1) return false;
+  uint32_t h0 = R32(f), h1 = R32(f);
+  if (ver != CACHE_VERSION) return false;
+  if (h0 != static_cast<uint32_t>(src_hash & 0xFFFFFFFF) || h1 != static_cast<uint32_t>(src_hash >> 32)) return false;
   uint32_t nm = R32(f), nmat = R32(f);
   out.meshes.resize(nm);
   out.mats.resize(nmat);
@@ -91,6 +104,8 @@ bool TryCache(const std::string& src, StwModel& out) {
     for (int k = 0; k < 4; k++) m.base[k] = RF(f);
     m.metallic = RF(f);
     m.roughness = RF(f);
+    m.normalScale = RF(f);
+    m.hasNormal = R32(f) != 0;
   }
   for (uint32_t i = 0; i < nm; i++) {
     out.meshMat[i] = static_cast<int>(R32(f));
@@ -104,6 +119,9 @@ bool TryCache(const std::string& src, StwModel& out) {
     uint32_t nu = R32(f);
     m.uv.resize(nu);
     for (auto& v : m.uv) v = RF(f);
+    uint32_t nt = R32(f);
+    m.tan.resize(nt);
+    for (auto& v : m.tan) v = RF(f);
     uint32_t ni = R32(f);
     m.idx.resize(ni);
     for (auto& v : m.idx) v = R32(f);
@@ -111,18 +129,22 @@ bool TryCache(const std::string& src, StwModel& out) {
   return f.good();
 }
 
-void WriteCache(const std::string& src, const StwModel& m) {
+void WriteCache(const std::string& src, const StwModel& m, uint64_t src_hash) {
   const std::string cp = src + ".stwc";
   std::ofstream f(cp, std::ios::binary);
   if (!f) return;
   f.write("STWC", 4);
-  W32(f, 1);
+  W32(f, CACHE_VERSION);
+  W32(f, static_cast<uint32_t>(src_hash & 0xFFFFFFFF));
+  W32(f, static_cast<uint32_t>(src_hash >> 32));
   W32(f, static_cast<uint32_t>(m.meshes.size()));
   W32(f, static_cast<uint32_t>(m.mats.size()));
   for (const auto& mat : m.mats) {
     for (int k = 0; k < 4; k++) WF(f, mat.base[k]);
     WF(f, mat.metallic);
     WF(f, mat.roughness);
+    WF(f, mat.normalScale);
+    W32(f, mat.hasNormal ? 1 : 0);
   }
   for (size_t i = 0; i < m.meshes.size(); i++) {
     W32(f, static_cast<uint32_t>(m.meshMat[i]));
@@ -133,6 +155,8 @@ void WriteCache(const std::string& src, const StwModel& m) {
     for (float v : me.nrm) WF(f, v);
     W32(f, static_cast<uint32_t>(me.uv.size()));
     for (float v : me.uv) WF(f, v);
+    W32(f, static_cast<uint32_t>(me.tan.size()));
+    for (float v : me.tan) WF(f, v);
     W32(f, static_cast<uint32_t>(me.idx.size()));
     for (uint32_t v : me.idx) W32(f, v);
   }
@@ -260,6 +284,8 @@ bool LoadGLTF(const std::string& path, StwModel& out) {
       if (!accData(static_cast<int>(pJ->numOr()), sm.pos, 3)) continue;
       if (nJ) accData(static_cast<int>(nJ->numOr()), sm.nrm, 3);
       if (uJ) accData(static_cast<int>(uJ->numOr()), sm.uv, 2);
+      const Json* tJ = attrs->get("TANGENT");
+      if (tJ) accData(static_cast<int>(tJ->numOr()), sm.tan, 4);
       const Json* iJ = pr.get("indices");
       if (iJ) {
         std::vector<float> idxF;
@@ -272,13 +298,19 @@ bool LoadGLTF(const std::string& path, StwModel& out) {
         for (uint32_t i = 0; i < sm.pos.size() / 3; i++) sm.idx.push_back(i);
       }
       out.meshMat.push_back(pr.get("material") ? static_cast<int>(pr.get("material")->numOr()) : 0);
+      if (sm.tan.empty() && !sm.pos.empty()) {
+        sm.tan.resize(sm.pos.size() / 3 * 4);
+        stw::GenerateTangentsArrays(sm.pos.data(), sm.nrm.data(),
+                                    sm.uv.empty() ? nullptr : sm.uv.data(),
+                                    sm.idx.data(), sm.idx.size(), sm.pos.size() / 3, sm.tan.data());
+      }
       ComputeBounds(sm);
       out.meshes.push_back(std::move(sm));
     }
   }
 
   if (out.meshes.empty()) return false;
-  WriteCache(path, out);
+  { auto raw2 = ReadFile(path); WriteCache(path, out, FnvHash(raw2)); }
   return true;
 }
 
