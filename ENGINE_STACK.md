@@ -1,10 +1,10 @@
-# WIRRWARR — Engine- & Architektur-Entscheidung
+# SAVE THE WORLD — Engine- & Architektur-Entscheidung
 
-> **UPDATE 2026-08-11: EIGENE ENGINE BESCHLOSSEN.** Statt Unity/Unreal-Port bauen wir die
-> **STW-ENGINE** (`stw-engine/`): SDL2 + OpenGL 4.5 + GLM + glTF 2.0, Forward+, Renderer-Interface
-> austauschbar (Web-Backend später). **Phase 1 (Engine-Kernel) kompiliert bereits**: Fenster, Game-Loop,
-> Pointer-Lock-Input, glTF-Loader mit Binary-Cache, PBR-Shader (GGX + ACES). Siehe `stw-engine/README.md`.
-> Der Browser-Prototyp bleibt Gameplay-Labor + Web-Backend-Referenz.
+> **UPDATE 2026-08-11 (2): NOVA IST LIVE.** Production-Pfad = **Rust + wgpu + WGSL** (`nova/`):
+> Milestone 01 komplett ✅ (winit-Fenster, wgpu-Renderer mit PBR+ACES+Shadows, glTF, FPS-Controller,
+> WASM-Check grün) UND der **headless Dedicated Server läuft auf dem Contabo-VPS** (60 Hz, UDP,
+> authoritative, extern verifiziert über Public-IP). Browser-Prototyp = Gameplay-Labor,
+> `stw-engine/` (C++/GL) = Phase-0-Beweis, NOVA = Zukunft PC+Web+Mobile aus einer Codebasis.
 
 > Antwort auf die Frage „WebGL im Browser oder Pixel-Streaming?" und die Stack-Empfehlung (Unity/Unreal + Netcode + Audio + VFX-LOD).
 > Stand: 2026-08-11 · Status: **Entscheidung getroffen, Phase 1 läuft live.**

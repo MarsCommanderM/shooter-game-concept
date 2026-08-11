@@ -16,3 +16,5 @@ node_modules/
 package-lock.json
 tsconfig.tsbuildinfo
 next-env.d.ts
+nova/target/
+stw-engine/build/

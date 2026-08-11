@@ -1,0 +1,13 @@
+[package]
+name = "nova-server"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "nova-server"
+path = "src/main.rs"
+
+[dependencies]
+nova-core = { path = "../core" }
+serde = { workspace = true }
+serde_json = { workspace = true }

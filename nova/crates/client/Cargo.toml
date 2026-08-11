@@ -1,0 +1,18 @@
+[package]
+name = "nova-client"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "nova-client"
+path = "src/main.rs"
+
+[dependencies]
+nova-core = { path = "../core" }
+glam = { workspace = true }
+wgpu = { workspace = true }
+winit = { workspace = true }
+pollster = { workspace = true }
+bytemuck = { workspace = true }
+gltf = { workspace = true }
+serde_json = { workspace = true }

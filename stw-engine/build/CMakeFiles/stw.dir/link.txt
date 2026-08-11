@@ -1,1 +1,0 @@
-/usr/bin/c++ -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/stw.dir/link.d CMakeFiles/stw.dir/src/main.cpp.o CMakeFiles/stw.dir/src/json_mini.cpp.o CMakeFiles/stw.dir/src/gltf.cpp.o CMakeFiles/stw.dir/src/renderer_gl.cpp.o -o stw  /usr/lib/x86_64-linux-gnu/libSDL2.so /usr/lib/x86_64-linux-gnu/libGL.so

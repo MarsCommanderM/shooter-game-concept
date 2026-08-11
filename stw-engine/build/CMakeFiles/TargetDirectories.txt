@@ -1,3 +1,0 @@
-/home/user/shooter-game-concept/stw-engine/build/CMakeFiles/stw.dir
-/home/user/shooter-game-concept/stw-engine/build/CMakeFiles/edit_cache.dir
-/home/user/shooter-game-concept/stw-engine/build/CMakeFiles/rebuild_cache.dir
