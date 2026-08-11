@@ -364,6 +364,29 @@ function sBoom() {
   const g = c.createGain(); g.gain.setValueAtTime(0.55, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
   src.connect(f).connect(g).connect(c.destination); src.start(t);
 }
+function sStepPan(dist: number, pan: number) {
+  const c = ac(); if (!c) return;
+  const vol = Math.max(0, 1 - dist / 14) * 0.09;
+  if (vol <= 0.005) return;
+  const t = c.currentTime;
+  const o = c.createOscillator(); const g = c.createGain();
+  o.type = "triangle"; o.frequency.setValueAtTime(80 + Math.random() * 20, t); o.frequency.exponentialRampToValueAtTime(50, t + 0.06);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
+  let out: AudioNode = g;
+  try { const pn = c.createStereoPanner(); pn.pan.value = Math.max(-1, Math.min(1, pan)); g.connect(pn); out = pn; } catch { /* */ }
+  out.connect(c.destination);
+  o.connect(g); o.start(t); o.stop(t + 0.08);
+}
+function sHeart() {
+  const c = ac(); if (!c) return;
+  const t = c.currentTime;
+  [0, 0.18].forEach((off) => {
+    const o = c.createOscillator(); const g = c.createGain();
+    o.type = "sine"; o.frequency.setValueAtTime(60, t + off); o.frequency.exponentialRampToValueAtTime(40, t + off + 0.1);
+    g.gain.setValueAtTime(0.0001, t + off); g.gain.exponentialRampToValueAtTime(0.16, t + off + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + off + 0.14);
+    o.connect(g).connect(c.destination); o.start(t + off); o.stop(t + off + 0.16);
+  });
+}
 function sHit() {
   const c = ac(); if (!c) return;
   const t = c.currentTime;
@@ -467,7 +490,7 @@ export function RealGame() {
     shield: 100, bloom: 0, grenades: 2, dmgDirs: [] as { a: number; age: number }[],
     codes: 0, upg: [] as string[], bioOpen: false, announce: null as string | null, skin: "#22ff55",
     fps: 60, killcam: null as string | null, subtitle: null as { speaker: string; text: string } | null,
-    m8Offer: null as "vega" | "data" | null, marenHp: -1,
+    m8Offer: null as "vega" | "data" | null, marenHp: -1, lowhp: false,
   });
   const apiRef = useRef<{ dispose: () => void; upgrade?: (id: string) => void } | null>(null);
   const feedRef = useRef<string[]>([]);
@@ -683,6 +706,18 @@ export function RealGame() {
     /* ---------- Bots ---------- */
     const bots: BotEnt[] = [];
     const SPAWNS: [number, number][] = [[-40, 0], [40, 0], [-40, -40], [40, 40], [0, -40], [0, 40]];
+    const makeNameTag = (text: string, color: THREE.Color) => {
+      const cv = document.createElement("canvas");
+      cv.width = 128; cv.height = 32;
+      const c = cv.getContext("2d")!;
+      c.font = "bold 20px monospace"; c.textAlign = "center";
+      c.fillStyle = `#${color.getHexString()}`;
+      c.fillText(text.slice(0, 10), 64, 22);
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true }));
+      sp.scale.set(2.2, 0.55, 1);
+      sp.position.y = 2.3;
+      return sp;
+    };
     const makeBot = (i: number, team: number) => {
       const group = new THREE.Group();
       const color = new THREE.Color(TEAM_HEX[mode === "ffa" ? i + 1 : team]);
@@ -702,7 +737,7 @@ export function RealGame() {
       );
       ghost.position.y = 0.95;
       ghost.visible = false;
-      group.add(body, head, ghost);
+      group.add(body, head, ghost, makeNameTag(BOT_NAMES[i], color));
       const sp = SPAWNS[(i + 1) % SPAWNS.length];
       group.position.set(sp[0], 0, sp[1]);
       scene.add(group);
@@ -912,6 +947,10 @@ export function RealGame() {
       if (killerId >= 100) allies.find((x) => x.id === killerId)!.kills++;
       else if (killerId > 0) bots.find((x) => x.id === killerId)!.kills++;
       recEvent(`kill:${victimId}`);
+      if (victimId > 0 && victimId < 100 && Math.random() < 0.4) {
+        const other = bots.find((x) => x.alive && x.id !== victimId);
+        if (other) pushFeed(`📻 ${other.name}: „${nameOf(victimId)} ist down! Bleibt scharf!“`);
+      }
       if (killerId === 0) {
         player.kills++; missionKills++; player.codes++;
         // Streak / Spree
@@ -1653,6 +1692,11 @@ export function RealGame() {
       }
       // Reaktion + Burst-Feuer (AAA-Bot-Feel) – Spawn-Schutz respektieren
       if (player.spawnShield > 0 && target && target.id === 0) target = null;
+      const hadTargetBefore = (b as unknown as { hadT?: boolean }).hadT ?? false;
+      if (target && !hadTargetBefore && Math.random() < 0.3) {
+        pushFeed(`📻 ${b.name}: „Kontakt!“`);
+      }
+      (b as unknown as { hadT?: boolean }).hadT = !!target;
       if (!target) b.reactT = 0.22 + Math.random() * 0.3;
       else if (b.reactT > 0) b.reactT -= dt;
       if (b.pauseT > 0) b.pauseT -= dt;
@@ -2255,6 +2299,25 @@ export function RealGame() {
       }
 
       // HUD
+      // Gegner-Footsteps (Stereo-Pan, Distanz) + Heartbeat
+      for (const b of bots) {
+        if (!b.alive) continue;
+        const d = Math.hypot(b.group.position.x - player.x, b.group.position.z - player.z);
+        if (d < 14) {
+          const st = (b as unknown as { stepAcc?: number });
+          st.stepAcc = (st.stepAcc ?? 0) + dt;
+          if (st.stepAcc > 0.45) {
+            st.stepAcc = 0;
+            const rel = Math.atan2(b.group.position.x - player.x, b.group.position.z - player.z) - yaw.rotation.y - Math.PI;
+            sStepPan(d, Math.sin(rel));
+          }
+        }
+      }
+      const heart = (player.hp < 30 && player.hp > 0 ? ((player as unknown as { heartAcc?: number }).heartAcc = ((player as unknown as { heartAcc?: number }).heartAcc ?? 0) + dt) : 0);
+      if (player.hp < 30 && player.hp > 0 && heart > 1.0) {
+        (player as unknown as { heartAcc?: number }).heartAcc = 0;
+        sHeart();
+      }
       rec.acc += dt;
       if (rec.acc >= 0.15) {
         rec.acc = 0;
@@ -2308,6 +2371,7 @@ export function RealGame() {
           fps: fpsVal,
           killcam: player.killcam ? (bots.find((b) => b.id === player.killcam!.botId)?.name ?? "?") : null,
           subtitle: hudSubtitle,
+          lowhp: player.hp < 30 && player.hp > 0,
         });
       }
 
@@ -2790,6 +2854,9 @@ export function RealGame() {
         <p className="font-mono text-sm text-primary glow-neon-sm tracking-wider">{hud.scores}</p>
         {hud.objective && <p className="font-mono text-[10px] text-foreground/90 tracking-wider mt-1">{hud.objective}</p>}
       </div>
+      {hud.lowhp && (
+        <div className="absolute inset-0 pointer-events-none animate-pulse-neon" style={{ background: "radial-gradient(ellipse at center, transparent 55%, rgba(255,30,30,0.28) 100%)" }} />
+      )}
       {/* Cinematic: Letterbox + Subtitles */}
       {hud.subtitle && (
         <>

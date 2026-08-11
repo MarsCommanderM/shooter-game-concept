@@ -92,9 +92,25 @@ export function OnlineGame() {
     scores: "", announce: null as string | null, ping: 0,
   });
   const apiRef = useRef<{ dispose: () => void } | null>(null);
+  const sendRef = useRef<(m: unknown) => void>(() => {});
+  const [chatOpen, setChatOpen] = useState<null | "all" | "team">(null);
+  const [chatText, setChatText] = useState("");
+  const [chatLog, setChatLog] = useState<{ name: string; text: string; teamChat: boolean; own: boolean }[]>([]);
   const [name] = useState(() => `KAEMPFER-${Math.floor(10 + Math.random() * 89)}`);
 
   useEffect(() => () => apiRef.current?.dispose(), []);
+  useEffect(() => {
+    if (screen !== "game") return;
+    const h = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT") return;
+      if (e.key === "Enter") { e.preventDefault(); setChatOpen("all"); }
+      if (e.key === "u" || e.key === "U") { e.preventDefault(); setChatOpen("team"); }
+      if (e.key === "Escape") setChatOpen(null);
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [screen]);
 
   const start = (m: OnlineMode) => {
     setMode(m);
@@ -189,6 +205,7 @@ export function OnlineGame() {
     let ws: WebSocket | null = null;
     try { ws = new WebSocket(`${proto}//${location.host}/ws?mode=${gameMode}`); } catch { setStatus("error"); }
     const send = (m: unknown) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); };
+    sendRef.current = send;
 
     const announce = (text: string) => {
       me.announce = { text, t: performance.now() / 1000 };
@@ -273,6 +290,8 @@ export function OnlineGame() {
               }
             }
           }
+        } else if (m.t === "chat") {
+          setChatLog((l) => [...l.slice(-7), { name: String(m.name), text: String(m.text), teamChat: !!m.teamChat, own: m.id === me.id }]);
         } else if (m.t === "warn") {
           pushFeed(`⚠ Anti-Cheat: Treffer verworfen (${m.reason})`);
         } else if (m.t === "leave") {
@@ -641,6 +660,39 @@ export function OnlineGame() {
           {hud.reloading ? <span className="text-primary">LÄDT…</span> : <>{hud.ammo}<span className="text-muted-foreground text-sm">/∞</span></>}
         </p>
       </div>
+      {/* Chat-Log */}
+      <div className="absolute bottom-24 left-3 pointer-events-none space-y-0.5 max-w-[45%]">
+        {chatLog.slice(-6).map((c, i) => (
+          <p key={i} className="font-mono text-[10px] leading-relaxed bg-black/40 rounded-sm px-1.5 py-0.5 w-max max-w-full">
+            <span className={c.teamChat ? "text-accent" : "text-primary"}>{c.teamChat ? "[TEAM] " : ""}{c.own ? "DU" : c.name}</span>
+            <span className="text-foreground">: {c.text}</span>
+          </p>
+        ))}
+      </div>
+      {/* Chat-Input */}
+      {chatOpen && (
+        <form
+          className="absolute bottom-10 left-1/2 -translate-x-1/2 w-[70%] max-w-md"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (chatText.trim()) {
+              sendRef.current({ t: "chat", text: chatText.trim(), teamChat: chatOpen === "team" });
+              setChatLog((l) => [...l.slice(-7), { name: "DU", text: chatText.trim(), teamChat: chatOpen === "team", own: true }]);
+            }
+            setChatText("");
+            setChatOpen(null);
+          }}
+        >
+          <input
+            autoFocus
+            value={chatText}
+            onChange={(e) => setChatText(e.target.value)}
+            placeholder={chatOpen === "team" ? "[TEAM-CHAT] Nachricht … (Enter senden, Esc schließen)" : "[ALL-CHAT] Nachricht … (Enter senden, Esc schließen)"}
+            className={`w-full bg-black/80 border rounded-sm px-3 py-2 font-mono text-sm outline-none ${chatOpen === "team" ? "border-accent/70 text-accent" : "border-primary/70 text-foreground"}`}
+          />
+        </form>
+      )}
+      <p className="absolute bottom-3 left-1/2 -translate-x-1/2 font-mono text-[9px] text-muted-foreground tracking-wider uppercase pointer-events-none">Enter = Chat · U = Team-Chat</p>
       <Scoreboard hud={hud} />
       <button
         type="button"

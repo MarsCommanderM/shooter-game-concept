@@ -78,6 +78,14 @@ wss.on("connection", (ws, req, roomKey) => {
       posMap.set(ws.pid, { x: m.x, z: m.z });
       m.id = ws.pid;
       broadcast(m, ws);
+    } else if (m.t === "chat") {
+      const msg = { t: "chat", id: ws.pid, name: ws.name ?? "?", text: String(m.text ?? "").slice(0, 120), teamChat: !!m.teamChat, team: ws.team };
+      for (const c of room.clients) {
+        if (c.readyState !== 1) continue;
+        if (msg.teamChat && c.team !== ws.team && c !== ws) continue;
+        c.send(JSON.stringify(msg));
+      }
+      return;
     } else if (m.t === "ping") {
       ws.send(JSON.stringify({ t: "pong", ts: m.ts }));
       return;
