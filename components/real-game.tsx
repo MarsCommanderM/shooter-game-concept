@@ -245,6 +245,27 @@ function dailyQuests() {
   }
   return out.map((q) => ({ ...q, n: q.make(s) }));
 }
+let lang: "de" | "en" = "de";
+try { lang = (localStorage.getItem("wirrwarr-lang") as "de" | "en") || "de"; } catch { /* */ }
+const I18N: Record<string, { de: string; en: string }> = {
+  callsign: { de: "Callsign:", en: "Callsign:" },
+  clan: { de: "Clan-Tag:", en: "Clan tag:" },
+  diff: { de: "Schwierigkeit:", en: "Difficulty:" },
+  arena: { de: "Arena:", en: "Arena:" },
+  perf: { de: "Performance:", en: "Performance:" },
+  season: { de: "Season-XP:", en: "Season XP:" },
+  year: { de: "📊 Jahresrückblick", en: "📊 Year in Review" },
+  editor: { de: "🗺️ Map-Editor", en: "🗺️ Map Editor" },
+  streamer: { de: "📺 Streamer-Modus", en: "📺 Streamer Mode" },
+  dailies: { de: "📅 Daily Ops", en: "📅 Daily Ops" },
+  tour: { de: "🏆 Clan-Turnier", en: "🏆 Clan Tournament" },
+  replay: { de: "📥 Replay-Code", en: "📥 Replay Code" },
+  lastrep: { de: "🎥 Letztes Replay", en: "🎥 Last Replay" },
+};
+function t(key: string): string { return I18N[key]?.[lang] ?? key; }
+let streamerMode = false;
+try { streamerMode = localStorage.getItem("wirrwarr-streamer") === "1"; } catch { /* */ }
+export function anonName(real: string): string { return streamerMode ? "STREAMER" : real; }
 function playVoice(f: string) {
   try {
     const a = new Audio(`/audio/${f}.mp3`);
@@ -811,6 +832,7 @@ export function RealGame() {
   const [actCard, setActCard] = useState<string | null>(null);
   const [yearOpen, setYearOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [tour, setTour] = useState<null | { teams: string[]; sf1: string; sf2: string; finalReady: boolean; champ: string | null }>(null);
   const [edCells, setEdCells] = useState<number[]>(() => Array(400).fill(0));
   const [edTool, setEdTool] = useState<number>(1);
   const [edSa, setEdSa] = useState<[number, number]>([2, 10]);
@@ -821,6 +843,9 @@ export function RealGame() {
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     if (screen !== "end") return;
+    if (tour && !tour.champ) {
+      setTour((tr) => tr && { ...tr, champ: tr.sf1 });
+    }
     const t1 = window.setTimeout(() => playVoice(failed ? "defeat" : "victory"), 600);
     const t2 = window.setTimeout(() => {
       if (!failed && endInfoExt.current?.mvp?.name === "DU") playVoice("mvp");
@@ -2500,6 +2525,8 @@ export function RealGame() {
 
     /* ---------- Replay-Recorder ---------- */
     let ptAcc = 0;
+    const gpPrev = { y: false, lb: false, rb: false };
+    const gpMove = { x: 0, y: 0 };
     const rec = { frames: [] as number[][], events: [] as { t: number; e: string }[], acc: 0 };
     const recEvent = (e: string) => { rec.events.push({ t: Math.round(gameTime * 10) / 10, e }); };
 const banterCd: Record<string, number> = {};
@@ -2687,6 +2714,7 @@ const banterCd: Record<string, number> = {};
         if (keys["KeyS"]) { wx += Math.sin(fy_); wz += Math.cos(fy_); }
         if (keys["KeyA"]) { wx -= Math.cos(fy_); wz += Math.sin(fy_); }
         if (keys["KeyD"]) { wx += Math.cos(fy_); wz -= Math.sin(fy_); }
+        wx += gpMove.x; wz += gpMove.y;
         const wl = Math.hypot(wx, wz);
         if (wl > 0.01) { wx /= wl; wz /= wl; }
         const accel = onGround ? 46 : 15;
@@ -3062,6 +3090,24 @@ const banterCd: Record<string, number> = {};
         }
         arr.needsUpdate = true;
       }
+      // Gamepad
+      const gp = typeof navigator !== "undefined" && navigator.getGamepads ? navigator.getGamepads()[0] : null;
+      if (gp) {
+        const dz = (v: number) => (Math.abs(v) > 0.15 ? v : 0);
+        keys["Space"] = gp.buttons[0]?.pressed || keys["Space"];
+        keys["KeyC"] = gp.buttons[1]?.pressed;
+        keys["KeyR"] = gp.buttons[2]?.pressed;
+        if (gp.buttons[3]?.pressed && !gpPrev.y) { player.weapon = player.weapon === "dorn" ? "brecher" : player.weapon === "brecher" ? "richter" : "dorn"; player.ammo = maxAmmoFor(player.weapon); }
+        gpPrev.y = !!gp.buttons[3]?.pressed;
+        if (gp.buttons[4]?.pressed && !gpPrev.lb) throwNade();
+        gpPrev.lb = !!gp.buttons[4]?.pressed;
+        if (gp.buttons[5]?.pressed && !gpPrev.rb) melee();
+        gpPrev.rb = !!gp.buttons[5]?.pressed;
+        mouseDown = !!gp.buttons[7]?.pressed || mouseDown && !gp.buttons[7];
+        const gax = dz(gp.axes[0] ?? 0), gay = dz(gp.axes[1] ?? 0), grx = dz(gp.axes[2] ?? 0);
+        if (grx) targetYaw -= grx * 3.2 * dt;
+        gpMove.x = gax; gpMove.y = gay;
+      } else { gpMove.x = 0; gpMove.y = 0; }
       ptAcc += dt;
       if (ptAcc >= 5) { ptAcc = 0; bumpStats({ playtime: 5 }); }
       rec.acc += dt;
@@ -3210,6 +3256,30 @@ const banterCd: Record<string, number> = {};
           <p className="font-mono text-sm text-primary tracking-[0.3em] uppercase animate-pulse-neon">[ Klicken zum Erwachen ]</p>
         )}
         <p className="absolute bottom-8 font-mono text-[9px] text-muted-foreground tracking-widest uppercase">Klick = weiter · Einmalig · Danach direkt ins Gefecht</p>
+      </div>
+    );
+  }
+  if (tour) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center px-6">
+        <div className="max-w-md w-full border border-accent/50 bg-black/90 box-glow-neon rounded-sm p-6">
+          <p className="font-mono text-xs tracking-[0.4em] uppercase text-accent glow-neon-sm mb-6">🏆 CLAN-TURNIER</p>
+          <div className="space-y-3 mb-6 font-mono text-sm">
+            <p className="text-muted-foreground">HF1: {tour.teams[0]} vs {tour.teams[1]} → <span className="text-primary">{tour.sf1}</span></p>
+            <p className="text-muted-foreground">HF2: {tour.teams[2]} vs {tour.teams[3]} → <span className="text-primary">{tour.sf2}</span></p>
+            <p className="text-foreground">FINALE: {tour.sf1} vs {tour.sf2} {tour.champ ? <>→ 🏆 <span className="text-accent glow-neon-sm">{tour.champ}</span></> : ""}</p>
+          </div>
+          {!tour.champ ? (
+            <button type="button" onClick={() => start("show")}
+              className="w-full font-mono text-xs uppercase border border-accent/70 text-accent bg-accent/10 hover:bg-accent/20 rounded-sm px-4 py-3 min-h-[44px] mb-2">
+              ▶ Finale live ansehen
+            </button>
+          ) : null}
+          <button type="button" onClick={() => setTour(null)}
+            className="w-full font-mono text-xs uppercase border border-border text-muted-foreground rounded-sm px-4 py-2 min-h-[36px]">
+            ✕ Schließen
+          </button>
+        </div>
       </div>
     );
   }
@@ -3692,6 +3762,19 @@ const banterCd: Record<string, number> = {};
           <button
             type="button"
             onClick={() => {
+              const clans = ["[WOLF]", "[NEST]", "[KORP]", "[FREI]"];
+              const shuffled = [...clans].sort(() => Math.random() - 0.5);
+              const w1 = Math.random() < 0.5 ? shuffled[0] : shuffled[1];
+              const w2 = Math.random() < 0.5 ? shuffled[2] : shuffled[3];
+              setTour({ teams: shuffled, sf1: w1, sf2: w2, finalReady: true, champ: null });
+            }}
+            className="mb-6 mr-2 font-mono text-[10px] tracking-wider uppercase rounded-sm border border-accent/50 text-accent bg-accent/10 hover:bg-accent/20 px-3 py-2 min-h-[36px]"
+          >
+            {t("tour")}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
               try {
                 const m = JSON.parse(localStorage.getItem("wirrwarr-custommap") ?? "null");
                 if (m) { setEdCells(m.cells); setEdSa(m.sa); setEdSb(m.sb); }
@@ -3704,10 +3787,17 @@ const banterCd: Record<string, number> = {};
           </button>
           <button
             type="button"
-            onClick={() => setYearOpen(true)}
-            className="mb-6 font-mono text-[10px] tracking-wider uppercase rounded-sm border border-border text-muted-foreground hover:text-primary hover:border-primary/50 px-3 py-2 min-h-[36px]"
+            onClick={() => { lang = lang === "de" ? "en" : "de"; try { localStorage.setItem("wirrwarr-lang", lang); } catch { /* */ } setDailyTick((x) => x + 1); }}
+            className="mb-6 mr-2 font-mono text-[10px] tracking-wider uppercase rounded-sm border border-border text-muted-foreground hover:text-primary hover:border-primary/50 px-3 py-2 min-h-[36px]"
           >
-            📊 Jahresrückblick
+            🌐 {lang === "de" ? "EN" : "DE"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setYearOpen(true)}
+            className="mb-6 mr-2 font-mono text-[10px] tracking-wider uppercase rounded-sm border border-border text-muted-foreground hover:text-primary hover:border-primary/50 px-3 py-2 min-h-[36px]"
+          >
+            {t("year")}
           </button>
           {(() => {
             let promo = "";
@@ -3726,9 +3816,20 @@ const banterCd: Record<string, number> = {};
             );
           })()}
 
+          <button
+            type="button"
+            onClick={() => {
+              streamerMode = !streamerMode;
+              try { localStorage.setItem("wirrwarr-streamer", streamerMode ? "1" : "0"); } catch { /* */ }
+              setDailyTick((t) => t + 1);
+            }}
+            className={`mb-6 mr-2 font-mono text-[10px] tracking-wider uppercase rounded-sm border px-3 py-2 min-h-[36px] ${streamerMode ? "border-destructive text-destructive bg-destructive/10" : "border-border text-muted-foreground"}`}
+          >
+            📺 Streamer-Modus {streamerMode ? "AN (anonym)" : "AUS"}
+          </button>
           {/* Callsign */}
           <div className="flex flex-wrap items-center gap-2 mb-6">
-            <span className="font-mono text-[10px] tracking-[0.25em] uppercase text-muted-foreground">Callsign:</span>
+            <span className="font-mono text-[10px] tracking-[0.25em] uppercase text-muted-foreground">{t("callsign")}</span>
             <input
               value={callsign}
               maxLength={12}

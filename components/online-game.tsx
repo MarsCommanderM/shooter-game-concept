@@ -416,6 +416,8 @@ export function OnlineGame() {
         objMeshes.push(msh);
       }
     }
+    const gpPrevO = { y: false, lb: false };
+    const gpMoveO = { x: 0, y: 0 };
     const orec = { frames: [] as number[][], rem: [] as number[][], remMeta: [] as [number, string, string][], events: [] as { t: number; e: string }[], acc: 0, racc: 0, t: 0 };
     for (const [pid, r] of remotes.entries()) orec.remMeta.push([pid, r.name, r.color.toString(16).padStart(6, "0")]);
     const objState = { hq: -1, dom: [-1, -1, -1], scores: [0, 0] as number[], over: "" };
@@ -780,6 +782,7 @@ export function OnlineGame() {
         if (keys["KeyS"]) { wx += Math.sin(a); wz += Math.cos(a); }
         if (keys["KeyA"]) { wx -= Math.cos(a); wz += Math.sin(a); }
         if (keys["KeyD"]) { wx += Math.cos(a); wz -= Math.sin(a); }
+        wx += gpMoveO.x; wz += gpMoveO.y;
         const wl = Math.hypot(wx, wz);
         if (wl > 0.01) { wx /= wl; wz /= wl; }
         me.vx += wx * 46 * dt; me.vz += wz * 46 * dt;
@@ -960,6 +963,20 @@ export function OnlineGame() {
           ghost.mesh.position.z = a[2] + (c[2] - a[2]) * f;
         }
       }
+      // Gamepad
+      const gp = typeof navigator !== "undefined" && navigator.getGamepads ? navigator.getGamepads()[0] : null;
+      if (gp) {
+        const dz2 = (v: number) => (Math.abs(v) > 0.15 ? v : 0);
+        keys["Space"] = gp.buttons[0]?.pressed || keys["Space"];
+        keys["KeyC"] = gp.buttons[1]?.pressed;
+        keys["KeyR"] = gp.buttons[2]?.pressed;
+        if (gp.buttons[4]?.pressed && !gpPrevO.lb) { /* nade offline-only */ }
+        gpPrevO.lb = !!gp.buttons[4]?.pressed;
+        mouseDown = !!gp.buttons[7]?.pressed;
+        const gax = dz2(gp.axes[0] ?? 0), gay = dz2(gp.axes[1] ?? 0), grx = dz2(gp.axes[2] ?? 0);
+        if (grx) targetYaw -= grx * 3.2 * dt;
+        gpMoveO.x = gax; gpMoveO.y = gay;
+      } else { gpMoveO.x = 0; gpMoveO.y = 0; }
       orec.t += dt;
       orec.acc += dt;
       if (orec.acc >= 0.15) {
