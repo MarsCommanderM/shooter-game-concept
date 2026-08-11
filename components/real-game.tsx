@@ -325,7 +325,11 @@ const CAMP_KEY = "wirrwarr-campaign-done";
 const STAT_KEY = "wirrwarr-stats";
 function loadStats(): { kills: number; headshots: number; melees: number; bestStreak: number } {
   try { return JSON.parse(localStorage.getItem(STAT_KEY) ?? "null") ?? { kills: 0, headshots: 0, melees: 0, bestStreak: 0 }; }
-  catch { return { kills: 0, headshots: 0, melees: 0, bestStreak: 0 }; }
+  catch { return { kills: 0, headshots: 0, melees: 0, bestStreak: 0 }
+const RANGE_KEY = "wirrwarr-rangestats";
+function loadRange(): { shots: number; hits: number; hs: number; bestAcc: number; sessions: number } {
+  try { return JSON.parse(localStorage.getItem(RANGE_KEY) ?? "null") ?? { shots: 0, hits: 0, hs: 0, bestAcc: 0, sessions: 0 }; } catch { return { shots: 0, hits: 0, hs: 0, bestAcc: 0, sessions: 0 }; }
+}; }
 }
 function sAnnounce() {
   const c = ac(); if (!c) return;
