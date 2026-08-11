@@ -597,6 +597,34 @@ function spatialize(c: AudioContext, pos: { x: number; y: number; z: number }): 
     return c.destination;
   }
 }
+/* ---- Bot-Radio-Chatter: Voice-Lines, räumlich hörbar ---- */
+const CHATTER_TEXT: Record<string, string> = {
+  kontakt: "Kontakt! Feind in Sichtweite!",
+  flank: "Ich flankiere über rechts.",
+  granate: "Granate! In Deckung!",
+  erledigt: "Ziel erledigt. Weiter vorrücken.",
+  verstaerkung: "Brauche Unterstützung an meiner Position!",
+  sektor: "Sektor wird gesichert. Bleibt wachsam.",
+};
+function sRadioBeep() {
+  const c = ac(); if (!c) return;
+  const t = c.currentTime;
+  const o = c.createOscillator(); const g = c.createGain();
+  o.type = "sine"; o.frequency.setValueAtTime(1180, t);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.05, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
+  o.connect(g).connect(c.destination); o.start(t); o.stop(t + 0.08);
+}
+function playChatterAt(file: string, pos: { x: number; y: number; z: number }) {
+  const c = ac(); if (!c) return;
+  const a = new Audio(`/audio/chatter/${file}.mp3`);
+  a.volume = 0.85;
+  try {
+    const src = c.createMediaElementSource(a);
+    const p = spatialize(c, pos);
+    src.connect(p); p.connect(c.destination);
+  } catch { /* ohne WebAudio-Routing trotzdem abspielen */ }
+  void a.play().catch(() => {});
+}
 function sShot(kind: "dorn" | "brecher" | "richter", pos?: { x: number; y: number; z: number }) {
   const c = ac(); if (!c) return;
   const t = c.currentTime;
@@ -1519,7 +1547,7 @@ export function RealGame() {
       if (killerId === 0 && victimId > 0 && victimId < 100) updateDaily("kills");
       if (victimId > 0 && victimId < 100 && Math.random() < 0.4) {
         const other = bots.find((x) => x.alive && x.id !== victimId);
-        if (other) pushFeed(`📻 ${other.name}: „${nameOf(victimId)} ist down! Bleibt scharf!“`);
+        if (other) { pushFeed(`📻 ${other.name}: „${CHATTER_TEXT.erledigt}"`); sRadioBeep(); playChatterAt("erledigt", other.group.position); }
       }
       if (killerId === 0) {
         player.kills++; missionKills++; player.codes++;
@@ -2045,8 +2073,11 @@ export function RealGame() {
       scene.add(mesh);
       nades3.push({ mesh, vel: dir.multiplyScalar(11).add(new THREE.Vector3(0, 3, 0)), t: 1.25, killer: 0 });
     };
+    let chatterT = 6;
     const explode3 = (pos: THREE.Vector3) => {
       sBoom(pos);
+      const nearB = bots.find((b) => b.alive && Math.hypot(b.group.position.x - pos.x, b.group.position.z - pos.z) < 14);
+      if (nearB && Math.random() < 0.5) { sRadioBeep(); playChatterAt("granate", nearB.group.position); }
       flashLight.position.copy(pos);
       flashLight.intensity = 12;
       burst(pos, 0xffcc33, 26);
@@ -3311,6 +3342,20 @@ const banterCd: Record<string, number> = {};
       if (streakCam.t > 0) {
         camera.position.lerp(new THREE.Vector3(player.x, 3.0, player.z), Math.min(1, dt * 6));
         camera.lookAt(streakCam.pos.clone().add(new THREE.Vector3(0, 1.2, 0)));
+      }
+      // ---- Bot-Radio-Chatter (räumlich hörbar) ----
+      chatterT -= dt;
+      if (chatterT <= 0) {
+        chatterT = 8 + Math.random() * 10;
+        const living = bots.filter((b) => b.alive && !b.isBoss);
+        if (living.length) {
+          const b = living[Math.floor(Math.random() * living.length)];
+          const distB = Math.hypot(player.x - b.group.position.x, player.z - b.group.position.z);
+          const pool = distB < 16 ? ["kontakt", "verstaerkung"] : ["flank", "sektor", "kontakt"];
+          const line = pool[Math.floor(Math.random() * pool.length)];
+          sRadioBeep(); playChatterAt(line, b.group.position);
+          pushFeed(`📻 ${b.name}: „${CHATTER_TEXT[line]}"`);
+        }
       }
       // ---- Spatial-Audio-Listener folgt der Kamera (HRTF-Richtungshören) ----
       camera.getWorldPosition(_awp); camera.getWorldDirection(_awd);

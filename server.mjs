@@ -77,6 +77,7 @@ wss.on("connection", (ws, req, roomKey) => {
   room.clients.add(ws);
   ws.pid = nextId++;
   ws.roomKey = roomKey;
+  ws.joinedAt = Date.now();
   const base = roomKey.split("-")[0];
   ws.team = ["tdm", "hq", "dom"].includes(base) ? room.teamCounter++ % 2 : base === "inv" ? 0 : ws.pid;
 
@@ -114,10 +115,14 @@ wss.on("connection", (ws, req, roomKey) => {
       }
       return;
     } else if (m.t === "score") {
+      // Anti-Leaderboard-Spam (server-authoritativ): frühestens 30s nach Join, dann alle 20s, Kill-Cap 150
+      if (Date.now() - ws.joinedAt < 30000) return;
+      if (ws.lastScoreAt && Date.now() - ws.lastScoreAt < 20000) return;
+      ws.lastScoreAt = Date.now();
       const s = loadScores();
       const mode = String(m.mode ?? "ffa");
       s[mode] = s[mode] ?? [];
-      const entry = { name: String(m.name ?? "?").slice(0, 16), kills: Number(m.kills) || 0, date: Date.now(), season: String(m.season ?? seasonNow()) };
+      const entry = { name: String(m.name ?? "?").slice(0, 16), kills: Math.min(150, Math.max(1, Number(m.kills) || 0)), date: Date.now(), season: String(m.season ?? seasonNow()) };
       s[mode].push(entry);
       const cm = entry.name.match(/^\[([^\]]+)\]/);
       if (cm) {
@@ -138,9 +143,10 @@ wss.on("connection", (ws, req, roomKey) => {
       s.heat = s.heat ?? {};
       const key = `${String(m.map ?? "sector")}`;
       s.heat[key] = s.heat[key] ?? {};
-      for (const [cx, cz, n] of m.cells ?? []) {
-        const k = `${cx},${cz}`;
-        s.heat[key][k] = (s.heat[key][k] ?? 0) + n;
+      const cells = Array.isArray(m.cells) ? m.cells.slice(0, 400) : [];
+      for (const [cx, cz, n] of cells) {
+        const k = `${Number(cx) | 0},${Number(cz) | 0}`;
+        s.heat[key][k] = Math.min(99999, (s.heat[key][k] ?? 0) + (Number(n) || 0));
       }
       saveScores(s);
       return;
@@ -213,6 +219,7 @@ wss.on("connection", (ws, req, roomKey) => {
 
   ws.on("close", () => {
     room.clients.delete(ws);
+    posMap.delete(ws.pid);
     broadcast({ t: "leave", id: ws.pid });
   });
 });
@@ -220,7 +227,9 @@ wss.on("connection", (ws, req, roomKey) => {
 server.on("upgrade", (req, socket, head) => {
   const url = req.url || "";
   if (url.startsWith("/ws")) {
-    const roomKey = url.includes("mode=tdm") ? "tdm" : "ffa";
+    // Raum-Key sauber parsen: mode=hq-stahl → eigener Raum pro Modus+Map
+    const mm = url.match(/mode=([a-z0-9-]+)/i);
+    const roomKey = mm ? mm[1] : "ffa";
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req, roomKey));
   } else {
     socket.destroy();
@@ -228,5 +237,5 @@ server.on("upgrade", (req, socket, head) => {
 });
 
 server.listen(port, "0.0.0.0", () => {
-  console.log(`WIRRWARR online: http://0.0.0.0:${port} (WS /ws, Räume: ffa|tdm)`);
+  console.log(`WIRRWARR online: http://0.0.0.0:${port} (WS /ws, Räume dynamisch pro mode[-map])`);
 });
