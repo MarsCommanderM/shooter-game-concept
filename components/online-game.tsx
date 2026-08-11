@@ -303,30 +303,57 @@ export function OnlineGame() {
     mount.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x050705);
-    scene.fog = new THREE.FogExp2(0x050705, 0.03);
+    scene.fog = new THREE.FogExp2(0x071007, 0.016);
     const camera = new THREE.PerspectiveCamera(75, mount.clientWidth / mount.clientHeight, 0.1, 200);
     const yaw = new THREE.Object3D();
     const pitch = new THREE.Object3D();
     yaw.add(pitch); pitch.add(camera);
     scene.add(yaw);
-    scene.add(new THREE.HemisphereLight(0x22ff55, 0x000000, 0.5));
-    const dl = new THREE.DirectionalLight(0x88ffaa, 0.7);
+    scene.add(new THREE.HemisphereLight(0x88ffaa, 0x0a1a0a, 1.0));
+    const dl = new THREE.DirectionalLight(0xccffcc, 1.3);
     dl.position.set(20, 40, 10);
     scene.add(dl);
 
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(ARENA * 2, ARENA * 2), new THREE.MeshStandardMaterial({ color: 0x0a0f0a }));
-    ground.rotation.x = -Math.PI / 2;
-    scene.add(ground);
+
     scene.add(new THREE.GridHelper(ARENA * 2, 40, 0x1a4d24, 0x10240f));
 
     /* ---------- Walls + niedrige Parkour-Cover ---------- */
     const walls: { x: number; z: number; hw: number; hd: number; top: number; mesh: THREE.Mesh }[] = [];
+    const makeTex = (fn: (c: CanvasRenderingContext2D) => void) => {
+      const cv = document.createElement("canvas");
+      cv.width = 128; cv.height = 128;
+      const c = cv.getContext("2d")!;
+      fn(c);
+      const t = new THREE.CanvasTexture(cv);
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      return t;
+    };
+    const concTex = makeTex((c) => {
+      c.fillStyle = "#232823"; c.fillRect(0, 0, 128, 128);
+      for (let i = 0; i < 900; i++) { c.fillStyle = `rgba(${140 + Math.random() * 60},${150 + Math.random() * 60},${140 + Math.random() * 60},${Math.random() * 0.08})`; c.fillRect(Math.random() * 128, Math.random() * 128, 1.5, 1.5); }
+      c.strokeStyle = "rgba(0,0,0,0.35)";
+      for (let i = 0; i < 6; i++) { c.beginPath(); c.moveTo(Math.random() * 128, 0); c.lineTo(Math.random() * 128, 128); c.stroke(); }
+    });
+    const bioTex = makeTex((c) => {
+      c.fillStyle = "#122912"; c.fillRect(0, 0, 128, 128);
+      for (let i = 0; i < 40; i++) { c.strokeStyle = `rgba(34,255,85,${0.05 + Math.random() * 0.12})`; c.beginPath(); const x = Math.random() * 128, y = Math.random() * 128; c.moveTo(x, y); c.quadraticCurveTo(x + 10, y + 8, x + 20, y + 2); c.stroke(); }
+    });
+    concTex.repeat.set(2, 1); bioTex.repeat.set(2, 1);
     const addWall = (x: number, z: number, w: number, d: number, h = 3) => {
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color: h < 3 ? 0x2f7a3a : 0x1c2a1c, roughness: 0.9 }));
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ map: h < 3 ? bioTex : concTex, roughness: 0.85, emissive: h < 3 ? 0x0f3f14 : 0x000000, emissiveIntensity: h < 3 ? 0.5 : 0 }));
       mesh.position.set(x, h / 2, z);
       scene.add(mesh);
       walls.push({ x, z, hw: w / 2, hd: d / 2, top: h, mesh });
     };
+    const floorTex = makeTex((c) => {
+      c.fillStyle = "#0b100b"; c.fillRect(0, 0, 128, 128);
+      c.strokeStyle = "rgba(34,255,85,0.12)"; c.strokeRect(0, 0, 128, 128);
+      for (let i = 0; i < 300; i++) { c.fillStyle = `rgba(120,140,120,${Math.random() * 0.06})`; c.fillRect(Math.random() * 128, Math.random() * 128, 1.5, 1.5); }
+    });
+    floorTex.repeat.set(24, 24);
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(ARENA * 2, ARENA * 2), new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.95 }));
+    ground.rotation.x = -Math.PI / 2;
+    scene.add(ground);
     const buildWalls = (sel: MapSel, cells?: number[]) => {
       for (const w of walls) scene.remove(w.mesh);
       walls.length = 0;
@@ -1371,7 +1398,7 @@ export function OnlineGame() {
   const isTouch = typeof window !== "undefined" && "ontouchstart" in window;
   const wwo = () => (window as unknown as Record<string, any>).__wwo as { fire: (v: boolean) => void; jump: (v: boolean) => void; duck: (v: boolean) => void; reload: () => void } | undefined;
   return (
-    <div className="relative h-screen w-full bg-black overflow-hidden select-none">
+    <div className="fixed inset-0 w-full bg-black overflow-hidden select-none">
       <div ref={mountRef} className="w-full h-full" style={{ touchAction: "none" }} />
       {status === "connecting" && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/70">
@@ -1544,11 +1571,11 @@ export function OnlineGame() {
       )}
       {isTouch && (
         <>
-          <button type="button" className="absolute bottom-24 right-5 w-20 h-20 rounded-full border-2 border-primary/60 bg-primary/20 text-primary font-mono text-xs active:bg-primary/50"
+          <button type="button" className="absolute bottom-[calc(6rem+env(safe-area-inset-bottom))] right-4 w-24 h-24 rounded-full border-2 border-primary/70 bg-primary/25 text-primary font-mono text-sm active:bg-primary/50"
             onTouchStart={(e) => { e.preventDefault(); wwo()?.fire(true); }} onTouchEnd={() => wwo()?.fire(false)}>FEUER</button>
-          <button type="button" className="absolute bottom-40 right-8 w-14 h-14 rounded-full border-2 border-border bg-secondary/40 text-foreground font-mono text-[10px] active:bg-secondary/70"
+          <button type="button" className="absolute bottom-[calc(11rem+env(safe-area-inset-bottom))] right-6 w-16 h-16 rounded-full border-2 border-border bg-secondary/50 text-foreground font-mono text-[11px] active:bg-secondary/70"
             onTouchStart={(e) => { e.preventDefault(); wwo()?.jump(true); }} onTouchEnd={() => wwo()?.jump(false)}>JUMP</button>
-          <button type="button" className="absolute bottom-8 right-28 w-14 h-14 rounded-full border-2 border-border bg-secondary/40 text-foreground font-mono text-[10px] active:bg-secondary/70"
+          <button type="button" className="absolute bottom-[calc(2rem+env(safe-area-inset-bottom))] right-32 w-16 h-16 rounded-full border-2 border-border bg-secondary/50 text-foreground font-mono text-[11px] active:bg-secondary/70"
             onTouchStart={(e) => { e.preventDefault(); wwo()?.duck(true); }} onTouchEnd={() => wwo()?.duck(false)}>DUCK</button>
           <button type="button" className="absolute bottom-40 right-28 w-12 h-12 rounded-full border border-border bg-secondary/40 text-foreground font-mono text-[9px]"
             onTouchStart={(e) => { e.preventDefault(); wwo()?.reload(); }}>LOAD</button>

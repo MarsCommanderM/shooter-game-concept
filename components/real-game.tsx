@@ -708,9 +708,9 @@ export function ReplayView({ data, onExit, walls }: { data: { mode: string; fram
     mount.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x050705);
-    scene.fog = new THREE.FogExp2(0x050705, 0.028);
+    scene.fog = new THREE.FogExp2(0x071007, 0.016);
     const camera = new THREE.PerspectiveCamera(75, mount.clientWidth / mount.clientHeight, 0.1, 300);
-    scene.add(new THREE.HemisphereLight(0x22ff55, 0x000000, 0.5));
+    scene.add(new THREE.HemisphereLight(0x88ffaa, 0x0a1a0a, 1.0));
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(160, 160), new THREE.MeshStandardMaterial({ color: 0x0a0f0a }));
     ground.rotation.x = -Math.PI / 2;
     scene.add(ground);
@@ -925,6 +925,36 @@ export function RealGame() {
     if (!mount) return;
 
     /* ---------- Renderer / Scene / Camera ---------- */
+    // Prozedurale Texturen (kein Atari mehr)
+    const makeTex = (fn: (c: CanvasRenderingContext2D) => void) => {
+      const cv = document.createElement("canvas");
+      cv.width = 128; cv.height = 128;
+      const c = cv.getContext("2d")!;
+      fn(c);
+      const t = new THREE.CanvasTexture(cv);
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      return t;
+    };
+    const concTex = makeTex((c) => {
+      c.fillStyle = "#232823"; c.fillRect(0, 0, 128, 128);
+      for (let i = 0; i < 900; i++) { c.fillStyle = `rgba(${140 + Math.random() * 60},${150 + Math.random() * 60},${140 + Math.random() * 60},${Math.random() * 0.08})`; c.fillRect(Math.random() * 128, Math.random() * 128, 1.5, 1.5); }
+      c.strokeStyle = "rgba(0,0,0,0.35)";
+      for (let i = 0; i < 6; i++) { c.beginPath(); c.moveTo(Math.random() * 128, 0); c.lineTo(Math.random() * 128, 128); c.stroke(); }
+      c.fillStyle = "rgba(34,255,85,0.05)"; c.fillRect(0, 120, 128, 8);
+    });
+    const bioTex = makeTex((c) => {
+      c.fillStyle = "#122912"; c.fillRect(0, 0, 128, 128);
+      for (let i = 0; i < 40; i++) { c.strokeStyle = `rgba(34,255,85,${0.05 + Math.random() * 0.12})`; c.beginPath(); const x = Math.random() * 128, y = Math.random() * 128; c.moveTo(x, y); c.quadraticCurveTo(x + 10, y + 8, x + 20, y + 2); c.stroke(); }
+      for (let i = 0; i < 200; i++) { c.fillStyle = `rgba(34,255,85,${Math.random() * 0.1})`; c.fillRect(Math.random() * 128, Math.random() * 128, 2, 2); }
+    });
+    const floorTex = makeTex((c) => {
+      c.fillStyle = "#0b100b"; c.fillRect(0, 0, 128, 128);
+      c.strokeStyle = "rgba(34,255,85,0.12)"; c.strokeRect(0, 0, 128, 128);
+      for (let i = 0; i < 300; i++) { c.fillStyle = `rgba(120,140,120,${Math.random() * 0.06})`; c.fillRect(Math.random() * 128, Math.random() * 128, 1.5, 1.5); }
+    });
+    floorTex.repeat.set(24, 24);
+    concTex.repeat.set(2, 1);
+    bioTex.repeat.set(2, 1);
     const renderer = new THREE.WebGLRenderer({ antialias: quality !== "low", powerPreference: "high-performance" });
     renderer.setPixelRatio(quality === "low" ? 1 : quality === "med" ? Math.min(window.devicePixelRatio, 1.5) : Math.min(window.devicePixelRatio, 2));
     const particleCap = quality === "low" ? 60 : quality === "med" ? 150 : 250;
@@ -946,7 +976,7 @@ export function RealGame() {
 
     /* ---------- Licht ---------- */
     scene.add(new THREE.HemisphereLight(0x22ff55, 0x000000, 0.5));
-    const dir = new THREE.DirectionalLight(0x88ffaa, 0.7);
+    const dir = new THREE.DirectionalLight(0xccffcc, 1.3);
     dir.position.set(20, 40, 10);
     if (quality === "high") {
       dir.castShadow = true;
@@ -959,7 +989,7 @@ export function RealGame() {
     /* ---------- Boden ---------- */
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(ARENA * 2, ARENA * 2),
-      new THREE.MeshStandardMaterial({ color: 0x0a0f0a, roughness: 1 })
+      new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.95 })
     );
     ground.rotation.x = -Math.PI / 2;
     scene.add(ground);
@@ -1024,9 +1054,10 @@ export function RealGame() {
     };
     const addWall = (x: number, y: number, z: number, w: number, h: number, d: number, destructible: boolean, hp = 150) => {
       const mat = new THREE.MeshStandardMaterial({
-        color: destructible ? 0x2f7a3a : 0x1c2a1c,
-        roughness: 0.9,
-        emissive: destructible ? 0x0a2a10 : 0x000000,
+        map: destructible ? bioTex : concTex,
+        roughness: 0.85,
+        emissive: destructible ? 0x0f3f14 : 0x000000,
+        emissiveIntensity: destructible ? 0.5 : 0,
       });
       const mesh = new THREE.Mesh(getGeo(w, h, d), mat);
       mesh.position.set(x, y, z);
@@ -1294,7 +1325,17 @@ export function RealGame() {
         new THREE.MeshStandardMaterial({ color: 0x111111, emissive: color.clone().multiplyScalar(0.6) })
       );
       head.position.y = 1.75;
-      group.add(body, head);
+      const armL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.7, 0.14), new THREE.MeshStandardMaterial({ color, roughness: 0.7 }));
+      armL.position.set(-0.45, 1.0, 0);
+      const armR = armL.clone(); armR.position.x = 0.45;
+      const gunM = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 0.7), new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.6 }));
+      gunM.position.set(0.45, 1.1, -0.35);
+      const hpCv = document.createElement("canvas"); hpCv.width = 64; hpCv.height = 8;
+      const hpCtx = hpCv.getContext("2d")!; hpCtx.fillStyle = "#fff"; hpCtx.fillRect(0, 0, 64, 8);
+      const hpSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(hpCv), color: 0x22ff55 }));
+      hpSprite.scale.set(1.4, 0.14, 1); hpSprite.position.y = 2.45;
+      (group as unknown as { hpSprite?: THREE.Sprite }).hpSprite = hpSprite;
+      group.add(body, head, armL, armR, gunM, hpSprite);
       group.position.set(SPAWNS[0][0] + (i === 0 ? 1.5 : -1.5), 0, SPAWNS[0][1] + 1.5);
       scene.add(group);
       allies.push({ id: 101 + i, name: ALLY_NAMES[i], group, body, hp: 100, alive: true, respawnAt: 0, cd: 1, kills: 0, wp: null, y: 0, vy: 0, mantle: null });
@@ -1366,6 +1407,7 @@ export function RealGame() {
     if (custom) {
       player.x = custom.sa[0] * 2 - 20 + 1; player.z = custom.sa[1] * 2 - 20 + 1;
     }
+    if (mission) window.setTimeout(() => playVoice("missionstart"), 2600);
     if (mode === "m0" || mode === "show") player.noGun = true;
     if (mode === "m8") player.rangeT = 150;
     if (mode === "m15") player.rangeT = 120;
@@ -2312,6 +2354,11 @@ export function RealGame() {
       if (b.pauseT > 0) b.pauseT -= dt;
       if (target && b.reactT <= 0 && b.pauseT <= 0 && b.burstLeft <= 0) {
         b.burstLeft = 3 + Math.floor(Math.random() * 3);
+      }
+      const hs = (b.group as unknown as { hpSprite?: THREE.Sprite }).hpSprite;
+      if (hs) {
+        hs.scale.x = Math.max(0.1, 1.4 * (b.hp / 100));
+        (hs.material as THREE.SpriteMaterial).color.setHex(b.hp > 50 ? 0x22ff55 : b.hp > 25 ? 0xffcc33 : 0xff4444);
       }
       b.shieldT = Math.max(0, (b.shieldT ?? 0) - dt);
       const al = (b as unknown as { alertT?: number }).alertT ?? 0;
@@ -3280,7 +3327,7 @@ const banterCd: Record<string, number> = {};
     ];
     return (
       <div
-        className="min-h-screen bg-black flex flex-col items-center justify-center px-6 cursor-pointer"
+        className="min-h-[100dvh] bg-black flex flex-col items-center justify-center px-6 cursor-pointer"
         onClick={() => {
           if (introBeat < beats.length) setIntroBeat(introBeat + 1);
           else {
@@ -3306,7 +3353,7 @@ const banterCd: Record<string, number> = {};
   }
   if (tour) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center px-6">
+      <div className="min-h-[100dvh] bg-black flex items-center justify-center px-6">
         <div className="max-w-md w-full border border-accent/50 bg-black/90 box-glow-neon rounded-sm p-6">
           <p className="font-mono text-xs tracking-[0.4em] uppercase text-accent glow-neon-sm mb-6">🏆 CLAN-TURNIER</p>
           <div className="space-y-3 mb-6 font-mono text-sm">
@@ -3330,7 +3377,7 @@ const banterCd: Record<string, number> = {};
   }
   if (editorOpen) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center px-4 py-8">
+      <div className="min-h-[100dvh] bg-black flex items-center justify-center px-4 py-8">
         <div className="max-w-2xl w-full">
           <p className="font-mono text-xs tracking-[0.4em] uppercase text-primary glow-neon-sm mb-4">🗺️ MAP-EDITOR</p>
           <div className="flex flex-wrap gap-2 mb-3">
@@ -3380,7 +3427,7 @@ const banterCd: Record<string, number> = {};
     const s = loadStats();
     const seas = loadSeason();
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center px-6">
+      <div className="min-h-[100dvh] bg-black flex items-center justify-center px-6">
         <div className="max-w-xl w-full border border-primary/40 bg-black/90 box-glow-neon rounded-sm p-6">
           <p className="font-mono text-xs tracking-[0.4em] uppercase text-primary glow-neon-sm mb-6">📊 DEIN JAHR // WIRRWARR</p>
           <div className="grid grid-cols-2 gap-3 mb-6">
@@ -3408,7 +3455,7 @@ const banterCd: Record<string, number> = {};
   }
   if (actCard && screen === "game") {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="min-h-[100dvh] bg-black flex items-center justify-center">
         <div className="text-center animate-fade-in">
           <p className="font-mono text-[10px] tracking-[0.5em] uppercase text-muted-foreground mb-4">WIRRWARR</p>
           <p className="font-mono text-4xl md:text-6xl font-bold tracking-[0.2em] text-primary glow-neon">{actCard}</p>
@@ -4095,7 +4142,7 @@ const banterCd: Record<string, number> = {};
   const isTouch = typeof window !== "undefined" && "ontouchstart" in window;
   const ww = () => (window as unknown as Record<string, any>).__ww as { fire: (v: boolean) => void; jump: (v: boolean) => void; duck: (v: boolean) => void; reload: () => void; weap: () => void; nade: () => void; melee: () => void } | undefined;
   return (
-    <div className="relative h-screen w-full bg-black overflow-hidden select-none">
+    <div className="fixed inset-0 w-full bg-black overflow-hidden select-none">
       <div ref={mountRef} className="w-full h-full" style={{ touchAction: "none" }} />
       {/* AAA-Look: Vignette + dezente Scanlines */}
       <div className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.55) 100%)" }} />
@@ -4276,11 +4323,11 @@ const banterCd: Record<string, number> = {};
       </div>
       {isTouch && (
         <>
-          <button type="button" className="absolute bottom-24 right-5 w-20 h-20 rounded-full border-2 border-primary/60 bg-primary/20 text-primary font-mono text-xs active:bg-primary/50"
+          <button type="button" className="absolute bottom-[calc(6rem+env(safe-area-inset-bottom))] right-4 w-24 h-24 rounded-full border-2 border-primary/70 bg-primary/25 text-primary font-mono text-sm active:bg-primary/50"
             onTouchStart={(e) => { e.preventDefault(); ww()?.fire(true); }} onTouchEnd={() => ww()?.fire(false)}>FEUER</button>
-          <button type="button" className="absolute bottom-40 right-8 w-14 h-14 rounded-full border-2 border-border bg-secondary/40 text-foreground font-mono text-[10px] active:bg-secondary/70"
+          <button type="button" className="absolute bottom-[calc(11rem+env(safe-area-inset-bottom))] right-6 w-16 h-16 rounded-full border-2 border-border bg-secondary/50 text-foreground font-mono text-[11px] active:bg-secondary/70"
             onTouchStart={(e) => { e.preventDefault(); ww()?.jump(true); }} onTouchEnd={() => ww()?.jump(false)}>JUMP</button>
-          <button type="button" className="absolute bottom-8 right-28 w-14 h-14 rounded-full border-2 border-border bg-secondary/40 text-foreground font-mono text-[10px] active:bg-secondary/70"
+          <button type="button" className="absolute bottom-[calc(2rem+env(safe-area-inset-bottom))] right-32 w-16 h-16 rounded-full border-2 border-border bg-secondary/50 text-foreground font-mono text-[11px] active:bg-secondary/70"
             onTouchStart={(e) => { e.preventDefault(); ww()?.duck(true); }} onTouchEnd={() => ww()?.duck(false)}>DUCK</button>
           <button type="button" className="absolute bottom-24 right-28 w-12 h-12 rounded-full border border-border bg-secondary/40 text-foreground font-mono text-[9px]"
             onTouchStart={(e) => { e.preventDefault(); ww()?.nade(); }}>NADE</button>
