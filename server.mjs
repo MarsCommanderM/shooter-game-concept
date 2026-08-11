@@ -31,9 +31,10 @@ function loadScores() {
 function saveScores(s) {
   try { fs.writeFileSync(SCORE_FILE, JSON.stringify(s)); } catch { /* */ }
 }
+const seasonNow = () => { const d = new Date(); return `S${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
 function topFor(mode) {
   const s = loadScores();
-  return (s[mode] ?? []).slice(0, 10);
+  return (s[mode] ?? []).filter((e) => (e.season ?? "S0") === seasonNow()).slice(0, 10);
 }
 
 /* ---------- Server-autoritative Hit-Validation (Anti-Cheat-Basis) ---------- */
@@ -106,7 +107,7 @@ wss.on("connection", (ws, req, roomKey) => {
       const s = loadScores();
       const mode = String(m.mode ?? "ffa");
       s[mode] = s[mode] ?? [];
-      s[mode].push({ name: String(m.name ?? "?").slice(0, 12), kills: Number(m.kills) || 0, date: Date.now() });
+      s[mode].push({ name: String(m.name ?? "?").slice(0, 12), kills: Number(m.kills) || 0, date: Date.now(), season: String(m.season ?? seasonNow()) });
       s[mode].sort((a, b) => b.kills - a.kills);
       s[mode] = s[mode].slice(0, 100);
       saveScores(s);

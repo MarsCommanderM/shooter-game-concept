@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { updateDaily, loadCallsign, loadUpgOwned } from "./real-game";
+import { updateDaily, loadCallsign, loadUpgOwned, loadDiff, seasonId, ReplayView } from "./real-game";
 
 /* ================================================================== */
 /* WIRRWARR ONLINE v2 – FFA & TDM, Movement-Polish, Stance-Sync        */
@@ -112,6 +112,8 @@ export function OnlineGame() {
   const [micErr, setMicErr] = useState("");
   const vcRef = useRef<{ toggle: () => void; stop: () => void; rebuild?: (s: "all" | "team") => void } | null>(null);
   const [vcScope, setVcScope] = useState<"all" | "team">("all");
+  const [replayOpen, setReplayOpen] = useState(false);
+  const [onlineReplay, setOnlineReplay] = useState<null | { mode: string; map: string; frames: number[][]; botTrack: number[][]; botsMeta: [number, string, string][]; events: { t: number; e: string }[] }>(null);
   const vcCtx = useRef<{ team: () => number; has: (pid: number) => number | undefined; pids: () => number[] }>({ team: () => -1, has: () => undefined, pids: () => [] });
   const [name] = useState(() => loadCallsign() || `KAEMPFER-${Math.floor(10 + Math.random() * 89)}`);
 
@@ -279,35 +281,37 @@ export function OnlineGame() {
       scene.add(mesh);
       walls.push({ x, z, hw: w / 2, hd: d / 2, top: h, mesh });
     };
-    addWall(0, -ARENA, ARENA * 2, 1, 4); addWall(0, ARENA, ARENA * 2, 1, 4);
-    addWall(-ARENA, 0, 1, ARENA * 2, 4); addWall(ARENA, 0, 1, ARENA * 2, 4);
-    if (mapSel === "sector") {
-      addWall(0, 0, 5, 5); addWall(-16, -12, 7, 1.2); addWall(16, 12, 7, 1.2);
-      addWall(-16, 12, 1.2, 7); addWall(16, -12, 1.2, 7);
-      addWall(-26, 0, 2, 8); addWall(26, 0, 2, 8); addWall(0, -26, 8, 2); addWall(0, 26, 8, 2);
-    } else if (mapSel === "stahl") {
-      addWall(-10, -12, 1.2, 10, 3); addWall(10, -12, 1.2, 10, 3);
-      addWall(-10, 12, 1.2, 10, 3); addWall(10, 12, 1.2, 10, 3);
-      addWall(-22, 0, 8, 1.2, 3); addWall(22, 0, 8, 1.2, 3);
-      addWall(0, -6, 6, 1.2, 2); addWall(0, 6, 6, 1.2, 2);
-      addWall(0, 0, 4, 4, 3);
-    } else if (mapSel === "orbital") {
-      addWall(-8, -8, 6, 1.1, 2.5); addWall(8, 8, 6, 1.1, 2.5);
-      addWall(-8, 8, 6, 1.1, 2.5); addWall(8, -8, 6, 1.1, 2.5);
-      addWall(0, -16, 8, 1.2, 3); addWall(0, 16, 8, 1.2, 3);
-      addWall(-16, 0, 1.2, 8, 3); addWall(16, 0, 1.2, 8, 3);
-    } else {
-      addWall(-10, -10, 2, 2, 3); addWall(10, -10, 2, 2, 3);
-      addWall(-10, 10, 2, 2, 3); addWall(10, 10, 2, 2, 3);
-      addWall(-20, 0, 1.5, 6, 3); addWall(20, 0, 1.5, 6, 3);
-      addWall(0, -20, 6, 1.5, 3); addWall(0, 20, 6, 1.5, 3);
-      addWall(-5, -12, 1.5, 1.5, 2); addWall(5, 12, 1.5, 1.5, 2);
-      addWall(12, -5, 1.5, 1.5, 2); addWall(-12, 5, 1.5, 1.5, 2);
-    }
-    // Parkour-Cover (klettern/springen/manteln)
-    addWall(-8, 8, 2.5, 2.5, 1.1); addWall(8, -8, 2.5, 2.5, 1.1);
-    addWall(-8, -14, 3, 1.2, 1.6); addWall(8, 14, 3, 1.2, 1.6);
-    addWall(14, 4, 1.2, 3, 2.2); addWall(-14, -4, 1.2, 3, 2.2);
+    const buildWalls = (sel: MapSel) => {
+      for (const w of walls) scene.remove(w.mesh);
+      walls.length = 0;
+      addWall(0, -ARENA, ARENA * 2, 1, 4); addWall(0, ARENA, ARENA * 2, 1, 4);
+      addWall(-ARENA, 0, 1, ARENA * 2, 4); addWall(ARENA, 0, 1, ARENA * 2, 4);
+      const L: Record<MapSel, [number, number, number, number, number][]> = {
+        sector: [
+          [0, 0, 5, 5, 3], [-16, -12, 7, 1.2, 3], [16, 12, 7, 1.2, 3], [-16, 12, 1.2, 7, 3], [16, -12, 1.2, 7, 3],
+          [-26, 0, 2, 8, 4], [26, 0, 2, 8, 4], [0, -26, 8, 2, 4], [0, 26, 8, 2, 4],
+        ],
+        stahl: [
+          [-10, -12, 1.2, 10, 3], [10, -12, 1.2, 10, 3], [-10, 12, 1.2, 10, 3], [10, 12, 1.2, 10, 3],
+          [-22, 0, 8, 1.2, 3], [22, 0, 8, 1.2, 3], [0, -6, 6, 1.2, 2], [0, 6, 6, 1.2, 2], [0, 0, 4, 4, 3],
+        ],
+        orbital: [
+          [-8, -8, 6, 1.1, 2.5], [8, 8, 6, 1.1, 2.5], [-8, 8, 6, 1.1, 2.5], [8, -8, 6, 1.1, 2.5],
+          [0, -16, 8, 1.2, 3], [0, 16, 8, 1.2, 3], [-16, 0, 1.2, 8, 3], [16, 0, 1.2, 8, 3],
+        ],
+        garten: [
+          [-10, -10, 2, 2, 3], [10, -10, 2, 2, 3], [-10, 10, 2, 2, 3], [10, 10, 2, 2, 3],
+          [-20, 0, 1.5, 6, 3], [20, 0, 1.5, 6, 3], [0, -20, 6, 1.5, 3], [0, 20, 6, 1.5, 3],
+          [-5, -12, 1.5, 1.5, 2], [5, 12, 1.5, 1.5, 2], [12, -5, 1.5, 1.5, 2], [-12, 5, 1.5, 1.5, 2],
+        ],
+      };
+      for (const [x, z, w, d, h] of L[sel]) addWall(x, z, w, d, h);
+      addWall(-8, 8, 2.5, 2.5, 1.1); addWall(8, -8, 2.5, 2.5, 1.1);
+      addWall(-8, -14, 3, 1.2, 1.6); addWall(8, 14, 3, 1.2, 1.6);
+      addWall(14, 4, 1.2, 3, 2.2); addWall(-14, -4, 1.2, 3, 2.2);
+    };
+    buildWalls(mapSel);
+    let activeMap: MapSel = mapSel;
 
     const collides = (x: number, z: number, r: number, y: number) =>
       walls.some((w) => w.top > y + 0.5 && x > w.x - w.hw - r && x < w.x + w.hw + r && z > w.z - w.hd - r && z < w.z + w.hd + r);
@@ -354,6 +358,8 @@ export function OnlineGame() {
         objMeshes.push(msh);
       }
     }
+    const orec = { frames: [] as number[][], rem: [] as number[][], remMeta: [] as [number, string, string][], events: [] as { t: number; e: string }[], acc: 0, racc: 0, t: 0 };
+    for (const [pid, r] of remotes.entries()) orec.remMeta.push([pid, r.name, r.color.toString(16).padStart(6, "0")]);
     const objState = { hq: -1, dom: [-1, -1, -1], scores: [0, 0] as number[], over: "" };
     let objAcc = 0;
 
@@ -500,7 +506,12 @@ export function OnlineGame() {
         } else if (m.t === "bkill") {
           invState.kills++;
           if (m.by === me.id) me.kills++;
+          orec.events.push({ t: Math.round(orec.t * 10) / 10, e: `kill:SPORE-${m.id}` });
           pushFeed(`${m.by === me.id ? "DU" : remotes.get(m.by as number)?.name ?? "?"} ⚡ SPORE-${m.id}`);
+        } else if (m.t === "setmap") {
+          activeMap = m.map as MapSel;
+          buildWalls(activeMap);
+          pushFeed(`🗺️ ARENA-ROTATION: ${activeMap.toUpperCase()}`);
         } else if (m.t === "pdmg") {
           if (m.target === me.id && me.hp > 0) {
             me.hp -= m.dmg as number;
@@ -753,6 +764,17 @@ export function OnlineGame() {
         stateAcc = 0;
         send({ t: "state", x: me.x, z: me.z, yaw: yaw.rotation.y, hp: me.hp, stance: me.prone ? 3 : me.crouch ? 2 : 1 });
       }
+      orec.t += dt;
+      orec.acc += dt;
+      if (orec.acc >= 0.15) {
+        orec.acc = 0;
+        orec.frames.push([Math.round(orec.t * 10) / 10, Math.round(me.x * 100) / 100, Math.round(me.z * 100) / 100, Math.round(yaw.rotation.y * 1000) / 1000]);
+      }
+      orec.racc += dt;
+      if (orec.racc >= 0.3) {
+        orec.racc = 0;
+        for (const [pid, r] of remotes.entries()) orec.rem.push([Math.round(orec.t * 10) / 10, pid, Math.round(r.tx * 100) / 100, Math.round(r.tz * 100) / 100]);
+      }
       pingAcc += dt;
       if (pingAcc > 2) { pingAcc = 0; send({ t: "ping", ts: performance.now() }); }
 
@@ -761,9 +783,17 @@ export function OnlineGame() {
         const pidsInv = [me.id, ...remotes.keys()];
         const isHostInv = me.id === Math.min(...pidsInv);
         if (isHostInv) {
+          const diffMulInv = loadDiff() === "apex" ? 1.35 : loadDiff() === "recruit" ? 0.7 : 1;
           const aliveCount = invBotsLocal.filter((b) => b.hp > 0).length;
           if (aliveCount === 0) {
             invState.wave++;
+            if (invState.wave > 1 && invState.wave % 3 === 1) {
+              const order: MapSel[] = ["sector", "stahl", "orbital", "garten"];
+              activeMap = order[(order.indexOf(activeMap) + 1) % order.length];
+              buildWalls(activeMap);
+              send({ t: "setmap", map: activeMap });
+              pushFeed(`🗺️ ARENA-ROTATION: ${activeMap.toUpperCase()}`);
+            }
             const n = 3 + invState.wave * 2;
             for (let i = 0; i < n; i++) {
               const a2 = Math.random() * Math.PI * 2;
@@ -781,9 +811,9 @@ export function OnlineGame() {
             }
             if (td2 < 1e8) {
               const d = td2 || 1;
-              if (d > 1.6) { b.x += ((tx - b.x) / d) * 3.6 * dt; b.z += ((tz - b.z) / d) * 3.6 * dt; }
+              if (d > 1.6) { const bs = 3.6 * (loadDiff() === "apex" ? 1.2 : 1); b.x += ((tx - b.x) / d) * bs * dt; b.z += ((tz - b.z) / d) * bs * dt; }
               b.cd -= dt;
-              if (d < 2 && b.cd <= 0) { b.cd = 1; send({ t: "pdmg", target: tid, dmg: 12 }); }
+              if (d < 2 && b.cd <= 0) { b.cd = 1; send({ t: "pdmg", target: tid, dmg: Math.round(12 * diffMulInv) }); }
             }
           }
           for (const h of pendingHits.splice(0)) {
@@ -875,7 +905,12 @@ export function OnlineGame() {
     apiRef.current = {
       dispose: () => {
         cancelAnimationFrame(raf);
-        if (me.kills > 0) send({ t: "score", name, kills: me.kills, mode: gameMode });
+        if (me.kills > 0) send({ t: "score", name, kills: me.kills, mode: gameMode, season: seasonId() });
+      try {
+        if (orec.frames.length > 20 && orec.frames.length < 9000) {
+          localStorage.setItem("wirrwarr-online-replay", JSON.stringify({ mode: gameMode, map: mapSel, frames: orec.frames, botTrack: orec.rem, botsMeta: orec.remMeta, events: orec.events, date: new Date().toISOString() }));
+        }
+      } catch { /* */ }
         ws?.close();
         window.removeEventListener("keydown", kd);
         window.removeEventListener("keyup", ku);
@@ -890,6 +925,15 @@ export function OnlineGame() {
   };
 
   /* ================= UI ================= */
+  if (replayOpen && onlineReplay) {
+    const WALLS_FOR: Record<string, [number, number, number, number, number, number][]> = {
+      sector: [[0, 1.5, 0, 5, 3, 5], [-16, 1.5, -12, 7, 3, 1.2], [16, 1.5, 12, 7, 3, 1.2], [-16, 1.5, 12, 1.2, 3, 7], [16, 1.5, -12, 1.2, 3, 7], [-26, 2, 0, 2, 4, 8], [26, 2, 0, 2, 4, 8], [0, 2, -26, 8, 4, 2], [0, 2, 26, 8, 4, 2]],
+      stahl: [[-10, 1.5, -12, 1.2, 3, 10], [10, 1.5, -12, 1.2, 3, 10], [-10, 1.5, 12, 1.2, 3, 10], [10, 1.5, 12, 1.2, 3, 10], [-22, 1.5, 0, 8, 3, 1.2], [22, 1.5, 0, 8, 3, 1.2], [0, 1, -6, 6, 2, 1.2], [0, 1, 6, 6, 2, 1.2], [0, 1.5, 0, 4, 3, 4]],
+      orbital: [[-8, 1.25, -8, 6, 2.5, 1.1], [8, 1.25, 8, 6, 2.5, 1.1], [-8, 1.25, 8, 6, 2.5, 1.1], [8, 1.25, -8, 6, 2.5, 1.1], [0, 1.5, -16, 8, 3, 1.2], [0, 1.5, 16, 8, 3, 1.2], [-16, 1.5, 0, 1.2, 3, 8], [16, 1.5, 0, 1.2, 3, 8]],
+      garten: [[-10, 1.5, -10, 2, 3, 2], [10, 1.5, -10, 2, 3, 2], [-10, 1.5, 10, 2, 3, 2], [10, 1.5, 10, 2, 3, 2], [-20, 1.5, 0, 1.5, 3, 6], [20, 1.5, 0, 1.5, 3, 6], [0, 1.5, -20, 6, 3, 1.5], [0, 1.5, 20, 6, 3, 1.5]],
+    };
+    return <ReplayView data={onlineReplay} walls={WALLS_FOR[onlineReplay.map] ?? WALLS_FOR.sector} onExit={() => setReplayOpen(false)} />;
+  }
   if (screen === "menu") {
     return (
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-6 py-16">
@@ -960,6 +1004,22 @@ export function OnlineGame() {
               </button>
             ))}
           </div>
+          {typeof window !== "undefined" && localStorage.getItem("wirrwarr-online-replay") && (
+            <button
+              type="button"
+              onClick={() => {
+                try {
+                  const r = JSON.parse(localStorage.getItem("wirrwarr-online-replay")!);
+                  setOnlineReplay(r);
+                  setReplayOpen(true);
+                } catch { /* */ }
+              }}
+              className="mb-6 text-left border border-border bg-card rounded-sm p-4 hover:border-primary/60 transition-all min-h-[44px]"
+            >
+              <p className="font-bold text-foreground mb-1">🎥 Letztes Online-Replay</p>
+              <p className="font-mono text-[11px] text-muted-foreground">Mit allen Spielern. Auch als Code teilbar.</p>
+            </button>
+          )}
           <TurnSettings />
           <a href="/" className="font-mono text-xs tracking-wider uppercase text-muted-foreground hover:text-primary transition-colors">
             ← Zurück zum GDD

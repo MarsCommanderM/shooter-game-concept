@@ -252,7 +252,7 @@ const DIFFS = [
   { id: "veteran", name: "VETERAN", mul: 1, desc: "Wie intended" },
   { id: "apex", name: "APEX", mul: 1.35, desc: "Bots: +35 % Schaden, schneller" },
 ];
-function loadDiff() { try { return localStorage.getItem(DIFF_KEY) ?? "veteran"; } catch { return "veteran"; } }
+export function loadDiff() { try { return localStorage.getItem(DIFF_KEY) ?? "veteran"; } catch { return "veteran"; } }
 const UPG_KEY = "wirrwarr-upg";
 export function loadUpgOwned(): string[] {
   try { return JSON.parse(localStorage.getItem(UPG_KEY) ?? "null") ?? []; } catch { return []; }
@@ -332,7 +332,7 @@ function loadStats(): { kills: number; headshots: number; melees: number; bestSt
   try { return JSON.parse(localStorage.getItem(STAT_KEY) ?? "null") ?? { kills: 0, headshots: 0, melees: 0, bestStreak: 0 }; }
   catch { return { kills: 0, headshots: 0, melees: 0, bestStreak: 0 }; }
 }
-function seasonId(): string { const d = new Date(); return `S${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
+export function seasonId(): string { const d = new Date(); return `S${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
 const SEASON_KEY = "wirrwarr-season";
 function loadSeason(): { id: string; xp: number; archived: string[] } {
   try {
@@ -570,14 +570,14 @@ function sLand() {
 
 /* ================================================================== */
 
-const REPLAY_WALLS: [number, number, number, number, number, number][] = [
+export const REPLAY_WALLS: [number, number, number, number, number, number][] = [
   [0, 2, -40, 80, 4, 1], [0, 2, 40, 80, 4, 1], [-40, 2, 0, 1, 4, 80], [40, 2, 0, 1, 4, 80],
   [0, 1.5, 0, 6, 3, 4], [-14, 1.5, -10, 8, 3, 1.2], [14, 1.5, 10, 8, 3, 1.2], [-14, 1.5, 12, 1.2, 3, 8],
   [14, 1.5, -12, 1.2, 3, 8], [-30, 2, 0, 2, 4, 10], [30, 2, 0, 2, 4, 10], [0, 2, -26, 10, 4, 2], [0, 2, 26, 10, 4, 2],
   [-8, 1, 8, 2, 2, 2], [8, 1, -8, 2, 2, 2], [-24, 1, -24, 3, 2, 3], [24, 1, 24, 3, 2, 3], [24, 1, -24, 3, 2, 3], [-24, 1, 24, 3, 2, 3],
 ];
 
-function ReplayView({ data, onExit }: { data: { mode: string; frames: number[][]; events: { t: number; e: string }[] }; onExit: () => void }) {
+export function ReplayView({ data, onExit, walls }: { data: { mode: string; frames: number[][]; events: { t: number; e: string }[]; botTrack?: number[][]; botsMeta?: [number, string, string][] }; onExit: () => void; walls?: [number, number, number, number, number, number][] }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [speed, setSpeed] = useState(1);
   const speedRef = useRef(1);
@@ -599,7 +599,7 @@ function ReplayView({ data, onExit }: { data: { mode: string; frames: number[][]
     ground.rotation.x = -Math.PI / 2;
     scene.add(ground);
 
-    for (const [x, y, z, w, h, d] of REPLAY_WALLS) {
+    for (const [x, y, z, w, h, d] of walls ?? REPLAY_WALLS) {
       const msh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color: 0x2f7a3a, emissive: 0x0a2a10 }));
       msh.position.set(x, y, z);
       scene.add(msh);
