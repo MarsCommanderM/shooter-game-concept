@@ -12,6 +12,8 @@ struct StwMesh {
   std::vector<float> nrm;   // xyz
   std::vector<float> uv;    // uv
   std::vector<uint32_t> idx;
+  float bmin[3] = {0, 0, 0};  // Bounds für Frustum-Culling
+  float bmax[3] = {0, 0, 0};
 };
 
 struct StwMaterial {

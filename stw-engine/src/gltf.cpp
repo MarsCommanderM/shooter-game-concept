@@ -11,6 +11,19 @@ namespace stw {
 
 namespace {
 
+void ComputeBounds(StwMesh& m) {
+  if (m.pos.size() < 3) return;
+  for (int k = 0; k < 3; k++) {
+    m.bmin[k] = m.bmax[k] = m.pos[k];
+  }
+  for (size_t i = 3; i + 2 < m.pos.size(); i += 3) {
+    for (int k = 0; k < 3; k++) {
+      m.bmin[k] = std::min(m.bmin[k], m.pos[i + k]);
+      m.bmax[k] = std::max(m.bmax[k], m.pos[i + k]);
+    }
+  }
+}
+
 std::vector<uint8_t> ReadFile(const std::string& p) {
   std::ifstream f(p, std::ios::binary);
   if (!f) return {};
@@ -259,6 +272,7 @@ bool LoadGLTF(const std::string& path, StwModel& out) {
         for (uint32_t i = 0; i < sm.pos.size() / 3; i++) sm.idx.push_back(i);
       }
       out.meshMat.push_back(pr.get("material") ? static_cast<int>(pr.get("material")->numOr()) : 0);
+      ComputeBounds(sm);
       out.meshes.push_back(std::move(sm));
     }
   }
@@ -284,6 +298,7 @@ StwMesh MakeCubeMesh() {
     }
     m.idx.insert(m.idx.end(), {b, b + 1, b + 2, b, b + 2, b + 3});
   }
+  ComputeBounds(m);
   return m;
 }
 
@@ -293,6 +308,7 @@ StwMesh MakeGroundMesh(float h) {
   m.nrm = {0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0};
   m.uv = {0, 0, 1, 0, 1, 1, 0, 1};
   m.idx = {0, 1, 2, 0, 2, 3};
+  ComputeBounds(m);
   return m;
 }
 

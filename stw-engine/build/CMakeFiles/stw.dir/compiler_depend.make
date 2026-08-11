@@ -1017,6 +1017,7 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
   /usr/include/alloca.h \
   /usr/include/asm-generic/errno-base.h \
   /usr/include/asm-generic/errno.h \
+  /usr/include/assert.h \
   /usr/include/c++/14/backward/binders.h \
   /usr/include/c++/14/bit \
   /usr/include/c++/14/bits/alloc_traits.h \
@@ -1065,8 +1066,11 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
   /usr/include/c++/14/bits/utility.h \
   /usr/include/c++/14/bits/vector.tcc \
   /usr/include/c++/14/bits/version.h \
+  /usr/include/c++/14/cassert \
   /usr/include/c++/14/cctype \
   /usr/include/c++/14/cerrno \
+  /usr/include/c++/14/cfloat \
+  /usr/include/c++/14/climits \
   /usr/include/c++/14/clocale \
   /usr/include/c++/14/cmath \
   /usr/include/c++/14/concepts \
@@ -1111,8 +1115,191 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
   /usr/include/errno.h \
   /usr/include/features-time64.h \
   /usr/include/features.h \
+  /usr/include/glm/common.hpp \
+  /usr/include/glm/detail/_fixes.hpp \
+  /usr/include/glm/detail/_vectorize.hpp \
+  /usr/include/glm/detail/compute_common.hpp \
+  /usr/include/glm/detail/compute_vector_relational.hpp \
+  /usr/include/glm/detail/func_common.inl \
+  /usr/include/glm/detail/func_exponential.inl \
+  /usr/include/glm/detail/func_geometric.inl \
+  /usr/include/glm/detail/func_integer.inl \
+  /usr/include/glm/detail/func_matrix.inl \
+  /usr/include/glm/detail/func_packing.inl \
+  /usr/include/glm/detail/func_trigonometric.inl \
+  /usr/include/glm/detail/func_vector_relational.inl \
+  /usr/include/glm/detail/qualifier.hpp \
+  /usr/include/glm/detail/setup.hpp \
+  /usr/include/glm/detail/type_float.hpp \
+  /usr/include/glm/detail/type_half.hpp \
+  /usr/include/glm/detail/type_half.inl \
+  /usr/include/glm/detail/type_mat2x2.hpp \
+  /usr/include/glm/detail/type_mat2x2.inl \
+  /usr/include/glm/detail/type_mat2x3.hpp \
+  /usr/include/glm/detail/type_mat2x3.inl \
+  /usr/include/glm/detail/type_mat2x4.hpp \
+  /usr/include/glm/detail/type_mat2x4.inl \
+  /usr/include/glm/detail/type_mat3x2.hpp \
+  /usr/include/glm/detail/type_mat3x2.inl \
+  /usr/include/glm/detail/type_mat3x3.hpp \
+  /usr/include/glm/detail/type_mat3x3.inl \
+  /usr/include/glm/detail/type_mat3x4.hpp \
+  /usr/include/glm/detail/type_mat3x4.inl \
+  /usr/include/glm/detail/type_mat4x2.hpp \
+  /usr/include/glm/detail/type_mat4x2.inl \
+  /usr/include/glm/detail/type_mat4x3.hpp \
+  /usr/include/glm/detail/type_mat4x3.inl \
+  /usr/include/glm/detail/type_mat4x4.hpp \
+  /usr/include/glm/detail/type_mat4x4.inl \
+  /usr/include/glm/detail/type_quat.hpp \
+  /usr/include/glm/detail/type_quat.inl \
+  /usr/include/glm/detail/type_vec1.hpp \
+  /usr/include/glm/detail/type_vec1.inl \
+  /usr/include/glm/detail/type_vec2.hpp \
+  /usr/include/glm/detail/type_vec2.inl \
+  /usr/include/glm/detail/type_vec3.hpp \
+  /usr/include/glm/detail/type_vec3.inl \
+  /usr/include/glm/detail/type_vec4.hpp \
+  /usr/include/glm/detail/type_vec4.inl \
+  /usr/include/glm/exponential.hpp \
+  /usr/include/glm/ext/matrix_clip_space.hpp \
+  /usr/include/glm/ext/matrix_clip_space.inl \
+  /usr/include/glm/ext/matrix_double2x2.hpp \
+  /usr/include/glm/ext/matrix_double2x2_precision.hpp \
+  /usr/include/glm/ext/matrix_double2x3.hpp \
+  /usr/include/glm/ext/matrix_double2x3_precision.hpp \
+  /usr/include/glm/ext/matrix_double2x4.hpp \
+  /usr/include/glm/ext/matrix_double2x4_precision.hpp \
+  /usr/include/glm/ext/matrix_double3x2.hpp \
+  /usr/include/glm/ext/matrix_double3x2_precision.hpp \
+  /usr/include/glm/ext/matrix_double3x3.hpp \
+  /usr/include/glm/ext/matrix_double3x3_precision.hpp \
+  /usr/include/glm/ext/matrix_double3x4.hpp \
+  /usr/include/glm/ext/matrix_double3x4_precision.hpp \
+  /usr/include/glm/ext/matrix_double4x2.hpp \
+  /usr/include/glm/ext/matrix_double4x2_precision.hpp \
+  /usr/include/glm/ext/matrix_double4x3.hpp \
+  /usr/include/glm/ext/matrix_double4x3_precision.hpp \
+  /usr/include/glm/ext/matrix_double4x4.hpp \
+  /usr/include/glm/ext/matrix_double4x4_precision.hpp \
+  /usr/include/glm/ext/matrix_float2x2.hpp \
+  /usr/include/glm/ext/matrix_float2x2_precision.hpp \
+  /usr/include/glm/ext/matrix_float2x3.hpp \
+  /usr/include/glm/ext/matrix_float2x3_precision.hpp \
+  /usr/include/glm/ext/matrix_float2x4.hpp \
+  /usr/include/glm/ext/matrix_float2x4_precision.hpp \
+  /usr/include/glm/ext/matrix_float3x2.hpp \
+  /usr/include/glm/ext/matrix_float3x2_precision.hpp \
+  /usr/include/glm/ext/matrix_float3x3.hpp \
+  /usr/include/glm/ext/matrix_float3x3_precision.hpp \
+  /usr/include/glm/ext/matrix_float3x4.hpp \
+  /usr/include/glm/ext/matrix_float3x4_precision.hpp \
+  /usr/include/glm/ext/matrix_float4x2.hpp \
+  /usr/include/glm/ext/matrix_float4x2_precision.hpp \
+  /usr/include/glm/ext/matrix_float4x3.hpp \
+  /usr/include/glm/ext/matrix_float4x3_precision.hpp \
+  /usr/include/glm/ext/matrix_float4x4.hpp \
+  /usr/include/glm/ext/matrix_float4x4_precision.hpp \
+  /usr/include/glm/ext/matrix_projection.hpp \
+  /usr/include/glm/ext/matrix_projection.inl \
+  /usr/include/glm/ext/matrix_transform.hpp \
+  /usr/include/glm/ext/matrix_transform.inl \
+  /usr/include/glm/ext/quaternion_common.hpp \
+  /usr/include/glm/ext/quaternion_common.inl \
+  /usr/include/glm/ext/quaternion_double.hpp \
+  /usr/include/glm/ext/quaternion_double_precision.hpp \
+  /usr/include/glm/ext/quaternion_float.hpp \
+  /usr/include/glm/ext/quaternion_float_precision.hpp \
+  /usr/include/glm/ext/quaternion_geometric.hpp \
+  /usr/include/glm/ext/quaternion_geometric.inl \
+  /usr/include/glm/ext/quaternion_relational.hpp \
+  /usr/include/glm/ext/quaternion_relational.inl \
+  /usr/include/glm/ext/quaternion_transform.hpp \
+  /usr/include/glm/ext/quaternion_transform.inl \
+  /usr/include/glm/ext/quaternion_trigonometric.hpp \
+  /usr/include/glm/ext/quaternion_trigonometric.inl \
+  /usr/include/glm/ext/scalar_constants.hpp \
+  /usr/include/glm/ext/scalar_constants.inl \
+  /usr/include/glm/ext/scalar_int_sized.hpp \
+  /usr/include/glm/ext/scalar_uint_sized.hpp \
+  /usr/include/glm/ext/vector_bool1.hpp \
+  /usr/include/glm/ext/vector_bool1_precision.hpp \
+  /usr/include/glm/ext/vector_bool2.hpp \
+  /usr/include/glm/ext/vector_bool2_precision.hpp \
+  /usr/include/glm/ext/vector_bool3.hpp \
+  /usr/include/glm/ext/vector_bool3_precision.hpp \
+  /usr/include/glm/ext/vector_bool4.hpp \
+  /usr/include/glm/ext/vector_bool4_precision.hpp \
+  /usr/include/glm/ext/vector_double1.hpp \
+  /usr/include/glm/ext/vector_double1_precision.hpp \
+  /usr/include/glm/ext/vector_double2.hpp \
+  /usr/include/glm/ext/vector_double2_precision.hpp \
+  /usr/include/glm/ext/vector_double3.hpp \
+  /usr/include/glm/ext/vector_double3_precision.hpp \
+  /usr/include/glm/ext/vector_double4.hpp \
+  /usr/include/glm/ext/vector_double4_precision.hpp \
+  /usr/include/glm/ext/vector_float1.hpp \
+  /usr/include/glm/ext/vector_float1_precision.hpp \
+  /usr/include/glm/ext/vector_float2.hpp \
+  /usr/include/glm/ext/vector_float2_precision.hpp \
+  /usr/include/glm/ext/vector_float3.hpp \
+  /usr/include/glm/ext/vector_float3_precision.hpp \
+  /usr/include/glm/ext/vector_float4.hpp \
+  /usr/include/glm/ext/vector_float4_precision.hpp \
+  /usr/include/glm/ext/vector_int1.hpp \
+  /usr/include/glm/ext/vector_int1_sized.hpp \
+  /usr/include/glm/ext/vector_int2.hpp \
+  /usr/include/glm/ext/vector_int2_sized.hpp \
+  /usr/include/glm/ext/vector_int3.hpp \
+  /usr/include/glm/ext/vector_int3_sized.hpp \
+  /usr/include/glm/ext/vector_int4.hpp \
+  /usr/include/glm/ext/vector_int4_sized.hpp \
+  /usr/include/glm/ext/vector_relational.hpp \
+  /usr/include/glm/ext/vector_relational.inl \
+  /usr/include/glm/ext/vector_uint1.hpp \
+  /usr/include/glm/ext/vector_uint1_sized.hpp \
+  /usr/include/glm/ext/vector_uint2.hpp \
+  /usr/include/glm/ext/vector_uint2_sized.hpp \
+  /usr/include/glm/ext/vector_uint3.hpp \
+  /usr/include/glm/ext/vector_uint3_sized.hpp \
+  /usr/include/glm/ext/vector_uint4.hpp \
+  /usr/include/glm/ext/vector_uint4_sized.hpp \
+  /usr/include/glm/fwd.hpp \
+  /usr/include/glm/geometric.hpp \
+  /usr/include/glm/glm.hpp \
+  /usr/include/glm/gtc/constants.hpp \
+  /usr/include/glm/gtc/constants.inl \
+  /usr/include/glm/gtc/epsilon.hpp \
+  /usr/include/glm/gtc/epsilon.inl \
+  /usr/include/glm/gtc/matrix_transform.hpp \
+  /usr/include/glm/gtc/matrix_transform.inl \
+  /usr/include/glm/gtc/quaternion.hpp \
+  /usr/include/glm/gtc/quaternion.inl \
+  /usr/include/glm/gtc/type_ptr.hpp \
+  /usr/include/glm/gtc/type_ptr.inl \
+  /usr/include/glm/gtc/vec1.hpp \
+  /usr/include/glm/integer.hpp \
+  /usr/include/glm/mat2x2.hpp \
+  /usr/include/glm/mat2x3.hpp \
+  /usr/include/glm/mat2x4.hpp \
+  /usr/include/glm/mat3x2.hpp \
+  /usr/include/glm/mat3x3.hpp \
+  /usr/include/glm/mat3x4.hpp \
+  /usr/include/glm/mat4x2.hpp \
+  /usr/include/glm/mat4x3.hpp \
+  /usr/include/glm/mat4x4.hpp \
+  /usr/include/glm/matrix.hpp \
+  /usr/include/glm/packing.hpp \
+  /usr/include/glm/simd/platform.h \
+  /usr/include/glm/trigonometric.hpp \
+  /usr/include/glm/vec2.hpp \
+  /usr/include/glm/vec3.hpp \
+  /usr/include/glm/vec4.hpp \
+  /usr/include/glm/vector_relational.hpp \
   /usr/include/inttypes.h \
+  /usr/include/limits.h \
   /usr/include/linux/errno.h \
+  /usr/include/linux/limits.h \
   /usr/include/locale.h \
   /usr/include/math.h \
   /usr/include/stdc-predef.h \
@@ -1136,6 +1323,7 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
   /usr/include/x86_64-linux-gnu/bits/iscanonical.h \
   /usr/include/x86_64-linux-gnu/bits/libc-header-start.h \
   /usr/include/x86_64-linux-gnu/bits/libm-simd-decl-stubs.h \
+  /usr/include/x86_64-linux-gnu/bits/local_lim.h \
   /usr/include/x86_64-linux-gnu/bits/locale.h \
   /usr/include/x86_64-linux-gnu/bits/long-double.h \
   /usr/include/x86_64-linux-gnu/bits/math-vector.h \
@@ -1143,6 +1331,9 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
   /usr/include/x86_64-linux-gnu/bits/mathcalls-macros.h \
   /usr/include/x86_64-linux-gnu/bits/mathcalls-narrow.h \
   /usr/include/x86_64-linux-gnu/bits/mathcalls.h \
+  /usr/include/x86_64-linux-gnu/bits/posix1_lim.h \
+  /usr/include/x86_64-linux-gnu/bits/posix2_lim.h \
+  /usr/include/x86_64-linux-gnu/bits/pthread_stack_min-dynamic.h \
   /usr/include/x86_64-linux-gnu/bits/pthreadtypes-arch.h \
   /usr/include/x86_64-linux-gnu/bits/pthreadtypes.h \
   /usr/include/x86_64-linux-gnu/bits/select.h \
@@ -1181,10 +1372,12 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
   /usr/include/x86_64-linux-gnu/bits/types/wint_t.h \
   /usr/include/x86_64-linux-gnu/bits/typesizes.h \
   /usr/include/x86_64-linux-gnu/bits/uintn-identity.h \
+  /usr/include/x86_64-linux-gnu/bits/uio_lim.h \
   /usr/include/x86_64-linux-gnu/bits/waitflags.h \
   /usr/include/x86_64-linux-gnu/bits/waitstatus.h \
   /usr/include/x86_64-linux-gnu/bits/wchar.h \
   /usr/include/x86_64-linux-gnu/bits/wordsize.h \
+  /usr/include/x86_64-linux-gnu/bits/xopen_lim.h \
   /usr/include/x86_64-linux-gnu/c++/14/bits/c++allocator.h \
   /usr/include/x86_64-linux-gnu/c++/14/bits/c++config.h \
   /usr/include/x86_64-linux-gnu/c++/14/bits/c++locale.h \
@@ -1256,6 +1449,7 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
   /usr/lib/gcc/x86_64-linux-gnu/14/include/ia32intrin.h \
   /usr/lib/gcc/x86_64-linux-gnu/14/include/immintrin.h \
   /usr/lib/gcc/x86_64-linux-gnu/14/include/keylockerintrin.h \
+  /usr/lib/gcc/x86_64-linux-gnu/14/include/limits.h \
   /usr/lib/gcc/x86_64-linux-gnu/14/include/lwpintrin.h \
   /usr/lib/gcc/x86_64-linux-gnu/14/include/lzcntintrin.h \
   /usr/lib/gcc/x86_64-linux-gnu/14/include/mm_malloc.h \
@@ -1282,6 +1476,7 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
   /usr/lib/gcc/x86_64-linux-gnu/14/include/stdarg.h \
   /usr/lib/gcc/x86_64-linux-gnu/14/include/stddef.h \
   /usr/lib/gcc/x86_64-linux-gnu/14/include/stdint.h \
+  /usr/lib/gcc/x86_64-linux-gnu/14/include/syslimits.h \
   /usr/lib/gcc/x86_64-linux-gnu/14/include/tbmintrin.h \
   /usr/lib/gcc/x86_64-linux-gnu/14/include/tmmintrin.h \
   /usr/lib/gcc/x86_64-linux-gnu/14/include/tsxldtrkintrin.h \
@@ -1301,6 +1496,132 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
   /usr/lib/gcc/x86_64-linux-gnu/14/include/xtestintrin.h \
   /usr/lib/linux/uapi/x86/asm/errno.h
 
+stw: /lib/x86_64-linux-gnu/libFLAC.so.14 \
+  /lib/x86_64-linux-gnu/libGLX.so.0 \
+  /lib/x86_64-linux-gnu/libGLdispatch.so.0 \
+  /lib/x86_64-linux-gnu/libX11-xcb.so.1 \
+  /lib/x86_64-linux-gnu/libX11.so.6 \
+  /lib/x86_64-linux-gnu/libXau.so.6 \
+  /lib/x86_64-linux-gnu/libXcursor.so.1 \
+  /lib/x86_64-linux-gnu/libXdmcp.so.6 \
+  /lib/x86_64-linux-gnu/libXext.so.6 \
+  /lib/x86_64-linux-gnu/libXfixes.so.3 \
+  /lib/x86_64-linux-gnu/libXi.so.6 \
+  /lib/x86_64-linux-gnu/libXrandr.so.2 \
+  /lib/x86_64-linux-gnu/libXrender.so.1 \
+  /lib/x86_64-linux-gnu/libXss.so.1 \
+  /lib/x86_64-linux-gnu/libasound.so.2 \
+  /lib/x86_64-linux-gnu/libasyncns.so.0 \
+  /lib/x86_64-linux-gnu/libc.so.6 \
+  /lib/x86_64-linux-gnu/libcap.so.2 \
+  /lib/x86_64-linux-gnu/libdbus-1.so.3 \
+  /lib/x86_64-linux-gnu/libdecor-0.so.0 \
+  /lib/x86_64-linux-gnu/libdrm.so.2 \
+  /lib/x86_64-linux-gnu/libexpat.so.1 \
+  /lib/x86_64-linux-gnu/libffi.so.8 \
+  /lib/x86_64-linux-gnu/libgbm.so.1 \
+  /lib/x86_64-linux-gnu/libm.so.6 \
+  /lib/x86_64-linux-gnu/libmp3lame.so.0 \
+  /lib/x86_64-linux-gnu/libmpg123.so.0 \
+  /lib/x86_64-linux-gnu/libmvec.so.1 \
+  /lib/x86_64-linux-gnu/libogg.so.0 \
+  /lib/x86_64-linux-gnu/libopus.so.0 \
+  /lib/x86_64-linux-gnu/libpulse.so.0 \
+  /lib/x86_64-linux-gnu/libsamplerate.so.0 \
+  /lib/x86_64-linux-gnu/libsndfile.so.1 \
+  /lib/x86_64-linux-gnu/libsystemd.so.0 \
+  /lib/x86_64-linux-gnu/libvorbis.so.0 \
+  /lib/x86_64-linux-gnu/libvorbisenc.so.2 \
+  /lib/x86_64-linux-gnu/libwayland-client.so.0 \
+  /lib/x86_64-linux-gnu/libwayland-cursor.so.0 \
+  /lib/x86_64-linux-gnu/libwayland-egl.so.1 \
+  /lib/x86_64-linux-gnu/libxcb.so.1 \
+  /lib/x86_64-linux-gnu/libxkbcommon.so.0 \
+  /lib64/ld-linux-x86-64.so.2 \
+  /usr/lib/x86_64-linux-gnu/Scrt1.o \
+  /usr/lib/x86_64-linux-gnu/crti.o \
+  /usr/lib/x86_64-linux-gnu/crtn.o \
+  /usr/lib/x86_64-linux-gnu/libc.so \
+  /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 \
+  /usr/lib/x86_64-linux-gnu/libm.so \
+  /usr/lib/gcc/x86_64-linux-gnu/14/crtbeginS.o \
+  /usr/lib/gcc/x86_64-linux-gnu/14/crtendS.o \
+  /usr/lib/gcc/x86_64-linux-gnu/14/libgcc.a \
+  /usr/lib/gcc/x86_64-linux-gnu/14/libgcc_s.so \
+  /usr/lib/gcc/x86_64-linux-gnu/14/libstdc++.so \
+  /usr/lib/x86_64-linux-gnu/libGL.so \
+  /usr/lib/x86_64-linux-gnu/libSDL2.so \
+  /usr/lib/x86_64-linux-gnu/libc_nonshared.a \
+  /usr/lib/x86_64-linux-gnu/pulseaudio/libpulsecommon-17.0.so \
+  CMakeFiles/stw.dir/src/gltf.cpp.o \
+  CMakeFiles/stw.dir/src/json_mini.cpp.o \
+  CMakeFiles/stw.dir/src/main.cpp.o \
+  CMakeFiles/stw.dir/src/renderer_gl.cpp.o
+
+
+CMakeFiles/stw.dir/src/renderer_gl.cpp.o:
+
+CMakeFiles/stw.dir/src/main.cpp.o:
+
+CMakeFiles/stw.dir/src/json_mini.cpp.o:
+
+/usr/lib/x86_64-linux-gnu/pulseaudio/libpulsecommon-17.0.so:
+
+/usr/lib/x86_64-linux-gnu/libSDL2.so:
+
+/usr/lib/x86_64-linux-gnu/libGL.so:
+
+/usr/lib/gcc/x86_64-linux-gnu/14/libstdc++.so:
+
+/usr/lib/gcc/x86_64-linux-gnu/14/libgcc_s.so:
+
+/usr/lib/gcc/x86_64-linux-gnu/14/crtendS.o:
+
+/usr/lib/gcc/x86_64-linux-gnu/14/crtbeginS.o:
+
+/usr/lib/x86_64-linux-gnu/libm.so:
+
+/lib/x86_64-linux-gnu/libxkbcommon.so.0:
+
+/lib/x86_64-linux-gnu/libwayland-egl.so.1:
+
+/lib/x86_64-linux-gnu/libvorbisenc.so.2:
+
+/lib/x86_64-linux-gnu/libogg.so.0:
+
+/lib/x86_64-linux-gnu/libm.so.6:
+
+/lib/x86_64-linux-gnu/libgbm.so.1:
+
+/lib/x86_64-linux-gnu/libexpat.so.1:
+
+/lib/x86_64-linux-gnu/libcap.so.2:
+
+/lib/x86_64-linux-gnu/libc.so.6:
+
+/lib/x86_64-linux-gnu/libasound.so.2:
+
+/lib/x86_64-linux-gnu/libXrender.so.1:
+
+/lib/x86_64-linux-gnu/libXrandr.so.2:
+
+/lib/x86_64-linux-gnu/libXi.so.6:
+
+/lib/x86_64-linux-gnu/libXext.so.6:
+
+/lib/x86_64-linux-gnu/libXdmcp.so.6:
+
+/lib/x86_64-linux-gnu/libXau.so.6:
+
+/lib/x86_64-linux-gnu/libX11.so.6:
+
+/lib/x86_64-linux-gnu/libxcb.so.1:
+
+/lib/x86_64-linux-gnu/libGLdispatch.so.0:
+
+/lib/x86_64-linux-gnu/libGLX.so.0:
+
+/lib/x86_64-linux-gnu/libFLAC.so.14:
 
 /usr/lib/gcc/x86_64-linux-gnu/14/include/xtestintrin.h:
 
@@ -1317,6 +1638,8 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
 /usr/lib/gcc/x86_64-linux-gnu/14/include/usermsrintrin.h:
 
 /usr/lib/gcc/x86_64-linux-gnu/14/include/tmmintrin.h:
+
+/lib/x86_64-linux-gnu/libXcursor.so.1:
 
 /usr/lib/gcc/x86_64-linux-gnu/14/include/smmintrin.h:
 
@@ -1384,6 +1707,8 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
 
 /usr/lib/gcc/x86_64-linux-gnu/14/include/avxifmaintrin.h:
 
+/usr/lib/gcc/x86_64-linux-gnu/14/libgcc.a:
+
 /usr/lib/gcc/x86_64-linux-gnu/14/include/avx512vpopcntdqvlintrin.h:
 
 /usr/lib/gcc/x86_64-linux-gnu/14/include/avx512vpopcntdqintrin.h:
@@ -1398,9 +1723,13 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
 
 /usr/lib/gcc/x86_64-linux-gnu/14/include/stdint.h:
 
+/usr/lib/x86_64-linux-gnu/libgcc_s.so.1:
+
 /usr/include/x86_64-linux-gnu/gnu/stubs.h:
 
 /usr/include/glm/ext/vector_float4_precision.hpp:
+
+/lib/x86_64-linux-gnu/libXfixes.so.3:
 
 /usr/include/x86_64-linux-gnu/sys/types.h:
 
@@ -1411,6 +1740,8 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
 /usr/lib/gcc/x86_64-linux-gnu/14/include/mmintrin.h:
 
 /usr/include/glm/ext/vector_bool3.hpp:
+
+/lib/x86_64-linux-gnu/libasyncns.so.0:
 
 /usr/include/x86_64-linux-gnu/gnu/stubs-64.h:
 
@@ -1423,6 +1754,8 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
 /usr/include/c++/14/clocale:
 
 /usr/include/c++/14/cerrno:
+
+/lib/x86_64-linux-gnu/libopus.so.0:
 
 /usr/include/x86_64-linux-gnu/c++/14/bits/c++allocator.h:
 
@@ -1473,6 +1806,8 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
 /usr/include/x86_64-linux-gnu/bits/types/__sigset_t.h:
 
 /usr/include/x86_64-linux-gnu/bits/types/__locale_t.h:
+
+/lib/x86_64-linux-gnu/libdbus-1.so.3:
 
 /usr/include/x86_64-linux-gnu/bits/timex.h:
 
@@ -1546,11 +1881,15 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
 
 /usr/include/glm/detail/type_mat4x3.inl:
 
+/lib/x86_64-linux-gnu/libXss.so.1:
+
 /usr/include/string.h:
 
 /usr/include/c++/14/bits/allocator.h:
 
 /usr/include/wctype.h:
+
+/lib/x86_64-linux-gnu/libX11-xcb.so.1:
 
 /usr/include/x86_64-linux-gnu/bits/setjmp.h:
 
@@ -1593,6 +1932,8 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
 /usr/include/c++/14/vector:
 
 /usr/include/x86_64-linux-gnu/bits/types/struct_statx.h:
+
+/lib64/ld-linux-x86-64.so.2:
 
 /usr/include/c++/14/type_traits:
 
@@ -1642,11 +1983,15 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
 
 /usr/include/c++/14/tr1/modified_bessel_func.tcc:
 
+/lib/x86_64-linux-gnu/libsystemd.so.0:
+
 /usr/include/c++/14/bits/ostream.tcc:
 
 /usr/include/c++/14/bits/concept_check.h:
 
 /usr/include/c++/14/ext/aligned_buffer.h:
+
+/lib/x86_64-linux-gnu/libvorbis.so.0:
 
 /usr/include/stdio.h:
 
@@ -1784,6 +2129,8 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
 
 /usr/include/c++/14/tr1/riemann_zeta.tcc:
 
+/usr/lib/x86_64-linux-gnu/crti.o:
+
 /usr/include/c++/14/bits/locale_facets.h:
 
 /usr/lib/gcc/x86_64-linux-gnu/14/include/tbmintrin.h:
@@ -1793,6 +2140,8 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
 /usr/include/wchar.h:
 
 /usr/include/x86_64-linux-gnu/bits/statx-generic.h:
+
+/lib/x86_64-linux-gnu/libsamplerate.so.0:
 
 /home/user/shooter-game-concept/stw-engine/src/gltf.h:
 
@@ -1817,6 +2166,8 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
 /usr/include/pthread.h:
 
 /usr/include/SDL2/SDL_hints.h:
+
+/lib/x86_64-linux-gnu/libdecor-0.so.0:
 
 /usr/include/c++/14/bits/localefwd.h:
 
@@ -1866,6 +2217,8 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
 
 /usr/include/c++/14/bits/string_view.tcc:
 
+/lib/x86_64-linux-gnu/libwayland-cursor.so.0:
+
 /usr/include/SDL2/SDL_metal.h:
 
 /usr/include/c++/14/streambuf:
@@ -1887,6 +2240,8 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
 /usr/include/SDL2/SDL_rwops.h:
 
 /usr/include/c++/14/bits/fstream.tcc:
+
+/lib/x86_64-linux-gnu/libmp3lame.so.0:
 
 /usr/include/glm/detail/func_matrix.inl:
 
@@ -1928,6 +2283,8 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
 
 /usr/include/glm/ext/matrix_float2x3_precision.hpp:
 
+/lib/x86_64-linux-gnu/libwayland-client.so.0:
+
 /usr/include/c++/14/bits/version.h:
 
 /usr/include/SDL2/SDL_filesystem.h:
@@ -1942,6 +2299,10 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
 
 /usr/include/c++/14/tr1/hypergeometric.tcc:
 
+/usr/lib/x86_64-linux-gnu/libc.so:
+
+/usr/lib/x86_64-linux-gnu/Scrt1.o:
+
 /usr/include/c++/14/bits/stl_uninitialized.h:
 
 /usr/include/c++/14/bits/locale_classes.h:
@@ -1953,6 +2314,8 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
 /usr/lib/gcc/x86_64-linux-gnu/14/include/cldemoteintrin.h:
 
 /usr/include/c++/14/cmath:
+
+/usr/lib/x86_64-linux-gnu/libc_nonshared.a:
 
 /usr/include/c++/14/cstddef:
 
@@ -1974,6 +2337,8 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
 
 /usr/lib/gcc/x86_64-linux-gnu/14/include/amxcomplexintrin.h:
 
+/lib/x86_64-linux-gnu/libmvec.so.1:
+
 /usr/include/x86_64-linux-gnu/bits/types/__fpos64_t.h:
 
 /usr/lib/gcc/x86_64-linux-gnu/14/include/avx512ifmaintrin.h:
@@ -1983,6 +2348,8 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
 /usr/include/glm/ext/scalar_int_sized.hpp:
 
 /usr/include/c++/14/bits/stl_iterator_base_funcs.h:
+
+/lib/x86_64-linux-gnu/libpulse.so.0:
 
 /usr/include/SDL2/SDL_joystick.h:
 
@@ -2044,6 +2411,8 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
 
 /usr/include/glm/detail/type_mat4x4.inl:
 
+CMakeFiles/stw.dir/src/gltf.cpp.o:
+
 /usr/include/glm/detail/type_quat.hpp:
 
 /home/user/shooter-game-concept/stw-engine/src/json_mini.cpp:
@@ -2094,6 +2463,8 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
 
 /usr/include/glm/ext/matrix_float2x2.hpp:
 
+/lib/x86_64-linux-gnu/libffi.so.8:
+
 /usr/include/SDL2/SDL_hidapi.h:
 
 /usr/lib/gcc/x86_64-linux-gnu/14/include/avx512bitalgintrin.h:
@@ -2103,6 +2474,8 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
 /usr/include/SDL2/SDL_log.h:
 
 /usr/include/SDL2/SDL_main.h:
+
+/usr/lib/x86_64-linux-gnu/crtn.o:
 
 /usr/include/SDL2/SDL_messagebox.h:
 
@@ -2432,6 +2805,8 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
 
 /usr/include/glm/ext/vector_relational.hpp:
 
+/lib/x86_64-linux-gnu/libdrm.so.2:
+
 /usr/include/glm/ext/vector_float3_precision.hpp:
 
 /usr/include/glm/ext/vector_uint2_sized.hpp:
@@ -2453,6 +2828,8 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
 /usr/include/glm/ext/vector_uint3_sized.hpp:
 
 /usr/include/glm/ext/vector_uint4.hpp:
+
+/lib/x86_64-linux-gnu/libmpg123.so.0:
 
 /usr/include/glm/fwd.hpp:
 
@@ -2507,6 +2884,8 @@ CMakeFiles/stw.dir/src/renderer_gl.cpp.o: /home/user/shooter-game-concept/stw-en
 /usr/include/x86_64-linux-gnu/bits/locale.h:
 
 /usr/include/x86_64-linux-gnu/bits/posix1_lim.h:
+
+/lib/x86_64-linux-gnu/libsndfile.so.1:
 
 /usr/include/x86_64-linux-gnu/bits/uio_lim.h:
 

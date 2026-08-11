@@ -11,6 +11,13 @@ Renderer-Backend austauschbar (später Web), Binary-Caches gegen Load-Lags.
 3. **ECS oder simple Scene Objects?** → **ECS light** ab Phase 2: Phase 1 startet mit simplen
    Scene-Objects (Renderer-Handle + Transform), Komponenten-Arrays kommen mit Gameplay-Systemen dazu.
 
+## Status: Phase 1 ✅ + Phase 2 ✅ + Shadows ✅ (kompiliert)
+- **Phase 2**: Render-Pässe sauber getrennt — `Draw()` enqueued Commands, `EndFrame()` rendert
+  Pass 1 (Shadow-Depth) + Pass 2 (Main). **Frustum-Culling** (Gribb/Hartmann-Planes, Bounds-Sphere-Test
+  pro Mesh), Depth-Test LEQUAL.
+- **Shadows (Phase 4a vorgezogen)**: 2048² Depth-Map, orthografische Light-VP, Front-Culling gegen
+  Acne, **PCF 3×3** mit Slope-Bias, Border-Clamp = außerhalb = Licht.
+
 ## Status: Phase 1 ✅ kompiliert
 - SDL2-Fenster + Game-Loop (dt-geclampt)
 - Input: WASD blickrelativ, Shift-Sprint, Maus mit **Pointer-Lock**, ESC quit
@@ -30,9 +37,9 @@ cmake .. && make -j$(nproc)
 ```
 
 ## Roadmap (aus dem Bauplan übernommen)
-- **Phase 2**: Frustum-Culling, Depth-Pass-Hygiene, Shadow-Mapping-Vorbereitung
+- **Phase 2** ✅: Frustum-Culling, Render-Pässe getrennt, Depth LEQUAL
 - **Phase 3**: IBL (Prefiltered Specular + Diffuse Irradiance + BRDF-LUT), Normal-Maps aus glTF
-- **Phase 4**: Directional Shadows (CSM für Outdoor), PCF
+- **Phase 4** ✅ (Basis): Directional Shadow-Map + PCF 3×3 · offen: CSM für große Outdoor-Szenen
 - **Phase 5**: Bloom (HDR-Pipeline), SSAO, FXAA→TAA, Volumetric Fog
 - **Tools**: Asset-Import-Verzeichnis + Binary-Cache (✅ Cache da), später Editor-Anbindung
 - **Gameplay-Port**: Controller-/Waffensystem-Werte 1:1 aus `unity-starter/` übernehmen
