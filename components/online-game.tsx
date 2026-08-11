@@ -801,7 +801,10 @@ export function OnlineGame() {
       if (camGrounded && camSpd > 1) me.bobPhase += camSpd * dt * 1.7;
       const bob = camGrounded ? Math.sin(me.bobPhase) * Math.min(0.045, camSpd * 0.005) : 0;
       me.landDip = Math.max(0, me.landDip - dt * 0.5);
-      if (kc && remotes.get(kc.id)) {
+      if (streakCamO.t > 0) {
+        camera.position.lerp(new THREE.Vector3(me.x, 3.0, me.z), Math.min(1, dt * 6));
+        camera.lookAt(streakCamO.pos.clone().add(new THREE.Vector3(0, 1.2, 0)));
+      } else if (kc && remotes.get(kc.id)) {
         kc.t -= dt;
         const rk = remotes.get(kc.id)!;
         yaw.position.set(rk.group.position.x, 1.7, rk.group.position.z);
@@ -860,7 +863,11 @@ export function OnlineGame() {
         vegaMesh.visible = vega.on;
         if (vega.on) { vega.x = me.x + 1.5; vega.z = me.z + 1.5; pushFeed("🎙 VEGA: ‚Deckung? Nie gehört. Los.‘"); }
       }
-      if (vega.on) {
+      if (vega.on && keys["KeyF"] !== vega.hold) {
+        vega.hold = !!keys["KeyF"];
+        pushFeed(vega.hold ? "🎙 VEGA: „Halte Position.“" : "🎙 VEGA: „Folge dir.“");
+      }
+      if (vega.on && !vega.hold) {
         let bt2: { id: number; x: number; z: number } | null = null; let bd2 = 22;
         for (const [id, e] of invBots) {
           if (!e.mesh.visible) continue;
@@ -906,6 +913,17 @@ export function OnlineGame() {
       pingAcc += dt;
       if (pingAcc > 2) { pingAcc = 0; send({ t: "ping", ts: performance.now() }); }
 
+      // Biomass-Wuchs (Host)
+      const bioHost = me.id === Math.min(...[me.id, ...remotes.keys()]);
+      bioAcc += dt;
+      if (bioHost && bioAcc > 45) {
+        bioAcc = 0;
+        const bx = Math.round((Math.random() - 0.5) * 60);
+        const bz = Math.round((Math.random() - 0.5) * 60);
+        send({ t: "bio", x: bx, z: bz });
+        buildBio(bx, bz);
+        pushFeed("🌿 Die Biomass wächst. Neue Deckung. Neue Lanes.");
+      }
       // Host: Invasion-Simulation
       if (gameMode === "inv") {
         const pidsInv = [me.id, ...remotes.keys()];
@@ -1221,6 +1239,14 @@ export function OnlineGame() {
               {result}
             </p>
             <p className="font-mono text-sm text-foreground mb-2">Kills: <span className="text-primary">{hud.players.find((x) => x.me)?.kills ?? 0}</span> · Tode: {hud.players.find((x) => x.me)?.deaths ?? 0}</p>
+            {(() => {
+              const mvp = [...hud.players].sort((a, b) => b.kills - a.kills)[0];
+              return mvp ? (
+                <p className="font-mono text-sm mb-3">
+                  🏆 MVP: <span className={mvp.me ? "text-primary glow-neon-sm" : "text-accent"}>{mvp.name}</span> <span className="text-muted-foreground text-[10px]">({mvp.kills} Kills)</span>
+                </p>
+              ) : null;
+            })()}
             <EndMedals kills={hud.players.find((x) => x.me)?.kills ?? 0} deaths={hud.players.find((x) => x.me)?.deaths ?? 0} win={result.startsWith("SIEG") || result.startsWith("EXFIL")} />
             <button type="button" onClick={() => { setResult(null); setScreen("menu"); }} className="mt-4 font-mono text-xs border border-primary/60 text-primary bg-primary/10 hover:bg-primary/20 rounded-sm px-4 py-2 min-h-[40px]">
               ← ZURÜCK ZUM MENÜ
