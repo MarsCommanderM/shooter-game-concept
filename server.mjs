@@ -11,7 +11,17 @@ const app = next({ dev: false, hostname: "0.0.0.0", port });
 const handle = app.getRequestHandler();
 await app.prepare();
 
-const server = createServer((req, res) => handle(req, res));
+const startedAt = Date.now();
+const server = createServer((req, res) => {
+  if (req.url === "/health") {
+    let clients = 0;
+    for (const r of rooms.values()) clients += r.clients.size;
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true, uptime: Math.round((Date.now() - startedAt) / 1000), clients, rooms: rooms.size }));
+    return;
+  }
+  handle(req, res);
+});
 const wss = new WebSocketServer({ noServer: true });
 
 const rooms = new Map();
@@ -112,6 +122,19 @@ wss.on("connection", (ws, req, roomKey) => {
       s[mode] = s[mode].slice(0, 100);
       saveScores(s);
       ws.send(JSON.stringify({ t: "top", mode, top: topFor(mode) }));
+      return;
+    } else if (m.t === "range") {
+      const s = loadScores();
+      s.range = s.range ?? [];
+      s.range.push({ name: String(m.name ?? "?").slice(0, 16), acc: Number(m.acc) || 0, hs: Number(m.hs) || 0, season: String(m.season ?? seasonNow()), date: Date.now() });
+      s.range.sort((a, b) => b.acc - a.acc);
+      s.range = s.range.slice(0, 100);
+      saveScores(s);
+      ws.send(JSON.stringify({ t: "rangetop", top: (s.range ?? []).filter((e) => e.season === seasonNow()).slice(0, 10) }));
+      return;
+    } else if (m.t === "rangetop") {
+      const s = loadScores();
+      ws.send(JSON.stringify({ t: "rangetop", top: (s.range ?? []).filter((e) => e.season === seasonNow()).slice(0, 10) }));
       return;
     } else if (m.t === "top") {
       ws.send(JSON.stringify({ t: "top", mode: m.mode, top: topFor(String(m.mode ?? "ffa")) }));

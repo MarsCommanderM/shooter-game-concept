@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { updateDaily, loadCallsign, loadUpgOwned, loadDiff, seasonId, ReplayView } from "./real-game";
+import { updateDaily, loadCallsign, loadUpgOwned, loadDiff, seasonId, ReplayView, loadRange } from "./real-game";
 
 /* ================================================================== */
 /* WIRRWARR ONLINE v2 – FFA & TDM, Movement-Polish, Stance-Sync        */
@@ -81,6 +81,29 @@ function sAnnounceOnline() {
     o.connect(g).connect(c.destination); o.start(t + i * 0.07); o.stop(t + i * 0.07 + 0.2);
   });
 }
+function sRadioOnline() {
+  const c = ac(); if (!c) return;
+  const t = c.currentTime;
+  [880, 660].forEach((f, i) => {
+    const o = c.createOscillator(); const g = c.createGain();
+    o.type = "square"; o.frequency.setValueAtTime(f, t + i * 0.09);
+    g.gain.setValueAtTime(0.0001, t + i * 0.09); g.gain.exponentialRampToValueAtTime(0.04, t + i * 0.09 + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.09 + 0.09);
+    o.connect(g).connect(c.destination); o.start(t + i * 0.09); o.stop(t + i * 0.09 + 0.1);
+  });
+}
+const BANTER_ONLINE: Record<string, string[]> = {
+  kill: ["VEGA: „Sauber. Weiter so.“", "JUNO: „Boah, hast du das gesehen?!“", "VEGA: „Effizienz erkannt.“"],
+  death: ["JUNO: „Nicht schon wieder!“", "VEGA: „Respawn. Fokus.“"],
+  lowhp: ["JUNO: „Deine Vitals! Deckung!“", "VEGA: „Schild kritisch.“"],
+  wave: ["VEGA: „Neue Welle. Position halten.“", "JUNO: „Sie kommen. ALLE.“"],
+};
+function banterOnline(ctx: string) {
+  if (Math.random() > 0.5) return;
+  const pool = BANTER_ONLINE[ctx];
+  pushFeedStatic(`🎙 ${pool[Math.floor(Math.random() * pool.length)]}`);
+  sRadioOnline();
+}
+let pushFeedStatic: (t: string) => void = () => {};
 function sStep() {
   const c = ac(); if (!c) return;
   const t = c.currentTime;
@@ -114,8 +137,14 @@ export function OnlineGame() {
   const [vcScope, setVcScope] = useState<"all" | "team">("all");
   const [replayOpen, setReplayOpen] = useState(false);
   const [onlineReplay, setOnlineReplay] = useState<null | { mode: string; map: string; frames: number[][]; botTrack: number[][]; botsMeta: [number, string, string][]; events: { t: number; e: string }[] }>(null);
+  const [rangeTop, setRangeTop] = useState<{ name: string; acc: number }[]>([]);
   const vcCtx = useRef<{ team: () => number; has: (pid: number) => number | undefined; pids: () => number[] }>({ team: () => -1, has: () => undefined, pids: () => [] });
-  const [name] = useState(() => loadCallsign() || `KAEMPFER-${Math.floor(10 + Math.random() * 89)}`);
+  const [name] = useState(() => {
+    let cn = "";
+    try { cn = localStorage.getItem("wirrwarr-clan") ?? ""; } catch { /* */ }
+    const base = loadCallsign() || `KAEMPFER-${Math.floor(10 + Math.random() * 89)}`;
+    return cn ? `[${cn}] ${base}` : base;
+  });
 
   useEffect(() => {
     if (screen !== "game") return;
@@ -346,6 +375,7 @@ export function OnlineGame() {
     const remotes = new Map<number, Remote>();
     const feed: string[] = [];
     const pushFeed = (t: string) => { feed.push(t); if (feed.length > 5) feed.shift(); };
+    pushFeedStatic = pushFeed;
     const teamScore = [0, 0];
     let ended = false;
     const OBJ_PTS = gameMode === "dom" ? [[-14, 0], [14, 0], [0, -14]] : [[0, 0]];
@@ -395,6 +425,7 @@ export function OnlineGame() {
     sendRef.current = send;
     vcCtx.current = { team: () => me.team, has: (pid: number) => remotes.get(pid)?.team, pids: () => [...remotes.keys()] };
     send({ t: "top", mode: gameMode });
+    send({ t: "rangetop" });
 
     const announce = (text: string) => {
       me.announce = { text, t: performance.now() / 1000 };
@@ -466,7 +497,8 @@ export function OnlineGame() {
               me.revived = true; me.hp = 50;
               pushFeed("🧬 CHITIN-OVERDRIVE – wieder im Kampf!");
             }
-            if (me.hp <= 0) kc = { id: m.id as number, t: 2.5 };
+            if (me.hp <= 0) { kc = { id: m.id as number, t: 2.5 }; banterOnline("death"); }
+            else if (me.hp < 30) banterOnline("lowhp");
             const killer = remotes.get(id);
             if (me.hp <= 0) {
               me.deaths++;
@@ -506,11 +538,12 @@ export function OnlineGame() {
         } else if (m.t === "wave") {
           invState.wave = m.n as number;
           pushFeed(`🌊 WELLE ${m.n} rollt an!`);
+          banterOnline("wave");
         } else if (m.t === "bhit") {
           pendingHits.push({ id: m.id as number, dmg: m.dmg as number, by: m.id2 as number });
         } else if (m.t === "bkill") {
           invState.kills++;
-          if (m.by === me.id) me.kills++;
+          if (m.by === me.id) { me.kills++; banterOnline("kill"); }
           orec.events.push({ t: Math.round(orec.t * 10) / 10, e: `kill:SPORE-${m.id}` });
           pushFeed(`${m.by === me.id ? "DU" : remotes.get(m.by as number)?.name ?? "?"} ⚡ SPORE-${m.id}`);
         } else if (m.t === "setmap") {
@@ -532,6 +565,8 @@ export function OnlineGame() {
           if (!ended) { ended = true; setResult(String(m.winner)); }
         } else if (m.t === "top") {
           setTop10((m.top as { name: string; kills: number }[]) ?? []);
+        } else if (m.t === "rangetop") {
+          setRangeTop((m.top as { name: string; acc: number }[]) ?? []);
         } else if (m.t === "chat") {
           setChatLog((l) => [...l.slice(-7), { name: String(m.name), text: String(m.text), teamChat: !!m.teamChat, own: m.id === me.id }]);
         } else if (m.t === "warn") {
@@ -1072,6 +1107,25 @@ export function OnlineGame() {
               <p className="font-mono text-[11px] text-muted-foreground">Mit allen Spielern. Auch als Code teilbar.</p>
             </button>
           )}
+          <div className="flex flex-wrap items-center gap-2 mb-6">
+            <button
+              type="button"
+              onClick={() => {
+                try {
+                  const r = loadRange();
+                  sendRef.current({ t: "range", name, acc: r.bestAcc, hs: r.hs, season: seasonId() });
+                } catch { /* */ }
+              }}
+              className="font-mono text-[10px] tracking-wider uppercase rounded-sm border border-primary/50 text-primary bg-primary/10 hover:bg-primary/20 px-3 py-2 min-h-[36px]"
+            >
+              🎯 Range-Bestwert hochladen
+            </button>
+            {rangeTop.length > 0 && (
+              <p className="font-mono text-[10px] text-muted-foreground">
+                🎯 Ladder: {rangeTop.slice(0, 4).map((r, i) => `${i + 1}. ${r.name} ${r.acc}%`).join(" · ")}
+              </p>
+            )}
+          </div>
           <TurnSettings />
           <a href="/" className="font-mono text-xs tracking-wider uppercase text-muted-foreground hover:text-primary transition-colors">
             ← Zurück zum GDD

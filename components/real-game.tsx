@@ -360,7 +360,7 @@ export function loadCallsign(): string {
   try { return localStorage.getItem(NAME_KEY) || ""; } catch { return ""; }
 }
 const RANGE_KEY = "wirrwarr-rangestats";
-function loadRange(): { shots: number; hits: number; hs: number; bestAcc: number; sessions: number } {
+export function loadRange(): { shots: number; hits: number; hs: number; bestAcc: number; sessions: number } {
   try { return JSON.parse(localStorage.getItem(RANGE_KEY) ?? "null") ?? { shots: 0, hits: 0, hs: 0, bestAcc: 0, sessions: 0 }; } catch { return { shots: 0, hits: 0, hs: 0, bestAcc: 0, sessions: 0 }; }
 }
 function sAnnounce() {
@@ -3277,6 +3277,17 @@ export function RealGame() {
               }}
               placeholder="DEIN NAME"
               className="bg-black/60 border border-border rounded-sm px-3 py-2 font-mono text-sm text-primary outline-none focus:border-primary/60 min-h-[36px]"
+            />
+            <span className="font-mono text-[10px] tracking-[0.25em] uppercase text-muted-foreground ml-3">Clan-Tag:</span>
+            <input
+              defaultValue={(() => { try { return localStorage.getItem("wirrwarr-clan") ?? ""; } catch { return ""; } })()}
+              maxLength={4}
+              onChange={(e) => {
+                const v = e.target.value.toUpperCase();
+                try { localStorage.setItem("wirrwarr-clan", v); } catch { /* */ }
+              }}
+              placeholder="TAG"
+              className="bg-black/60 border border-border rounded-sm px-3 py-2 font-mono text-sm text-accent outline-none focus:border-accent/60 min-h-[36px] w-20"
             />
             <span className="font-mono text-[9px] text-muted-foreground">erscheint in Chat, Leaderboards & Kill-Feeds deiner Gegner</span>
           </div>

@@ -29,6 +29,13 @@ sudo npm i -g pm2 >/dev/null 2>&1 || npm i -g pm2
 pm2 delete wirrwarr >/dev/null 2>&1 || true
 pm2 start deploy/ecosystem.config.cjs
 pm2 save >/dev/null 2>&1 || true
+pm2 install pm2-logrotate >/dev/null 2>&1 || true
+pm2 set pm2-logrotate:max_size 10M >/dev/null 2>&1 || true
+pm2 set pm2-logrotate:retain 7 >/dev/null 2>&1 || true
+
+# Watchdog per Cron: jede Minute Healthcheck + Auto-Restart
+CRON_LINE="* * * * * $(pwd)/deploy/watchdog.sh"
+( crontab -l 2>/dev/null | grep -v "wirrwarr-watchdog" ; echo "$CRON_LINE # wirrwarr-watchdog" ) | crontab - 2>/dev/null || true
 
 # 4) Firewall: Port 3000 freigeben (falls ufw aktiv)
 if command -v ufw >/dev/null 2>&1; then
