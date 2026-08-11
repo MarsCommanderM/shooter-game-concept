@@ -8,7 +8,8 @@ import { updateDaily, loadCallsign } from "./real-game";
 /* WIRRWARR ONLINE v2 – FFA & TDM, Movement-Polish, Stance-Sync        */
 /* ================================================================== */
 
-type OnlineMode = "ffa" | "tdm" | "hq" | "dom";
+type OnlineMode = "ffa" | "tdm" | "hq" | "dom" | "inv";
+type MapSel = "sector" | "stahl";
 
 interface Remote {
   id: number;
@@ -107,6 +108,7 @@ export function OnlineGame() {
   const [chatLog, setChatLog] = useState<{ name: string; text: string; teamChat: boolean; own: boolean }[]>([]);
   const [top10, setTop10] = useState<{ name: string; kills: number }[]>([]);
   const [micOn, setMicOn] = useState(false);
+  const [mapSel, setMapSel] = useState<MapSel>("sector");
   const [micErr, setMicErr] = useState("");
   const vcRef = useRef<{ toggle: () => void; stop: () => void } | null>(null);
   const [name] = useState(() => loadCallsign() || `KAEMPFER-${Math.floor(10 + Math.random() * 89)}`);
@@ -214,10 +216,10 @@ export function OnlineGame() {
     setMode(m);
     setResult(null);
     setScreen("game");
-    requestAnimationFrame(() => initEngine(m));
+    requestAnimationFrame(() => initEngine(m, mapSel));
   };
 
-  const initEngine = (gameMode: OnlineMode) => {
+  const initEngine = (gameMode: OnlineMode, mapSel: MapSel) => {
     const mount = mountRef.current;
     if (!mount) return;
 
@@ -254,10 +256,17 @@ export function OnlineGame() {
     };
     addWall(0, -ARENA, ARENA * 2, 1, 4); addWall(0, ARENA, ARENA * 2, 1, 4);
     addWall(-ARENA, 0, 1, ARENA * 2, 4); addWall(ARENA, 0, 1, ARENA * 2, 4);
-    addWall(0, 0, 5, 5);
-    addWall(-16, -12, 7, 1.2); addWall(16, 12, 7, 1.2);
-    addWall(-16, 12, 1.2, 7); addWall(16, -12, 1.2, 7);
-    addWall(-26, 0, 2, 8); addWall(26, 0, 2, 8); addWall(0, -26, 8, 2); addWall(0, 26, 8, 2);
+    if (mapSel === "sector") {
+      addWall(0, 0, 5, 5); addWall(-16, -12, 7, 1.2); addWall(16, 12, 7, 1.2);
+      addWall(-16, 12, 1.2, 7); addWall(16, -12, 1.2, 7);
+      addWall(-26, 0, 2, 8); addWall(26, 0, 2, 8); addWall(0, -26, 8, 2); addWall(0, 26, 8, 2);
+    } else {
+      addWall(-10, -12, 1.2, 10, 3); addWall(10, -12, 1.2, 10, 3);
+      addWall(-10, 12, 1.2, 10, 3); addWall(10, 12, 1.2, 10, 3);
+      addWall(-22, 0, 8, 1.2, 3); addWall(22, 0, 8, 1.2, 3);
+      addWall(0, -6, 6, 1.2, 2); addWall(0, 6, 6, 1.2, 2);
+      addWall(0, 0, 4, 4, 3);
+    }
     // Parkour-Cover (klettern/springen/manteln)
     addWall(-8, 8, 2.5, 2.5, 1.1); addWall(8, -8, 2.5, 2.5, 1.1);
     addWall(-8, -14, 3, 1.2, 1.6); addWall(8, 14, 3, 1.2, 1.6);
@@ -310,10 +319,29 @@ export function OnlineGame() {
     const objState = { hq: -1, dom: [-1, -1, -1], scores: [0, 0] as number[], over: "" };
     let objAcc = 0;
 
+    /* ---------- Invasion (Koop-Wellen) ---------- */
+    const invBots = new Map<number, { mesh: THREE.Mesh; hp: number; x: number; z: number }>();
+    const invState = { wave: 0, kills: 0 };
+    const invBotsLocal: { id: number; x: number; z: number; hp: number; cd: number }[] = [];
+    const pendingHits: { id: number; dmg: number; by: number }[] = [];
+    let invBroadcastAcc = 0;
+    const getInvMesh = (id: number) => {
+      let e = invBots.get(id);
+      if (!e) {
+        const msh = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.5, 0.4), new THREE.MeshStandardMaterial({ color: 0x66ff66, emissive: 0x227722 }));
+        msh.position.y = 0.75;
+        scene.add(msh);
+        e = { mesh: msh, hp: 100, x: 0, z: 0 };
+        invBots.set(id, e);
+      }
+      return e;
+    };
+    let kc: { id: number; t: number } | null = null;
+
     /* ---------- WS ---------- */
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     let ws: WebSocket | null = null;
-    try { ws = new WebSocket(`${proto}//${location.host}/ws?mode=${gameMode}`); } catch { setStatus("error"); }
+    try { ws = new WebSocket(`${proto}//${location.host}/ws?mode=${gameMode}-${mapSel}`); } catch { setStatus("error"); }
     const send = (m: unknown) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); };
     sendRef.current = send;
     send({ t: "top", mode: gameMode });
@@ -381,6 +409,7 @@ export function OnlineGame() {
         } else if (m.t === "hit") {
           if (m.target === me.id && me.hp > 0) {
             me.hp -= m.dmg;
+            if (me.hp <= 0) kc = { id: m.id as number, t: 2.5 };
             const killer = remotes.get(id);
             if (me.hp <= 0) {
               me.deaths++;
@@ -405,6 +434,32 @@ export function OnlineGame() {
         } else if (typeof m.t === "string" && m.t.startsWith("vc-")) {
           window.dispatchEvent(new MessageEvent("wirrwarr-vc", { data: m }));
           return;
+        } else if (m.t === "bots") {
+          const seen = new Set<number>();
+          for (const row of m.bots as number[][]) {
+            const [id, x, z, hp] = row;
+            seen.add(id);
+            const e = getInvMesh(id);
+            e.x = x; e.z = z; e.hp = hp;
+            e.mesh.visible = hp > 0;
+            e.mesh.position.x += (x - e.mesh.position.x) * 0.5;
+            e.mesh.position.z += (z - e.mesh.position.z) * 0.5;
+          }
+          for (const [id, e] of invBots) if (!seen.has(id)) e.mesh.visible = false;
+        } else if (m.t === "wave") {
+          invState.wave = m.n as number;
+          pushFeed(`🌊 WELLE ${m.n} rollt an!`);
+        } else if (m.t === "bhit") {
+          pendingHits.push({ id: m.id as number, dmg: m.dmg as number, by: m.id2 as number });
+        } else if (m.t === "bkill") {
+          invState.kills++;
+          if (m.by === me.id) me.kills++;
+          pushFeed(`${m.by === me.id ? "DU" : remotes.get(m.by as number)?.name ?? "?"} ⚡ SPORE-${m.id}`);
+        } else if (m.t === "pdmg") {
+          if (m.target === me.id && me.hp > 0) {
+            me.hp -= m.dmg as number;
+            if (me.hp <= 0) { me.deaths++; me.respawnAt = performance.now() / 1000 + 3; }
+          }
         } else if (m.t === "obj") {
           objState.hq = m.hq; objState.dom = m.dom; objState.scores = m.scores;
           for (let i = 0; i < objMeshes.length; i++) {
@@ -478,7 +533,8 @@ export function OnlineGame() {
       for (const r of remotes.values()) {
         if (r.alive && (gameMode === "ffa" || r.team !== me.team)) targets.push(r.body);
       }
-      const hits = raycaster.intersectObjects([...targets, ...walls.map((w) => w.mesh)], false);
+      const invMeshes = [...invBots.values()].filter((e) => e.mesh.visible).map((e) => e.mesh);
+      const hits = raycaster.intersectObjects([...targets, ...invMeshes, ...walls.map((w) => w.mesh)], false);
       const muzzle = new THREE.Vector3(); tip.getWorldPosition(muzzle);
       let end = raycaster.ray.at(60, new THREE.Vector3());
       if (hits.length > 0) {
@@ -598,7 +654,16 @@ export function OnlineGame() {
       if (camGrounded && camSpd > 1) me.bobPhase += camSpd * dt * 1.7;
       const bob = camGrounded ? Math.sin(me.bobPhase) * Math.min(0.045, camSpd * 0.005) : 0;
       me.landDip = Math.max(0, me.landDip - dt * 0.5);
-      yaw.position.set(me.x, me.camH + me.y + bob - me.landDip * 0.4, me.z);
+      if (kc && remotes.get(kc.id)) {
+        kc.t -= dt;
+        const rk = remotes.get(kc.id)!;
+        yaw.position.set(rk.group.position.x, 1.7, rk.group.position.z);
+        yaw.rotation.y = rk.group.rotation.y;
+        if (kc.t <= 0) kc = null;
+      } else {
+        kc = null;
+        yaw.position.set(me.x, me.camH + me.y + bob - me.landDip * 0.4, me.z);
+      }
       const fovT = me.slideT > 0 ? 84 : keys["ShiftLeft"] && camSpd > 6 && !me.crouch ? 81 : me.prone ? 70 : 75;
       if (Math.abs(camera.fov - fovT) > 0.1) {
         camera.fov += (fovT - camera.fov) * Math.min(1, 9 * dt);
@@ -644,6 +709,51 @@ export function OnlineGame() {
       }
       pingAcc += dt;
       if (pingAcc > 2) { pingAcc = 0; send({ t: "ping", ts: performance.now() }); }
+
+      // Host: Invasion-Simulation
+      if (gameMode === "inv") {
+        const pidsInv = [me.id, ...remotes.keys()];
+        const isHostInv = me.id === Math.min(...pidsInv);
+        if (isHostInv) {
+          const aliveCount = invBotsLocal.filter((b) => b.hp > 0).length;
+          if (aliveCount === 0) {
+            invState.wave++;
+            const n = 3 + invState.wave * 2;
+            for (let i = 0; i < n; i++) {
+              const a2 = Math.random() * Math.PI * 2;
+              invBotsLocal.push({ id: invState.wave * 100 + i, x: Math.cos(a2) * 34, z: Math.sin(a2) * 34, hp: 100, cd: 1 });
+            }
+            send({ t: "wave", n: invState.wave });
+          }
+          for (const b of invBotsLocal) {
+            if (b.hp <= 0) continue;
+            let tx = me.x, tz = me.z, td2 = me.hp > 0 ? Math.hypot(me.x - b.x, me.z - b.z) : 1e9; let tid = me.id;
+            for (const r of remotes.values()) {
+              if (!r.alive) continue;
+              const d = Math.hypot(r.tx - b.x, r.tz - b.z);
+              if (d < td2) { td2 = d; tx = r.tx; tz = r.tz; tid = r.id; }
+            }
+            if (td2 < 1e8) {
+              const d = td2 || 1;
+              if (d > 1.6) { b.x += ((tx - b.x) / d) * 3.6 * dt; b.z += ((tz - b.z) / d) * 3.6 * dt; }
+              b.cd -= dt;
+              if (d < 2 && b.cd <= 0) { b.cd = 1; send({ t: "pdmg", target: tid, dmg: 12 }); }
+            }
+          }
+          for (const h of pendingHits.splice(0)) {
+            const b = invBotsLocal.find((x) => x.id === h.id);
+            if (b && b.hp > 0) {
+              b.hp -= h.dmg;
+              if (b.hp <= 0) send({ t: "bkill", id: b.id, by: h.by });
+            }
+          }
+          invBroadcastAcc += dt;
+          if (invBroadcastAcc >= 0.1) {
+            invBroadcastAcc = 0;
+            send({ t: "bots", bots: invBotsLocal.filter((b) => b.hp > 0).map((b) => [b.id, Math.round(b.x * 10) / 10, Math.round(b.z * 10) / 10, b.hp]) });
+          }
+        }
+      }
 
       // Host-autoritative Objectives (HQ / DOM)
       if ((gameMode === "hq" || gameMode === "dom") && !ended) {
@@ -760,6 +870,14 @@ export function OnlineGame() {
             </button>
             <button
               type="button"
+              onClick={() => start("inv")}
+              className="text-left border border-accent/60 bg-accent/10 rounded-sm p-4 hover:bg-accent/20 transition-all min-h-[44px]"
+            >
+              <p className="font-bold text-accent glow-neon-sm mb-1">🤖 INVASION (Koop)</p>
+              <p className="font-mono text-[11px] text-muted-foreground">Gemeinsam Wellen überleben. Endlos.</p>
+            </button>
+            <button
+              type="button"
               onClick={() => start("hq")}
               className="text-left border border-primary/50 bg-primary/10 rounded-sm p-4 hover:bg-primary/20 box-glow-neon transition-all min-h-[44px]"
             >
@@ -782,6 +900,19 @@ export function OnlineGame() {
               <p className="font-bold text-primary glow-neon-sm mb-1">Team-Deathmatch</p>
               <p className="font-mono text-[11px] text-muted-foreground">Server teilt Teams zu – erstes Team mit 10 Kills.</p>
             </button>
+          </div>
+          <div className="flex items-center gap-2 mb-6">
+            <span className="font-mono text-[10px] tracking-[0.25em] uppercase text-muted-foreground">Arena:</span>
+            {(["sector", "stahl"] as MapSel[]).map((mm) => (
+              <button
+                key={mm}
+                type="button"
+                onClick={() => setMapSel(mm)}
+                className={`font-mono text-[11px] uppercase tracking-wider rounded-sm border px-3 py-2 min-h-[36px] ${mapSel === mm ? "border-primary/70 bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}
+              >
+                {mm === "sector" ? "Sektor 7" : "Stahlwiege"}
+              </button>
+            ))}
           </div>
           <TurnSettings />
           <a href="/" className="font-mono text-xs tracking-wider uppercase text-muted-foreground hover:text-primary transition-colors">
