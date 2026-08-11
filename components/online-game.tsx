@@ -2,13 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { updateDaily } from "./real-game";
+import { updateDaily, loadCallsign } from "./real-game";
 
 /* ================================================================== */
 /* WIRRWARR ONLINE v2 – FFA & TDM, Movement-Polish, Stance-Sync        */
 /* ================================================================== */
 
-type OnlineMode = "ffa" | "tdm";
+type OnlineMode = "ffa" | "tdm" | "hq" | "dom";
 
 interface Remote {
   id: number;
@@ -109,7 +109,7 @@ export function OnlineGame() {
   const [micOn, setMicOn] = useState(false);
   const [micErr, setMicErr] = useState("");
   const vcRef = useRef<{ toggle: () => void; stop: () => void } | null>(null);
-  const [name] = useState(() => `KAEMPFER-${Math.floor(10 + Math.random() * 89)}`);
+  const [name] = useState(() => loadCallsign() || `KAEMPFER-${Math.floor(10 + Math.random() * 89)}`);
 
   useEffect(() => {
     if (screen !== "game") return;
@@ -297,6 +297,18 @@ export function OnlineGame() {
     const pushFeed = (t: string) => { feed.push(t); if (feed.length > 5) feed.shift(); };
     const teamScore = [0, 0];
     let ended = false;
+    const OBJ_PTS = gameMode === "dom" ? [[-14, 0], [14, 0], [0, -14]] : [[0, 0]];
+    const objMeshes: THREE.Mesh[] = [];
+    if (gameMode === "hq" || gameMode === "dom") {
+      for (const [ox, oz] of OBJ_PTS) {
+        const msh = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 0.15, 24), new THREE.MeshBasicMaterial({ color: 0x888888, transparent: true, opacity: 0.5 }));
+        msh.position.set(ox, 0.08, oz);
+        scene.add(msh);
+        objMeshes.push(msh);
+      }
+    }
+    const objState = { hq: -1, dom: [-1, -1, -1], scores: [0, 0] as number[], over: "" };
+    let objAcc = 0;
 
     /* ---------- WS ---------- */
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
@@ -393,6 +405,14 @@ export function OnlineGame() {
         } else if (typeof m.t === "string" && m.t.startsWith("vc-")) {
           window.dispatchEvent(new MessageEvent("wirrwarr-vc", { data: m }));
           return;
+        } else if (m.t === "obj") {
+          objState.hq = m.hq; objState.dom = m.dom; objState.scores = m.scores;
+          for (let i = 0; i < objMeshes.length; i++) {
+            const own = gameMode === "dom" ? objState.dom[i] : objState.hq;
+            (objMeshes[i].material as THREE.MeshBasicMaterial).color.setHex(own === 0 ? 0x22ff55 : own === 1 ? 0xff5544 : 0x888888);
+          }
+        } else if (m.t === "matchend") {
+          if (!ended) { ended = true; setResult(String(m.winner)); }
         } else if (m.t === "top") {
           setTop10((m.top as { name: string; kills: number }[]) ?? []);
         } else if (m.t === "chat") {
@@ -625,6 +645,46 @@ export function OnlineGame() {
       pingAcc += dt;
       if (pingAcc > 2) { pingAcc = 0; send({ t: "ping", ts: performance.now() }); }
 
+      // Host-autoritative Objectives (HQ / DOM)
+      if ((gameMode === "hq" || gameMode === "dom") && !ended) {
+        const pids = [me.id, ...remotes.keys()];
+        const isHost = me.id === Math.min(...pids);
+        if (isHost) {
+          objAcc += dt;
+          if (objAcc >= 0.5) {
+            objAcc = 0;
+            const inR = (x: number, z: number, r: number, team: number) => {
+              let n = 0;
+              if (me.team === team && me.hp > 0 && Math.hypot(me.x - x, me.z - z) < r) n++;
+              for (const r2 of remotes.values()) if (r2.team === team && r2.alive && Math.hypot(r2.tx - x, r2.tz - z) < r) n++;
+              return n;
+            };
+            if (gameMode === "hq") {
+              const a = inR(0, 0, 4, 0), b2 = inR(0, 0, 4, 1);
+              if (a > 0 && b2 === 0) { objState.hq = 0; objState.scores[0] += 0.5; }
+              if (b2 > 0 && a === 0) { objState.hq = 1; objState.scores[1] += 0.5; }
+            } else {
+              OBJ_PTS.forEach((pt, i) => {
+                const a = inR(pt[0], pt[1], 3.5, 0), b2 = inR(pt[0], pt[1], 3.5, 1);
+                if (a > 0 && b2 === 0) { objState.dom[i] = 0; objState.scores[0] += 0.5; }
+                if (b2 > 0 && a === 0) { objState.dom[i] = 1; objState.scores[1] += 0.5; }
+              });
+            }
+            const limit = gameMode === "hq" ? 60 : 100;
+            if (objState.scores[0] >= limit || objState.scores[1] >= limit) {
+              objState.over = objState.scores[0] > objState.scores[1] ? "TEAM GRÜN gewinnt!" : "TEAM ROT gewinnt!";
+              ended = true;
+              setResult(objState.over);
+            }
+            send({ t: "obj", hq: objState.hq, dom: objState.dom, scores: objState.scores.map((s) => Math.floor(s)) });
+            for (let i = 0; i < objMeshes.length; i++) {
+              const own = gameMode === "dom" ? objState.dom[i] : objState.hq;
+              (objMeshes[i].material as THREE.MeshBasicMaterial).color.setHex(own === 0 ? 0x22ff55 : own === 1 ? 0xff5544 : 0x888888);
+            }
+          }
+        }
+      }
+
       hudAcc += dt;
       if (hudAcc > 0.25) {
         hudAcc = 0;
@@ -635,7 +695,11 @@ export function OnlineGame() {
         setHud({
           hp: Math.max(0, Math.round(me.hp)), ammo: me.ammo, reloading: me.reloading > 0,
           feed: [...feed], players,
-          scores: gameMode === "tdm" ? `GRÜN ${teamScore[0]} : ${teamScore[1]} ROT` : "",
+          scores: gameMode === "tdm"
+            ? `GRÜN ${teamScore[0]} : ${teamScore[1]} ROT`
+            : gameMode === "hq" || gameMode === "dom"
+              ? `GRÜN ${Math.floor(objState.scores[0])} : ${Math.floor(objState.scores[1])} ROT · ${gameMode === "hq" ? (objState.hq === 0 ? "HQ: GRÜN" : objState.hq === 1 ? "HQ: ROT" : "HQ: neutral") : `Zonen: ${objState.dom.map((o) => (o === 0 ? "G" : o === 1 ? "R" : "–")).join(" ")}`}`
+              : "",
           announce: me.announce && performance.now() / 1000 - me.announce.t < 1.8 ? me.announce.text : null,
           ping: pingVal,
         } as typeof hud & { announce: string | null; ping: number });
@@ -693,6 +757,22 @@ export function OnlineGame() {
             >
               <p className="font-bold text-foreground mb-1">Frei für alle</p>
               <p className="font-mono text-[11px] text-muted-foreground">Jeder gegen jeden – offene Lobby.</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => start("hq")}
+              className="text-left border border-primary/50 bg-primary/10 rounded-sm p-4 hover:bg-primary/20 box-glow-neon transition-all min-h-[44px]"
+            >
+              <p className="font-bold text-primary glow-neon-sm mb-1">Hauptquartier</p>
+              <p className="font-mono text-[11px] text-muted-foreground">HQ halten = Punkte. 60 gewinnen.</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => start("dom")}
+              className="text-left border border-primary/50 bg-primary/10 rounded-sm p-4 hover:bg-primary/20 box-glow-neon transition-all min-h-[44px]"
+            >
+              <p className="font-bold text-primary glow-neon-sm mb-1">Herrschaft</p>
+              <p className="font-mono text-[11px] text-muted-foreground">3 Zonen halten. 100 Punkte.</p>
             </button>
             <button
               type="button"

@@ -66,7 +66,7 @@ wss.on("connection", (ws, req, roomKey) => {
   room.clients.add(ws);
   ws.pid = nextId++;
   ws.roomKey = roomKey;
-  ws.team = roomKey === "tdm" ? room.teamCounter++ % 2 : ws.pid;
+  ws.team = ["tdm", "hq", "dom"].includes(roomKey) ? room.teamCounter++ % 2 : ws.pid;
 
   const broadcast = (msg, except) => {
     const data = JSON.stringify(msg);

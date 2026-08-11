@@ -327,6 +327,10 @@ function loadStats(): { kills: number; headshots: number; melees: number; bestSt
   try { return JSON.parse(localStorage.getItem(STAT_KEY) ?? "null") ?? { kills: 0, headshots: 0, melees: 0, bestStreak: 0 }; }
   catch { return { kills: 0, headshots: 0, melees: 0, bestStreak: 0 }; }
 }
+const NAME_KEY = "wirrwarr-callsign";
+export function loadCallsign(): string {
+  try { return localStorage.getItem(NAME_KEY) || ""; } catch { return ""; }
+}
 const RANGE_KEY = "wirrwarr-rangestats";
 function loadRange(): { shots: number; hits: number; hs: number; bestAcc: number; sessions: number } {
   try { return JSON.parse(localStorage.getItem(RANGE_KEY) ?? "null") ?? { shots: 0, hits: 0, hs: 0, bestAcc: 0, sessions: 0 }; } catch { return { shots: 0, hits: 0, hs: 0, bestAcc: 0, sessions: 0 }; }
@@ -651,6 +655,9 @@ export function RealGame() {
   const replayRef = useRef<null | { mode: string; frames: number[][]; events: { t: number; e: string }[]; date: string }>(null);
   const [ngMods, setNgMods] = useState<string[]>(() => loadNG().mods);
   const [, setDailyTick] = useState(0);
+  const [callsign, setCallsign] = useState(() => loadCallsign());
+  const [introDone, setIntroDone] = useState(() => { try { return !!localStorage.getItem("wirrwarr-intro"); } catch { return false; } });
+  const [introBeat, setIntroBeat] = useState(0);
   const [doneMissions, setDoneMissions] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem(STORY_KEY) ?? "null")?.done ?? []; } catch { return []; } });
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -2783,6 +2790,38 @@ export function RealGame() {
 
   /* ================= UI ================= */
   const stats = typeof window !== "undefined" ? loadStats() : { kills: 0, headshots: 0, melees: 0, bestStreak: 0 };
+  if (!introDone && screen === "menu") {
+    const beats = [
+      { t: "2041 // KORP TERRAFORMING DIVISION", s: "Sie nannten es „Saatgut“. Es war nie Saatgut." },
+      { t: "SEKTOR 7 // QUARANTÄNE FEHLGESCHLAGEN", s: "Die Biomass singt. Und etwas unter ihr antwortet." },
+      { t: "DEIN DROPSHIP // ABGESCHOSSEN", s: "Du bist nicht gelandet. Du bist gefallen." },
+    ];
+    return (
+      <div
+        className="min-h-screen bg-black flex flex-col items-center justify-center px-6 cursor-pointer"
+        onClick={() => {
+          if (introBeat < beats.length) setIntroBeat(introBeat + 1);
+          else {
+            try { localStorage.setItem("wirrwarr-intro", "1"); } catch { /* */ }
+            setIntroDone(true);
+          }
+        }}
+      >
+        <p className="font-mono text-6xl md:text-8xl font-bold tracking-tight mb-10">
+          <span className="text-primary glow-neon">WIRR</span><span className="text-foreground">WARR</span>
+        </p>
+        {introBeat < beats.length ? (
+          <div key={introBeat} className="text-center animate-fade-in max-w-xl">
+            <p className="font-mono text-[10px] tracking-[0.4em] uppercase text-primary mb-3">{beats[introBeat].t}</p>
+            <p className="text-lg text-muted-foreground leading-relaxed">{beats[introBeat].s}</p>
+          </div>
+        ) : (
+          <p className="font-mono text-sm text-primary tracking-[0.3em] uppercase animate-pulse-neon">[ Klicken zum Erwachen ]</p>
+        )}
+        <p className="absolute bottom-8 font-mono text-[9px] text-muted-foreground tracking-widest uppercase">Klick = weiter · Einmalig · Danach direkt ins Gefecht</p>
+      </div>
+    );
+  }
   if (screen === "replay" && replayData) {
     return <ReplayView data={replayData} onExit={() => setScreen("menu")} />;
   }
@@ -3101,6 +3140,23 @@ export function RealGame() {
                 );
               })}
             </div>
+          </div>
+
+          {/* Callsign */}
+          <div className="flex flex-wrap items-center gap-2 mb-6">
+            <span className="font-mono text-[10px] tracking-[0.25em] uppercase text-muted-foreground">Callsign:</span>
+            <input
+              value={callsign}
+              maxLength={12}
+              onChange={(e) => {
+                const v = e.target.value.toUpperCase();
+                setCallsign(v);
+                try { localStorage.setItem(NAME_KEY, v); } catch { /* */ }
+              }}
+              placeholder="DEIN NAME"
+              className="bg-black/60 border border-border rounded-sm px-3 py-2 font-mono text-sm text-primary outline-none focus:border-primary/60 min-h-[36px]"
+            />
+            <span className="font-mono text-[9px] text-muted-foreground">erscheint in Chat, Leaderboards & Kill-Feeds deiner Gegner</span>
           </div>
 
           {/* Stats */}
