@@ -90,6 +90,30 @@ const STORY: Record<string, { intro: CineScene[]; debrief: string; events: Story
     debrief: "Stellung gehalten. Die Biomass zieht sich zurück – wie ein Ozean vor dem Sturm.",
     events: [{ trigger: "time", at: 60, speaker: "JUNO", text: "Zweite Welle! Sie haben deine Taktik gelesen.", shake: true }],
   },
+  m9: {
+    intro: [
+      { cam: [0, 4, -14], look: [0, 1.6, 14], dur: 4.5, speaker: "KADE", text: "Ich habe dein Loadout gelesen. Deine Streaks. Deine Ängste. Ich bin nicht dein Gegner – ich bin deine Quittung." },
+      { cam: [6, 2, 8], look: [0, 1.6, 14], dur: 3, speaker: "DU", text: "Dann weißt du auch, wie ich kämpfe. Und wie ich dich schlage." },
+    ],
+    debrief: "KADE gefallen. Sein letzter Funk: ‚Hale sieht dich. Und Hale ist nicht allein.‘",
+    events: [{ trigger: "time", at: 30, speaker: "KADE", text: "Orbital? DEIN Orbital. Danke fürs Teilen.", shake: true }],
+  },
+  m11: {
+    intro: [
+      { cam: [0, 20, 20], look: [0, 2, 0], dur: 4.5, speaker: "DR. MAREN", text: "ERNTE-LÄUFER. KORPs Belagerungsmaschine. Sein Schild frisst alles – außer dem Strom aus drei Pylonen." },
+      { cam: [8, 2, -6], look: [-4, 2, 8], dur: 3, speaker: "DU", text: "BRECHER geladen. Pylone markiert. Erntezeit." },
+    ],
+    debrief: "Der Läufer fiel. In seinem Wrack: ein Frachtplan. Das Nest hat den Tisch gedeckt.",
+    events: [{ trigger: "time", at: 40, speaker: "JUNO", text: "Seine Panzerung adaptiert! PYLON-TAKTIK, JETZT!", shake: true }],
+  },
+  m12: {
+    intro: [
+      { cam: [0, 28, 0.1], look: [0, 0, 0], dur: 5, speaker: "DER GÄRTNER", text: "Du trittst auf meinen Rasen, kleines Werkzeug. Ich habe Welten gepflanzt. Was pflanzt du?" },
+      { cam: [6, 2, 8], look: [0, 3, 0], dur: 3.5, speaker: "DU", text: "Eine Bresche." },
+    ],
+    debrief: "",
+    events: [{ trigger: "time", at: 60, speaker: "DER GÄRTNER", text: "Interessant. Du wächst.", shake: true }],
+  },
   m6: {
     intro: [
       { cam: [-10, 3, -16], look: [4, 1.5, 8], dur: 4.5, speaker: "DR. MAREN", text: "Ich habe die Ernte mitdesignt. Deshalb wissen sie, dass ich komme. Und deshalb musst DU jetzt schnell sein." },
@@ -176,7 +200,7 @@ const PERKS: { id: PerkId; name: string; desc: string }[] = [
 ];
 
 type VsMode = "tdm" | "ffa";
-type GameKind = VsMode | "m0" | "m1" | "m2" | "m3" | "m4" | "m5" | "m6" | "m7" | "m8" | "range";
+type GameKind = VsMode | "m0" | "m1" | "m2" | "m3" | "m4" | "m5" | "m6" | "m7" | "m8" | "m9" | "m11" | "m12" | "range";
 type ArenaId = "sektor" | "garten" | "stahl" | "orbital";
 
 interface Mission {
@@ -191,6 +215,9 @@ const MISSIONS: Mission[] = [
   { id: "m6", title: "M6 // Defector", briefing: "Dr. Maren defectiert. Eskortiere sie lebend zur Extraktion. F = Befehl (Folgen/Waiten).", type: "kills", target: 999, botCount: 6 },
   { id: "m7", title: "M7 // Zwei Fronten", briefing: "KORP-Mechs UND Biomass. Wirf Lockdrocks (H) und lass sie einander zerfleischen. 10 Kills.", type: "kills", target: 10, botCount: 8 },
   { id: "m8", title: "M8 // Das Labor brennt", briefing: "Das Labor brennt. Kapsel UND Datenkern vorn. Du kannst nur eines tragen. Wähle.", type: "kills", target: 999, botCount: 5 },
+  { id: "m9", title: "M9 // Spiegelbild", briefing: "KADE hat dein Loadout. Deine Streaks. Deine Waffen. Töte dein Spiegelbild.", type: "kills", target: 999, botCount: 1 },
+  { id: "m11", title: "M11 // Belagerung", briefing: "Der ERNTE-LÄUFER hat einen Schild. Drei Pylone speisen ihn. Spreng sie – dann kill ihn.", type: "kills", target: 999, botCount: 4 },
+  { id: "m12", title: "M12 // DER GÄRTNER", briefing: "Finale. Die KI im Nest. Drei Phasen. Die Arena stirbt mit ihr.", type: "kills", target: 999, botCount: 1 },
   { id: "m1", title: "M1 // Erste Ernte", briefing: "Die Biomass testet dich. Eliminiere 8 Eindringlinge – sie kommen immer wieder.", type: "kills", target: 8, botCount: 4 },
   { id: "m2", title: "M2 // Abrissunternehmen", briefing: "Sprenge 6 sprengbare Strukturen in 3 Minuten. Der BRECHER-7 ist dein bester Freund.", type: "destroy", target: 6, timeLimit: 180, botCount: 4 },
   { id: "m3", title: "M3 // Stellung halten", briefing: "Halte 120 Sekunden gegen endlose Wellen. Niemand kommt zu dir durch. Niemand.", type: "survive", target: 120, botCount: 6 },
@@ -255,6 +282,12 @@ interface BotEnt {
   flankX: number;
   flankZ: number;
   shieldT: number;
+  isBoss: boolean;
+  bossHp: number;
+  shield: boolean;
+  phase: number;
+  summonT: number;
+  decayT: number;
 }
 
 interface Particle {
@@ -657,8 +690,11 @@ export function RealGame() {
         y: 0, vy: 0, mantle: null,
         burstLeft: 0, reactT: 0, pauseT: 0, ghost, markedT: 0,
         flankT: 0, flankX: 0, flankZ: 0, shieldT: 0,
+        isBoss: false, bossHp: 0, shield: false, phase: 1, summonT: 20, decayT: 10,
       });
     };
+    const bossModes: Record<string, string> = { m9: "KADE", m11: "ERNTE-LÄUFER", m12: "DER GÄRTNER" };
+    const pylonWalls: WallBox[] = [];
     const botCount = mission ? mission.botCount : 5;
     for (let i = 0; i < botCount; i++) {
       makeBot(i, mission ? 1 : i % 2 === 0 ? 1 : 0);
@@ -672,6 +708,39 @@ export function RealGame() {
         } else {
           b.name = `SPORE-${i}`;
         }
+      }
+      if (i === 0 && bossModes[mode]) {
+        const b = bots[0];
+        b.isBoss = true;
+        b.name = bossModes[mode];
+        if (mode === "m9") {
+          b.bossHp = 300; b.hp = 300;
+          (b.body.material as THREE.MeshStandardMaterial).color.setHex(0xffffff);
+          (b.body.material as THREE.MeshStandardMaterial).emissive.setHex(0x888888);
+        }
+        if (mode === "m11") {
+          b.bossHp = 600; b.hp = 600; b.shield = true;
+          b.group.scale.set(2, 2, 2);
+          (b.body.material as THREE.MeshStandardMaterial).color.setHex(0x66ff66);
+        }
+        if (mode === "m12") {
+          b.bossHp = 900; b.hp = 900;
+          b.group.scale.set(2.5, 2.5, 2.5);
+          (b.body.material as THREE.MeshStandardMaterial).color.setHex(0x22ff55);
+          (b.body.material as THREE.MeshStandardMaterial).emissive.setHex(0x22ff55);
+        }
+      }
+    }
+    // Pylone fuer M11 (sprengbare Walls an freien Stellen)
+    if (mode === "m11") {
+      for (const [px, pz] of [[-6, 10], [6, 10], [0, -12]] as [number, number][]) {
+        const mat = new THREE.MeshStandardMaterial({ color: 0x33ccff, emissive: 0x33ccff, emissiveIntensity: 0.9 });
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 4, 1), mat);
+        mesh.position.set(px, 2, pz);
+        scene.add(mesh);
+        const wb: WallBox = { mesh, hw: 0.5, hd: 0.5, hh: 2, top: 4, hp: 100, maxHp: 100, destructible: true, active: true };
+        walls.push(wb);
+        pylonWalls.push(wb);
       }
     }
 
@@ -1084,7 +1153,11 @@ export function RealGame() {
         const h = hits[0];
         end = h.point;
         const botHit = bots.find((b) => b.alive && (h.object === b.body || h.object.parent === b.group));
-        if (botHit && (mode === "ffa" || botHit.team === 1)) {
+        if (botHit && (mode === "ffa" || botHit.team === 1 || botHit.isBoss)) {
+          if (botHit.shield) {
+            burst(h.point, 0x33ccff, 6);
+            if (Math.random() < 0.2) pushFeed("🛡 Schild aktiv – SPRENG DIE PYLONE!");
+          } else {
           const head = h.object === botHit.group.children[1];
           let dmg = player.weapon === "brecher" ? 80 : player.weapon === "richter" ? 100 : 26;
           if (player.rageT > 0) dmg = Math.round(dmg * 1.5);
@@ -1095,11 +1168,21 @@ export function RealGame() {
           burst(h.point, head ? 0xffcc33 : 0xff5544, head ? 10 : 6);
           spawnDmgNum(h.point.clone(), dmg, botHit.hp <= 0);
           if (botHit.hp <= 0) kill(0, botHit.id);
+          }
         } else if (!botHit) {
           const wall = walls.find((w) => w.active && w.mesh === h.object);
           if (wall) {
             if (player.weapon === "brecher" && wall.destructible) {
               wall.hp -= 100;
+              if (pylonWalls.includes(wall) && wall.hp <= 0) {
+                const boss = bots.find((b) => b.isBoss);
+                if (boss) {
+                  const left = pylonWalls.filter((w) => w.active && w.hp > 0).length;
+                  if (left === 0) { boss.shield = false; pushFeed("⚡ ALLE PYLONE DOWN – Schild permanent OFFEN!"); }
+                  else { boss.shield = false; setTimeout(() => { if (pylonWalls.some((w) => w.active && w.hp > 0)) boss.shield = true; }, 12000); pushFeed(`⚡ Pylon gesprengt – Schild 12 s OFFEN (${left - 1} übrig)`); }
+                }
+                sRadio();
+              }
               burst(h.point, 0x22ff55, 14);
               const m = wall.mesh.material as THREE.MeshStandardMaterial;
               m.color.setHex(0x7a4d1f);
@@ -1264,6 +1347,14 @@ export function RealGame() {
             burst(w.mesh.position.clone(), 0x22ff55, 24);
             pushFeed("💥 BRESCHE GESPRENGT!");
             missionDestroyed++;
+            if (typeof pylonWalls !== "undefined" && pylonWalls.includes(w)) {
+              const boss = bots.find((b) => b.isBoss);
+              if (boss) {
+                boss.shield = false;
+                pushFeed("⚡ Pylon zerstört – Schild DOWN!");
+                sRadio();
+              }
+            }
           } else (w.mesh.material as THREE.MeshStandardMaterial).color.setHex(0x7a4d1f);
         }
       }
@@ -1424,8 +1515,9 @@ export function RealGame() {
       b.strafeT -= dt;
       if (b.strafeT <= 0) { b.strafeT = 0.7 + Math.random(); b.strafeDir = Math.random() < 0.5 ? -1 : 1; }
       const p2 = { x: bp.x, z: bp.z };
-      const wantX = !target && dist > 1 ? (dx / dist) * 4.5 * dt : target && target.dist > 8 ? (dx / dist) * 4 * dt : 0;
-      const wantZ = !target && dist > 1 ? (dz / dist) * 4.5 * dt : target && target.dist > 8 ? (dz / dist) * 4 * dt : 0;
+      const bSpeed = (b as unknown as { bossSpeed?: number }).bossSpeed ?? 4.5;
+      const wantX = !target && dist > 1 ? (dx / dist) * bSpeed * dt : target && target.dist > 8 ? (dx / dist) * bSpeed * dt : 0;
+      const wantZ = !target && dist > 1 ? (dz / dist) * bSpeed * dt : target && target.dist > 8 ? (dz / dist) * bSpeed * dt : 0;
       moveWithCollide(p2, wantX, wantZ, 0.5, b.y);
       const blockedB = (wantX !== 0 && Math.abs(p2.x - (bp.x + wantX)) > 0.001) || (wantZ !== 0 && Math.abs(p2.z - (bp.z + wantZ)) > 0.001);
       if (target) moveWithCollide(p2, (-dz / dist) * b.strafeDir * 2.2 * dt, (dx / dist) * b.strafeDir * 2.2 * dt, 0.5, b.y);
@@ -1531,6 +1623,49 @@ export function RealGame() {
         b.burstLeft = 3 + Math.floor(Math.random() * 3);
       }
       b.shieldT = Math.max(0, (b.shieldT ?? 0) - dt);
+      // ===== BOSS-LOGIK =====
+      if (b.isBoss) {
+        const hpFrac = b.hp / (b.bossHp || 1);
+        // Phasen
+        if (mode === "m9") {
+          if (hpFrac < 0.66 && b.phase === 1) { b.phase = 2; pushFeed("🪞 KADE: ‚Dein Recon? Mein Recon.‘"); sRadio(); for (const bb of bots) if (bb.alive) bb.markedT = gameTime + 5; }
+          if (hpFrac < 0.33 && b.phase === 2) { b.phase = 3; pushFeed("🪞 KADE enraget – ER NUTZT DEINE RAGE!"); sRadio(); }
+        }
+        if (mode === "m12") {
+          if (hpFrac < 0.66 && b.phase === 1) { b.phase = 2; pushFeed("🌿 DER GÄRTNER: Die Arena welkt."); sRadio(); }
+          if (hpFrac < 0.33 && b.phase === 2) { b.phase = 3; pushFeed("🌿 ENRAGE – ER KOMMT SELBST!"); sRadio(); (b.body.material as THREE.MeshStandardMaterial).emissive.setHex(0xff3333); }
+          // Summons P1
+          if (b.phase === 1) {
+            b.summonT -= dt;
+            if (b.summonT <= 0) {
+              b.summonT = 20;
+              if (bots.filter((x) => x.alive && !x.isBoss).length < 4) {
+                makeBot(bots.length, 1);
+                pushFeed("🌱 Der Gärtner pflanzt Diener.");
+              }
+            }
+          }
+          // Arena-Zerfall P2+
+          if (b.phase >= 2) {
+            b.decayT -= dt;
+            if (b.decayT <= 0) {
+              b.decayT = 8;
+              const des = walls.filter((w) => w.active && w.destructible);
+              if (des.length) {
+                const w = des[Math.floor(Math.random() * des.length)];
+                w.active = false; scene.remove(w.mesh);
+                burst(w.mesh.position.clone(), 0x22ff55, 20);
+                sBoom();
+                pushFeed("⚠ Die Arena zerfällt!");
+              }
+            }
+          }
+        }
+        const bossSpeed = mode === "m12" && b.phase === 3 ? 6.5 : mode === "m9" && b.phase === 3 ? 6 : 4.5;
+        const dmgMul = b.phase >= 2 ? 1.4 : 1;
+        (b as unknown as { bossSpeed?: number }).bossSpeed = bossSpeed;
+        (b as unknown as { dmgMul?: number }).dmgMul = dmgMul;
+      }
       b.cd -= dt;
       if (target && b.burstLeft > 0 && b.cd <= 0 && b.reactT <= 0) {
         b.cd = 0.13;
@@ -1542,7 +1677,7 @@ export function RealGame() {
         sShot("dorn");
         const stanceMul = player.prone ? 0.5 : player.crouch ? 0.75 : 1;
         const adapt = Math.max(0.75, Math.min(1.25, 1 + (player.deaths - player.kills) * 0.02)) * (mode === "m0" ? 0.5 : 1);
-        const dmg = (6 + Math.random() * 8) * adapt * (perk === "panzer" ? 0.7 : 1) * stanceMul;
+        const dmg = (6 + Math.random() * 8) * adapt * (perk === "panzer" ? 0.7 : 1) * stanceMul * ((b as unknown as { dmgMul?: number }).dmgMul ?? 1) * (b.isBoss ? 2.2 : 1);
         if (target.id === 0) {
           hurtPlayer(dmg, bp.x, bp.z, b.id);
         } else if (target.id === 200) {
@@ -1694,6 +1829,15 @@ export function RealGame() {
       if (player.bestStreakM >= 5) medals.push("🔥 Spree-Meister – 5er-Streak");
       if (player.deaths === 0 && player.kills >= 5) medals.push("🛡 Unberührbar – 5 Kills, 0 Tode");
       let debrief = mission ? STORY[mission.id]?.debrief : undefined;
+      if (mission?.id === "m12") {
+        const sv = loadStory().flags?.save_vega;
+        const fragsTotal = loadFrags();
+        debrief = fragsTotal >= 18
+          ? "GEHEIM-ENDE: Der Gärtner legt seine Waffe nieder. ‚Dann pflanze du.‘ Die Biomass wartet auf einen neuen Gärtner – auf dich."
+          : sv
+            ? "ENDE A: Die Biomass weicht. Die Erde bleibt nackt, aber frei. VEGA steht neben dir, als der Rauch sich legt."
+            : "ENDE B: Die Daten brechen KORP. Doch nachts hörst du die Sporen atmen – und weißt: Du hättest wählen können.";
+      }
       if (mission?.id === "m8") {
         const sv = loadStory().flags?.save_vega;
         debrief = sv
@@ -1987,6 +2131,13 @@ export function RealGame() {
           setWinner("EXFILTRATION ERFOLGREICH");
           setScreen("end");
         }
+      }
+      const theBoss = bots.find((b) => b.isBoss);
+      if (theBoss && !theBoss.alive && !ended) {
+        fillEnd();
+        ended = true;
+        setWinner(theBoss.name + " ZERSTÖRT");
+        setScreen("end");
       }
       storyTick();
       player.shakeT = Math.max(0, player.shakeT - dt);
