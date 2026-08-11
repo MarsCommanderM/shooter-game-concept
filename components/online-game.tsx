@@ -424,6 +424,7 @@ export function OnlineGame() {
       return e;
     };
     let kc: { id: number; t: number } | null = null;
+    const streakCamO = { t: 0, pos: new THREE.Vector3() };
     let pregame = gameMode === "inv" ? 0 : 12;
     pregameRef.current = pregame;
     const votes: Record<string, number> = {};
@@ -561,7 +562,14 @@ export function OnlineGame() {
           pendingHits.push({ id: m.id as number, dmg: m.dmg as number, by: m.id2 as number });
         } else if (m.t === "bkill") {
           invState.kills++;
-          if (m.by === me.id) { me.kills++; banterOnline("kill"); }
+          if (m.by === me.id) {
+            me.kills++; banterOnline("kill");
+            me.streak++;
+            if ([3, 5, 8].includes(me.streak)) {
+              const e2 = invBots.get(m.id as number);
+              if (e2) { streakCamO.t = 0.9; streakCamO.pos.set(e2.x, 0, e2.z); }
+            }
+          }
           orec.events.push({ t: Math.round(orec.t * 10) / 10, e: `kill:SPORE-${m.id}` });
           pushFeed(`${m.by === me.id ? "DU" : remotes.get(m.by as number)?.name ?? "?"} ⚡ SPORE-${m.id}`);
         } else if (m.t === "mapvote") {

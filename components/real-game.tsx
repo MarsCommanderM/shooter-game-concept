@@ -1296,6 +1296,10 @@ export function RealGame() {
         // Streak / Spree
         player.streak++;
         player.bestStreakM = Math.max(player.bestStreakM, player.streak);
+        if ([3, 5, 8].includes(player.streak) && victimId > 0 && victimId < 100) {
+          const vb = bots.find((x) => x.id === victimId);
+          if (vb) { streakCam.t = 0.9; streakCam.pos.copy(vb.group.position); }
+        }
         if (player.streak === 3) banter("streak");
         if (player.streak === 3) { player.announce = { text: "RAMPAGE!", t: gameTime }; sAnnounce(); }
         if (player.streak === 5) { player.announce = { text: "UNSTOPPBAR!", t: gameTime }; sAnnounce(); }
@@ -2352,6 +2356,8 @@ export function RealGame() {
     const rec = { frames: [] as number[][], events: [] as { t: number; e: string }[], acc: 0 };
     const recEvent = (e: string) => { rec.events.push({ t: Math.round(gameTime * 10) / 10, e }); };
     const banterCd: Record<string, number> = {};
+    const streakCam = { t: 0, pos: new THREE.Vector3() };
+    let timeScale = 1;
     const banter = (ctx: string) => {
       if ((banterCd[ctx] ?? 0) > gameTime) return;
       if (Math.random() > 0.65) return;
@@ -2467,7 +2473,8 @@ export function RealGame() {
 
     const loop = () => {
       raf = requestAnimationFrame(loop);
-      const dt = Math.min(0.05, clock.getDelta());
+      let dt = Math.min(0.05, clock.getDelta());
+      if (streakCam.t > 0) { streakCam.t -= dt; dt *= 0.35; }
       gameTime += dt;
       player.fireCd -= dt;
       muzzleLight.intensity = Math.max(0, muzzleLight.intensity - 20 * dt);
@@ -2934,7 +2941,12 @@ export function RealGame() {
         });
       }
 
-      renderer.render(scene, camera);
+      if (streakCam.t > 0) {
+        camera.position.lerp(new THREE.Vector3(player.x, 3.0, player.z), Math.min(1, dt * 6));
+        camera.lookAt(streakCam.pos.clone().add(new THREE.Vector3(0, 1.2, 0)));
+      }
+      if (composer) composer.render();
+      else renderer.render(scene, camera);
     };
     loop();
 
