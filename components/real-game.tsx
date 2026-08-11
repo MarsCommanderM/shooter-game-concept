@@ -42,7 +42,7 @@ const KSTREAKS = [
   { num: 7, id: "orbital", name: "Orbital-Schlag", level: 5, desc: "3-fache Detonation – sprengt Wände" },
   { num: 10, id: "rage", name: "Biomass-Rage", level: 8, desc: "10 s: +50 % Schaden, +Tempo, Schild voll" },
 ];
-interface CineScene { cam: [number, number, number]; look: [number, number, number]; dur: number; speaker?: string; text?: string; }
+interface CineScene { cam: [number, number, number]; look: [number, number, number]; dur: number; speaker?: string; text?: string; move?: "orbit" | "push" | "crane"; }
 interface StoryEvent { trigger: "time" | "kills" | "destroyed"; at: number; speaker: string; text: string; shake?: boolean; }
 const STORY: Record<string, { intro: CineScene[]; debrief: string; events: StoryEvent[] }> = {
   m0: {
@@ -70,7 +70,7 @@ const STORY: Record<string, { intro: CineScene[]; debrief: string; events: Story
 
   m1: {
     intro: [
-      { cam: [-34, 16, -34], look: [0, 0, 0], dur: 4.5, speaker: "KOMMANDO [FUNK]", text: "Soldat. Die Biomass hat Sektor 7 erreicht. Sie sieht mit tausend Augen – also leih ihr keines deiner." },
+      { cam: [-34, 16, -34], look: [0, 0, 0], dur: 5, speaker: "KOMMANDO [FUNK]", text: "Soldat. Die Biomass hat Sektor 7 erreicht. Sie sieht mit tausend Augen – also leih ihr keines deiner.", move: "orbit" },
       { cam: [12, 2.5, 20], look: [-12, 1.5, -12], dur: 4, speaker: "VEGA", text: "Das Glitzern in der Luft? Das ist kein Nebel. Das sind Sporen. Und sie fallen nicht – sie suchen." },
       { cam: [0, 1.8, 10], look: [0, 1.6, -24], dur: 3.5, speaker: "DU", text: "Dann atmen wir schneller, als sie wachsen. Erste Ernte beginnt." },
     ],
@@ -122,7 +122,7 @@ const STORY: Record<string, { intro: CineScene[]; debrief: string; events: Story
   },
   m12: {
     intro: [
-      { cam: [0, 28, 0.1], look: [0, 0, 0], dur: 5, speaker: "DER GÄRTNER", text: "Du trittst auf meinen Rasen, kleines Werkzeug. Ich habe Welten gepflanzt. Was pflanzt du?" },
+      { cam: [0, 28, 0.1], look: [0, 0, 0], dur: 5, speaker: "DER GÄRTNER", text: "Du trittst auf meinen Rasen, kleines Werkzeug. Ich habe Welten gepflanzt. Was pflanzt du?" , move: "crane" },
       { cam: [6, 2, 8], look: [0, 3, 0], dur: 3.5, speaker: "DU", text: "Eine Bresche." },
     ],
     debrief: "",
@@ -130,7 +130,7 @@ const STORY: Record<string, { intro: CineScene[]; debrief: string; events: Story
   },
   m13: {
     intro: [
-      { cam: [0, 10, -18], look: [0, 2, 8], dur: 4.5, speaker: "DR. MAREN", text: "Die Koordinate ist kein Ort. Es ist eine Frequenz. Drei Relais speisen sie. Hack alle drei." },
+      { cam: [0, 10, -18], look: [0, 2, 8], dur: 4.5, speaker: "DR. MAREN", text: "Die Koordinate ist kein Ort. Es ist eine Frequenz. Drei Relais speisen sie. Hack alle drei." , move: "push" },
       { cam: [6, 2, 6], look: [0, 1.5, -6], dur: 3.5, speaker: "VEGA", text: "Leise. Wer die Frequenz hört, hört auch dich." },
     ],
     debrief: "Das Relais sendete einen Namen in Dauerschleife: MAREN. Sie haben nach IHR gesucht.",
@@ -138,7 +138,7 @@ const STORY: Record<string, { intro: CineScene[]; debrief: string; events: Story
   },
   m14: {
     intro: [
-      { cam: [0, 6, -12], look: [0, 2, 10], dur: 5, speaker: "DIREKTOR HALE", text: "Ich habe die erste Saat bestellt. Ihr steht in meinem Schatten, Kinder." },
+      { cam: [0, 6, -12], look: [0, 2, 10], dur: 5, speaker: "DIREKTOR HALE", text: "Ich habe die erste Saat bestellt. Ihr steht in meinem Schatten, Kinder." , move: "push" },
       { cam: [5, 2, 5], look: [0, 2, 0], dur: 3.5, speaker: "VEGA", text: "Phasenpanzerung. Granaten. Ego. Bleib in Bewegung." },
     ],
     debrief: "Hale fiel. Sein letzter Funkspruch ging raus – an ALLE Nester gleichzeitig.",
@@ -295,6 +295,18 @@ function maxAmmoFor(w: string): number {
   const a = attachOf(w);
   return w === "richter" ? 5 + (a.includes("extmag") ? 2 : 0) : 24 + (a.includes("extmag") ? 8 : 0);
 }
+const DIVISIONS = [
+  { name: "BRONZE", min: 1, color: "#cd7f32" },
+  { name: "SILBER", min: 5, color: "#c0c0c0" },
+  { name: "GOLD", min: 10, color: "#ffd700" },
+  { name: "PLATIN", min: 15, color: "#7fffd4" },
+  { name: "APEX", min: 20, color: "#ff44ff" },
+];
+export function divForLevel(lv: number) {
+  let d = DIVISIONS[0];
+  for (const x of DIVISIONS) if (lv >= x.min) d = x;
+  return d;
+}
 const ADAPT_KEY = "wirrwarr-madapt";
 function adaptFor(missionId: string): number {
   try {
@@ -362,7 +374,7 @@ const PERKS: { id: PerkId; name: string; desc: string }[] = [
 ];
 
 type VsMode = "tdm" | "ffa";
-type GameKind = VsMode | "m0" | "m1" | "m2" | "m3" | "m4" | "m5" | "m6" | "m7" | "m8" | "m9" | "m10" | "m11" | "m12" | "m13" | "m14" | "m15" | "inv" | "range";
+type GameKind = VsMode | "m0" | "m1" | "m2" | "m3" | "m4" | "m5" | "m6" | "m7" | "m8" | "m9" | "m10" | "m11" | "m12" | "m13" | "m14" | "m15" | "inv" | "range" | "show";
 type ArenaId = "sektor" | "garten" | "stahl" | "orbital";
 
 interface Mission {
@@ -383,6 +395,7 @@ const MISSIONS: Mission[] = [
   { id: "m13", title: "M13 // Der Aufstieg", briefing: "Die Koordinate ist eine Frequenz. Drei Relais speisen sie. Hack sie alle – leise.", type: "destroy", target: 3, botCount: 5 },
   { id: "m14", title: "M14 // Direktor Hale", briefing: "Der Mann, der die Saat bestellte. Phasenpanzerung. Granaten. Ego. Beende ihn.", type: "kills", target: 999, botCount: 4 },
   { id: "m15", title: "M15 // Die Antwort", briefing: "Alle Nester haben dich gehört. Halte 120 Sekunden. Dann gehört die Antwort dir.", type: "kills", target: 999, botCount: 6 },
+  { id: "show", title: "ARENA // Bot-Turnier", briefing: "3v3-Bots. Du bist das Auge. Beobachte, lerne, wette mit dir selbst.", type: "kills", target: 999, botCount: 6 },
   { id: "inv", title: "INVASION // Wellen", briefing: "Endlos-Wellen. EIN Leben. Wie lange hältst du?", type: "kills", target: 999, botCount: 5 },
   { id: "m12", title: "M12 // DER GÄRTNER", briefing: "Finale. Die KI im Nest. Drei Phasen. Die Arena stirbt mit ihr.", type: "kills", target: 999, botCount: 1 },
   { id: "m1", title: "M1 // Erste Ernte", briefing: "Die Biomass testet dich. Eliminiere 8 Eindringlinge – sie kommen immer wieder.", type: "kills", target: 8, botCount: 4 },
@@ -393,9 +406,16 @@ const MISSIONS: Mission[] = [
 
 const CAMP_KEY = "wirrwarr-campaign-done";
 const STAT_KEY = "wirrwarr-stats";
-function loadStats(): { kills: number; headshots: number; melees: number; bestStreak: number } {
-  try { return JSON.parse(localStorage.getItem(STAT_KEY) ?? "null") ?? { kills: 0, headshots: 0, melees: 0, bestStreak: 0 }; }
-  catch { return { kills: 0, headshots: 0, melees: 0, bestStreak: 0 }; }
+interface StatData { kills: number; headshots: number; melees: number; bestStreak: number; playtime: number; wins: number; }
+function loadStats(): StatData {
+  try { return JSON.parse(localStorage.getItem(STAT_KEY) ?? "null") ?? { kills: 0, headshots: 0, melees: 0, bestStreak: 0, playtime: 0, wins: 0 }; } catch { return { kills: 0, headshots: 0, melees: 0, bestStreak: 0, playtime: 0, wins: 0 }; }
+}
+function bumpStats(patch: Partial<StatData>) {
+  try {
+    const s = loadStats();
+    for (const [k, v] of Object.entries(patch)) (s as unknown as Record<string, number>)[k] = ((s as unknown as Record<string, number>)[k] ?? 0) + (v as number);
+    localStorage.setItem(STAT_KEY, JSON.stringify(s));
+  } catch { /* */ }
 }
 export function seasonId(): string { const d = new Date(); return `S${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
 const SEASON_KEY = "wirrwarr-season";
@@ -781,6 +801,7 @@ export function RealGame() {
   const [callsign, setCallsign] = useState(() => loadCallsign());
   const [introDone, setIntroDone] = useState(() => { try { return !!localStorage.getItem("wirrwarr-intro"); } catch { return false; } });
   const [actCard, setActCard] = useState<string | null>(null);
+  const [yearOpen, setYearOpen] = useState(false);
   const [introBeat, setIntroBeat] = useState(0);
   const [doneMissions, setDoneMissions] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem(STORY_KEY) ?? "null")?.done ?? []; } catch { return []; } });
   const [failed, setFailed] = useState(false);
@@ -822,7 +843,11 @@ export function RealGame() {
           try { localStorage.setItem(PROF_KEY, JSON.stringify(np)); } catch { /* */ }
           const oldLv = levelFromXp(pr.xp);
           const newLv = levelFromXp(np.xp);
-          if (newLv > oldLv) feedExtraRef.current.push(`⬆ LEVEL UP! Level ${newLv} – neue Unlocks im Menü!`);
+          if (newLv > oldLv) {
+          feedExtraRef.current.push(`⬆ LEVEL UP! Level ${newLv} – neue Unlocks im Menü!`);
+          const od = divForLevel(oldLv), nd = divForLevel(newLv);
+          if (od.name !== nd.name) feedExtraRef.current.push(`🏅 PROMOTION: ${nd.name}!`);
+        }
           return np;
         });
         addSeasonXp(xpGain);
@@ -1129,7 +1154,7 @@ export function RealGame() {
     const pylonWalls: WallBox[] = [];
     const botCount = mission ? mission.botCount : 5;
     for (let i = 0; i < botCount; i++) {
-      makeBot(i, mission ? 1 : i % 2 === 0 ? 1 : 0);
+      makeBot(i, mode === "show" ? i % 2 : mission ? 1 : i % 2 === 0 ? 1 : 0);
       if (mode === "m7") {
         const b = bots[bots.length - 1];
         if (i % 2 === 1) {
@@ -1268,7 +1293,7 @@ export function RealGame() {
       spawnShield: 2, killcam: null as { botId: number; t: number } | null,
       rangeT: 60, rangeHits: 0, shots: 0,
     };
-    if (mode === "m0") player.noGun = true;
+    if (mode === "m0" || mode === "show") player.noGun = true;
     if (mode === "m8") player.rangeT = 150;
     if (mode === "m15") player.rangeT = 120;
     const ngMods = loadNG().mods;
@@ -1285,7 +1310,7 @@ export function RealGame() {
     let missionKills = 0;
     let missionDestroyed = 0;
     const finishMission = (win: boolean) => {
-      if (win) { addXp(250 * xpMul); updateDaily("wins"); if (mission) recordWin(mission.id); }
+      if (win) { addXp(250 * xpMul); updateDaily("wins"); if (mission) recordWin(mission.id); bumpStats({ wins: 1 }); }
       else if (mission) recordFail(mission.id);
       fillEnd();
       ended = true;
@@ -1431,7 +1456,7 @@ export function RealGame() {
     };
 
     const hurtPlayer = (dmgIn: number, fx: number, fz: number, killerId: number) => {
-      if (player.spawnShield > 0) return;
+      if (player.spawnShield > 0 || mode === "show") return;
       const dmg = dmgIn * (player.upg.c1 ? 0.9 : 1);
       player.lastDmg = gameTime;
       const rel = Math.atan2(fx - player.x, fz - player.z) - yaw.rotation.y - Math.PI;
@@ -1641,7 +1666,7 @@ export function RealGame() {
           let dmg = player.weapon === "brecher" ? 80 : player.weapon === "richter" ? 100 : 26;
           if (player.rageT > 0) dmg = Math.round(dmg * 1.5);
           dmg = Math.round(dmg * dmgMul);
-          if (head) { dmg = Math.round(dmg * 2.5); sHeadshot(); pushFeed("🎯 HEADSHOT!"); player.headshots++; updateDaily("headshots"); }
+          if (head) { dmg = Math.round(dmg * 2.5); sHeadshot(); pushFeed("🎯 HEADSHOT!"); player.headshots++; updateDaily("headshots"); bumpStats({ headshots: 1 }); }
           if (player.upg.s2) botHit.markedT = gameTime + 3;
           botHit.hp -= dmg;
           burst(h.point, head ? 0xffcc33 : 0xff5544, head ? 10 : 6);
@@ -2127,7 +2152,7 @@ export function RealGame() {
         }
       }
       // Reaktion + Burst-Feuer (AAA-Bot-Feel) – Spawn-Schutz respektieren
-      if (player.spawnShield > 0 && target && target.id === 0) target = null;
+      if ((player.spawnShield > 0 || mode === "show") && target && target.id === 0) target = null;
       const hadTargetBefore = (b as unknown as { hadT?: boolean }).hadT ?? false;
       if (target && !hadTargetBefore && Math.random() < 0.3) {
         pushFeed(`📻 ${b.name}: „Kontakt!“`);
@@ -2392,6 +2417,7 @@ export function RealGame() {
     };
 
     /* ---------- Replay-Recorder ---------- */
+    let ptAcc = 0;
     const rec = { frames: [] as number[][], events: [] as { t: number; e: string }[], acc: 0 };
     const recEvent = (e: string) => { rec.events.push({ t: Math.round(gameTime * 10) / 10, e }); };
     const banterCd: Record<string, number> = {};
@@ -2437,7 +2463,18 @@ export function RealGame() {
     const cineTick = (dt: number) => {
       const sc = cine.list[cine.i];
       cine.t += dt;
-      camera.position.lerp(new THREE.Vector3(...sc.cam), Math.min(1, dt * 2.2));
+      const target = new THREE.Vector3(...sc.cam);
+      if (sc.move === "orbit") {
+        const a = cine.t * 0.5;
+        const r = Math.hypot(sc.cam[0] - sc.look[0], sc.cam[2] - sc.look[2]) || 10;
+        target.set(sc.look[0] + Math.cos(a) * r, sc.cam[1], sc.look[2] + Math.sin(a) * r);
+      } else if (sc.move === "push") {
+        const f = Math.min(1, cine.t / sc.dur);
+        target.lerp(new THREE.Vector3(...sc.look).add(new THREE.Vector3(0, 1.5, 0)), f * 0.6);
+      } else if (sc.move === "crane") {
+        target.y = sc.cam[1] + cine.t * 1.2;
+      }
+      camera.position.lerp(target, Math.min(1, dt * 2.2));
       cine.lookCur.lerp(new THREE.Vector3(...sc.look), Math.min(1, dt * 2.5));
       camera.lookAt(cine.lookCur);
       hudSubtitle = sc.speaker && sc.text ? { speaker: sc.speaker, text: sc.text } : null;
@@ -2527,6 +2564,20 @@ export function RealGame() {
           player.spawnShield = 2;
         }
       } else if (!cine.active) {
+        if (mode === "show") {
+          const fsp = 14 * dt;
+          let fx = 0, fz = 0;
+          const a3 = yaw.rotation.y;
+          if (keys["KeyW"]) { fx -= Math.sin(a3); fz -= Math.cos(a3); }
+          if (keys["KeyS"]) { fx += Math.sin(a3); fz += Math.cos(a3); }
+          if (keys["KeyA"]) { fx -= Math.cos(a3); fz += Math.sin(a3); }
+          if (keys["KeyD"]) { fx += Math.cos(a3); fz -= Math.sin(a3); }
+          const fl = Math.hypot(fx, fz);
+          if (fl > 0) { player.x += (fx / fl) * fsp; player.z += (fz / fl) * fsp; }
+          if (keys["Space"]) player.y += fsp;
+          if (keys["KeyC"]) player.y = Math.max(0, player.y - fsp);
+          player.y = Math.min(20, player.y);
+        } else {
         // ===== Bewegungsfluss: Stance, Slide, Acceleration, Friction =====
         const support = getSupport(player.x, player.z, player.y);
         const onGround = player.y <= support + 0.02;
@@ -2619,6 +2670,7 @@ export function RealGame() {
           if (player.stepAcc > 2.4) { player.stepAcc = 0; sStep(); }
         }
 
+        }
         if (player.reloading > 0) { player.reloading -= dt; if (player.reloading <= 0) player.ammo = maxAmmoFor(player.weapon); }
         const maxAm = maxAmmoFor(player.weapon);
         if (keys["KeyR"] && player.ammo < maxAm && player.reloading <= 0) player.reloading = player.weapon === "richter" ? 1.6 : 1.2;
@@ -2826,6 +2878,13 @@ export function RealGame() {
           setScreen("end");
         }
       }
+      // Bot-Turnier-Ende
+      if (mode === "show" && !ended && (teamScore[0] >= 10 || teamScore[1] >= 10)) {
+        fillEnd();
+        ended = true;
+        setWinner(`ARENA: ${teamScore[0] >= 10 ? "GRÜN" : "ROT"} gewinnt ${Math.max(teamScore[0], teamScore[1])}:${Math.min(teamScore[0], teamScore[1])}`);
+        setScreen("end");
+      }
       const theBoss = bots.find((b) => b.isBoss);
       if (theBoss && !theBoss.alive && !ended) {
         fillEnd();
@@ -2919,6 +2978,8 @@ export function RealGame() {
         }
         arr.needsUpdate = true;
       }
+      ptAcc += dt;
+      if (ptAcc >= 5) { ptAcc = 0; bumpStats({ playtime: 5 }); }
       rec.acc += dt;
       if (rec.acc >= 0.15) {
         rec.acc = 0;
@@ -2942,7 +3003,9 @@ export function RealGame() {
           kills: player.kills,
           m8Offer: mode === "m8" && !m8ChoiceDone ? m8OfferState : null,
           marenHp: mode === "m6" ? Math.max(0, Math.round(maren.hp)) : -1,
-          objective: mode === "m15"
+          objective: mode === "show"
+            ? `👁 ARENA // GRÜN ${teamScore[0]} : ${teamScore[1]} ROT · Space/C = fliegen`
+            : mode === "m15"
             ? `⏳ HALTE DURCH · ${Math.max(0, Math.ceil(player.rangeT))} s · Kills ${player.kills}`
             : mode === "inv"
             ? `🌊 WELLE ${invWave.n} · Kills ${player.kills} · EIN LEBEN`
@@ -3063,6 +3126,36 @@ export function RealGame() {
           <p className="font-mono text-sm text-primary tracking-[0.3em] uppercase animate-pulse-neon">[ Klicken zum Erwachen ]</p>
         )}
         <p className="absolute bottom-8 font-mono text-[9px] text-muted-foreground tracking-widest uppercase">Klick = weiter · Einmalig · Danach direkt ins Gefecht</p>
+      </div>
+    );
+  }
+  if (yearOpen) {
+    const s = loadStats();
+    const seas = loadSeason();
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center px-6">
+        <div className="max-w-xl w-full border border-primary/40 bg-black/90 box-glow-neon rounded-sm p-6">
+          <p className="font-mono text-xs tracking-[0.4em] uppercase text-primary glow-neon-sm mb-6">📊 DEIN JAHR // WIRRWARR</p>
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            {[
+              ["Spielzeit", `${Math.round(s.playtime / 3600 * 10) / 10} h`],
+              ["Kills", String(s.kills)],
+              ["Headshots", String(s.headshots)],
+              ["Missionssiege", String(s.wins)],
+              ["Beste Streak", String(s.bestStreak)],
+              ["Division", divForLevel(levelFromXp(profile.xp)).name],
+              ["Seasons", String(seas.archived.length + 1)],
+              ["Accuracy", `${loadRange().bestAcc} %`],
+            ].map(([k, v]) => (
+              <div key={k} className="border border-border rounded-sm p-3">
+                <p className="font-mono text-[9px] text-muted-foreground uppercase tracking-wider">{k}</p>
+                <p className="font-mono text-lg text-primary">{v}</p>
+              </div>
+            ))}
+          </div>
+          <p className="font-mono text-[10px] text-muted-foreground italic mb-4">Jede Stunde. Jeder Kill. Jede Bresche. Deins.</p>
+          <button type="button" onClick={() => setYearOpen(false)} className="font-mono text-xs border border-primary/60 text-primary bg-primary/10 hover:bg-primary/20 rounded-sm px-4 py-2 min-h-[40px] w-full">← ZURÜCK</button>
+        </div>
       </div>
     );
   }
@@ -3439,6 +3532,23 @@ export function RealGame() {
               })}
             </div>
           </div>
+
+          <button
+            type="button"
+            onClick={() => setYearOpen(true)}
+            className="mb-6 font-mono text-[10px] tracking-wider uppercase rounded-sm border border-border text-muted-foreground hover:text-primary hover:border-primary/50 px-3 py-2 min-h-[36px]"
+          >
+            📊 Jahresrückblick
+          </button>
+          {(() => {
+            const d = divForLevel(level);
+            return (
+              <div className="flex items-center gap-2 mb-6">
+                <span className="font-mono text-[10px] tracking-[0.25em] uppercase" style={{ color: d.color }}>◆ DIVISION: {d.name}</span>
+                <span className="font-mono text-[9px] text-muted-foreground">Level {level} · nächste Division: {DIVISIONS.find((x) => x.min > level)?.name ?? "MAX"}</span>
+              </div>
+            );
+          })()}
 
           {/* Callsign */}
           <div className="flex flex-wrap items-center gap-2 mb-6">
