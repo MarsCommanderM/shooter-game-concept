@@ -1388,7 +1388,9 @@ export function RealGame() {
         if ([3, 5, 8].includes(player.streak) && victimId > 0 && victimId < 100) {
           const vb = bots.find((x) => x.id === victimId);
           if (vb) { streakCam.t = 0.9; streakCam.pos.copy(vb.group.position); }
+          playVoice(player.streak === 3 ? "streak3" : player.streak === 5 ? "streak5" : "streak8");
         }
+        if (player.kills === 1 && victimId > 0 && victimId < 100) playVoice("firstblood");
         if (player.streak === 3) banter("streak");
         if (player.streak === 3) { player.announce = { text: "RAMPAGE!", t: gameTime }; sAnnounce(); }
         if (player.streak === 5) { player.announce = { text: "UNSTOPPBAR!", t: gameTime }; sAnnounce(); }
@@ -2472,7 +2474,14 @@ export function RealGame() {
     let ptAcc = 0;
     const rec = { frames: [] as number[][], events: [] as { t: number; e: string }[], acc: 0 };
     const recEvent = (e: string) => { rec.events.push({ t: Math.round(gameTime * 10) / 10, e }); };
-    const banterCd: Record<string, number> = {};
+    function playVoice(f: string) {
+  try {
+    const a = new Audio(`/audio/${f}.mp3`);
+    a.volume = 0.85;
+    void a.play().catch(() => {});
+  } catch { /* Preview ohne Audio */ }
+}
+const banterCd: Record<string, number> = {};
     const streakCam = { t: 0, pos: new THREE.Vector3() };
     let timeScale = 1;
     const banter = (ctx: string) => {
