@@ -9,7 +9,7 @@ import { updateDaily, loadCallsign, loadUpgOwned } from "./real-game";
 /* ================================================================== */
 
 type OnlineMode = "ffa" | "tdm" | "hq" | "dom" | "inv";
-type MapSel = "sector" | "stahl" | "orbital";
+type MapSel = "sector" | "stahl" | "orbital" | "garten";
 
 interface Remote {
   id: number;
@@ -296,6 +296,13 @@ export function OnlineGame() {
       addWall(-8, 8, 6, 1.1, 2.5); addWall(8, -8, 6, 1.1, 2.5);
       addWall(0, -16, 8, 1.2, 3); addWall(0, 16, 8, 1.2, 3);
       addWall(-16, 0, 1.2, 8, 3); addWall(16, 0, 1.2, 8, 3);
+    } else {
+      addWall(-10, -10, 2, 2, 3); addWall(10, -10, 2, 2, 3);
+      addWall(-10, 10, 2, 2, 3); addWall(10, 10, 2, 2, 3);
+      addWall(-20, 0, 1.5, 6, 3); addWall(20, 0, 1.5, 6, 3);
+      addWall(0, -20, 6, 1.5, 3); addWall(0, 20, 6, 1.5, 3);
+      addWall(-5, -12, 1.5, 1.5, 2); addWall(5, 12, 1.5, 1.5, 2);
+      addWall(12, -5, 1.5, 1.5, 2); addWall(-12, 5, 1.5, 1.5, 2);
     }
     // Parkour-Cover (klettern/springen/manteln)
     addWall(-8, 8, 2.5, 2.5, 1.1); addWall(8, -8, 2.5, 2.5, 1.1);
@@ -949,7 +956,7 @@ export function OnlineGame() {
                 onClick={() => setMapSel(mm)}
                 className={`font-mono text-[11px] uppercase tracking-wider rounded-sm border px-3 py-2 min-h-[36px] ${mapSel === mm ? "border-primary/70 bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}
               >
-                {mm === "sector" ? "Sektor 7" : mm === "stahl" ? "Stahlwiege" : "Orbitaldock"}
+                {mm === "sector" ? "Sektor 7" : mm === "stahl" ? "Stahlwiege" : mm === "orbital" ? "Orbitaldock" : "Biomass-Garten"}
               </button>
             ))}
           </div>

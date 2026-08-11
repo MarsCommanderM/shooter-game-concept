@@ -300,7 +300,7 @@ const PERKS: { id: PerkId; name: string; desc: string }[] = [
 ];
 
 type VsMode = "tdm" | "ffa";
-type GameKind = VsMode | "m0" | "m1" | "m2" | "m3" | "m4" | "m5" | "m6" | "m7" | "m8" | "m9" | "m10" | "m11" | "m12" | "range";
+type GameKind = VsMode | "m0" | "m1" | "m2" | "m3" | "m4" | "m5" | "m6" | "m7" | "m8" | "m9" | "m10" | "m11" | "m12" | "inv" | "range";
 type ArenaId = "sektor" | "garten" | "stahl" | "orbital";
 
 interface Mission {
@@ -318,6 +318,7 @@ const MISSIONS: Mission[] = [
   { id: "m9", title: "M9 // Spiegelbild", briefing: "KADE hat dein Loadout. Deine Streaks. Deine Waffen. Töte dein Spiegelbild.", type: "kills", target: 999, botCount: 1 },
   { id: "m10", title: "M10 // Der Garten", briefing: "Kein Funk. Keine Gegner. Nur das, was sie hier gepflanzt haben. Sammle die 4 Erinnerungen. Dann geh.", type: "kills", target: 999, botCount: 0 },
   { id: "m11", title: "M11 // Belagerung", briefing: "Der ERNTE-LÄUFER hat einen Schild. Drei Pylone speisen ihn. Spreng sie – dann kill ihn.", type: "kills", target: 999, botCount: 4 },
+  { id: "inv", title: "INVASION // Wellen", briefing: "Endlos-Wellen. EIN Leben. Wie lange hältst du?", type: "kills", target: 999, botCount: 5 },
   { id: "m12", title: "M12 // DER GÄRTNER", briefing: "Finale. Die KI im Nest. Drei Phasen. Die Arena stirbt mit ihr.", type: "kills", target: 999, botCount: 1 },
   { id: "m1", title: "M1 // Erste Ernte", briefing: "Die Biomass testet dich. Eliminiere 8 Eindringlinge – sie kommen immer wieder.", type: "kills", target: 8, botCount: 4 },
   { id: "m2", title: "M2 // Abrissunternehmen", briefing: "Sprenge 6 sprengbare Strukturen in 3 Minuten. Der BRECHER-7 ist dein bester Freund.", type: "destroy", target: 6, timeLimit: 180, botCount: 4 },
@@ -330,6 +331,23 @@ const STAT_KEY = "wirrwarr-stats";
 function loadStats(): { kills: number; headshots: number; melees: number; bestStreak: number } {
   try { return JSON.parse(localStorage.getItem(STAT_KEY) ?? "null") ?? { kills: 0, headshots: 0, melees: 0, bestStreak: 0 }; }
   catch { return { kills: 0, headshots: 0, melees: 0, bestStreak: 0 }; }
+}
+function seasonId(): string { const d = new Date(); return `S${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
+const SEASON_KEY = "wirrwarr-season";
+function loadSeason(): { id: string; xp: number; archived: string[] } {
+  try {
+    const s = JSON.parse(localStorage.getItem(SEASON_KEY) ?? "null");
+    if (s && s.id === seasonId()) return s;
+    const archived = s?.id ? [...(s.archived ?? []), s.id] : (s?.archived ?? []);
+    const fresh = { id: seasonId(), xp: 0, archived };
+    try { localStorage.setItem(SEASON_KEY, JSON.stringify(fresh)); } catch { /* */ }
+    return fresh;
+  } catch { return { id: seasonId(), xp: 0, archived: [] }; }
+}
+function addSeasonXp(n: number) {
+  const s = loadSeason();
+  s.xp += n;
+  try { localStorage.setItem(SEASON_KEY, JSON.stringify(s)); } catch { /* */ }
 }
 const NAME_KEY = "wirrwarr-callsign";
 export function loadCallsign(): string {
@@ -632,6 +650,15 @@ function ReplayView({ data, onExit }: { data: { mode: string; frames: number[][]
         {[1, 2, 4].map((s) => (
           <button key={s} type="button" onClick={() => setSpeed(s)} className={`font-mono text-[10px] px-2 py-1 rounded-sm border min-h-[28px] ${speed === s ? "border-primary text-primary" : "border-border text-muted-foreground"}`}>{s}×</button>
         ))}
+        <button
+          type="button"
+          onClick={() => {
+            try { void navigator.clipboard?.writeText(btoa(unescape(encodeURIComponent(JSON.stringify(data))))); } catch { /* */ }
+          }}
+          className="font-mono text-[10px] px-2 py-1 rounded-sm border border-border text-muted-foreground min-h-[28px]"
+        >
+          ⎘ CODE
+        </button>
         <button type="button" onClick={onExit} className="font-mono text-[10px] px-2 py-1 rounded-sm border border-border text-muted-foreground min-h-[28px]">✕ EXIT</button>
       </div>
       <div className="absolute bottom-[10%] left-4 space-y-0.5 pointer-events-none">
@@ -694,6 +721,7 @@ export function RealGame() {
           if (newLv > oldLv) feedExtraRef.current.push(`⬆ LEVEL UP! Level ${newLv} – neue Unlocks im Menü!`);
           return np;
         });
+        addSeasonXp(xpGain);
       }, quality)
     );
   };
@@ -706,6 +734,7 @@ export function RealGame() {
   ) => {
     const mission = MISSIONS.find((m) => m.id === mode) ?? null;
     const xpMul = weeklyEvent().id === "2xp" ? 2 : 1;
+    const invWave = { n: 1 };
     const diffMul = DIFFS.find((d) => d.id === loadDiff())?.mul ?? 1;
     const breachMul = weeklyEvent().id === "breach" ? 2 : 1;
     const mount = mountRef.current;
@@ -2600,6 +2629,28 @@ export function RealGame() {
           setScreen("end");
         }
       }
+      // INVASION: Wellen + Hardcore
+      if (mode === "inv") {
+        if (bots.every((b) => !b.alive)) {
+          invWave.n++;
+          for (const b of bots) {
+            const a2 = Math.random() * Math.PI * 2;
+            b.group.position.set(Math.cos(a2) * 36, 0, Math.sin(a2) * 36);
+            b.hp = Math.round(100 * (1 + 0.15 * (invWave.n - 1)));
+            b.alive = true;
+            b.group.visible = true;
+          }
+          pushFeed(`🌊 WELLE ${invWave.n} rollt an!`);
+          sRadio();
+        }
+        if (player.hp <= 0 && !ended) {
+          fillEnd();
+          ended = true;
+          addXp((player.kills * 15 + invWave.n * 50) * xpMul);
+          setWinner(`INVASION ENDE // Welle ${invWave.n} · ${player.kills} Kills`);
+          setScreen("end");
+        }
+      }
       const theBoss = bots.find((b) => b.isBoss);
       if (theBoss && !theBoss.alive && !ended) {
         fillEnd();
@@ -2716,7 +2767,9 @@ export function RealGame() {
           kills: player.kills,
           m8Offer: mode === "m8" && !m8ChoiceDone ? m8OfferState : null,
           marenHp: mode === "m6" ? Math.max(0, Math.round(maren.hp)) : -1,
-          objective: mode === "m8"
+          objective: mode === "inv"
+            ? `🌊 WELLE ${invWave.n} · Kills ${player.kills} · EIN LEBEN`
+            : mode === "m8"
             ? `🔥 LABOR-BRAND · ⏱ ${Math.max(0, Math.ceil(player.rangeT))} s · ${m8ChoiceDone ? "Raus zur Extraktion (Norden)!" : "Kapsel (links) ODER Datenkern (rechts)?"}`
             : mode === "m6"
               ? `👩‍🔬 Eskortiere DR. MAREN zur Extraktion (Norden) · F = Befehl · Maren: ${Math.max(0, Math.round(maren.hp))} %`
@@ -3053,6 +3106,21 @@ export function RealGame() {
             </div>
           </div>
 
+          {/* Season */}
+          {(() => {
+            const s = loadSeason();
+            return (
+              <div className="flex flex-wrap items-center gap-3 mb-6">
+                <p className="font-mono text-[10px] tracking-[0.25em] uppercase text-accent glow-neon-sm">🏅 SEASON {s.id}</p>
+                <p className="font-mono text-[11px] text-foreground">Season-XP: <span className="text-accent">{s.xp}</span></p>
+                {s.archived.length > 0 && (
+                  <span className="font-mono text-[9px] text-accent border border-accent/50 bg-accent/10 rounded-sm px-2 py-1">🎖 VETERAN ×{s.archived.length}</span>
+                )}
+                <span className="font-mono text-[9px] text-muted-foreground">Reset monatlich · XP bleibt im Profil</span>
+              </div>
+            );
+          })()}
+
           {/* Daily Ops + Weekly Event */}
           {(() => {
             const d = loadDaily();
@@ -3280,6 +3348,21 @@ export function RealGame() {
             >
               <p className="font-bold text-foreground mb-1">Frei für alle</p>
               <p className="font-mono text-[11px] text-muted-foreground">6 Kämpfer – 8 Kills.</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const code = window.prompt("Replay-Code einfügen:");
+                if (!code) return;
+                try {
+                  const r = JSON.parse(decodeURIComponent(escape(atob(code.trim()))));
+                  if (r?.frames?.length) { setReplayData(r); setScreen("replay"); }
+                } catch { window.alert("Code ungültig."); }
+              }}
+              className="text-left border border-border bg-card rounded-sm p-4 hover:border-primary/60 transition-all min-h-[44px]"
+            >
+              <p className="font-bold text-foreground mb-1">📥 Replay-Code</p>
+              <p className="font-mono text-[11px] text-muted-foreground">Geteilten Code einfügen & ansehen.</p>
             </button>
             {typeof window !== "undefined" && localStorage.getItem("wirrwarr-lastreplay") && (
               <button
