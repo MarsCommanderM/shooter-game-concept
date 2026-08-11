@@ -1,5 +1,5 @@
 /* WIRRWARR PWA Service Worker: Seiten Network-First, Assets Cache-First mit Update */
-const CACHE = "wirrwarr-v2";
+const CACHE = "wirrwarr-v3";
 
 self.addEventListener("install", () => {
   self.skipWaiting();
