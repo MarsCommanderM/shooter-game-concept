@@ -9,6 +9,12 @@ const nextConfig = {
   turbopack: {
     root: process.cwd(),
   },
+  async rewrites() {
+    return [
+      { source: "/nova", destination: "/nova/index.html" },
+      { source: "/nova/", destination: "/nova/index.html" },
+    ];
+  },
 }
 
 export default nextConfig

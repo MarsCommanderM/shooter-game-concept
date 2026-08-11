@@ -1,10 +1,24 @@
 //! NOVA-Netcode (Bauplan §7–§9): Client Prediction + Server-Reconciliation
-//! + Snapshot-Interpolation für Remote-Player.
+//! + Snapshot-Interpolation. Transport austauschbar:
+//! nativ = UDP, Browser/WASM = WebSocket (Port = UDP-Port + 1).
 use std::collections::VecDeque;
-use std::net::UdpSocket;
 use std::time::{Duration, Instant};
 
 use nova_core::protocol::{ClientMsg, PlayerState, ServerMsg};
+
+#[cfg(not(target_arch = "wasm32"))]
+use std::net::UdpSocket;
+
+#[cfg(target_arch = "wasm32")]
+use std::cell::RefCell;
+#[cfg(target_arch = "wasm32")]
+use std::rc::Rc;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsCast;
+#[cfg(target_arch = "wasm32")]
+use web_sys::{MessageEvent, WebSocket};
 
 #[derive(Clone)]
 pub struct PendingInput {
@@ -16,7 +30,14 @@ pub struct PendingInput {
 }
 
 pub struct Net {
+    #[cfg(not(target_arch = "wasm32"))]
     sock: UdpSocket,
+    #[cfg(target_arch = "wasm32")]
+    ws: WebSocket,
+    #[cfg(target_arch = "wasm32")]
+    inbox: Rc<RefCell<VecDeque<String>>>,
+    #[cfg(target_arch = "wasm32")]
+    _onmsg: Closure<dyn FnMut(MessageEvent)>,
     pub id: u32,
     pub connected: bool,
     pending: VecDeque<PendingInput>,
@@ -24,10 +45,11 @@ pub struct Net {
 }
 
 impl Net {
-    pub fn connect(addr: &str) -> std::io::Result<Self> {
-        let sock = UdpSocket::bind("0.0.0.0:0")?;
-        sock.set_nonblocking(true)?;
-        sock.connect(addr)?;
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn connect(addr: &str) -> Result<Self, String> {
+        let sock = UdpSocket::bind("0.0.0.0:0").map_err(|e| e.to_string())?;
+        sock.set_nonblocking(true).map_err(|e| e.to_string())?;
+        sock.connect(addr).map_err(|e| e.to_string())?;
         let n = Net {
             sock,
             id: 0,
@@ -39,9 +61,51 @@ impl Net {
         Ok(n)
     }
 
+    #[cfg(target_arch = "wasm32")]
+    pub fn connect(addr: &str) -> Result<Self, String> {
+        let (host, p) = addr.rsplit_once(':').ok_or("Adresse ohne Port")?;
+        let wport: u32 = p.parse::<u32>().map_err(|_| "Port ungültig")? + 1;
+        let url = format!("ws://{}:{}", host, wport);
+        let ws = WebSocket::new(&url).map_err(|_| "WebSocket fehlgeschlagen")?;
+        let inbox: Rc<RefCell<VecDeque<String>>> = Rc::new(RefCell::new(VecDeque::new()));
+        let inbox2 = inbox.clone();
+        let onmsg = Closure::wrap(Box::new(move |e: MessageEvent| {
+            if let Some(txt) = e.data().as_string() {
+                inbox2.borrow_mut().push_back(txt);
+            }
+        }) as Box<dyn FnMut(MessageEvent)>);
+        ws.set_onmessage(Some(onmsg.as_ref().unchecked_ref()));
+        // Join erst nach connect schicken
+        let ws2 = ws.clone();
+        let onopen = Closure::wrap(Box::new(move |_| {
+            if let Ok(s) = serde_json::to_string(&ClientMsg::Join { name: "NOVA-PILOT".into() }) {
+                let _ = ws2.send_with_str(&s);
+            }
+        }) as Box<dyn FnMut(MessageEvent)>);
+        ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
+        onopen.forget(); // lebt solange die Verbindung
+        Ok(Net {
+            ws,
+            inbox,
+            _onmsg: onmsg,
+            id: 0,
+            connected: false,
+            pending: VecDeque::new(),
+            snaps: VecDeque::new(),
+        })
+    }
+
     fn send(&self, m: &ClientMsg) {
-        if let Ok(s) = serde_json::to_string(m) {
+        let Ok(s) = serde_json::to_string(m) else { return };
+        #[cfg(not(target_arch = "wasm32"))]
+        {
             let _ = self.sock.send(s.as_bytes());
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            if self.ws.ready_state() == WebSocket::OPEN {
+                let _ = self.ws.send_with_str(&s);
+            }
         }
     }
 
@@ -54,24 +118,36 @@ impl Net {
         self.send(&msg);
     }
 
+    fn recv_next(&mut self) -> Option<ServerMsg> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let mut buf = [0u8; 8192];
+            let n = self.sock.recv(&mut buf).ok()?;
+            return serde_json::from_slice(&buf[..n]).ok();
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let t = self.inbox.borrow_mut().pop_front()?;
+            return serde_json::from_str(&t).ok();
+        }
+    }
+
     /// Socket pollen; liefert ggf. Reconciliation-Korrektur:
-    /// (autoritative Server-Position, Liste der noch offenen Inputs zum Re-Simulieren)
+    /// (autoritative Server-Position, offene Inputs zum Re-Simulieren)
     pub fn poll(&mut self) -> Option<([f32; 3], Vec<PendingInput>)> {
-        let mut buf = [0u8; 8192];
         let mut correction = None;
-        while let Ok(n) = self.sock.recv(&mut buf) {
-            match serde_json::from_slice(&buf[..n]) {
-                Ok(ServerMsg::Welcome { id, .. }) => {
+        while let Some(msg) = self.recv_next() {
+            match msg {
+                ServerMsg::Welcome { id, .. } => {
                     self.id = id;
                     self.connected = true;
                 }
-                Ok(ServerMsg::Snapshot { players, .. }) => {
+                ServerMsg::Snapshot { players, .. } => {
                     self.snaps.push_back((Instant::now(), players));
                     if self.snaps.len() > 90 {
                         self.snaps.pop_front();
                     }
                 }
-                Err(_) => continue,
             }
         }
         // Reconciliation gegen freshest Snapshot (lastProcessedInput-Prinzip)
@@ -97,7 +173,7 @@ impl Net {
     }
 
     /// Snapshot-Interpolation (§9): Render ~100 ms in der Vergangenheit,
-    /// lerp zwischen den beiden Snapshots, die diesen Zeitpunkt umspannen.
+    /// lerp zwischen den Snapshots, die den Zeitpunkt umspannen.
     pub fn remotes(&self, delay: Duration) -> Vec<(u32, [f32; 3], f32)> {
         let t = Instant::now().checked_sub(delay).unwrap_or_else(Instant::now);
         let snaps: Vec<&(Instant, Vec<PlayerState>)> = self.snaps.iter().collect();

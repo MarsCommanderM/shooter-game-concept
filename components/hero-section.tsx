@@ -82,6 +82,19 @@ export function HeroSection() {
           </span>
         </p>
 
+        {/* NOVA Web-Client CTA */}
+        <div className="mb-8">
+          <a
+            href="/nova/"
+            className="inline-block font-mono text-sm tracking-[0.2em] uppercase text-primary border-2 border-primary/60 bg-primary/10 rounded-sm px-8 py-3.5 active:bg-primary/30 box-glow-neon"
+          >
+            🎮 Jetzt im Browser zocken
+          </a>
+          <p className="font-mono text-[10px] text-muted-foreground tracking-wider mt-2 uppercase">
+            NOVA-Engine · WebGL2 · Touch-Steuerung · gegen den Live-Server
+          </p>
+        </div>
+
         {/* USP Badge */}
         <div
           className={`inline-flex items-center gap-3 border border-primary/30 bg-card/50 backdrop-blur-sm px-6 py-3 rounded-sm box-glow-neon transition-all duration-1000 delay-700 ${

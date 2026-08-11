@@ -50,6 +50,12 @@ export function SiteNav() {
 
         {/* Desktop Nav */}
         <div className="hidden lg:flex items-center gap-4">
+          <a
+            href="/nova/"
+            className="font-mono text-[11px] tracking-wider uppercase text-primary border border-primary/50 bg-primary/10 rounded-sm px-2.5 py-1.5 hover:bg-primary/20 transition-colors"
+          >
+            🎮 Web-Client
+          </a>
           {navLinks.map((link) => (
             <a
               key={link.href}

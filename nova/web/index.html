@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>SAVE THE WORLD // NOVA-Web-Client</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #050705; overflow: hidden; overscroll-behavior: none; height: 100%; }
+  #hud {
+    position: fixed; top: 12px; left: 12px; z-index: 10; color: #22ff55;
+    font: 12px/1.5 monospace; letter-spacing: 0.12em; text-transform: uppercase;
+    background: rgba(0,0,0,0.55); border: 1px solid rgba(34,255,85,0.35);
+    padding: 8px 12px; pointer-events: none; white-space: pre-line;
+  }
+  #hint {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: #22ff55; font: 14px monospace; letter-spacing: 0.2em; text-transform: uppercase;
+    pointer-events: none; z-index: 9; text-align: center;
+  }
+  canvas { display: block; touch-action: none; -webkit-user-select: none; user-select: none; }
+</style>
+</head>
+<body>
+<div id="hud">NOVA // lade…</div>
+<div id="hint">TOUCH: LINKS = STICK · RECHTS = UMSICHT<br/>STICK VOLL = SPRINT · PC: KLICK = MAUS-LOCK, WASD</div>
+<script type="module">
+  const hud = document.getElementById('hud');
+  const hint = document.getElementById('hint');
+  const setHud = (t) => { hud.textContent = t; };
+  setHud('NOVA // WASM wird geladen…');
+  try {
+    const init = (await import('./nova-client.js')).default;
+    const wasm = await fetch('./nova-client_bg.wasm');
+    const buf = await wasm.arrayBuffer();
+    setHud('NOVA // WebGPU/WebGL2-Start…\nServer: ' + location.hostname + ':27015 (WS ' + (Number(location.port || 80))) + ')';
+    await init(buf);
+    setTimeout(() => { hint.style.display = 'none'; }, 6000);
+    setHud('SAVE THE WORLD // NOVA\nServer: ' + location.hostname + ' UDP27015/WS27016');
+  } catch (e) {
+    setHud('FEHLER: ' + e);
+    console.error(e);
+  }
+</script>
+</body>
+</html>

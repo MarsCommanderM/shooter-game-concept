@@ -43,7 +43,11 @@ cargo build -p nova-server --release
 3. ✅ Snapshot-Interpolation für Remote-Player (100 ms Render-Delay, lerp zwischen T0/T1,
       Remote-Player werden als farbige Capsule-Boxes interpoliert gerendert)
 4. ⏭ Lag-Compensation (Rewind für Hits)
-5. ⏭ binäres Protokoll statt JSON (Bandbreite) + Web-Bridge (WebSocket/WebTransport) für WASM-Build
+5. ⏭ binäres Protokoll statt JSON (Bandbreite)
+6. ✅ **Web-Bridge**: Server hört zusätzlich WebSocket auf UDP-Port+1 (27016),
+   derselbe Protokoll-Stack; Client-Transport cfg-getrennt (nativ UDP / WASM WebSocket).
+   Extern verifiziert gegen Contabo-VPS: UDP + WS parallel, je 60 Hz.
+   ⏭ als Nächstes: WASM-Client + HTML-Shell auf die Domain deployen (wgpu webgl-Feature für Safari).
 
 ## Qualitätsprofile (Renderer skaliert, Spiel bleibt gleich)
 WEB_LOW/WEB_HIGH · MOBILE_LOW/MOBILE_HIGH · PC_LOW/HIGH/ULTRA —

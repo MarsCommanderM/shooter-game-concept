@@ -1,6 +1,8 @@
 //! NOVA-Client (Milestone 01): winit-Fenster + wgpu-Renderer (WGSL, PBR, Shadows)
 //! + FPS-Controller + glTF-Loading. Renderer-Backend = wgpu → später WASM/WebGPU-fähig.
+use std::cell::RefCell;
 use std::collections::HashSet;
+use std::rc::Rc;
 use std::time::Duration;
 
 mod net;
@@ -12,7 +14,7 @@ use glam::{Mat4, Vec3, Vec4};
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
 use winit::event::{DeviceEvent, ElementState, Event, MouseButton, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoop};
+use winit::event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use std::sync::Arc;
 
@@ -41,6 +43,16 @@ const REMOTE_COLORS: [[f32; 4]; 6] = [
     [1.0, 0.33, 0.27, 1.0], [1.0, 0.8, 0.2, 1.0], [0.2, 0.8, 1.0, 1.0],
     [1.0, 0.42, 0.8, 1.0], [0.6, 1.0, 0.2, 1.0], [0.7, 0.5, 1.0, 1.0],
 ];
+
+#[derive(Default)]
+struct TouchState {
+    joy_id: Option<i32>,
+    joy_ox: f32, joy_oy: f32,
+    joy_x: f32, joy_y: f32,   // normiert -1..1 (y hoch = positiv)
+    look_id: Option<i32>,
+    look_lx: f32, look_ly: f32,
+    look_acc_x: f32, look_acc_y: f32, // pro Frame akkumuliert
+}
 
 #[derive(Clone, Copy)]
 struct Material {
@@ -189,6 +201,7 @@ struct State {
     net: Option<Net>,
     seq: u32,
     unit_cube: usize,
+    touch: Rc<RefCell<TouchState>>,
 }
 
 fn ground_mesh_data() -> (Vec<f32>, Vec<u32>, Material) {
@@ -534,6 +547,7 @@ impl State {
             net: None,
             seq: 0,
             unit_cube,
+            touch: Rc::new(RefCell::new(TouchState::default())),
         }
     }
 
@@ -565,9 +579,27 @@ impl State {
         let (sy, cy) = (self.yaw.sin(), self.yaw.cos());
         let fwd = Vec3::new(-sy, 0.0, -cy);
         let right = Vec3::new(cy, 0.0, -sy);
-        let sprint = self.keys.contains(&KeyCode::ShiftLeft);
-        let wf = (self.keys.contains(&KeyCode::KeyW) as i32 as f32) - (self.keys.contains(&KeyCode::KeyS) as i32 as f32);
-        let wr = (self.keys.contains(&KeyCode::KeyD) as i32 as f32) - (self.keys.contains(&KeyCode::KeyA) as i32 as f32);
+        // Touch: Look-Akku anwenden + Joystick-Wish
+        let mut wf = (self.keys.contains(&KeyCode::KeyW) as i32 as f32) - (self.keys.contains(&KeyCode::KeyS) as i32 as f32);
+        let mut wr = (self.keys.contains(&KeyCode::KeyD) as i32 as f32) - (self.keys.contains(&KeyCode::KeyA) as i32 as f32);
+        let mut sprint = self.keys.contains(&KeyCode::ShiftLeft);
+        {
+            let mut t = self.touch.borrow_mut();
+            if t.look_acc_x != 0.0 || t.look_acc_y != 0.0 {
+                self.yaw -= t.look_acc_x * 0.0046;
+                self.pitch = (self.pitch - t.look_acc_y * 0.0042).clamp(-1.4, 1.4);
+                t.look_acc_x = 0.0;
+                t.look_acc_y = 0.0;
+            }
+            if t.joy_id.is_some() {
+                let mag = (t.joy_x * t.joy_x + t.joy_y * t.joy_y).sqrt();
+                if mag > 0.05 {
+                    wr = t.joy_x;
+                    wf = t.joy_y;
+                    if mag > 0.9 { sprint = true; } // Voll durchdrücken = Sprint
+                }
+            }
+        }
         let mut wish = Vec3::ZERO;
         if wf != 0.0 { wish += fwd * wf; }
         if wr != 0.0 { wish += right * wr; }
@@ -719,6 +751,49 @@ impl State {
     }
 }
 
+fn handle(state: &mut State, event: Event<()>, elwt: &EventLoopWindowTarget<()>) {
+    elwt.set_control_flow(ControlFlow::Poll);
+    match event {
+        Event::WindowEvent { event, .. } => match event {
+            WindowEvent::CloseRequested => elwt.exit(),
+            WindowEvent::Resized(sz) => state.resize(sz),
+            WindowEvent::KeyboardInput { event: k, .. } => {
+                if let PhysicalKey::Code(code) = k.physical_key {
+                    if k.state == ElementState::Pressed {
+                        if code == KeyCode::Escape { elwt.exit(); }
+                        state.keys.insert(code);
+                    } else {
+                        state.keys.remove(&code);
+                    }
+                }
+            }
+            WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => {
+                state.grabbed = !state.grabbed;
+                let mode = if state.grabbed { CursorGrabMode::Locked } else { CursorGrabMode::None };
+                let _ = state.window.set_cursor_grab(mode);
+            }
+            _ => {}
+        },
+        Event::DeviceEvent { event: DeviceEvent::MouseMotion { delta }, .. } => {
+            if state.grabbed {
+                state.yaw -= delta.0 as f32 * 0.0022;
+                state.pitch = (state.pitch - delta.1 as f32 * 0.0022).clamp(-1.4, 1.4);
+            }
+        }
+        Event::AboutToWait => {
+            let remotes = state
+                .net
+                .as_ref()
+                .map(|n| n.remotes(Duration::from_millis(100)))
+                .unwrap_or_default();
+            state.update();
+            state.render(&remotes);
+        }
+        _ => {}
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn main() {
     let event_loop = EventLoop::new().expect("EventLoop");
     let window = Arc::new(
@@ -728,7 +803,6 @@ fn main() {
             .build(&event_loop)
             .expect("Fenster"),
     );
-
     let mut state = pollster::block_on(State::new(window));
 
     let server_addr = std::env::args()
@@ -747,48 +821,119 @@ fn main() {
             None
         }
     };
+    event_loop.run(move |event, elwt| handle(&mut state, event, elwt)).expect("run");
+}
 
-    event_loop
-        .run(move |event, elwt| {
-            elwt.set_control_flow(ControlFlow::Poll);
-            match event {
-                Event::WindowEvent { event, .. } => match event {
-                    WindowEvent::CloseRequested => elwt.exit(),
-                    WindowEvent::Resized(sz) => state.resize(sz),
-                    WindowEvent::KeyboardInput { event: k, .. } => {
-                        if let PhysicalKey::Code(code) = k.physical_key {
-                            if k.state == ElementState::Pressed {
-                                if code == KeyCode::Escape { elwt.exit(); }
-                                state.keys.insert(code);
-                            } else {
-                                state.keys.remove(&code);
-                            }
-                        }
-                    }
-                    WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => {
-                        state.grabbed = !state.grabbed;
-                        let mode = if state.grabbed { CursorGrabMode::Locked } else { CursorGrabMode::None };
-                        let _ = state.window.set_cursor_grab(mode);
-                    }
-                    _ => {}
-                },
-                Event::DeviceEvent { event: DeviceEvent::MouseMotion { delta }, .. } => {
-                    if state.grabbed {
-                        state.yaw -= delta.0 as f32 * 0.0022;
-                        state.pitch = (state.pitch - delta.1 as f32 * 0.0022).clamp(-1.4, 1.4);
+#[cfg(target_arch = "wasm32")]
+fn main() {
+    wasm_bindgen_futures::spawn_local(async_main());
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn async_main() {
+    use winit::platform::web::WindowExtWebSys;
+    let event_loop = EventLoop::new().expect("EventLoop");
+    let window = Arc::new(
+        WindowBuilder::new()
+            .with_title("SAVE THE WORLD // NOVA")
+            .build(&event_loop)
+            .expect("window"),
+    );
+    if let Some(canvas) = window.canvas() {
+        let st = canvas.style();
+        let _ = st.set_property("position", "fixed");
+        let _ = st.set_property("inset", "0");
+        let _ = st.set_property("width", "100%");
+        let _ = st.set_property("height", "100%");
+        if let Some(body) = web_sys::window().and_then(|w| w.document()).and_then(|d| d.body()) {
+            let _ = body.append_child(&canvas);
+        }
+    }
+    let mut state = State::new(window).await;
+
+    // ---- Touch-Controls (WASM): links Joystick, rechts Look ----
+    {
+        use wasm_bindgen::prelude::*;
+        use wasm_bindgen::JsCast;
+        let touch = state.touch.clone();
+        let win = web_sys::window().unwrap();
+        let doc = win.document().unwrap();
+        let target: &web_sys::EventTarget = doc.as_ref();
+
+        let t2 = touch.clone();
+        let on_start = Closure::wrap(Box::new(move |e: web_sys::TouchEvent| {
+            e.prevent_default();
+            let vw = web_sys::window().map(|w| w.inner_width().map(|v| v.as_f64().unwrap_or(800.0)).unwrap_or(800.0)).unwrap_or(800.0) as f32;
+            let mut t = t2.borrow_mut();
+            let cl = e.changed_touches();
+            for i in 0..cl.length() {
+                if let Some(tc) = cl.get(i) {
+                    let x = tc.client_x() as f32;
+                    let y = tc.client_y() as f32;
+                    if x < vw / 2.0 && t.joy_id.is_none() {
+                        t.joy_id = Some(tc.identifier());
+                        t.joy_ox = x; t.joy_oy = y; t.joy_x = 0.0; t.joy_y = 0.0;
+                    } else if t.look_id.is_none() {
+                        t.look_id = Some(tc.identifier());
+                        t.look_lx = x; t.look_ly = y;
                     }
                 }
-                Event::AboutToWait => {
-                    let remotes = state
-                        .net
-                        .as_ref()
-                        .map(|n| n.remotes(Duration::from_millis(100)))
-                        .unwrap_or_default();
-                    state.update();
-                    state.render(&remotes);
-                }
-                _ => {}
             }
-        })
+        }) as Box<dyn FnMut(web_sys::TouchEvent)>);
+        target.add_event_listener_with_callback("touchstart", on_start.as_ref().unchecked_ref()).unwrap();
+        on_start.forget();
+
+        let t3 = touch.clone();
+        let on_move = Closure::wrap(Box::new(move |e: web_sys::TouchEvent| {
+            e.prevent_default();
+            let mut t = t3.borrow_mut();
+            let cl = e.changed_touches();
+            for i in 0..cl.length() {
+                if let Some(tc) = cl.get(i) {
+                    let x = tc.client_x() as f32;
+                    let y = tc.client_y() as f32;
+                    if t.joy_id == Some(tc.identifier()) {
+                        let r = 60.0f32;
+                        let mut dx = x - t.joy_ox;
+                        let mut dy = y - t.joy_oy;
+                        let len = (dx * dx + dy * dy).sqrt().max(1e-3);
+                        let clamped = len.min(r);
+                        dx = dx / len * clamped;
+                        dy = dy / len * clamped;
+                        t.joy_x = dx / r;
+                        t.joy_y = -dy / r; // hoch = vor
+                    } else if t.look_id == Some(tc.identifier()) {
+                        t.look_acc_x += x - t.look_lx;
+                        t.look_acc_y += y - t.look_ly;
+                        t.look_lx = x; t.look_ly = y;
+                    }
+                }
+            }
+        }) as Box<dyn FnMut(web_sys::TouchEvent)>);
+        target.add_event_listener_with_callback("touchmove", on_move.as_ref().unchecked_ref()).unwrap();
+        on_move.forget();
+
+        let t4 = touch;
+        let on_end = Closure::wrap(Box::new(move |e: web_sys::TouchEvent| {
+            let mut t = t4.borrow_mut();
+            let cl = e.changed_touches();
+            for i in 0..cl.length() {
+                if let Some(tc) = cl.get(i) {
+                    if t.joy_id == Some(tc.identifier()) { t.joy_id = None; t.joy_x = 0.0; t.joy_y = 0.0; }
+                    if t.look_id == Some(tc.identifier()) { t.look_id = None; }
+                }
+            }
+        }) as Box<dyn FnMut(web_sys::TouchEvent)>);
+        target.add_event_listener_with_callback("touchend", on_end.as_ref().unchecked_ref()).unwrap();
+        target.add_event_listener_with_callback("touchcancel", on_end.as_ref().unchecked_ref()).unwrap();
+        on_end.forget();
+    }
+
+    let host = web_sys::window()
+        .and_then(|w| w.location().hostname().ok())
+        .unwrap_or_else(|| "169.58.152.88".into());
+    state.net = Net::connect(&format!("{}:27015", host)).ok();
+    event_loop
+        .run(move |event, elwt| handle(&mut state, event, elwt))
         .expect("run");
 }
