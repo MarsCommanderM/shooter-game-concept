@@ -374,7 +374,7 @@ const PERKS: { id: PerkId; name: string; desc: string }[] = [
 ];
 
 type VsMode = "tdm" | "ffa";
-type GameKind = VsMode | "m0" | "m1" | "m2" | "m3" | "m4" | "m5" | "m6" | "m7" | "m8" | "m9" | "m10" | "m11" | "m12" | "m13" | "m14" | "m15" | "inv" | "range" | "show";
+type GameKind = VsMode | "m0" | "m1" | "m2" | "m3" | "m4" | "m5" | "m6" | "m7" | "m8" | "m9" | "m10" | "m11" | "m12" | "m13" | "m14" | "m15" | "inv" | "range" | "show" | "shadow";
 type ArenaId = "sektor" | "garten" | "stahl" | "orbital";
 
 interface Mission {
@@ -395,6 +395,7 @@ const MISSIONS: Mission[] = [
   { id: "m13", title: "M13 // Der Aufstieg", briefing: "Die Koordinate ist eine Frequenz. Drei Relais speisen sie. Hack sie alle – leise.", type: "destroy", target: 3, botCount: 5 },
   { id: "m14", title: "M14 // Direktor Hale", briefing: "Der Mann, der die Saat bestellte. Phasenpanzerung. Granaten. Ego. Beende ihn.", type: "kills", target: 999, botCount: 4 },
   { id: "m15", title: "M15 // Die Antwort", briefing: "Alle Nester haben dich gehört. Halte 120 Sekunden. Dann gehört die Antwort dir.", type: "kills", target: 999, botCount: 6 },
+  { id: "shadow", title: "SHADOW // Dein Replay", briefing: "Dein letztes Replay als Gegner. Kämpf gegen dich selbst. 3 Kills.", type: "kills", target: 3, botCount: 1 },
   { id: "show", title: "ARENA // Bot-Turnier", briefing: "3v3-Bots. Du bist das Auge. Beobachte, lerne, wette mit dir selbst.", type: "kills", target: 999, botCount: 6 },
   { id: "inv", title: "INVASION // Wellen", briefing: "Endlos-Wellen. EIN Leben. Wie lange hältst du?", type: "kills", target: 999, botCount: 5 },
   { id: "m12", title: "M12 // DER GÄRTNER", briefing: "Finale. Die KI im Nest. Drei Phasen. Die Arena stirbt mit ihr.", type: "kills", target: 999, botCount: 1 },
@@ -802,6 +803,12 @@ export function RealGame() {
   const [introDone, setIntroDone] = useState(() => { try { return !!localStorage.getItem("wirrwarr-intro"); } catch { return false; } });
   const [actCard, setActCard] = useState<string | null>(null);
   const [yearOpen, setYearOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [edCells, setEdCells] = useState<number[]>(() => Array(400).fill(0));
+  const [edTool, setEdTool] = useState<number>(1);
+  const [edSa, setEdSa] = useState<[number, number]>([2, 10]);
+  const [edSb, setEdSb] = useState<[number, number]>([17, 10]);
+  const [customMap, setCustomMap] = useState<{ cells: number[]; sa: [number, number]; sb: [number, number] } | null>(null);
   const [introBeat, setIntroBeat] = useState(0);
   const [doneMissions, setDoneMissions] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem(STORY_KEY) ?? "null")?.done ?? []; } catch { return []; } });
   const [failed, setFailed] = useState(false);
@@ -821,7 +828,7 @@ export function RealGame() {
 
   useEffect(() => () => apiRef.current?.dispose(), []);
 
-  const start = (kind: GameKind) => {
+  const start = (kind: GameKind, custom?: { cells: number[]; sa: [number, number]; sb: [number, number] } | null) => {
     setFailed(false);
     const acts: [GameKind[], string][] = [
       [["m0", "m1", "m2", "m3", "m4", "m5"], "AKT I // ERNTE"],
@@ -851,7 +858,7 @@ export function RealGame() {
           return np;
         });
         addSeasonXp(xpGain);
-      }, quality)
+      }, quality, custom ?? customMap)
     );
   };
 
@@ -859,7 +866,8 @@ export function RealGame() {
     mode: GameKind, arenaId: ArenaId, perk: PerkId,
     loadout: LoadoutData, level: number,
     addXp: (n: number, msg?: string) => void,
-    quality: "low" | "med" | "high" = "med"
+    quality: "low" | "med" | "high" = "med",
+    custom?: { cells: number[]; sa: [number, number]; sb: [number, number] } | null
   ) => {
     const mission = MISSIONS.find((m) => m.id === mode) ?? null;
     const xpMul = weeklyEvent().id === "2xp" ? 2 : 1;
@@ -978,6 +986,15 @@ export function RealGame() {
       scene.add(mesh);
       walls.push({ mesh, hw: w / 2, hd: d / 2, hh: h / 2, top: y + h / 2, hp, maxHp: hp, destructible, active: true });
     };
+    if (custom) {
+      for (let i = 0; i < custom.cells.length; i++) {
+        const v = custom.cells[i];
+        if (!v) continue;
+        const cx = (i % 20) * 2 - 20 + 1;
+        const cz = Math.floor(i / 20) * 2 - 20 + 1;
+        addWall(cx, 1.5, cz, 2, 3, 2, v === 2);
+      }
+    }
     // Außenwände (massiv)
     addWall(0, 2, -ARENA, ARENA * 2, 4, 1, false);
     addWall(0, 2, ARENA, ARENA * 2, 4, 1, false);
@@ -1166,6 +1183,12 @@ export function RealGame() {
           b.name = `SPORE-${i}`;
         }
       }
+      if (mode === "shadow" && bots[0]) {
+        const sb = bots[0];
+        (sb.body.material as THREE.MeshStandardMaterial).color.setHex(0xffffff);
+        (sb.body.material as THREE.MeshStandardMaterial).emissive.setHex(0x888888);
+        sb.name = "DEIN SHADOW";
+      }
       if (i === 0 && bossModes[mode]) {
         const b = bots[0];
         b.isBoss = true;
@@ -1293,6 +1316,9 @@ export function RealGame() {
       spawnShield: 2, killcam: null as { botId: number; t: number } | null,
       rangeT: 60, rangeHits: 0, shots: 0,
     };
+    if (custom) {
+      player.x = custom.sa[0] * 2 - 20 + 1; player.z = custom.sa[1] * 2 - 20 + 1;
+    }
     if (mode === "m0" || mode === "show") player.noGun = true;
     if (mode === "m8") player.rangeT = 150;
     if (mode === "m15") player.rangeT = 120;
@@ -1973,7 +1999,33 @@ export function RealGame() {
       return hit.length === 0;
     };
 
+    const shadowFrames = mode === "shadow" ? (() => {
+      try {
+        const r = JSON.parse(localStorage.getItem("wirrwarr-lastreplay") ?? "null");
+        return (r?.frames as number[][]) ?? null;
+      } catch { return null; }
+    })() : null;
     const botTick = (b: BotEnt, dt: number) => {
+      if (mode === "shadow" && shadowFrames && shadowFrames.length > 1) {
+        const tmax = shadowFrames[shadowFrames.length - 1][0];
+        const t = gameTime % tmax;
+        let i = 0;
+        while (i < shadowFrames.length - 2 && shadowFrames[i + 1][0] <= t) i++;
+        const a = shadowFrames[i], c = shadowFrames[i + 1];
+        const f = c[0] > a[0] ? Math.min(1, (t - a[0]) / (c[0] - a[0])) : 0;
+        b.group.position.x = a[1] + (c[1] - a[1]) * f;
+        b.group.position.z = a[2] + (c[2] - a[2]) * f;
+        b.group.visible = b.alive;
+        b.cd -= dt;
+        const d = Math.hypot(player.x - b.group.position.x, player.z - b.group.position.z);
+        if (b.alive && b.cd <= 0 && d < 14 && player.hp > 0 && losClear(b.group.position, new THREE.Vector3(player.x, player.y, player.z))) {
+          b.cd = 1.5;
+          player.hp -= 12;
+          sShot("dorn");
+          if (player.hp <= 0) kill(b.id, 0);
+        }
+        return;
+      }
       if (mode === "range") {
         // Aim-Range: Ziele stehen, sterben, respawnen woanders
         if (!b.alive && gameTime >= b.respawnAt) {
@@ -3129,6 +3181,54 @@ export function RealGame() {
       </div>
     );
   }
+  if (editorOpen) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center px-4 py-8">
+        <div className="max-w-2xl w-full">
+          <p className="font-mono text-xs tracking-[0.4em] uppercase text-primary glow-neon-sm mb-4">🗺️ MAP-EDITOR</p>
+          <div className="flex flex-wrap gap-2 mb-3">
+            {[[1, "Wand"], [2, "Sprengbar"], [0, "Radieren"], [-1, "Spawn A"], [-2, "Spawn B"]].map(([t, label]) => (
+              <button key={t} type="button" onClick={() => setEdTool(t as number)}
+                className={`font-mono text-[10px] uppercase rounded-sm border px-2.5 py-1.5 min-h-[32px] ${edTool === t ? "border-primary text-primary bg-primary/10" : "border-border text-muted-foreground"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="grid grid-cols-[repeat(20,1fr)] gap-px border border-border p-1 bg-black/60 mb-3">
+            {edCells.map((c, i) => {
+              const isA = edSa[1] * 20 + edSa[0] === i;
+              const isB = edSb[1] * 20 + edSb[0] === i;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => {
+                    const x = i % 20, z = Math.floor(i / 20);
+                    if (edTool === -1) setEdSa([x, z]);
+                    else if (edTool === -2) setEdSb([x, z]);
+                    else setEdCells((cur) => { const n = [...cur]; n[i] = edTool; return n; });
+                  }}
+                  className={`aspect-square rounded-[1px] ${isA ? "bg-primary" : isB ? "bg-destructive" : c === 1 ? "bg-muted-foreground" : c === 2 ? "bg-primary/50" : "bg-secondary/30 hover:bg-secondary/60"}`}
+                />
+              );
+            })}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => { setCustomMap({ cells: edCells, sa: edSa, sb: edSb }); setEditorOpen(false); start("tdm", { cells: edCells, sa: edSa, sb: edSb }); }}
+              className="font-mono text-[10px] uppercase border border-primary/60 text-primary bg-primary/10 hover:bg-primary/20 rounded-sm px-3 py-2 min-h-[36px]">▶ Testen (TDM)</button>
+            <button type="button" onClick={() => { try { localStorage.setItem("wirrwarr-custommap", JSON.stringify({ cells: edCells, sa: edSa, sb: edSb })); } catch { /* */ } }}
+              className="font-mono text-[10px] uppercase border border-border text-muted-foreground rounded-sm px-3 py-2 min-h-[36px]">💾 Speichern</button>
+            <button type="button" onClick={() => { try { void navigator.clipboard?.writeText(btoa(JSON.stringify({ cells: edCells, sa: edSa, sb: edSb }))); } catch { /* */ } }}
+              className="font-mono text-[10px] uppercase border border-border text-muted-foreground rounded-sm px-3 py-2 min-h-[36px]">⎘ Export</button>
+            <button type="button" onClick={() => { const c = window.prompt("Map-Code:"); if (c) { try { const m = JSON.parse(atob(c)); setEdCells(m.cells); setEdSa(m.sa); setEdSb(m.sb); } catch { window.alert("Code ungültig"); } } }}
+              className="font-mono text-[10px] uppercase border border-border text-muted-foreground rounded-sm px-3 py-2 min-h-[36px]">📥 Import</button>
+            <button type="button" onClick={() => setEditorOpen(false)}
+              className="font-mono text-[10px] uppercase border border-border text-muted-foreground rounded-sm px-3 py-2 min-h-[36px]">✕ Zu</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (yearOpen) {
     const s = loadStats();
     const seas = loadSeason();
@@ -3420,6 +3520,30 @@ export function RealGame() {
             </button>
           )}
 
+          {(() => {
+            const s = loadSeason();
+            const seen = (() => { try { return Number(localStorage.getItem("wirrwarr-ceremony") ?? 0); } catch { return 0; } })();
+            if (s.archived.length > seen) {
+              return (
+                <div className="border border-accent/60 bg-accent/10 rounded-sm p-4 mb-6">
+                  <p className="font-mono text-xs tracking-[0.3em] uppercase text-accent glow-neon-sm mb-2">🏅 SEASON-ZEREMONIE</p>
+                  <p className="text-sm text-foreground mb-2">Season {s.archived[s.archived.length - 1]} ist archiviert. Deine Leistung: Veteran-Status.</p>
+                  <p className="font-mono text-[10px] text-accent mb-3">Belohnung: +300 XP Startbonus</p>
+                  <button type="button" onClick={() => {
+                    try {
+                      localStorage.setItem("wirrwarr-ceremony", String(s.archived.length));
+                      const pr = JSON.parse(localStorage.getItem(PROF_KEY) ?? "null") ?? { xp: 0 };
+                      pr.xp += 300;
+                      localStorage.setItem(PROF_KEY, JSON.stringify(pr));
+                    } catch { /* */ }
+                    setDailyTick((t) => t + 1);
+                  }} className="font-mono text-[10px] uppercase border border-accent/70 text-accent bg-accent/10 hover:bg-accent/20 rounded-sm px-3 py-2 min-h-[36px]">Belohnung abholen</button>
+                </div>
+              );
+            }
+            return null;
+          })()}
+
           {/* Season */}
           {(() => {
             const s = loadSeason();
@@ -3533,6 +3657,19 @@ export function RealGame() {
             </div>
           </div>
 
+          <button
+            type="button"
+            onClick={() => {
+              try {
+                const m = JSON.parse(localStorage.getItem("wirrwarr-custommap") ?? "null");
+                if (m) { setEdCells(m.cells); setEdSa(m.sa); setEdSb(m.sb); }
+              } catch { /* */ }
+              setEditorOpen(true);
+            }}
+            className="mb-6 mr-2 font-mono text-[10px] tracking-wider uppercase rounded-sm border border-border text-muted-foreground hover:text-primary hover:border-primary/50 px-3 py-2 min-h-[36px]"
+          >
+            🗺️ Map-Editor
+          </button>
           <button
             type="button"
             onClick={() => setYearOpen(true)}
