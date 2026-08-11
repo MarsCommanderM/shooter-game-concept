@@ -2,6 +2,9 @@
 # WIRRWARR One-Command-Setup für Ubuntu/Debian (Contabo VPS)
 # Nutzung:  bash deploy/setup.sh
 set -e
+export DEBIAN_FRONTEND=noninteractive
+SUDO=""
+if [ "$(id -u)" != "0" ]; then SUDO="sudo"; fi
 echo "🎮 WIRRWARR-Setup startet …"
 
 # 1) Node 20 sicherstellen
@@ -12,8 +15,8 @@ if command -v node >/dev/null 2>&1; then
 fi
 if [ "$NEED_NODE" = "1" ]; then
   echo "📦 Installiere Node 20 …"
-  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-  sudo apt install -y nodejs
+  curl -fsSL https://deb.nodesource.com/setup_20.x | $SUDO -E bash -
+  $SUDO apt-get install -y nodejs
 fi
 
 # 2) Projekt bauen
@@ -25,7 +28,7 @@ npm run build
 
 # 3) PM2 installieren + Server starten
 echo "🚀 Starte Server mit PM2 …"
-sudo npm i -g pm2 >/dev/null 2>&1 || npm i -g pm2
+$SUDO npm i -g pm2 >/dev/null 2>&1 || npm i -g pm2
 pm2 delete wirrwarr >/dev/null 2>&1 || true
 pm2 start deploy/ecosystem.config.cjs
 pm2 save >/dev/null 2>&1 || true
@@ -39,7 +42,7 @@ CRON_LINE="* * * * * $(pwd)/deploy/watchdog.sh"
 
 # 4) Firewall: Port 3000 freigeben (falls ufw aktiv)
 if command -v ufw >/dev/null 2>&1; then
-  sudo ufw allow 3000/tcp >/dev/null 2>&1 || true
+  $SUDO ufw allow 3000/tcp >/dev/null 2>&1 || true
 fi
 
 IP=$(hostname -I | awk '{print $1}')
