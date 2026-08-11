@@ -2,14 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { updateDaily, loadCallsign } from "./real-game";
+import { updateDaily, loadCallsign, loadUpgOwned } from "./real-game";
 
 /* ================================================================== */
 /* WIRRWARR ONLINE v2 – FFA & TDM, Movement-Polish, Stance-Sync        */
 /* ================================================================== */
 
 type OnlineMode = "ffa" | "tdm" | "hq" | "dom" | "inv";
-type MapSel = "sector" | "stahl";
+type MapSel = "sector" | "stahl" | "orbital";
 
 interface Remote {
   id: number;
@@ -110,7 +110,9 @@ export function OnlineGame() {
   const [micOn, setMicOn] = useState(false);
   const [mapSel, setMapSel] = useState<MapSel>("sector");
   const [micErr, setMicErr] = useState("");
-  const vcRef = useRef<{ toggle: () => void; stop: () => void } | null>(null);
+  const vcRef = useRef<{ toggle: () => void; stop: () => void; rebuild?: (s: "all" | "team") => void } | null>(null);
+  const [vcScope, setVcScope] = useState<"all" | "team">("all");
+  const vcCtx = useRef<{ team: () => number; has: (pid: number) => number | undefined; pids: () => number[] }>({ team: () => -1, has: () => undefined, pids: () => [] });
   const [name] = useState(() => loadCallsign() || `KAEMPFER-${Math.floor(10 + Math.random() * 89)}`);
 
   useEffect(() => {
@@ -127,6 +129,9 @@ export function OnlineGame() {
       ],
     };
     const sendVc = (m: Record<string, unknown>) => sendRef.current(m);
+    let scope: "all" | "team" = "all";
+    const teamOf = (pid: number) => (pid === myId ? vcCtx.current.team() : vcCtx.current.has(pid));
+    const okScope = (pid: number) => scope === "all" || teamOf(pid) === vcCtx.current.team();
     const attach = (pc: RTCPeerConnection, id: number) => {
       pc.onicecandidate = (e) => { if (e.candidate) sendVc({ t: "vc-ice", to: id, cand: e.candidate }); };
       pc.ontrack = (e) => {
@@ -145,6 +150,7 @@ export function OnlineGame() {
     };
     const addTracks = (pc: RTCPeerConnection) => { const s = stream; if (s) s.getTracks().forEach((t) => pc.addTrack(t, s)); };
     const makeOffer = async (id: number) => {
+      if (!okScope(id)) return;
       const pc = new RTCPeerConnection(CFG);
       pcs.set(id, pc); attach(pc, id); addTracks(pc);
       const offer = await pc.createOffer();
@@ -159,7 +165,15 @@ export function OnlineGame() {
           myId = m.id;
           for (const pid of (m.others as number[]) ?? []) if (pid < myId) await makeOffer(pid);
         }
+        if (m.t === "vc-teamchange") {
+          // Gegner aus anderem Scope trennen
+          for (const [pid, pc] of [...pcs]) {
+            if (scope === "team" && teamOf(pid) !== vcCtx.current.team()) { pc.close(); pcs.delete(pid); const a = audios.get(pid); if (a) { a.srcObject = null; audios.delete(pid); } }
+          }
+          for (const pid of vcCtx.current.pids()) if (pid < myId) await makeOffer(pid);
+        }
         if (m.t === "vc-offer" && stream) {
+          if (!okScope(m.from as number)) return;
           let pc = pcs.get(m.from);
           if (!pc) { pc = new RTCPeerConnection(CFG); pcs.set(m.from, pc); attach(pc, m.from); addTracks(pc); }
           await pc.setRemoteDescription(m.sdp);
@@ -180,7 +194,18 @@ export function OnlineGame() {
     navigator.mediaDevices?.getUserMedia({ audio: true })
       .then((s) => { stream = s; setMicOn(true); sendVc({ t: "vc-join-req" }); })
       .catch(() => setMicErr("Mikrofon nicht verfügbar / verweigert."));
+    const rebuild = (s: "all" | "team") => {
+      scope = s;
+      sendVc({ t: "vc-bye-broadcast" });
+      pcs.forEach((pc) => pc.close());
+      pcs.clear();
+      audios.forEach((a) => { a.srcObject = null; });
+      audios.clear();
+      for (const pid of vcCtx.current.pids()) if (pid < myId) void makeOffer(pid);
+    };
+    rebuild("all");
     vcRef.current = {
+      rebuild,
       toggle: () => {
         if (!stream) return;
         const enabled = !stream.getAudioTracks()[0].enabled;
@@ -260,12 +285,17 @@ export function OnlineGame() {
       addWall(0, 0, 5, 5); addWall(-16, -12, 7, 1.2); addWall(16, 12, 7, 1.2);
       addWall(-16, 12, 1.2, 7); addWall(16, -12, 1.2, 7);
       addWall(-26, 0, 2, 8); addWall(26, 0, 2, 8); addWall(0, -26, 8, 2); addWall(0, 26, 8, 2);
-    } else {
+    } else if (mapSel === "stahl") {
       addWall(-10, -12, 1.2, 10, 3); addWall(10, -12, 1.2, 10, 3);
       addWall(-10, 12, 1.2, 10, 3); addWall(10, 12, 1.2, 10, 3);
       addWall(-22, 0, 8, 1.2, 3); addWall(22, 0, 8, 1.2, 3);
       addWall(0, -6, 6, 1.2, 2); addWall(0, 6, 6, 1.2, 2);
       addWall(0, 0, 4, 4, 3);
+    } else {
+      addWall(-8, -8, 6, 1.1, 2.5); addWall(8, 8, 6, 1.1, 2.5);
+      addWall(-8, 8, 6, 1.1, 2.5); addWall(8, -8, 6, 1.1, 2.5);
+      addWall(0, -16, 8, 1.2, 3); addWall(0, 16, 8, 1.2, 3);
+      addWall(-16, 0, 1.2, 8, 3); addWall(16, 0, 1.2, 8, 3);
     }
     // Parkour-Cover (klettern/springen/manteln)
     addWall(-8, 8, 2.5, 2.5, 1.1); addWall(8, -8, 2.5, 2.5, 1.1);
@@ -289,8 +319,9 @@ export function OnlineGame() {
     };
 
     /* ---------- Lokaler Spieler (Movement v2) ---------- */
+    const upgOwned = loadUpgOwned();
     const me = {
-      id: -1, team: -1,
+      id: -1, team: -1, revived: false,
       x: 0, z: 30, y: 0, vy: 0, vx: 0, vz: 0,
       hp: 100, ammo: 24, reloading: 0, fireCd: 0,
       kills: 0, deaths: 0, respawnAt: 0,
@@ -344,6 +375,7 @@ export function OnlineGame() {
     try { ws = new WebSocket(`${proto}//${location.host}/ws?mode=${gameMode}-${mapSel}`); } catch { setStatus("error"); }
     const send = (m: unknown) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); };
     sendRef.current = send;
+    vcCtx.current = { team: () => me.team, has: (pid: number) => remotes.get(pid)?.team, pids: () => [...remotes.keys()] };
     send({ t: "top", mode: gameMode });
 
     const announce = (text: string) => {
@@ -385,7 +417,8 @@ export function OnlineGame() {
             const team = m.team as number;
             const color = gameMode === "tdm" ? TEAM_HEX[team] : (m.color as number) || 0xff5544;
             const group = new THREE.Group();
-            const body = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.5, 0.4), new THREE.MeshStandardMaterial({ color, emissive: new THREE.Color(color).multiplyScalar(0.3) }));
+            const glowMul = upgOwned.includes("s1") ? 0.7 : 0.3;
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.5, 0.4), new THREE.MeshStandardMaterial({ color, emissive: new THREE.Color(color).multiplyScalar(glowMul) }));
             body.position.y = 0.75;
             const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), new THREE.MeshStandardMaterial({ color: 0x111111, emissive: new THREE.Color(color).multiplyScalar(0.5) }));
             head.position.y = 1.75;
@@ -408,7 +441,13 @@ export function OnlineGame() {
           pingVal = Math.round(performance.now() - (m.ts as number));
         } else if (m.t === "hit") {
           if (m.target === me.id && me.hp > 0) {
-            me.hp -= m.dmg;
+            let dmgIn = m.dmg as number;
+            if (upgOwned.includes("c1")) dmgIn = Math.round(dmgIn * 0.9);
+            me.hp -= dmgIn;
+            if (me.hp <= 0 && upgOwned.includes("c3") && !me.revived) {
+              me.revived = true; me.hp = 50;
+              pushFeed("🧬 CHITIN-OVERDRIVE – wieder im Kampf!");
+            }
             if (me.hp <= 0) kc = { id: m.id as number, t: 2.5 };
             const killer = remotes.get(id);
             if (me.hp <= 0) {
@@ -584,7 +623,7 @@ export function OnlineGame() {
         me.slideT = Math.max(0, me.slideT - dt);
         const sliding = me.slideT > 0 && onGround;
         const sprinting = !!keys["ShiftLeft"] && !me.crouch && sp0 > 4;
-        const maxSp = me.prone ? 1.5 : me.crouch ? 2.6 : sprinting ? 9 : 5.2;
+        const maxSp = (me.prone ? 1.5 : me.crouch ? 2.6 : sprinting ? 9 : 5.2) * (upgOwned.includes("l1") ? 1.08 : 1);
         // Wish + Accel + Friction
         let wx = 0, wz = 0;
         const a = yaw.rotation.y;
@@ -910,7 +949,7 @@ export function OnlineGame() {
                 onClick={() => setMapSel(mm)}
                 className={`font-mono text-[11px] uppercase tracking-wider rounded-sm border px-3 py-2 min-h-[36px] ${mapSel === mm ? "border-primary/70 bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}
               >
-                {mm === "sector" ? "Sektor 7" : "Stahlwiege"}
+                {mm === "sector" ? "Sektor 7" : mm === "stahl" ? "Stahlwiege" : "Orbitaldock"}
               </button>
             ))}
           </div>
@@ -949,10 +988,17 @@ export function OnlineGame() {
         </div>
       )}
       {result && (
-        <div className="absolute inset-x-0 top-24 flex justify-center pointer-events-none">
-          <p className={`font-mono text-2xl tracking-[0.2em] uppercase px-6 py-3 border rounded-sm bg-black/70 ${result.startsWith("SIEG") ? "text-primary border-primary/60 glow-neon" : "text-destructive border-destructive/60"}`}>
-            {result}
-          </p>
+        <div className="absolute inset-0 flex items-center justify-center bg-black/70">
+          <div className="border border-primary/50 bg-black/90 box-glow-neon rounded-sm p-6 max-w-md w-[92%] text-center">
+            <p className={`font-mono text-2xl tracking-[0.2em] uppercase mb-4 ${result.startsWith("SIEG") || result.startsWith("EXFIL") ? "text-primary glow-neon" : "text-destructive"}`}>
+              {result}
+            </p>
+            <p className="font-mono text-sm text-foreground mb-2">Kills: <span className="text-primary">{hud.players.find((x) => x.me)?.kills ?? 0}</span> · Tode: {hud.players.find((x) => x.me)?.deaths ?? 0}</p>
+            <EndMedals kills={hud.players.find((x) => x.me)?.kills ?? 0} deaths={hud.players.find((x) => x.me)?.deaths ?? 0} win={result.startsWith("SIEG") || result.startsWith("EXFIL")} />
+            <button type="button" onClick={() => { setResult(null); setScreen("menu"); }} className="mt-4 font-mono text-xs border border-primary/60 text-primary bg-primary/10 hover:bg-primary/20 rounded-sm px-4 py-2 min-h-[40px]">
+              ← ZURÜCK ZUM MENÜ
+            </button>
+          </div>
         </div>
       )}
       <div className="absolute top-3 left-1/2 -translate-x-1/2 text-center pointer-events-none">
@@ -1018,6 +1064,17 @@ export function OnlineGame() {
         >
           {micOn ? "🎙 MIC AN" : "🔇 MIC AUS"}
         </button>
+        <button
+          type="button"
+          onClick={() => {
+            const next = vcScope === "all" ? "team" : "all";
+            setVcScope(next);
+            vcRef.current?.rebuild?.(next);
+          }}
+          className={`font-mono text-[10px] px-3 py-2 rounded-sm border min-h-[36px] ${vcScope === "team" ? "border-accent/70 text-accent bg-accent/10" : "border-border text-muted-foreground"}`}
+        >
+          {vcScope === "team" ? "🔊 NUR TEAM" : "🔊 ALLE"}
+        </button>
         {micErr && <p className="font-mono text-[9px] text-destructive">{micErr}</p>}
       </div>
       <p className="absolute bottom-3 left-1/2 -translate-x-1/2 font-mono text-[9px] text-muted-foreground tracking-wider uppercase pointer-events-none">Enter = Chat · U = Team-Chat · Voice = WebRTC-P2P</p>
@@ -1029,6 +1086,31 @@ export function OnlineGame() {
       >
         ✕ Verlassen
       </button>
+    </div>
+  );
+}
+
+function EndMedals({ kills, deaths, win }: { kills: number; deaths: number; win: boolean }) {
+  const medals: string[] = [];
+  if (kills >= 10) medals.push("💀 Zehner-Pack");
+  if (kills >= 5 && deaths === 0) medals.push("🛡 Unberührbar");
+  if (kills >= 3 && deaths >= 5) medals.push("🩸 Durchgekämpft");
+  if (win) medals.push("🏆 Sieg");
+  // XP aufs Profil
+  useEffect(() => {
+    try {
+      const key = "wirrwarr-profile";
+      const pr = JSON.parse(localStorage.getItem(key) ?? "null") ?? { xp: 0 };
+      const gain = kills * 20 + (win ? 150 : 50);
+      pr.xp += gain;
+      localStorage.setItem(key, JSON.stringify(pr));
+    } catch { /* */ }
+  }, []);
+  return (
+    <div className="flex flex-wrap justify-center gap-2">
+      {medals.length ? medals.map((m) => (
+        <span key={m} className="font-mono text-[10px] text-accent border border-accent/50 bg-accent/10 rounded-sm px-2 py-1">{m}</span>
+      )) : <span className="font-mono text-[10px] text-muted-foreground">Keine Medaillen dieses Mal.</span>}
     </div>
   );
 }

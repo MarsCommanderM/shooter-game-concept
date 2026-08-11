@@ -253,6 +253,10 @@ const DIFFS = [
   { id: "apex", name: "APEX", mul: 1.35, desc: "Bots: +35 % Schaden, schneller" },
 ];
 function loadDiff() { try { return localStorage.getItem(DIFF_KEY) ?? "veteran"; } catch { return "veteran"; } }
+const UPG_KEY = "wirrwarr-upg";
+export function loadUpgOwned(): string[] {
+  try { return JSON.parse(localStorage.getItem(UPG_KEY) ?? "null") ?? []; } catch { return []; }
+}
 const NG_KEY = "wirrwarr-ngplus";
 const NG_MODS = [
   { id: "aggro", name: "Aggressive Biomass", desc: "Bots: +50 % Schaden, +20 % Tempo" },
@@ -2765,6 +2769,11 @@ export function RealGame() {
       if (prev && !player.upg[prev.id]) return;
       player.codes -= def.cost;
       player.upg[id] = true;
+      try {
+        const owned = loadUpgOwned();
+        if (!owned.includes(id)) owned.push(id);
+        localStorage.setItem(UPG_KEY, JSON.stringify(owned));
+      } catch { /* */ }
       sPickup();
       pushFeed(`🧬 ${def.name} integriert!`);
       if (id === "s1") for (const b of bots) b.ghost.visible = true;

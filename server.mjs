@@ -119,6 +119,11 @@ wss.on("connection", (ws, req, roomKey) => {
       const others = [...room.clients].filter((c) => c !== ws && c.readyState === 1).map((c) => c.pid);
       ws.send(JSON.stringify({ t: "vc-hello", id: ws.pid, others }));
       return;
+    } else if (m.t === "vc-teamchange") {
+      for (const c of room.clients) {
+        if (c !== ws && c.readyState === 1) c.send(JSON.stringify({ ...m, from: ws.pid }));
+      }
+      return;
     } else if (m.t === "vc-bye-broadcast") {
       for (const c of room.clients) {
         if (c !== ws && c.readyState === 1) c.send(JSON.stringify({ t: "vc-bye", from: ws.pid }));
