@@ -967,6 +967,16 @@ export function RealGame() {
   const [arena, setArena] = useState<ArenaId>("sektor");
   const [perk, setPerk] = useState<PerkId>("sprint");
   const [quality, setQuality] = useState<"low" | "med" | "high">("med");
+  const [touchSens, setTouchSensState] = useState(() => {
+    try { return Number(localStorage.getItem("wirrwarr-touchsens") ?? "1") || 1; } catch { return 1; }
+  });
+  const touchSensRef = useRef(touchSens);
+  const setTouchSens = (v: number) => {
+    const nv = Math.max(0.4, Math.min(2.2, Math.round(v * 10) / 10));
+    touchSensRef.current = nv;
+    setTouchSensState(nv);
+    try { localStorage.setItem("wirrwarr-touchsens", String(nv)); } catch { /* */ }
+  };
   const [profile, setProfile] = useState(() => loadProfile());
   const [loadout, setLoadout] = useState(() => loadLoadout());
   const level = levelFromXp(profile.xp);
@@ -1843,7 +1853,9 @@ export function RealGame() {
       }
     };
     const ku = (e: KeyboardEvent) => { keys[e.code] = false; };
+    const isTouchDev = typeof window !== "undefined" && "ontouchstart" in window;
     const md = (e: MouseEvent) => {
+      if (isTouchDev) return; // Touch: kein emuliertes Maus-Feuer/Pointer-Lock (Doppel-Input-Schutz)
       if (e.button === 2) { melee(); return; }
       if (tactics) {
         pushFeed("🎙 JUNO: „Verstanden. Wege gesetzt.“");
@@ -1867,44 +1879,74 @@ export function RealGame() {
       if (document.pointerLockElement === el) {
         targetYaw -= e.movementX * 0.0022;
         targetPitch = Math.max(-1.4, Math.min(1.4, targetPitch - e.movementY * 0.0022));
-      } else if (mouseDown) {
+      } else if (mouseDown && !isTouchDev) {
         targetYaw -= (e.clientX - lastMX) * 0.004;
       }
       lastMX = e.clientX;
     };
     const cm = (e: Event) => e.preventDefault();
-    // Touch: linker Stick = bewegen, rechte Hälfte = schauen
+    // ---- Touch-Komplettumbau: linke Hälfte = dynamischer Joystick, rechte Hälfte = 360°-Look ----
     const tJoy = { id: -1, ox: 0, oy: 0 };
     const tLook = { id: -1, lx: 0, ly: 0 };
+    const JOY_R = 62;
+    const isBtnTouch = (t: Touch) => {
+      const elT = t.target as HTMLElement | null;
+      return !!elT?.closest?.("button");
+    };
+    const joyBase = document.createElement("div");
+    joyBase.style.cssText = "position:absolute;width:120px;height:120px;border-radius:50%;border:2px solid rgba(34,255,85,0.45);background:rgba(34,255,85,0.08);display:none;pointer-events:none;z-index:30;transform:translate(-50%,-50%)";
+    const joyKnob = document.createElement("div");
+    joyKnob.style.cssText = "position:absolute;width:48px;height:48px;border-radius:50%;background:rgba(34,255,85,0.4);border:1px solid rgba(34,255,85,0.9);left:50%;top:50%;transform:translate(-50%,-50%)";
+    joyBase.appendChild(joyKnob);
+    const hostEl = mount.parentElement ?? mount;
+    hostEl.appendChild(joyBase);
     const tStart = (e: TouchEvent) => {
       const r = mount.getBoundingClientRect();
       for (const t of Array.from(e.changedTouches)) {
-        if (t.clientX - r.left < r.width / 2 && tJoy.id === -1) tJoy.id = t.identifier, tJoy.ox = t.clientX, tJoy.oy = t.clientY;
-        else if (tLook.id === -1) tLook.id = t.identifier, tLook.lx = t.clientX, tLook.ly = t.clientY;
+        if (isBtnTouch(t)) continue; // Buttons (FEUER etc.) lösen keinen Stick/Look aus
+        if (t.clientX - r.left < r.width / 2 && tJoy.id === -1) {
+          tJoy.id = t.identifier; tJoy.ox = t.clientX; tJoy.oy = t.clientY;
+          const hr = hostEl.getBoundingClientRect();
+          joyBase.style.left = `${t.clientX - hr.left}px`;
+          joyBase.style.top = `${t.clientY - hr.top}px`;
+          joyBase.style.display = "block";
+          joyKnob.style.transform = "translate(-50%,-50%)";
+        } else if (tLook.id === -1) {
+          tLook.id = t.identifier; tLook.lx = t.clientX; tLook.ly = t.clientY;
+        }
       }
     };
     const tMove = (e: TouchEvent) => {
+      const sens = touchSensRef.current;
       for (const t of Array.from(e.changedTouches)) {
         if (t.identifier === tJoy.id) {
-          gpMove.x = Math.max(-1, Math.min(1, (t.clientX - tJoy.ox) / 50));
-          gpMove.y = Math.max(-1, Math.min(1, (t.clientY - tJoy.oy) / 50));
+          let dx = t.clientX - tJoy.ox, dy = t.clientY - tJoy.oy;
+          const len = Math.hypot(dx, dy) || 1;
+          const cl = Math.min(len, JOY_R);
+          dx = (dx / len) * cl; dy = (dy / len) * cl;
+          joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+          const mag = cl / JOY_R;
+          if (mag < 0.12) { gpMove.x = 0; gpMove.y = 0; }
+          else { gpMove.x = (dx / len) * mag; gpMove.y = (dy / len) * mag; }
         } else if (t.identifier === tLook.id) {
-          targetYaw -= (t.clientX - tLook.lx) * 0.005;
-          targetPitch = Math.max(-1.2, Math.min(1.2, targetPitch - (t.clientY - tLook.ly) * 0.004));
+          const dx = t.clientX - tLook.lx, dy = t.clientY - tLook.ly;
+          targetYaw -= dx * 0.0046 * sens;
+          targetPitch = Math.max(-1.4, Math.min(1.4, targetPitch - dy * 0.0042 * sens));
           tLook.lx = t.clientX; tLook.ly = t.clientY;
         }
       }
-      e.preventDefault();
+      if (e.cancelable) e.preventDefault();
     };
     const tEnd = (e: TouchEvent) => {
       for (const t of Array.from(e.changedTouches)) {
-        if (t.identifier === tJoy.id) { tJoy.id = -1; gpMove.x = 0; gpMove.y = 0; }
+        if (t.identifier === tJoy.id) { tJoy.id = -1; gpMove.x = 0; gpMove.y = 0; joyBase.style.display = "none"; }
         if (t.identifier === tLook.id) tLook.id = -1;
       }
     };
     mount.addEventListener("touchstart", tStart, { passive: true });
     mount.addEventListener("touchmove", tMove, { passive: false });
     mount.addEventListener("touchend", tEnd);
+    mount.addEventListener("touchcancel", tEnd);
     // Button-Bridge fuer Touch-UI
     (window as unknown as Record<string, unknown>).__ww = {
       fire: (v: boolean) => { mouseDown = v; },
@@ -2990,7 +3032,9 @@ const banterCd: Record<string, number> = {};
         if (keys["KeyS"]) { wx += Math.sin(fy_); wz += Math.cos(fy_); }
         if (keys["KeyA"]) { wx -= Math.cos(fy_); wz += Math.sin(fy_); }
         if (keys["KeyD"]) { wx += Math.cos(fy_); wz -= Math.sin(fy_); }
-        wx += gpMove.x; wz += gpMove.y;
+        // Joystick/Gamepad: MIT Blickrichtung rotiert (vor = hoch, rechts = rechts, nicht seitenverkehrt)
+        wx += gpMove.y * Math.sin(fy_) + gpMove.x * Math.cos(fy_);
+        wz += gpMove.y * Math.cos(fy_) - gpMove.x * Math.sin(fy_);
         const wl = Math.hypot(wx, wz);
         if (wl > 0.01) { wx /= wl; wz /= wl; }
         const accel = onGround ? 46 : 15;
@@ -3520,6 +3564,8 @@ const banterCd: Record<string, number> = {};
         mount.removeEventListener("touchstart", tStart);
         mount.removeEventListener("touchmove", tMove);
         mount.removeEventListener("touchend", tEnd);
+        mount.removeEventListener("touchcancel", tEnd);
+        joyBase.remove();
         window.removeEventListener("keydown", kd);
         window.removeEventListener("keyup", ku);
         window.removeEventListener("mouseup", mu);
@@ -4550,6 +4596,12 @@ const banterCd: Record<string, number> = {};
       </div>
       {isTouch && (
         <>
+          {/* Touch-Sensitivity (wird gespeichert) */}
+          <div className="absolute top-12 right-3 flex items-center gap-1.5">
+            <button type="button" onClick={() => setTouchSens(touchSens - 0.1)} className="w-9 h-9 rounded-sm border border-border bg-black/50 text-foreground font-mono text-sm active:bg-secondary">−</button>
+            <span className="font-mono text-[9px] text-muted-foreground tracking-wider">SENS {touchSens.toFixed(1)}</span>
+            <button type="button" onClick={() => setTouchSens(touchSens + 0.1)} className="w-9 h-9 rounded-sm border border-border bg-black/50 text-foreground font-mono text-sm active:bg-secondary">+</button>
+          </div>
           <button type="button" className="absolute bottom-[calc(6rem+env(safe-area-inset-bottom))] right-4 w-24 h-24 rounded-full border-2 border-primary/70 bg-primary/25 text-primary font-mono text-sm active:bg-primary/50"
             onTouchStart={(e) => { e.preventDefault(); ww()?.fire(true); }} onTouchEnd={() => ww()?.fire(false)}>FEUER</button>
           <button type="button" className="absolute bottom-[calc(11rem+env(safe-area-inset-bottom))] right-6 w-16 h-16 rounded-full border-2 border-border bg-secondary/50 text-foreground font-mono text-[11px] active:bg-secondary/70"
