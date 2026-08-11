@@ -1,6 +1,10 @@
 //! NOVA-Client (Milestone 01): winit-Fenster + wgpu-Renderer (WGSL, PBR, Shadows)
 //! + FPS-Controller + glTF-Loading. Renderer-Backend = wgpu → später WASM/WebGPU-fähig.
 use std::collections::HashSet;
+use std::time::Duration;
+
+mod net;
+use net::{Net, PendingInput};
 use std::time::Instant;
 
 use bytemuck::{Pod, Zeroable};
@@ -32,6 +36,11 @@ struct DrawU {
     base: Vec4,
     params: Vec4, // x = metallic, y = roughness
 }
+
+const REMOTE_COLORS: [[f32; 4]; 6] = [
+    [1.0, 0.33, 0.27, 1.0], [1.0, 0.8, 0.2, 1.0], [0.2, 0.8, 1.0, 1.0],
+    [1.0, 0.42, 0.8, 1.0], [0.6, 1.0, 0.2, 1.0], [0.7, 0.5, 1.0, 1.0],
+];
 
 #[derive(Clone, Copy)]
 struct Material {
@@ -177,6 +186,9 @@ struct State {
     keys: HashSet<KeyCode>,
     grabbed: bool,
     last: Instant,
+    net: Option<Net>,
+    seq: u32,
+    unit_cube: usize,
 }
 
 fn ground_mesh_data() -> (Vec<f32>, Vec<u32>, Material) {
@@ -477,6 +489,8 @@ impl State {
             println!("glTF nicht gefunden -> Fallback-Cubes");
             raw.push(cube_mesh_data());
         }
+        let unit_cube = raw.len();
+        raw.push(cube_mesh_data()); // Einheitswürfel für Remote-Player
         raw.push(ground_mesh_data());
 
         let meshes = raw
@@ -517,6 +531,9 @@ impl State {
             keys: HashSet::new(),
             grabbed: false,
             last: Instant::now(),
+            net: None,
+            seq: 0,
+            unit_cube,
         }
     }
 
@@ -548,19 +565,39 @@ impl State {
         let (sy, cy) = (self.yaw.sin(), self.yaw.cos());
         let fwd = Vec3::new(-sy, 0.0, -cy);
         let right = Vec3::new(cy, 0.0, -sy);
+        let sprint = self.keys.contains(&KeyCode::ShiftLeft);
+        let wf = (self.keys.contains(&KeyCode::KeyW) as i32 as f32) - (self.keys.contains(&KeyCode::KeyS) as i32 as f32);
+        let wr = (self.keys.contains(&KeyCode::KeyD) as i32 as f32) - (self.keys.contains(&KeyCode::KeyA) as i32 as f32);
         let mut wish = Vec3::ZERO;
-        if self.keys.contains(&KeyCode::KeyW) { wish += fwd; }
-        if self.keys.contains(&KeyCode::KeyS) { wish -= fwd; }
-        if self.keys.contains(&KeyCode::KeyD) { wish += right; }
-        if self.keys.contains(&KeyCode::KeyA) { wish -= right; }
+        if wf != 0.0 { wish += fwd * wf; }
+        if wr != 0.0 { wish += right * wr; }
         if wish.length() > 0.001 {
-            let speed = if self.keys.contains(&KeyCode::ShiftLeft) { 8.5 } else { 5.2 };
+            let speed = if sprint { 8.5 } else { 5.2 };
             self.pos += wish.normalize() * speed * dt;
         }
         self.pos.y = 1.7;
+
+        // ---- Netcode: Client-Prediction + Server-Reconciliation (Bauplan §7/§8) ----
+        if let Some(net) = self.net.as_mut() {
+            self.seq += 1;
+            let mut w2 = [wr, wf];
+            let wl = (w2[0] * w2[0] + w2[1] * w2[1]).sqrt();
+            if wl > 1.0 { w2 = [w2[0] / wl, w2[1] / wl]; }
+            net.send_input(PendingInput { seq: self.seq, wish: w2, yaw: self.yaw, sprint, predicted: self.pos.to_array() });
+            if let Some((spos, pend)) = net.poll() {
+                self.pos = Vec3::from(spos);
+                self.pos.y = 1.7;
+                for p in pend {
+                    let speed = if p.sprint { 8.5 } else { 5.2 };
+                    let (psy, pcy) = (p.yaw.sin(), p.yaw.cos());
+                    let mv = Vec3::new(p.wish[0] * pcy - p.wish[1] * psy, 0.0, -p.wish[0] * psy - p.wish[1] * pcy);
+                    self.pos += mv * speed * nova_core::FIXED_DT;
+                }
+            }
+        }
     }
 
-    fn render(&mut self) {
+    fn render(&mut self, remotes: &[(u32, [f32; 3], f32)]) {
         let vp = Mat4::perspective_rh(75.0f32.to_radians(), self.config.width as f32 / self.config.height.max(1) as f32, 0.1, 500.0)
             * Mat4::look_to_rh(self.pos, self.forward(), Vec3::Y);
         let ldir = Vec3::new(0.4, -0.8, 0.3).normalize();
@@ -578,29 +615,31 @@ impl State {
         };
         self.queue.write_buffer(&self.frame_buf, 0, bytemuck::cast_slice(&[frame]));
 
-        let out = match self.surface.get_current_texture() {
-            Ok(t) => t,
-            Err(_) => return,
-        };
-        let view = out.texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("frame") });
+        // Draw-Liste: statische Meshes + interpolierte Remote-Player
+        let mut draws: Vec<(usize, Mat4, Material)> = Vec::new();
+        for (i, m) in self.meshes.iter().enumerate() {
+            if i == self.unit_cube { continue; }
+            let model = if i + 1 == self.meshes.len() {
+                Mat4::IDENTITY // Ground
+            } else if i == 0 && self.meshes.len() > 1 {
+                Mat4::from_translation(Vec3::new(0.0, 0.5, -2.0))
+            } else {
+                Mat4::from_translation(Vec3::new((i as f32 - 1.0) * 2.0, 0.5, -2.0))
+            };
+            draws.push((i, model, m.mat));
+        }
+        for (pid, p, yaw) in remotes {
+            let col = REMOTE_COLORS[(pid % 6) as usize];
+            let model = Mat4::from_translation(Vec3::new(p[0], p[1] + 0.85, p[2]))
+                * Mat4::from_rotation_y(*yaw)
+                * Mat4::from_scale(Vec3::new(0.7, 1.7, 0.7));
+            draws.push((self.unit_cube, model, Material { base: col, metallic: 0.2, roughness: 0.5 }));
+        }
 
-        // Modell-Matrizen (Milestone 01: statische Szene)
-        let models: Vec<Mat4> = (0..self.meshes.len())
-            .map(|i| {
-                if i == 0 && self.meshes.len() > 1 {
-                    Mat4::from_translation(Vec3::new(0.0, 0.5, -2.0))
-                } else if i + 1 == self.meshes.len() {
-                    Mat4::IDENTITY // Ground
-                } else {
-                    Mat4::from_translation(Vec3::new((i as f32 - 1.0) * 2.0, 0.5, -2.0))
-                }
-            })
-            .collect();
-
-        let bg1s: Vec<wgpu::BindGroup> = self.meshes.iter().map(|_| self.bg1()).collect();
+        let bg1s: Vec<wgpu::BindGroup> = draws.iter().map(|_| self.bg1()).collect();
 
         // ---- Pass 1: Shadow ----
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("frame") });
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("shadow"),
@@ -615,22 +654,26 @@ impl State {
             });
             pass.set_pipeline(&self.shadow_pipeline);
             pass.set_bind_group(0, &self.bg0, &[]);
-            for (i, m) in self.meshes.iter().enumerate() {
-                let du = DrawU {
-                    model: models[i],
-                    base: Vec4::from_array(m.mat.base),
-                    params: Vec4::new(m.mat.metallic, m.mat.roughness, 0.0, 0.0),
-                };
+            for (k, (mi, model, mat)) in draws.iter().enumerate() {
+                let m = &self.meshes[*mi];
+                let du = DrawU { model: *model, base: Vec4::from_array(mat.base), params: Vec4::new(mat.metallic, mat.roughness, 0.0, 0.0) };
                 self.queue.write_buffer(&self.draw_buf, 0, bytemuck::cast_slice(&[du]));
-                pass.set_bind_group(1, &bg1s[i], &[]);
+                pass.set_bind_group(1, &bg1s[k], &[]);
                 pass.set_vertex_buffer(0, m.vb.slice(..));
                 pass.set_index_buffer(m.ib.slice(..), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..m.count, 0, 0..1);
             }
         }
+        self.queue.submit(std::iter::once(encoder.finish()));
 
         // ---- Pass 2: Main ----
         {
+            let out = match self.surface.get_current_texture() {
+                Ok(t) => t,
+                Err(_) => return,
+            };
+            let view = out.texture.create_view(&wgpu::TextureViewDescriptor::default());
+            let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("frame2") });
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("main"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -648,22 +691,19 @@ impl State {
             });
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &self.bg0, &[]);
-            for (i, m) in self.meshes.iter().enumerate() {
-                let du = DrawU {
-                    model: models[i],
-                    base: Vec4::from_array(m.mat.base),
-                    params: Vec4::new(m.mat.metallic, m.mat.roughness, 0.0, 0.0),
-                };
+            for (k, (mi, model, mat)) in draws.iter().enumerate() {
+                let m = &self.meshes[*mi];
+                let du = DrawU { model: *model, base: Vec4::from_array(mat.base), params: Vec4::new(mat.metallic, mat.roughness, 0.0, 0.0) };
                 self.queue.write_buffer(&self.draw_buf, 0, bytemuck::cast_slice(&[du]));
-                pass.set_bind_group(1, &bg1s[i], &[]);
+                pass.set_bind_group(1, &bg1s[k], &[]);
                 pass.set_vertex_buffer(0, m.vb.slice(..));
                 pass.set_index_buffer(m.ib.slice(..), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..m.count, 0, 0..1);
             }
+            drop(pass);
+            self.queue.submit(std::iter::once(encoder.finish()));
+            out.present();
         }
-
-        self.queue.submit(std::iter::once(encoder.finish()));
-        out.present();
     }
 
     fn forward(&self) -> Vec3 {
@@ -690,6 +730,23 @@ fn main() {
     );
 
     let mut state = pollster::block_on(State::new(window));
+
+    let server_addr = std::env::args()
+        .collect::<Vec<String>>()
+        .windows(2)
+        .find(|w| w[0] == "--server")
+        .map(|w| w[1].clone())
+        .unwrap_or_else(|| "127.0.0.1:27015".into());
+    state.net = match Net::connect(&server_addr) {
+        Ok(n) => {
+            println!("NOVA-Net: verbinde mit {}", server_addr);
+            Some(n)
+        }
+        Err(e) => {
+            println!("NOVA-Net: kein Server erreichbar ({}) -> Solo-Modus", e);
+            None
+        }
+    };
 
     event_loop
         .run(move |event, elwt| {
@@ -722,8 +779,13 @@ fn main() {
                     }
                 }
                 Event::AboutToWait => {
+                    let remotes = state
+                        .net
+                        .as_ref()
+                        .map(|n| n.remotes(Duration::from_millis(100)))
+                        .unwrap_or_default();
                     state.update();
-                    state.render();
+                    state.render(&remotes);
                 }
                 _ => {}
             }

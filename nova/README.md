@@ -38,11 +38,12 @@ cargo build -p nova-server --release
 ```
 
 ## Netcode-Fahrplan (aus dem Bauplan)
-1. ✅ 60-Hz-Simulation + Snapshots + Input-Seqs
-2. ⏭ Client Prediction + Server-Reconciliation (lastProcessedInput + Resim)
-3. ⏭ Snapshot-Interpolation für Remote-Player (render-delay zwischen T0/T1)
+1. ✅ 60-Hz-Simulation + Snapshots + Input-Seqs (2 Spieler im Snapshot verifiziert)
+2. ✅ Client Prediction + Server-Reconciliation (pending-Queue, snap+re-sim bei >0.25 m Abweichung)
+3. ✅ Snapshot-Interpolation für Remote-Player (100 ms Render-Delay, lerp zwischen T0/T1,
+      Remote-Player werden als farbige Capsule-Boxes interpoliert gerendert)
 4. ⏭ Lag-Compensation (Rewind für Hits)
-5. ⏭ binäres Protokoll statt JSON (Bandbreite)
+5. ⏭ binäres Protokoll statt JSON (Bandbreite) + Web-Bridge (WebSocket/WebTransport) für WASM-Build
 
 ## Qualitätsprofile (Renderer skaliert, Spiel bleibt gleich)
 WEB_LOW/WEB_HIGH · MOBILE_LOW/MOBILE_HIGH · PC_LOW/HIGH/ULTRA —
