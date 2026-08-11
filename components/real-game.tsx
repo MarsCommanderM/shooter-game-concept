@@ -503,6 +503,14 @@ interface BotEnt {
   team: number;
   group: THREE.Group;
   body: THREE.Mesh;
+  legL: THREE.Mesh;
+  legR: THREE.Mesh;
+  armL: THREE.Mesh;
+  armR: THREE.Mesh;
+  walkT: number;
+  lastX: number;
+  lastZ: number;
+  moveSpd: number;
   hp: number;
   alive: boolean;
   respawnAt: number;
@@ -1029,6 +1037,8 @@ export function RealGame() {
     floorTex.repeat.set(24, 24);
     concTex.repeat.set(2, 1);
     bioTex.repeat.set(2, 1);
+    const edgeMatConc = new THREE.MeshStandardMaterial({ color: 0x0d1a10, emissive: 0x22ff55, emissiveIntensity: 0.9 });
+    const edgeMatBio = new THREE.MeshStandardMaterial({ color: 0x0d2a10, emissive: 0x66ff88, emissiveIntensity: 1.3 });
     const renderer = new THREE.WebGLRenderer({ antialias: quality !== "low", powerPreference: "high-performance" });
     renderer.setPixelRatio(quality === "low" ? 1 : quality === "med" ? Math.min(window.devicePixelRatio, 1.5) : Math.min(window.devicePixelRatio, 2));
     const particleCap = quality === "low" ? 60 : quality === "med" ? 150 : 250;
@@ -1074,7 +1084,7 @@ export function RealGame() {
         side: THREE.BackSide,
         uniforms: { top: { value: new THREE.Color(0x010402) }, bot: { value: new THREE.Color(0x0a3315) } },
         vertexShader: "varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
-        fragmentShader: "varying vec3 vP; uniform vec3 top; uniform vec3 bot; void main(){ float h = normalize(vP).y * 0.5 + 0.5; gl_FragColor = vec4(mix(bot, top, pow(h, 0.55)), 1.0); }",
+        fragmentShader: "varying vec3 vP; uniform vec3 top; uniform vec3 bot; void main(){ vec3 n = normalize(vP); float h = n.y * 0.5 + 0.5; vec3 col = mix(bot, top, pow(h, 0.55)); float au = smoothstep(0.12, 0.32, n.y) * smoothstep(0.6, 0.3, n.y); col += vec3(0.05, 0.35, 0.14) * au * (0.5 + 0.5 * sin(n.x * 6.0 + n.z * 4.0)); gl_FragColor = vec4(col, 1.0); }",
       })
     );
     scene.add(sky);
@@ -1135,6 +1145,11 @@ export function RealGame() {
       });
       const mesh = new THREE.Mesh(getGeo(w, h, d), mat);
       mesh.position.set(x, y, z);
+      if (quality !== "low") {
+        const edge = new THREE.Mesh(getGeo(w + 0.06, 0.06, d + 0.06), destructible ? edgeMatBio : edgeMatConc);
+        edge.position.set(0, h / 2 + 0.03, 0);
+        mesh.add(edge);
+      }
       scene.add(mesh);
       walls.push({ mesh, hw: w / 2, hd: d / 2, hh: h / 2, top: y + h / 2, hp, maxHp: hp, destructible, active: true });
     };
@@ -1288,23 +1303,37 @@ export function RealGame() {
     const makeBot = (i: number, team: number) => {
       const group = new THREE.Group();
       const color = new THREE.Color(TEAM_HEX[mode === "ffa" ? i + 1 : team]);
-      const body = new THREE.Mesh(
-        new THREE.BoxGeometry(0.7, 1.5, 0.4),
-        new THREE.MeshStandardMaterial({ color, roughness: 0.6, emissive: color.clone().multiplyScalar(0.25) })
-      );
-      body.position.y = 0.75;
-      const head = new THREE.Mesh(
-        new THREE.BoxGeometry(0.4, 0.4, 0.4),
-        new THREE.MeshStandardMaterial({ color: 0x111111, emissive: color.clone().multiplyScalar(0.6) })
-      );
-      head.position.y = 1.75;
+      const armorMat = new THREE.MeshStandardMaterial({ color: 0x1c221c, roughness: 0.55, metalness: 0.35 });
+      const trimMat = new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.3, emissive: color.clone().multiplyScalar(0.35) });
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.95, 0.36), armorMat);
+      body.position.y = 1.12;
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.36, 0.36), armorMat);
+      head.position.y = 1.82;
+      const visor = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.09, 0.05), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 2.2 }));
+      visor.position.set(0, 1.84, 0.19);
+      const core = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.22, 0.06), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.6 }));
+      core.position.set(0, 1.24, 0.2);
+      const pack = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.5, 0.18), armorMat);
+      pack.position.set(0, 1.18, -0.26);
+      const shL = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.14, 0.3), trimMat);
+      shL.position.set(-0.44, 1.55, 0);
+      const shR = shL.clone(); shR.position.x = 0.44;
+      const legGeo = new THREE.BoxGeometry(0.2, 0.72, 0.24); legGeo.translate(0, -0.36, 0);
+      const legL = new THREE.Mesh(legGeo, armorMat); legL.position.set(-0.17, 0.72, 0);
+      const legR = new THREE.Mesh(legGeo, armorMat); legR.position.set(0.17, 0.72, 0);
+      const armGeo = new THREE.BoxGeometry(0.14, 0.6, 0.16); armGeo.translate(0, -0.28, 0);
+      const armL = new THREE.Mesh(armGeo, armorMat); armL.position.set(-0.44, 1.5, 0);
+      const armR = new THREE.Mesh(armGeo, armorMat); armR.position.set(0.44, 1.5, 0);
+      const gunM = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.11, 0.62), new THREE.MeshStandardMaterial({ color: 0x0d0f0d, roughness: 0.4, metalness: 0.6 }));
+      gunM.position.set(0.02, -0.52, 0.24);
+      armR.add(gunM);
       const ghost = new THREE.Mesh(
         new THREE.BoxGeometry(0.8, 1.9, 0.5),
         new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.18, depthTest: false })
       );
       ghost.position.y = 0.95;
       ghost.visible = false;
-      group.add(body, head, ghost, makeNameTag(BOT_NAMES[i], color));
+      group.add(body, head, visor, core, pack, shL, shR, legL, legR, armL, armR, ghost, makeNameTag(BOT_NAMES[i], color));
       const sp = SPAWNS[(i + 1) % SPAWNS.length];
       group.position.set(sp[0], 0, sp[1]);
       scene.add(group);
@@ -1317,6 +1346,7 @@ export function RealGame() {
         flankT: 0, flankX: 0, flankZ: 0, shieldT: 0,
         isBoss: false, bossHp: 0, shield: false, phase: 1, summonT: 20, decayT: 10,
         persona: (["sniper", "aggro", "rush"] as const)[Math.floor(Math.random() * 3)],
+        legL, legR, armL, armR, walkT: Math.random() * 6, lastX: sp[0], lastZ: sp[1], moveSpd: 0,
       });
     };
     const bossModes: Record<string, string> = { m9: "KADE", m11: "ERNTE-LÄUFER", m12: "DER GÄRTNER", m14: "DIREKTOR HALE" };
@@ -1846,6 +1876,14 @@ export function RealGame() {
     const muzzleLight = new THREE.PointLight(0x88ff88, 0, 6);
     muzzleLight.position.set(0.3, -0.2, -1);
     camera.add(muzzleLight);
+    const flashMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.34, 0.34),
+      new THREE.MeshBasicMaterial({ color: 0xcfffae, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false })
+    );
+    flashMesh.position.set(0.3, -0.2, -1.15);
+    flashMesh.visible = false;
+    camera.add(flashMesh);
+    let flashT = 0;
 
     /* ---------- Schießen ---------- */
     const raycaster = new THREE.Raycaster();
@@ -1857,6 +1895,9 @@ export function RealGame() {
       player.ammo--;
       sShot(player.weapon);
       muzzleLight.intensity = 3;
+      flashT = 0.045;
+      flashMesh.rotation.z = Math.random() * Math.PI;
+      flashMesh.scale.setScalar(0.8 + Math.random() * 0.7);
 
       // Attachment-Effekte
       const att = loadout.attach?.[player.weapon] ?? [];
@@ -2829,6 +2870,8 @@ const banterCd: Record<string, number> = {};
       gameTime += dt;
       player.fireCd -= dt;
       muzzleLight.intensity = Math.max(0, muzzleLight.intensity - 20 * dt);
+      flashT -= dt;
+      flashMesh.visible = flashT > 0;
 
       // Spieler
       if (player.hp <= 0) {
@@ -3342,6 +3385,19 @@ const banterCd: Record<string, number> = {};
       if (streakCam.t > 0) {
         camera.position.lerp(new THREE.Vector3(player.x, 3.0, player.z), Math.min(1, dt * 6));
         camera.lookAt(streakCam.pos.clone().add(new THREE.Vector3(0, 1.2, 0)));
+      }
+      // ---- Humanoid-Laufanimation: Beine/Arme schwingen mit dem Bewegungstempo ----
+      for (const b of bots) {
+        if (!b.alive || !b.legL) continue;
+        const bdx = b.group.position.x - b.lastX, bdz = b.group.position.z - b.lastZ;
+        b.lastX = b.group.position.x; b.lastZ = b.group.position.z;
+        const bspd = Math.hypot(bdx, bdz) / Math.max(dt, 1e-4);
+        b.moveSpd += (Math.min(bspd, 9) - b.moveSpd) * Math.min(1, 8 * dt);
+        b.walkT += dt * (3 + b.moveSpd * 2.4);
+        const amp = Math.min(1, b.moveSpd / 2.5) * 0.65;
+        const sw = Math.sin(b.walkT) * amp;
+        b.legL.rotation.x = sw; b.legR.rotation.x = -sw;
+        b.armL.rotation.x = -sw * 0.7; b.armR.rotation.x = sw * 0.35;
       }
       // ---- Bot-Radio-Chatter (räumlich hörbar) ----
       chatterT -= dt;
@@ -4238,6 +4294,8 @@ const banterCd: Record<string, number> = {};
   return (
     <div className="fixed inset-0 w-full bg-black overflow-hidden select-none">
       <div ref={mountRef} className="w-full h-full" style={{ touchAction: "none" }} />
+      {/* Kino-Vignette (Anti-Atari-Finish) */}
+      <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse at center, transparent 58%, rgba(0,0,0,0.42) 100%)" }} />
       {/* AAA-Look: Vignette + dezente Scanlines */}
       <div className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.55) 100%)" }} />
       <div className="pointer-events-none absolute inset-0" style={{ background: "repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(34,255,85,0.02) 3px, rgba(34,255,85,0.02) 4px)" }} />
