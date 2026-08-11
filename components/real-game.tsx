@@ -245,6 +245,13 @@ function dailyQuests() {
   }
   return out.map((q) => ({ ...q, n: q.make(s) }));
 }
+function playVoice(f: string) {
+  try {
+    const a = new Audio(`/audio/${f}.mp3`);
+    a.volume = 0.85;
+    void a.play().catch(() => {});
+  } catch { /* Preview ohne Audio */ }
+}
 const BANTER: Record<string, { spk: string; text: string }[]> = {
   headshot: [
     { spk: "VEGA", text: "Notiert. Angeber." },
@@ -794,7 +801,7 @@ export function RealGame() {
   const [loadout, setLoadout] = useState(() => loadLoadout());
   const level = levelFromXp(profile.xp);
   const feedExtraRef = useRef<string[]>([]);
-  const endInfoExt = useRef<null | { debrief?: string; medals: string[]; kills: number; deaths: number; hs: number; frags?: number; rank?: string }>(null);
+  const endInfoExt = useRef<null | { debrief?: string; medals: string[]; kills: number; deaths: number; hs: number; frags?: number; rank?: string; mvp?: { name: string; kills: number } }>(null);
   const chooseM8Ref = useRef<(v: "vega" | "data") => void>(() => {});
   const replayRef = useRef<null | { mode: string; frames: number[][]; events: { t: number; e: string }[]; date: string }>(null);
   const [ngMods, setNgMods] = useState<string[]>(() => loadNG().mods);
@@ -812,6 +819,15 @@ export function RealGame() {
   const [introBeat, setIntroBeat] = useState(0);
   const [doneMissions, setDoneMissions] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem(STORY_KEY) ?? "null")?.done ?? []; } catch { return []; } });
   const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (screen !== "end") return;
+    const t1 = window.setTimeout(() => playVoice(failed ? "defeat" : "victory"), 600);
+    const t2 = window.setTimeout(() => {
+      if (!failed && endInfoExt.current?.mvp?.name === "DU") playVoice("mvp");
+    }, 2000);
+    return () => { window.clearTimeout(t1); window.clearTimeout(t2); };
+  }, [screen, failed]);
+
   useEffect(() => {
     if (screen === "menu" || screen === "end") setDoneMissions(loadStory().done);
   }, [screen]);
@@ -853,7 +869,10 @@ export function RealGame() {
           if (newLv > oldLv) {
           feedExtraRef.current.push(`⬆ LEVEL UP! Level ${newLv} – neue Unlocks im Menü!`);
           const od = divForLevel(oldLv), nd = divForLevel(newLv);
-          if (od.name !== nd.name) feedExtraRef.current.push(`🏅 PROMOTION: ${nd.name}!`);
+          if (od.name !== nd.name) {
+            feedExtraRef.current.push(`🏅 PROMOTIONSMATCH: Gewinne ein Match unter Apex-Druck für ${nd.name}!`);
+            try { localStorage.setItem("wirrwarr-promo", nd.name); } catch { /* */ }
+          }
         }
           return np;
         });
@@ -872,7 +891,10 @@ export function RealGame() {
     const mission = MISSIONS.find((m) => m.id === mode) ?? null;
     const xpMul = weeklyEvent().id === "2xp" ? 2 : 1;
     const invWave = { n: 1 };
-    const diffMul = (DIFFS.find((d) => d.id === loadDiff())?.mul ?? 1) * (mission ? adaptFor(mission.id) : 1);
+    let promoDiv = "";
+    try { promoDiv = localStorage.getItem("wirrwarr-promo") ?? ""; } catch { /* */ }
+    const diffMul = (DIFFS.find((d) => d.id === loadDiff())?.mul ?? 1) * (mission ? adaptFor(mission.id) : 1) * (promoDiv ? 1.35 : 1);
+    if (promoDiv) setTimeout(() => pushFeed(`🏅 PROMOTIONSMATCH aktiv: Sieg = ${promoDiv}. Apex-Druck an.`), 1500);
     const breachMul = weeklyEvent().id === "breach" ? 2 : 1;
     const mount = mountRef.current;
     if (!mount) return;
@@ -1336,7 +1358,13 @@ export function RealGame() {
     let missionKills = 0;
     let missionDestroyed = 0;
     const finishMission = (win: boolean) => {
-      if (win) { addXp(250 * xpMul); updateDaily("wins"); if (mission) recordWin(mission.id); bumpStats({ wins: 1 }); }
+      if (win) {
+        addXp(250 * xpMul); updateDaily("wins"); if (mission) recordWin(mission.id); bumpStats({ wins: 1 });
+        if (promoDiv) {
+          try { localStorage.removeItem("wirrwarr-promo"); } catch { /* */ }
+          feedExtraRef.current.push(`🏅 PROMOTION BESTÄTIGT: ${promoDiv}!`);
+        }
+      }
       else if (mission) recordFail(mission.id);
       fillEnd();
       ended = true;
@@ -2474,13 +2502,6 @@ export function RealGame() {
     let ptAcc = 0;
     const rec = { frames: [] as number[][], events: [] as { t: number; e: string }[], acc: 0 };
     const recEvent = (e: string) => { rec.events.push({ t: Math.round(gameTime * 10) / 10, e }); };
-    function playVoice(f: string) {
-  try {
-    const a = new Audio(`/audio/${f}.mp3`);
-    a.volume = 0.85;
-    void a.play().catch(() => {});
-  } catch { /* Preview ohne Audio */ }
-}
 const banterCd: Record<string, number> = {};
     const streakCam = { t: 0, pos: new THREE.Vector3() };
     let timeScale = 1;
@@ -2896,6 +2917,7 @@ const banterCd: Record<string, number> = {};
               player.terminals++;
               missionDestroyed = player.terminals;
               pushFeed(`⬇ Terminal ${player.terminals}/3 heruntergeladen`);
+              if (player.terminals >= 3) playVoice("objective");
               sRadio();
             }
           } else player.termProg = 0;
@@ -2930,6 +2952,7 @@ const banterCd: Record<string, number> = {};
           }
           pushFeed(`🌊 WELLE ${invWave.n} rollt an!`);
           sRadio();
+          playVoice("wave");
         }
         if (player.hp <= 0 && !ended) {
           fillEnd();
@@ -3686,6 +3709,13 @@ const banterCd: Record<string, number> = {};
           >
             📊 Jahresrückblick
           </button>
+          {(() => {
+            let promo = "";
+            try { promo = localStorage.getItem("wirrwarr-promo") ?? ""; } catch { /* */ }
+            return promo ? (
+              <p className="mb-6 font-mono text-[10px] tracking-wider uppercase text-accent border border-accent/60 bg-accent/10 rounded-sm px-3 py-2 w-max">🏅 Promotionsmatch aktiv: {promo}</p>
+            ) : null;
+          })()}
           {(() => {
             const d = divForLevel(level);
             return (

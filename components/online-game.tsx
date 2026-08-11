@@ -139,6 +139,9 @@ export function OnlineGame() {
   const [onlineReplay, setOnlineReplay] = useState<null | { mode: string; map: string; frames: number[][]; botTrack: number[][]; botsMeta: [number, string, string][]; events: { t: number; e: string }[] }>(null);
   const [rangeTop, setRangeTop] = useState<{ name: string; acc: number }[]>([]);
   const [profileCard, setProfileCard] = useState<null | { name: string; kills: number; deaths: number; me: boolean }>(null);
+  const [ghostOn, setGhostOn] = useState(false);
+  const ghostOnRef = useRef(false);
+  ghostOnRef.current = ghostOn;
   const [clanTop, setClanTop] = useState<{ tag: string; kills: number }[]>([]);
   const [heatCells, setHeatCells] = useState<number[][] | null>(null);
   const [pregameUi, setPregameUi] = useState(0);
@@ -324,7 +327,7 @@ export function OnlineGame() {
       scene.add(mesh);
       walls.push({ x, z, hw: w / 2, hd: d / 2, top: h, mesh });
     };
-    const buildWalls = (sel: MapSel) => {
+    const buildWalls = (sel: MapSel, cells?: number[]) => {
       for (const w of walls) scene.remove(w.mesh);
       walls.length = 0;
       addWall(0, -ARENA, ARENA * 2, 1, 4); addWall(0, ARENA, ARENA * 2, 1, 4);
@@ -348,6 +351,16 @@ export function OnlineGame() {
           [-5, -12, 1.5, 1.5, 2], [5, 12, 1.5, 1.5, 2], [12, -5, 1.5, 1.5, 2], [-12, 5, 1.5, 1.5, 2],
         ],
       };
+      if (sel === ("custom" as MapSel) && cells) {
+        for (let i = 0; i < cells.length; i++) {
+          const v = cells[i];
+          if (!v) continue;
+          const cx = (i % 20) * 2 - 20 + 1;
+          const cz = Math.floor(i / 20) * 2 - 20 + 1;
+          addWall(cx, cz, 2, 2, 3, v === 2 ? 2 : 3);
+        }
+        return;
+      }
       for (const [x, z, w, d, h] of L[sel]) addWall(x, z, w, d, h);
       addWall(-8, 8, 2.5, 2.5, 1.1); addWall(8, -8, 2.5, 2.5, 1.1);
       addWall(-8, -14, 3, 1.2, 1.6); addWall(8, 14, 3, 1.2, 1.6);
@@ -426,6 +439,19 @@ export function OnlineGame() {
     };
     let kc: { id: number; t: number } | null = null;
     const streakCamO = { t: 0, pos: new THREE.Vector3() };
+    // Replay-Ghost (lokal, trainingshalber)
+    let ghost: { mesh: THREE.Mesh; frames: number[][]; hp: number; down: number } | null = null;
+    if (ghostOnRef.current) {
+      try {
+        const r = JSON.parse(localStorage.getItem("wirrwarr-lastreplay") ?? "null");
+        if (r?.frames?.length > 1) {
+          const msh = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.5, 0.4), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x888888, transparent: true, opacity: 0.8 }));
+          msh.position.y = 0.75;
+          scene.add(msh);
+          ghost = { mesh: msh, frames: r.frames, hp: 100, down: 0 };
+        }
+      } catch { /* */ }
+    }
     let pregame = gameMode === "inv" ? 0 : 12;
     pregameRef.current = pregame;
     const votes: Record<string, number> = {};
@@ -589,7 +615,7 @@ export function OnlineGame() {
           pregame = 0;
         } else if (m.t === "setmap") {
           activeMap = m.map as MapSel;
-          buildWalls(activeMap);
+          buildWalls(activeMap, m.cells as number[] | undefined);
           pushFeed(`🗺️ ARENA: ${activeMap.toUpperCase()}`);
         } else if (m.t === "pdmg") {
           if (m.target === me.id && me.hp > 0) {
@@ -677,6 +703,7 @@ export function OnlineGame() {
         if (r.alive && (gameMode === "ffa" || r.team !== me.team)) targets.push(r.body);
       }
       const invMeshes = [...invBots.values()].filter((e) => e.mesh.visible).map((e) => e.mesh);
+      if (ghost && ghost.hp > 0) invMeshes.push(ghost.mesh);
       const hits = raycaster.intersectObjects([...targets, ...invMeshes, ...walls.map((w) => w.mesh)], false);
       const muzzle = new THREE.Vector3(); tip.getWorldPosition(muzzle);
       let end = raycaster.ray.at(60, new THREE.Vector3());
@@ -690,6 +717,9 @@ export function OnlineGame() {
             rHit.alive = false; rHit.deaths++; me.kills++;
             creditKill(me.team, rHit.team, "DU", rHit.name);
           }
+        } else if (ghost && ghost.hp > 0 && hits[0].object === ghost.mesh) {
+          ghost.hp -= 34;
+          if (ghost.hp <= 0) { ghost.down = 3; ghost.mesh.visible = false; pushFeed("🤖 Shadow ausgeschaltet. Er lernt. Leider."); }
         }
       }
       tracer(muzzle, end, 0x22ff55);
@@ -903,10 +933,30 @@ export function OnlineGame() {
         if (isHost2 && pregame <= 0) {
           let bestMap: MapSel = mapSel; let bestN = -1;
           for (const [mm, n] of Object.entries(votes)) if (n > bestN) { bestN = n; bestMap = mm as MapSel; }
-          if (bestMap !== activeMap) { activeMap = bestMap; buildWalls(activeMap); }
-          send({ t: "setmap", map: activeMap });
+          let customCells: number[] | undefined;
+          if (bestMap === ("custom" as MapSel)) {
+            try { customCells = JSON.parse(localStorage.getItem("wirrwarr-custommap") ?? "null")?.cells; } catch { /* */ }
+            if (!customCells) bestMap = "sector";
+          }
+          if (bestMap !== activeMap || customCells) { activeMap = bestMap; buildWalls(activeMap, customCells); }
+          send({ t: "setmap", map: activeMap, cells: customCells });
           send({ t: "prestart" });
           pushFeed(`🗺️ ARENA: ${activeMap.toUpperCase()} – LOS!`);
+        }
+      }
+      if (ghost) {
+        if (ghost.hp <= 0) {
+          ghost.down -= dt;
+          if (ghost.down <= 0) { ghost.hp = 100; ghost.mesh.visible = true; }
+        } else {
+          const fr = ghost.frames;
+          const gt = orec.t % fr[fr.length - 1][0];
+          let gi = 0;
+          while (gi < fr.length - 2 && fr[gi + 1][0] <= gt) gi++;
+          const a = fr[gi], c = fr[gi + 1];
+          const f = c[0] > a[0] ? Math.min(1, (gt - a[0]) / (c[0] - a[0])) : 0;
+          ghost.mesh.position.x = a[1] + (c[1] - a[1]) * f;
+          ghost.mesh.position.z = a[2] + (c[2] - a[2]) * f;
         }
       }
       orec.t += dt;
@@ -1243,6 +1293,13 @@ export function OnlineGame() {
               </svg>
             )}
           </div>
+          <button
+            type="button"
+            onClick={() => setGhostOn(!ghostOn)}
+            className={`mb-6 mr-2 font-mono text-[10px] tracking-wider uppercase rounded-sm border px-3 py-2 min-h-[36px] ${ghostOn ? "border-primary text-primary bg-primary/10" : "border-border text-muted-foreground"}`}
+          >
+            🤖 Shadow (dein Replay) {ghostOn ? "AN" : "AUS"}
+          </button>
           <TurnSettings />
           <a href="/" className="font-mono text-xs tracking-wider uppercase text-muted-foreground hover:text-primary transition-colors">
             ← Zurück zum GDD
@@ -1393,6 +1450,15 @@ export function OnlineGame() {
                   {mm === "sector" ? "Sektor" : mm === "stahl" ? "Stahl" : mm === "orbital" ? "Orbital" : "Garten"}
                 </button>
               ))}
+              {typeof window !== "undefined" && localStorage.getItem("wirrwarr-custommap") && (
+                <button
+                  type="button"
+                  onClick={() => { setMyVote("custom" as MapSel); sendRef.current({ t: "mapvote", map: "custom" }); }}
+                  className={`font-mono text-[10px] uppercase rounded-sm border px-2.5 py-1.5 min-h-[32px] ${myVote === "custom" ? "border-accent bg-accent/20 text-accent" : "border-border text-muted-foreground"}`}
+                >
+                  🗺️ Custom
+                </button>
+              )}
             </div>
           </div>
         </div>
