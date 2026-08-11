@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
+import { STWLogo } from "./stw-logo";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 
 /* ================================================================== */
-/* WIRRWARR – Vertical Slice (echte 3D-Engine, Three.js)               */
+/* SAVE THE WORLD – Vertical Slice (echte 3D-Engine, Three.js)               */
 /* Phase 1: Destruction + Gunfeel + Bots in einer Arena                */
 /* ================================================================== */
 
@@ -3717,7 +3718,7 @@ const banterCd: Record<string, number> = {};
     return (
       <div className="min-h-[100dvh] bg-black flex items-center justify-center px-6">
         <div className="max-w-xl w-full border border-primary/40 bg-black/90 box-glow-neon rounded-sm p-6">
-          <p className="font-mono text-xs tracking-[0.4em] uppercase text-primary glow-neon-sm mb-6">📊 DEIN JAHR // WIRRWARR</p>
+          <p className="font-mono text-xs tracking-[0.4em] uppercase text-primary glow-neon-sm mb-6">📊 DEIN JAHR // SAVE THE WORLD</p>
           <div className="grid grid-cols-2 gap-3 mb-6">
             {[
               ["Spielzeit", `${Math.round(s.playtime / 3600 * 10) / 10} h`],
@@ -3745,7 +3746,7 @@ const banterCd: Record<string, number> = {};
     return (
       <div className="min-h-[100dvh] bg-black flex items-center justify-center">
         <div className="text-center animate-fade-in">
-          <p className="font-mono text-[10px] tracking-[0.5em] uppercase text-muted-foreground mb-4">WIRRWARR</p>
+          <p className="font-mono text-[10px] tracking-[0.5em] uppercase text-muted-foreground mb-4">SAVE THE WORLD</p>
           <p className="font-mono text-4xl md:text-6xl font-bold tracking-[0.2em] text-primary glow-neon">{actCard}</p>
           <div className="mt-6 h-px w-64 mx-auto bg-gradient-to-r from-transparent via-primary/60 to-transparent" />
         </div>
@@ -3760,8 +3761,13 @@ const banterCd: Record<string, number> = {};
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-6 py-16">
         <div className="max-w-2xl w-full">
           <p className="font-mono text-xs tracking-[0.3em] uppercase text-primary glow-neon-sm mb-3">
-            WIRRWARR // Vertical Slice – echte 3D-Engine
+            SAVE THE WORLD // STW-ENGINE – eigene WebGL-Engine · Renderer · Netcode · Spatial-Audio
           </p>
+          <div className="flex items-center gap-3 mb-3">
+            <STWLogo className="w-12 h-12" />
+            <span className="font-mono text-2xl md:text-3xl font-bold tracking-[0.2em] text-primary glow-neon">SAVE THE WORLD</span>
+          </div>
+          <p className="font-mono text-xs tracking-[0.2em] uppercase text-muted-foreground mb-4">Rette die Welt auf deine Art</p>
           <h1 className="text-4xl md:text-5xl font-bold mb-3">
             {screen === "end" ? (
               failed ? (

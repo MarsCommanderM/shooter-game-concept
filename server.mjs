@@ -1,4 +1,4 @@
-/* WIRRWARR Online-Server: Next-Handler + WebSocket auf Port 3000 (/ws) */
+/* SAVE THE WORLD Online-Server: Next-Handler + WebSocket auf Port 3000 (/ws) */
 /* Räume: /ws?mode=ffa (Standard) & /ws?mode=tdm (Teams werden vergeben)  */
 import { createServer } from "http";
 import fs from "fs";
@@ -237,5 +237,5 @@ server.on("upgrade", (req, socket, head) => {
 });
 
 server.listen(port, "0.0.0.0", () => {
-  console.log(`WIRRWARR online: http://0.0.0.0:${port} (WS /ws, Räume dynamisch pro mode[-map])`);
+  console.log(`SAVE THE WORLD online: http://0.0.0.0:${port} (WS /ws, Räume dynamisch pro mode[-map])`);
 });

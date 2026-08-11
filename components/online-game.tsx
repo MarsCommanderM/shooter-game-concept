@@ -5,7 +5,7 @@ import * as THREE from "three";
 import { updateDaily, loadCallsign, loadUpgOwned, loadDiff, seasonId, ReplayView, loadRange } from "./real-game";
 
 /* ================================================================== */
-/* WIRRWARR ONLINE v2 – FFA & TDM, Movement-Polish, Stance-Sync        */
+/* SAVE THE WORLD ONLINE v2 – FFA & TDM, Movement-Polish, Stance-Sync        */
 /* ================================================================== */
 
 type OnlineMode = "ffa" | "tdm" | "hq" | "dom" | "inv";
@@ -1244,7 +1244,7 @@ export function OnlineGame() {
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-6 py-16">
         <div className="max-w-2xl w-full">
           <p className="font-mono text-xs tracking-[0.3em] uppercase text-primary glow-neon-sm mb-3">
-            WIRRWARR // ONLINE
+            SAVE THE WORLD // ONLINE
           </p>
           <h1 className="text-4xl md:text-5xl font-bold mb-3">
             Echtes <span className="text-primary glow-neon">Multiplayer</span>

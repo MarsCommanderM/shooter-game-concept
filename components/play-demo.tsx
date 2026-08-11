@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 /* ================================================================== */
-/* WIRRWARR Web-Demo v0.2: Raycaster-FPS                               */
+/* SAVE THE WORLD Web-Demo v0.2: Raycaster-FPS                               */
 /* Bots, 6 Modi, DESTRUCTION (BRECHER), Sounds, 2 Maps, Touch-Controls */
 /* ================================================================== */
 
@@ -1146,7 +1146,7 @@ export function PlayDemo() {
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-6 py-16">
         <div className="max-w-3xl w-full">
           <p className="font-mono text-xs tracking-[0.3em] uppercase text-primary glow-neon-sm mb-3">
-            WIRRWARR // Web-Demo v0.4
+            SAVE THE WORLD // Web-Demo v0.4
           </p>
           <h1 className="text-4xl md:text-5xl font-bold mb-2">
             {screen === "end" ? (

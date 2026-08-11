@@ -16,9 +16,9 @@ const _jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "WIRRWARR - Game Design Document",
+  title: "SAVE THE WORLD – Rette die Welt auf deine Art",
   description:
-    "Ein innovatives Third-Person-Shooter-Konzept mit Dynamic Destructibility, taktischen Echtzeit-Strategie-Elementen und einer post-apokalyptischen Sci-Fi-Welt.",
+    "First-Person-Shooter mit eigener WebGL-Engine (STW-ENGINE): Destruction, Gunplay, 6 Multiplayer-Modi, Story-Kampagne – spielbar im Browser & auf dem Handy.",
   generator: "v0.app",
 };
 
@@ -42,7 +42,8 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <meta name="apple-mobile-web-app-title" content="WIRRWARR" />
+        <meta name="apple-mobile-web-app-title" content="STW" />
+        <link rel="icon" href="/icons/icon-512.png" />
         <link rel="apple-touch-icon" href="/icons/icon-512.png" />
       </head>
       <body className="font-sans antialiased">

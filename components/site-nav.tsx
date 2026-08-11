@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { STWLogo } from "./stw-logo";
 
 const navLinks = [
   { label: "USP", href: "#usp" },
@@ -38,8 +39,9 @@ export function SiteNav() {
       <div className="max-w-6xl mx-auto px-6 flex items-center justify-between h-16">
         {/* Logo */}
         <a href="#" className="flex items-center gap-2">
+          <STWLogo className="w-7 h-7" />
           <span className="font-bold text-lg tracking-tight text-foreground">
-            <span className="text-primary glow-neon-sm">W</span>IRRWARR
+            <span className="text-primary glow-neon-sm">SAVE</span> THE WORLD
           </span>
           <span className="font-mono text-[10px] text-muted-foreground tracking-wider hidden sm:block">
             GDD

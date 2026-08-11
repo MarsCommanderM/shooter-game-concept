@@ -51,7 +51,7 @@ const MODES: GameMode[] = [
     win: "75 Kills oder Zeitlimit",
     duration: "2 × 5 Minuten",
     description:
-      "Zwei Squads treffen auf symmetrischen Arenen aufeinander. Jede Elimination zählt, jede Rotation entscheidet. Team-Deathmatch ist der reinste Skill-Test in WIRRWARR – schnell, brutal und ehrlich.",
+      "Zwei Squads treffen auf symmetrischen Arenen aufeinander. Jede Elimination zählt, jede Rotation entscheidet. Team-Deathmatch ist der reinste Skill-Test in SAVE THE WORLD – schnell, brutal und ehrlich.",
     twists: [
       "Dynamic Destructibility verändert Lanes live in der Runde: Eine gesprengte Wand ist eine neue Flankroute – für beide Teams.",
       "Biomass-Zonen wachsen während der Partie und verschieben Deckungen dynamisch.",
@@ -421,7 +421,7 @@ export function MultiplayerSection() {
             isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
           }`}
         >
-          Jeder Modus nutzt die Kernmechaniken von WIRRWARR – Zerstörung,
+          Jeder Modus nutzt die Kernmechaniken von SAVE THE WORLD – Zerstörung,
           Parkour und Taktik – auf seine eigene Art. Wähle einen Modus für das
           vollständige Design-Dokument.
         </p>
@@ -538,7 +538,7 @@ export function MultiplayerSection() {
 
               <div>
                 <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-primary mb-3 glow-neon-sm">
-                  WIRRWARR-Twist
+                  STW-Twist
                 </p>
                 <ul className="space-y-3">
                   {mode.twists.map((t, i) => (

@@ -60,9 +60,12 @@ export function HeroSection() {
               : "opacity-0 translate-y-8"
           }`}
         >
-          <span className="text-primary glow-neon">WIRR</span>
-          <span className="text-foreground">WARR</span>
+          <span className="text-primary glow-neon">SAVE</span>
+          <span className="text-foreground"> THE WORLD</span>
         </h1>
+        <p className="font-mono text-sm md:text-lg tracking-[0.25em] uppercase text-muted-foreground -mt-2 mb-4">
+          Rette die Welt auf deine Art
+        </p>
 
         {/* Tagline */}
         <p
