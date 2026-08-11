@@ -1926,8 +1926,8 @@ export function RealGame() {
           dx = (dx / len) * cl; dy = (dy / len) * cl;
           joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
           const mag = cl / JOY_R;
-          if (mag < 0.12) { gpMove.x = 0; gpMove.y = 0; }
-          else { gpMove.x = (dx / len) * mag; gpMove.y = (dy / len) * mag; }
+          if (mag < 0.12) { gpMove.x = 0; gpMove.y = 0; stickMag = 0; }
+          else { gpMove.x = (dx / len) * mag; gpMove.y = (dy / len) * mag; stickMag = mag; }
         } else if (t.identifier === tLook.id) {
           const dx = t.clientX - tLook.lx, dy = t.clientY - tLook.ly;
           targetYaw -= dx * 0.0046 * sens;
@@ -1939,7 +1939,7 @@ export function RealGame() {
     };
     const tEnd = (e: TouchEvent) => {
       for (const t of Array.from(e.changedTouches)) {
-        if (t.identifier === tJoy.id) { tJoy.id = -1; gpMove.x = 0; gpMove.y = 0; joyBase.style.display = "none"; }
+        if (t.identifier === tJoy.id) { tJoy.id = -1; gpMove.x = 0; gpMove.y = 0; stickMag = 0; joyBase.style.display = "none"; }
         if (t.identifier === tLook.id) tLook.id = -1;
       }
     };
@@ -2853,6 +2853,8 @@ export function RealGame() {
     let ptAcc = 0;
     const gpPrev = { y: false, lb: false, rb: false };
     const gpMove = { x: 0, y: 0 };
+    let stickMag = 0; // 0..1: wie weit der Stick gedrückt ist (Touch/Gamepad) — für Analog-Speed + Sprint
+    let gpWasConnected = false;
     const rec = { frames: [] as number[][], events: [] as { t: number; e: string }[], acc: 0 };
     const recEvent = (e: string) => { rec.events.push({ t: Math.round(gameTime * 10) / 10, e }); };
 const banterCd: Record<string, number> = {};
@@ -3031,7 +3033,9 @@ const banterCd: Record<string, number> = {};
         player.slideT = Math.max(0, player.slideT - dt);
         const sliding = player.slideT > 0 && onGround;
 
-        const sprinting = !!keys["ShiftLeft"] && !player.crouch && speedNow0 > 4;
+        // CoD-Style: Stick ganz durchdrücken = Sprint (kein Extra-Button nötig)
+        const stickSprint = stickMag > 0.9 && (gpMove.x !== 0 || gpMove.y !== 0);
+        const sprinting = (!!keys["ShiftLeft"] || stickSprint) && !player.crouch && speedNow0 > 4;
         const attNow = loadout.attach?.[player.weapon] ?? [];
         const maxSp = (player.prone ? 1.5 : player.crouch ? 2.6 : sprinting ? (perk === "sprint" ? 9.6 : 8.6) : 5.2) * (player.upg.l1 && sprinting ? 1.1 : 1) * (player.rageT > 0 ? 1.2 : 1) * (attNow.includes("leicht") ? 1.08 : 1) * (attNow.includes("optic") ? 0.95 : 1) * (weeklyEvent().id === "turbo" ? 1.3 : 1);
 
@@ -3053,7 +3057,10 @@ const banterCd: Record<string, number> = {};
         const damp = onGround ? (wl > 0.01 ? 1 - 1.4 * dt : 1 - 12 * dt) : 1 - 0.15 * dt;
         player.vx *= damp; player.vz *= damp;
         const spNow = Math.hypot(player.vx, player.vz);
-        if (!sliding && spNow > maxSp && spNow > 0) { player.vx *= maxSp / spNow; player.vz *= maxSp / spNow; }
+        // Analog-Speed: Stick halb = halbes Tempo, ganz = voll (Tastatur immer voll)
+        const stickActive = gpMove.x !== 0 || gpMove.y !== 0;
+        const spdCap = maxSp * (stickActive ? Math.max(0.35, Math.min(1, stickMag)) : 1);
+        if (!sliding && spNow > spdCap && spNow > 0) { player.vx *= spdCap / spNow; player.vz *= spdCap / spNow; }
         if (sliding && spNow > 0) { const cap = Math.max(maxSp, spNow * (1 - 1.1 * dt)); if (spNow > cap) { player.vx *= cap / spNow; player.vz *= cap / spNow; } }
 
         // Jump-Buffer + Coyote-Time + Double-Jump
@@ -3147,7 +3154,7 @@ const banterCd: Record<string, number> = {};
       const bob = camGrounded ? Math.sin(player.bobPhase) * Math.min(0.045, camSpd * 0.005) : 0;
       player.landDip = Math.max(0, player.landDip - dt * 0.5);
       yaw.position.set(player.x, player.camH + player.y + bob - player.landDip * 0.4, player.z);
-      const fovT = player.slideT > 0 ? 84 : keys["ShiftLeft"] && camSpd > 6 && !player.crouch ? 81 : player.prone ? 70 : 75;
+      const fovT = player.slideT > 0 ? 84 : (keys["ShiftLeft"] || stickMag > 0.9) && camSpd > 6 && !player.crouch ? 81 : player.prone ? 70 : 75;
       if (Math.abs(camera.fov - fovT) > 0.1) {
         camera.fov += (fovT - camera.fov) * Math.min(1, 9 * dt);
         camera.updateProjectionMatrix();
@@ -3437,7 +3444,12 @@ const banterCd: Record<string, number> = {};
         const gax = dz(gp.axes[0] ?? 0), gay = dz(gp.axes[1] ?? 0), grx = dz(gp.axes[2] ?? 0);
         if (grx) targetYaw -= grx * 3.2 * dt;
         gpMove.x = gax; gpMove.y = gay;
-      } else { gpMove.x = 0; gpMove.y = 0; }
+        stickMag = Math.min(1, Math.hypot(gax, gay));
+        gpWasConnected = true;
+      } else if (gpWasConnected) {
+        // Gamepad wurde getrennt: einmalig nullen, danach den Touch-Joystick in Ruhe lassen
+        gpMove.x = 0; gpMove.y = 0; stickMag = 0; gpWasConnected = false;
+      }
       ptAcc += dt;
       if (ptAcc >= 5) { ptAcc = 0; bumpStats({ playtime: 5 }); }
       rec.acc += dt;
