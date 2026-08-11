@@ -98,6 +98,17 @@ const STORY: Record<string, { intro: CineScene[]; debrief: string; events: Story
     debrief: "KADE gefallen. Sein letzter Funk: ‚Hale sieht dich. Und Hale ist nicht allein.‘",
     events: [{ trigger: "time", at: 30, speaker: "KADE", text: "Orbital? DEIN Orbital. Danke fürs Teilen.", shake: true }],
   },
+  m10: {
+    intro: [
+      { cam: [0, 6, -20], look: [0, 1, 10], dur: 5, speaker: "—", text: "Kein Funk. Nur Wind durch Glas. Und etwas, das wie Kinderlachen klingt, wenn man nicht genau hinhört." },
+    ],
+    debrief: "Vier Erinnerungen. Eine davon trägt einen Namen, den du kennst: HALE. Das Nest war nie eine Waffe. Es war ein Garten für jemanden.",
+    events: [
+      { trigger: "time", at: 8, speaker: "WAND-INSCHRIFT", text: "‚ERNTEDANK 2041 – DANKE, KORP‘ (verblasst, von Sporen halb gefressen)" },
+      { trigger: "time", at: 22, speaker: "JUNO [FLÜSTERT]", text: "Ich empfange keine Feinde. Aber die Biomass … sie singt hier. Warum singt sie?" },
+      { trigger: "time", at: 36, speaker: "???", text: "…Papa?…", shake: true },
+    ],
+  },
   m11: {
     intro: [
       { cam: [0, 20, 20], look: [0, 2, 0], dur: 4.5, speaker: "DR. MAREN", text: "ERNTE-LÄUFER. KORPs Belagerungsmaschine. Sein Schild frisst alles – außer dem Strom aus drei Pylonen." },
@@ -166,6 +177,15 @@ function loadStory(): StoryData {
 function loadFrags(): number {
   try { return JSON.parse(localStorage.getItem(FRAG_KEY) ?? "0") || 0; } catch { return 0; }
 }
+const NG_KEY = "wirrwarr-ngplus";
+const NG_MODS = [
+  { id: "aggro", name: "Aggressive Biomass", desc: "Bots: +50 % Schaden, +20 % Tempo" },
+  { id: "half", name: "Halber Schild", desc: "Schild startet bei 50 statt 100" },
+  { id: "iron", name: "Eisen-Modus", desc: "Keine Schusswaffen. Nur Klinge & Streaks." },
+];
+function loadNG(): { mods: string[] } {
+  try { return JSON.parse(localStorage.getItem(NG_KEY) ?? "null") ?? { mods: [] }; } catch { return { mods: [] }; }
+}
 const CODEX = [
   { at: 1, title: "KORP-Memo 004", text: "„Die Probe wächst auch ohne Licht. Lieferung wie bestellt. – K.“" },
   { at: 3, title: "Fracht-Manifest", text: "Container 77: ‚Saatgut‘. Empfänger: gelöscht. Absender: KORP Terraforming Div." },
@@ -200,7 +220,7 @@ const PERKS: { id: PerkId; name: string; desc: string }[] = [
 ];
 
 type VsMode = "tdm" | "ffa";
-type GameKind = VsMode | "m0" | "m1" | "m2" | "m3" | "m4" | "m5" | "m6" | "m7" | "m8" | "m9" | "m11" | "m12" | "range";
+type GameKind = VsMode | "m0" | "m1" | "m2" | "m3" | "m4" | "m5" | "m6" | "m7" | "m8" | "m9" | "m10" | "m11" | "m12" | "range";
 type ArenaId = "sektor" | "garten" | "stahl" | "orbital";
 
 interface Mission {
@@ -216,6 +236,7 @@ const MISSIONS: Mission[] = [
   { id: "m7", title: "M7 // Zwei Fronten", briefing: "KORP-Mechs UND Biomass. Wirf Lockdrocks (H) und lass sie einander zerfleischen. 10 Kills.", type: "kills", target: 10, botCount: 8 },
   { id: "m8", title: "M8 // Das Labor brennt", briefing: "Das Labor brennt. Kapsel UND Datenkern vorn. Du kannst nur eines tragen. Wähle.", type: "kills", target: 999, botCount: 5 },
   { id: "m9", title: "M9 // Spiegelbild", briefing: "KADE hat dein Loadout. Deine Streaks. Deine Waffen. Töte dein Spiegelbild.", type: "kills", target: 999, botCount: 1 },
+  { id: "m10", title: "M10 // Der Garten", briefing: "Kein Funk. Keine Gegner. Nur das, was sie hier gepflanzt haben. Sammle die 4 Erinnerungen. Dann geh.", type: "kills", target: 999, botCount: 0 },
   { id: "m11", title: "M11 // Belagerung", briefing: "Der ERNTE-LÄUFER hat einen Schild. Drei Pylone speisen ihn. Spreng sie – dann kill ihn.", type: "kills", target: 999, botCount: 4 },
   { id: "m12", title: "M12 // DER GÄRTNER", briefing: "Finale. Die KI im Nest. Drei Phasen. Die Arena stirbt mit ihr.", type: "kills", target: 999, botCount: 1 },
   { id: "m1", title: "M1 // Erste Ernte", briefing: "Die Biomass testet dich. Eliminiere 8 Eindringlinge – sie kommen immer wieder.", type: "kills", target: 8, botCount: 4 },
@@ -433,6 +454,8 @@ export function RealGame() {
   const feedExtraRef = useRef<string[]>([]);
   const endInfoExt = useRef<null | { debrief?: string; medals: string[]; kills: number; deaths: number; hs: number; frags?: number; rank?: string }>(null);
   const chooseM8Ref = useRef<(v: "vega" | "data") => void>(() => {});
+  const replayRef = useRef<null | { mode: string; frames: number[][]; events: { t: number; e: string }[]; date: string }>(null);
+  const [ngMods, setNgMods] = useState<string[]>(() => loadNG().mods);
   const [doneMissions, setDoneMissions] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem(STORY_KEY) ?? "null")?.done ?? []; } catch { return []; } });
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -836,6 +859,12 @@ export function RealGame() {
       spawnShield: 2, killcam: null as { botId: number; t: number } | null,
       rangeT: 60, rangeHits: 0, shots: 0,
     };
+    if (mode === "m0") player.noGun = true;
+    if (mode === "m8") player.rangeT = 150;
+    const ngMods = loadNG().mods;
+    const ngOn = ngMods.length > 0;
+    if (ngOn && ngMods.includes("half")) player.shield = 50;
+    if (ngOn && ngMods.includes("iron")) player.noGun = true;
     yaw.position.set(player.x, 1.7, player.z);
 
     const teamScore = [0, 0];
@@ -882,6 +911,7 @@ export function RealGame() {
       }
       if (killerId >= 100) allies.find((x) => x.id === killerId)!.kills++;
       else if (killerId > 0) bots.find((x) => x.id === killerId)!.kills++;
+      recEvent(`kill:${victimId}`);
       if (killerId === 0) {
         player.kills++; missionKills++; player.codes++;
         // Streak / Spree
@@ -1386,10 +1416,10 @@ export function RealGame() {
     };
 
     /* ---------- Waffen-/Granaten-Pickups ---------- */
-    const pickups3: { x: number; z: number; type: "richter" | "nades" | "dorn" | "fragment"; active: boolean; respawnAt: number; group: THREE.Group }[] = [];
-    const mkPick = (x: number, z: number, type: "richter" | "nades" | "dorn" | "fragment") => {
+    const pickups3: { x: number; z: number; type: "richter" | "nades" | "dorn" | "fragment" | "memory"; active: boolean; respawnAt: number; group: THREE.Group }[] = [];
+    const mkPick = (x: number, z: number, type: "richter" | "nades" | "dorn" | "fragment" | "memory") => {
       const group = new THREE.Group();
-      const col = type === "richter" ? 0x33ccff : type === "nades" ? 0xffcc33 : type === "dorn" ? 0x22ff55 : 0xcc66ff;
+      const col = type === "richter" ? 0x33ccff : type === "nades" ? 0xffcc33 : type === "dorn" ? 0x22ff55 : type === "memory" ? 0xffee88 : 0xcc66ff;
       const box = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 0.45), new THREE.MeshStandardMaterial({ color: col, emissive: new THREE.Color(col).multiplyScalar(0.7) }));
       box.position.y = 0.6;
       group.add(box);
@@ -1399,6 +1429,8 @@ export function RealGame() {
     };
     if (mode === "m0") {
       mkPick(0, -14, "dorn");
+    } else if (mode === "m10") {
+      for (const [mx, mz] of [[-10, -10], [10, -10], [-10, 10], [10, 10]] as [number, number][]) mkPick(mx, mz, "memory");
     } else {
       mkPick(0, -18, "richter"); mkPick(0, 18, "richter"); mkPick(-20, 0, "nades"); mkPick(20, 0, "nades");
       if (mission) {
@@ -1422,6 +1454,11 @@ export function RealGame() {
             player.noGun = false; player.dornFound = true;
             player.weapon = "dorn"; player.ammo = 24;
             pushFeed("🔫 DORN geborgen. Hallo, alte Freundin.");
+            sPickup();
+          } else if (pk.type === "memory") {
+            player.terminals++;
+            const mems = ["ein Namensband: VEGA", "eine Dienstmarke: HALE", "ein Kinderbild: der Garten", "eine Rechnung: 7.000.000 ‚Setzlinge‘"];
+            pushFeed(`🕯 Erinnerung ${player.terminals}/4: ${mems[player.terminals - 1]}`);
             sPickup();
           } else {
             player.frags++;
@@ -1676,7 +1713,7 @@ export function RealGame() {
         tracer(from, to, b.color.getHex());
         sShot("dorn");
         const stanceMul = player.prone ? 0.5 : player.crouch ? 0.75 : 1;
-        const adapt = Math.max(0.75, Math.min(1.25, 1 + (player.deaths - player.kills) * 0.02)) * (mode === "m0" ? 0.5 : 1);
+        const adapt = Math.max(0.75, Math.min(1.25, 1 + (player.deaths - player.kills) * 0.02)) * (mode === "m0" ? 0.5 : 1) * (ngOn && ngMods.includes("aggro") ? 1.5 : 1);
         const dmg = (6 + Math.random() * 8) * adapt * (perk === "panzer" ? 0.7 : 1) * stanceMul * ((b as unknown as { dmgMul?: number }).dmgMul ?? 1) * (b.isBoss ? 2.2 : 1);
         if (target.id === 0) {
           hurtPlayer(dmg, bp.x, bp.z, b.id);
@@ -1775,6 +1812,10 @@ export function RealGame() {
       }
     };
 
+    /* ---------- Replay-Recorder ---------- */
+    const rec = { frames: [] as number[][], events: [] as { t: number; e: string }[], acc: 0 };
+    const recEvent = (e: string) => { rec.events.push({ t: Math.round(gameTime * 10) / 10, e }); };
+
     /* ---------- Cinematic-Engine (Story-Beats) ---------- */
     const story = STORY[mode];
     let m8Choice: "" | "vega" | "data" = "";
@@ -1844,6 +1885,7 @@ export function RealGame() {
           ? "VEGA lebt. Der Datenkern schmort im Labor. Manche Türen öffnen sich nur mit einem Herzschlag."
           : "Der Datenkern ist gesichert. VEGAs Kapsel schloss sich lautlos. Manche Türen öffnen sich nie wieder.";
       }
+      replayRef.current = { mode, frames: rec.frames, events: rec.events, date: new Date().toISOString() };
       endInfoExt.current = { debrief, medals, kills: player.kills, deaths: player.deaths, hs: player.headshots, frags: player.frags, rank: mission ? rank : undefined };
     };
     const storyTick = () => {
@@ -2061,6 +2103,23 @@ export function RealGame() {
         hm.emissiveIntensity = marked ? 1.2 : 0.6;
       }
 
+      // M10: Erinnerungen sammeln -> Twist -> Extraktion
+      if (mode === "m10") {
+        if (player.terminals < 4) {
+          // Memories laufen ueber terminals-Zaehler
+        }
+        if (player.terminals >= 4 && !player.alarm) {
+          player.alarm = true;
+          pushFeed("🌅 DAS LIED STOPPT. Sie wissen, dass du es gehört hast.");
+          sRadio(); player.shakeT = 0.8;
+          for (let i = 0; i < 6; i++) makeBot(bots.length + i, 1);
+        }
+        if (player.alarm && Math.hypot(player.x - 0, player.z - 34) < 3.5) {
+          fillEnd(); ended = true;
+          setWinner("DER GARTEN HAT DICH GESEHEN");
+          setScreen("end");
+        }
+      }
       // M6: Maren folgt/wartet + Extraktion
       if (mode === "m6" && maren.alive) {
         const mp = maren.group.position;
@@ -2196,6 +2255,11 @@ export function RealGame() {
       }
 
       // HUD
+      rec.acc += dt;
+      if (rec.acc >= 0.15) {
+        rec.acc = 0;
+        rec.frames.push([Math.round(gameTime * 10) / 10, Math.round(player.x * 100) / 100, Math.round(player.z * 100) / 100, Math.round(yaw.rotation.y * 1000) / 1000]);
+      }
       fpsAcc += dt; fpsFrames++;
       if (fpsAcc >= 0.5) { fpsVal = Math.round(fpsFrames / fpsAcc); fpsAcc = 0; fpsFrames = 0; }
       hudAcc += dt;
@@ -2329,6 +2393,24 @@ export function RealGame() {
               <p className="font-mono text-[11px] text-foreground mb-2">
                 K/D: {endInfoExt.current.kills}/{endInfoExt.current.deaths} · Headshots: {endInfoExt.current.hs} · Fragmente: {endInfoExt.current.frags ?? 0}/3
               </p>
+              {replayRef.current && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const r = replayRef.current;
+                    if (!r) return;
+                    const blob = new Blob([JSON.stringify(r)], { type: "application/json" });
+                    const a = document.createElement("a");
+                    a.href = URL.createObjectURL(blob);
+                    a.download = `wirrwarr-replay-${r.mode}-${Date.now()}.json`;
+                    a.click();
+                    URL.revokeObjectURL(a.href);
+                  }}
+                  className="font-mono text-[10px] text-primary border border-primary/50 bg-primary/10 hover:bg-primary/20 rounded-sm px-2 py-1 mb-2 min-h-[32px]"
+                >
+                  ⬇ Replay downloaden (JSON)
+                </button>
+              )}
               <div className="flex flex-wrap gap-2">
                 {endInfoExt.current.medals.length > 0 ? (
                   endInfoExt.current.medals.map((m) => (
@@ -2490,6 +2572,38 @@ export function RealGame() {
               ))}
             </div>
           </div>
+
+          {/* NG+ */}
+          {MISSIONS.every((m) => doneMissions.includes(m.id)) ? (
+            <div className="border border-accent/50 bg-accent/5 rounded-sm p-4 mb-6">
+              <p className="font-mono text-[10px] tracking-[0.25em] uppercase text-accent glow-neon-sm mb-2">⭐ NG+ // Mutationen (Kampagne abgeschlossen)</p>
+              <div className="grid sm:grid-cols-3 gap-2">
+                {NG_MODS.map((mod) => {
+                  const on = ngMods.includes(mod.id);
+                  return (
+                    <button
+                      key={mod.id}
+                      type="button"
+                      onClick={() => {
+                        setNgMods((cur) => {
+                          const next = on ? cur.filter((x) => x !== mod.id) : [...cur, mod.id];
+                          try { localStorage.setItem(NG_KEY, JSON.stringify({ mods: next })); } catch { /* */ }
+                          return next;
+                        });
+                      }}
+                      className={`text-left rounded-sm border p-2.5 transition-all min-h-[44px] ${on ? "border-accent/70 bg-accent/15" : "border-border bg-card hover:border-accent/40"}`}
+                    >
+                      <p className={`font-bold text-xs mb-0.5 ${on ? "text-accent" : "text-foreground"}`}>{on ? "☣ " : ""}{mod.name}</p>
+                      <p className="font-mono text-[9px] text-muted-foreground">{mod.desc}</p>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="font-mono text-[9px] text-muted-foreground mt-2 uppercase tracking-wider">Mutationen gelten für alle Modi. Eisen-Modus = nur Melee. Viel Glück.</p>
+            </div>
+          ) : (
+            <p className="font-mono text-[10px] text-muted-foreground mb-6">⭐ NG+ // Schließe alle Missionen ab, um Mutationen freizuschalten.</p>
+          )}
 
           {/* Kodex / Lore-Fragmente */}
           <div className="border border-border bg-card rounded-sm p-4 mb-6">
