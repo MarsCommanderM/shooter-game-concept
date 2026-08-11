@@ -15,7 +15,7 @@ if command -v node >/dev/null 2>&1; then
 fi
 if [ "$NEED_NODE" = "1" ]; then
   echo "📦 Installiere Node 20 …"
-  curl -fsSL https://deb.nodesource.com/setup_20.x | $SUDO -E bash -
+  if [ -n "$SUDO" ]; then curl -fsSL https://deb.nodesource.com/setup_20.x | $SUDO bash -; else curl -fsSL https://deb.nodesource.com/setup_20.x | bash -; fi
   $SUDO apt-get install -y nodejs
 fi
 
