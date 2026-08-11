@@ -117,11 +117,25 @@ wss.on("connection", (ws, req, roomKey) => {
       const s = loadScores();
       const mode = String(m.mode ?? "ffa");
       s[mode] = s[mode] ?? [];
-      s[mode].push({ name: String(m.name ?? "?").slice(0, 12), kills: Number(m.kills) || 0, date: Date.now(), season: String(m.season ?? seasonNow()) });
+      const entry = { name: String(m.name ?? "?").slice(0, 16), kills: Number(m.kills) || 0, date: Date.now(), season: String(m.season ?? seasonNow()) };
+      s[mode].push(entry);
+      const cm = entry.name.match(/^\[([^\]]+)\]/);
+      if (cm) {
+        s.clans = s.clans ?? [];
+        let c = s.clans.find((x) => x.tag === cm[1] && x.season === entry.season);
+        if (!c) { c = { tag: cm[1], kills: 0, season: entry.season }; s.clans.push(c); }
+        c.kills += entry.kills;
+        s.clans.sort((a, b) => b.kills - a.kills);
+        s.clans = s.clans.slice(0, 100);
+      }
       s[mode].sort((a, b) => b.kills - a.kills);
       s[mode] = s[mode].slice(0, 100);
       saveScores(s);
       ws.send(JSON.stringify({ t: "top", mode, top: topFor(mode) }));
+      return;
+    } else if (m.t === "clantop") {
+      const s = loadScores();
+      ws.send(JSON.stringify({ t: "clantop", top: (s.clans ?? []).filter((e) => e.season === seasonNow()).slice(0, 10) }));
       return;
     } else if (m.t === "range") {
       const s = loadScores();

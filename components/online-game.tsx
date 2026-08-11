@@ -138,6 +138,8 @@ export function OnlineGame() {
   const [replayOpen, setReplayOpen] = useState(false);
   const [onlineReplay, setOnlineReplay] = useState<null | { mode: string; map: string; frames: number[][]; botTrack: number[][]; botsMeta: [number, string, string][]; events: { t: number; e: string }[] }>(null);
   const [rangeTop, setRangeTop] = useState<{ name: string; acc: number }[]>([]);
+  const [profileCard, setProfileCard] = useState<null | { name: string; kills: number; deaths: number; me: boolean }>(null);
+  const [clanTop, setClanTop] = useState<{ tag: string; kills: number }[]>([]);
   const vcCtx = useRef<{ team: () => number; has: (pid: number) => number | undefined; pids: () => number[] }>({ team: () => -1, has: () => undefined, pids: () => [] });
   const [name] = useState(() => {
     let cn = "";
@@ -426,6 +428,7 @@ export function OnlineGame() {
     vcCtx.current = { team: () => me.team, has: (pid: number) => remotes.get(pid)?.team, pids: () => [...remotes.keys()] };
     send({ t: "top", mode: gameMode });
     send({ t: "rangetop" });
+    send({ t: "clantop" });
 
     const announce = (text: string) => {
       me.announce = { text, t: performance.now() / 1000 };
@@ -567,6 +570,8 @@ export function OnlineGame() {
           setTop10((m.top as { name: string; kills: number }[]) ?? []);
         } else if (m.t === "rangetop") {
           setRangeTop((m.top as { name: string; acc: number }[]) ?? []);
+        } else if (m.t === "clantop") {
+          setClanTop((m.top as { tag: string; kills: number }[]) ?? []);
         } else if (m.t === "chat") {
           setChatLog((l) => [...l.slice(-7), { name: String(m.name), text: String(m.text), teamChat: !!m.teamChat, own: m.id === me.id }]);
         } else if (m.t === "warn") {
@@ -1125,6 +1130,11 @@ export function OnlineGame() {
                 🎯 Ladder: {rangeTop.slice(0, 4).map((r, i) => `${i + 1}. ${r.name} ${r.acc}%`).join(" · ")}
               </p>
             )}
+            {clanTop.length > 0 && (
+              <p className="font-mono text-[10px] text-accent">
+                🏆 Clan-War: {clanTop.slice(0, 4).map((r, i) => `${i + 1}. [${r.tag}] ${r.kills}`).join(" · ")}
+              </p>
+            )}
           </div>
           <TurnSettings />
           <a href="/" className="font-mono text-xs tracking-wider uppercase text-muted-foreground hover:text-primary transition-colors">
@@ -1251,7 +1261,23 @@ export function OnlineGame() {
         {micErr && <p className="font-mono text-[9px] text-destructive">{micErr}</p>}
       </div>
       <p className="absolute bottom-3 left-1/2 -translate-x-1/2 font-mono text-[9px] text-muted-foreground tracking-wider uppercase pointer-events-none">Enter = Chat · U = Team-Chat · Voice = WebRTC-P2P</p>
-      <Scoreboard hud={hud} top10={top10} />
+      <Scoreboard hud={hud} top10={top10} onCard={(p) => setProfileCard(p)} />
+      {profileCard && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/50" onClick={() => setProfileCard(null)}>
+          <div className="border border-primary/50 bg-black/90 box-glow-neon rounded-sm p-5 w-72" onClick={(e) => e.stopPropagation()}>
+            <p className="font-mono text-sm text-primary glow-neon-sm mb-2">{profileCard.name}</p>
+            {(() => {
+              const m = profileCard.name.match(/^\[([^\]]+)\]/);
+              return m ? <p className="font-mono text-[10px] text-accent mb-2">CLAN {m[1]}</p> : null;
+            })()}
+            <p className="font-mono text-[11px] text-foreground mb-1">Kills: <span className="text-primary">{profileCard.kills}</span></p>
+            <p className="font-mono text-[11px] text-foreground mb-1">Tode: <span className="text-destructive">{profileCard.deaths}</span></p>
+            <p className="font-mono text-[11px] text-foreground mb-2">K/D: <span className="text-primary">{profileCard.deaths ? (profileCard.kills / profileCard.deaths).toFixed(2) : profileCard.kills.toFixed(1)}</span></p>
+            {profileCard.me && <p className="font-mono text-[10px] text-muted-foreground">PING {hud.ping} ms</p>}
+            <button type="button" onClick={() => setProfileCard(null)} className="mt-3 font-mono text-[10px] border border-border text-muted-foreground rounded-sm px-2 py-1 min-h-[28px] w-full">SCHLIESSEN</button>
+          </div>
+        </div>
+      )}
       <button
         type="button"
         onClick={() => setScreen("menu")}
@@ -1319,7 +1345,7 @@ function TurnSettings() {
   );
 }
 
-function Scoreboard({ hud, top10 }: { hud: { players: { name: string; kills: number; deaths: number; me: boolean }[] }; top10: { name: string; kills: number }[] }) {
+function Scoreboard({ hud, top10, onCard }: { hud: { players: { name: string; kills: number; deaths: number; me: boolean }[] }; top10: { name: string; kills: number }[]; onCard: (p: { name: string; kills: number; deaths: number; me: boolean }) => void }) {
   const [tab, setTab] = useState(false);
   useEffect(() => {
     const d = (e: KeyboardEvent) => { if (e.key === "Tab") { e.preventDefault(); setTab(true); } };
@@ -1342,10 +1368,15 @@ function Scoreboard({ hud, top10 }: { hud: { players: { name: string; kills: num
           </div>
         )}
         {hud.players.map((p) => (
-          <div key={p.name} className={`flex justify-between gap-6 font-mono text-[11px] py-0.5 ${p.me ? "text-primary" : "text-foreground"}`}>
+          <button
+            key={p.name}
+            type="button"
+            onClick={() => onCard(p)}
+            className={`w-full flex justify-between gap-6 font-mono text-[11px] py-0.5 hover:text-accent ${p.me ? "text-primary" : "text-foreground"}`}
+          >
             <span>{p.name}</span>
             <span className="text-muted-foreground">{p.kills} / {p.deaths}</span>
-          </div>
+          </button>
         ))}
       </div>
     </div>

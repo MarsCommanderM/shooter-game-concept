@@ -128,6 +128,29 @@ const STORY: Record<string, { intro: CineScene[]; debrief: string; events: Story
     debrief: "",
     events: [{ trigger: "time", at: 60, speaker: "DER GÄRTNER", text: "Interessant. Du wächst.", shake: true }],
   },
+  m13: {
+    intro: [
+      { cam: [0, 10, -18], look: [0, 2, 8], dur: 4.5, speaker: "DR. MAREN", text: "Die Koordinate ist kein Ort. Es ist eine Frequenz. Drei Relais speisen sie. Hack alle drei." },
+      { cam: [6, 2, 6], look: [0, 1.5, -6], dur: 3.5, speaker: "VEGA", text: "Leise. Wer die Frequenz hört, hört auch dich." },
+    ],
+    debrief: "Das Relais sendete einen Namen in Dauerschleife: MAREN. Sie haben nach IHR gesucht.",
+    events: [{ trigger: "destroyed", at: 2, speaker: "HALE [FUNK]", text: "Ihr kitzelt meinen Garten. Interessant.", shake: true }],
+  },
+  m14: {
+    intro: [
+      { cam: [0, 6, -12], look: [0, 2, 10], dur: 5, speaker: "DIREKTOR HALE", text: "Ich habe die erste Saat bestellt. Ihr steht in meinem Schatten, Kinder." },
+      { cam: [5, 2, 5], look: [0, 2, 0], dur: 3.5, speaker: "VEGA", text: "Phasenpanzerung. Granaten. Ego. Bleib in Bewegung." },
+    ],
+    debrief: "Hale fiel. Sein letzter Funkspruch ging raus – an ALLE Nester gleichzeitig.",
+    events: [{ trigger: "time", at: 45, speaker: "HALE", text: "Seht ihr? Der Garten wehrt sich.", shake: true }],
+  },
+  m15: {
+    intro: [
+      { cam: [0, 14, 0.1], look: [0, 0, 0], dur: 5, speaker: "VEGA", text: "Alle Nester haben dich gehört. 120 Sekunden. Dann gehört die Antwort dir." },
+    ],
+    debrief: "",
+    events: [{ trigger: "time", at: 60, speaker: "JUNO", text: "Halbzeit! Sie werfen alles rein!", shake: true }],
+  },
   m6: {
     intro: [
       { cam: [-10, 3, -16], look: [4, 1.5, 8], dur: 4.5, speaker: "DR. MAREN", text: "Ich habe die Ernte mitdesignt. Deshalb wissen sie, dass ich komme. Und deshalb musst DU jetzt schnell sein." },
@@ -306,7 +329,7 @@ const PERKS: { id: PerkId; name: string; desc: string }[] = [
 ];
 
 type VsMode = "tdm" | "ffa";
-type GameKind = VsMode | "m0" | "m1" | "m2" | "m3" | "m4" | "m5" | "m6" | "m7" | "m8" | "m9" | "m10" | "m11" | "m12" | "inv" | "range";
+type GameKind = VsMode | "m0" | "m1" | "m2" | "m3" | "m4" | "m5" | "m6" | "m7" | "m8" | "m9" | "m10" | "m11" | "m12" | "m13" | "m14" | "m15" | "inv" | "range";
 type ArenaId = "sektor" | "garten" | "stahl" | "orbital";
 
 interface Mission {
@@ -324,6 +347,9 @@ const MISSIONS: Mission[] = [
   { id: "m9", title: "M9 // Spiegelbild", briefing: "KADE hat dein Loadout. Deine Streaks. Deine Waffen. Töte dein Spiegelbild.", type: "kills", target: 999, botCount: 1 },
   { id: "m10", title: "M10 // Der Garten", briefing: "Kein Funk. Keine Gegner. Nur das, was sie hier gepflanzt haben. Sammle die 4 Erinnerungen. Dann geh.", type: "kills", target: 999, botCount: 0 },
   { id: "m11", title: "M11 // Belagerung", briefing: "Der ERNTE-LÄUFER hat einen Schild. Drei Pylone speisen ihn. Spreng sie – dann kill ihn.", type: "kills", target: 999, botCount: 4 },
+  { id: "m13", title: "M13 // Der Aufstieg", briefing: "Die Koordinate ist eine Frequenz. Drei Relais speisen sie. Hack sie alle – leise.", type: "destroy", target: 3, botCount: 5 },
+  { id: "m14", title: "M14 // Direktor Hale", briefing: "Der Mann, der die Saat bestellte. Phasenpanzerung. Granaten. Ego. Beende ihn.", type: "kills", target: 999, botCount: 4 },
+  { id: "m15", title: "M15 // Die Antwort", briefing: "Alle Nester haben dich gehört. Halte 120 Sekunden. Dann gehört die Antwort dir.", type: "kills", target: 999, botCount: 6 },
   { id: "inv", title: "INVASION // Wellen", briefing: "Endlos-Wellen. EIN Leben. Wie lange hältst du?", type: "kills", target: 999, botCount: 5 },
   { id: "m12", title: "M12 // DER GÄRTNER", briefing: "Finale. Die KI im Nest. Drei Phasen. Die Arena stirbt mit ihr.", type: "kills", target: 999, botCount: 1 },
   { id: "m1", title: "M1 // Erste Ernte", briefing: "Die Biomass testet dich. Eliminiere 8 Eindringlinge – sie kommen immer wieder.", type: "kills", target: 8, botCount: 4 },
@@ -421,6 +447,7 @@ interface BotEnt {
   phase: number;
   summonT: number;
   decayT: number;
+  persona: "sniper" | "aggro" | "rush";
 }
 
 interface Particle {
@@ -1050,9 +1077,10 @@ export function RealGame() {
         burstLeft: 0, reactT: 0, pauseT: 0, ghost, markedT: 0,
         flankT: 0, flankX: 0, flankZ: 0, shieldT: 0,
         isBoss: false, bossHp: 0, shield: false, phase: 1, summonT: 20, decayT: 10,
+        persona: (["sniper", "aggro", "rush"] as const)[Math.floor(Math.random() * 3)],
       });
     };
-    const bossModes: Record<string, string> = { m9: "KADE", m11: "ERNTE-LÄUFER", m12: "DER GÄRTNER" };
+    const bossModes: Record<string, string> = { m9: "KADE", m11: "ERNTE-LÄUFER", m12: "DER GÄRTNER", m14: "DIREKTOR HALE" };
     const pylonWalls: WallBox[] = [];
     const botCount = mission ? mission.botCount : 5;
     for (let i = 0; i < botCount; i++) {
@@ -1197,6 +1225,7 @@ export function RealGame() {
     };
     if (mode === "m0") player.noGun = true;
     if (mode === "m8") player.rangeT = 150;
+    if (mode === "m15") player.rangeT = 120;
     const ngMods = loadNG().mods;
     const ngOn = ngMods.length > 0;
     if (ngOn && ngMods.includes("half")) player.shield = 50;
@@ -1506,7 +1535,7 @@ export function RealGame() {
         camera
       );
       player.bloom = Math.min(1, player.bloom + (player.weapon === "dorn" ? 0.16 : 0.3));
-      if (mode === "m5" && !player.alarm) {
+      if ((mode === "m5" || mode === "m13") && !player.alarm) {
         player.alarm = true;
         banter("boss");
         pushFeed("⚠ ALARM! Schusswechsel gehört – sie kommen!");
@@ -1595,7 +1624,7 @@ export function RealGame() {
         if (d < 2.4) {
           const vx_ = -Math.sin(yaw.rotation.y), vz_ = -Math.cos(yaw.rotation.y);
           if ((dx / d) * vx_ + (dz / d) * vz_ > 0.5) {
-            const silent = mode === "m5" && !player.alarm && b.hp <= 70;
+            const silent = (mode === "m5" || mode === "m13") && !player.alarm && b.hp <= 70;
             b.hp -= 70;
             if (silent) { pushFeed("🗡 Lautlos ausgeschaltet. +50 XP"); addXp(50 * xpMul); }
             burst(b.group.position.clone().add(new THREE.Vector3(0, 1.2, 0)), 0xffffff, 8);
@@ -2035,6 +2064,18 @@ export function RealGame() {
         b.burstLeft = 3 + Math.floor(Math.random() * 3);
       }
       b.shieldT = Math.max(0, (b.shieldT ?? 0) - dt);
+      // Persona-Modifikatoren
+      if (b.persona === "sniper" && target && target.dist < 7) {
+        const away = 4 * dt;
+        const p4 = { x: bp.x, z: bp.z };
+        moveWithCollide(p4, ((bp.x - target.x) / (target.dist || 1)) * away, ((bp.z - target.z) / (target.dist || 1)) * away, 0.5, b.y);
+        bp.x = p4.x; bp.z = p4.z;
+      }
+      if (b.persona === "aggro" && target && target.dist > 4) {
+        const p5 = { x: bp.x, z: bp.z };
+        moveWithCollide(p5, ((target.x - bp.x) / (target.dist || 1)) * 5.5 * dt, ((target.z - bp.z) / (target.dist || 1)) * 5.5 * dt, 0.5, b.y);
+        bp.x = p5.x; bp.z = p5.z;
+      }
       // ===== BOT-UTILITY: Granaten & Deckungs-Breaching =====
       const util = (b as unknown as { nadeCd2?: number; wallCd?: number });
       util.nadeCd2 = (util.nadeCd2 ?? 4 + Math.random() * 4) - dt;
@@ -2122,7 +2163,7 @@ export function RealGame() {
         sShot("dorn");
         const stanceMul = player.prone ? 0.5 : player.crouch ? 0.75 : 1;
         const adapt = Math.max(0.75, Math.min(1.25, 1 + (player.deaths - player.kills) * 0.02)) * (mode === "m0" ? 0.5 : 1) * (ngOn && ngMods.includes("aggro") ? 1.5 : 1);
-        const dmg = (6 + Math.random() * 8) * adapt * (perk === "panzer" ? 0.7 : 1) * stanceMul * ((b as unknown as { dmgMul?: number }).dmgMul ?? 1) * (b.isBoss ? 2.2 : 1);
+        const dmg = (6 + Math.random() * 8) * adapt * (perk === "panzer" ? 0.7 : 1) * stanceMul * ((b as unknown as { dmgMul?: number }).dmgMul ?? 1) * (b.isBoss ? 2.2 : 1) * (b.persona === "sniper" && target.dist > 10 ? 1.7 : 1) * (b.persona === "rush" ? 0.8 : 1);
         if (target.id === 0) {
           hurtPlayer(dmg, bp.x, bp.z, b.id);
         } else if (target.id === 200) {
@@ -2337,6 +2378,14 @@ export function RealGame() {
       if (player.bestStreakM >= 5) medals.push("🔥 Spree-Meister – 5er-Streak");
       if (player.deaths === 0 && player.kills >= 5) medals.push("🛡 Unberührbar – 5 Kills, 0 Tode");
       let debrief = mission ? STORY[mission.id]?.debrief : undefined;
+      if (mission?.id === "m15") {
+        const sv = loadStory().flags?.save_vega;
+        debrief = loadFrags() >= 18
+          ? "GEHEIM-EPILOG: Die Antwort war keine Waffe. Es war ein Samen. Und du entscheidest, wo er aufgeht."
+          : sv
+            ? "EPILOG A: VEGA sendet die Antwort selbst: ‚Wir waren nie die Ernte. Wir sind die Gärtner.‘"
+            : "EPILOG B: Die Daten sprechen. Die Nester schweigen. Irgendwo, tief unten, wartet der letzte Garten.";
+      }
       if (mission?.id === "m12") {
         const sv = loadStory().flags?.save_vega;
         const fragsTotal = loadFrags();
@@ -2362,7 +2411,7 @@ export function RealGame() {
       if (!story || cine.active) return;
       for (const ev of story.events) {
         if (firedEvents.includes(ev)) continue;
-        const val = ev.trigger === "time" ? gameTime : ev.trigger === "kills" ? player.kills : mode === "m5" ? player.terminals : missionDestroyed;
+        const val = ev.trigger === "time" ? gameTime : ev.trigger === "kills" ? player.kills : (mode === "m5" || mode === "m13") ? player.terminals : missionDestroyed;
         if (val >= ev.at) {
           firedEvents.push(ev);
           pushFeed(`📻 ${ev.speaker}: ${ev.text}`);
@@ -2639,7 +2688,7 @@ export function RealGame() {
         }
       }
       // m5: Terminals channeln + Extraktion
-      if (mode === "m5" && mission) {
+      if ((mode === "m5" || mode === "m13") && mission) {
         const TERMS: [number, number][] = [[-6, 6], [6, -6], [0, -14]];
         const nextT = TERMS[player.terminals];
         if (nextT && player.terminals < 3) {
@@ -2658,6 +2707,16 @@ export function RealGame() {
           fillEnd();
           ended = true;
           setWinner("EXFILTRATION ERFOLGREICH");
+          setScreen("end");
+        }
+      }
+      // M15: Holdout-Finale
+      if (mode === "m15") {
+        player.rangeT -= dt;
+        if (player.rangeT <= 0 && !ended) {
+          fillEnd();
+          ended = true;
+          setWinner("DIE ANTWORT GEHÖRT DIR");
           setScreen("end");
         }
       }
@@ -2799,7 +2858,9 @@ export function RealGame() {
           kills: player.kills,
           m8Offer: mode === "m8" && !m8ChoiceDone ? m8OfferState : null,
           marenHp: mode === "m6" ? Math.max(0, Math.round(maren.hp)) : -1,
-          objective: mode === "inv"
+          objective: mode === "m15"
+            ? `⏳ HALTE DURCH · ${Math.max(0, Math.ceil(player.rangeT))} s · Kills ${player.kills}`
+            : mode === "inv"
             ? `🌊 WELLE ${invWave.n} · Kills ${player.kills} · EIN LEBEN`
             : mode === "m8"
             ? `🔥 LABOR-BRAND · ⏱ ${Math.max(0, Math.ceil(player.rangeT))} s · ${m8ChoiceDone ? "Raus zur Extraktion (Norden)!" : "Kapsel (links) ODER Datenkern (rechts)?"}`
