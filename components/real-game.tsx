@@ -774,11 +774,31 @@ export const REPLAY_WALLS: [number, number, number, number, number, number][] = 
   [-8, 1, 8, 2, 2, 2], [8, 1, -8, 2, 2, 2], [-24, 1, -24, 3, 2, 3], [24, 1, 24, 3, 2, 3], [24, 1, -24, 3, 2, 3], [-24, 1, 24, 3, 2, 3],
 ];
 
+/* ---- Killfeed-Waffen-Icons (Inline-SVG, keine externen Assets) ---- */
+function WeaponIcon({ kind }: { kind: string }) {
+  const cls = "inline-block h-[9px] w-[26px] shrink-0 text-primary";
+  switch (kind) {
+    case "brecher":
+      return <svg className={cls} viewBox="0 0 32 12" fill="currentColor"><path d="M1 5h4V4h3v1h16v3H8v1H5V8H1z" /></svg>;
+    case "richter":
+      return <svg className={cls} viewBox="0 0 32 12" fill="currentColor"><path d="M1 6h3V4.6h2V6h22v1.4H13v2h-2V7.4H6l-1.2 1.8H2L3.2 7.4H1z" /><rect x="10" y="3" width="5" height="1.8" /></svg>;
+    case "melee":
+      return <svg className={cls} viewBox="0 0 32 12" fill="currentColor"><path d="M2 9L20 4l4 1-1 2L6 10zM24 5l6-2-1 4-5 2z" /></svg>;
+    case "nade":
+      return <svg className={cls} viewBox="0 0 32 12" fill="currentColor"><circle cx="12" cy="7" r="4.5" /><rect x="10" y="0.5" width="4" height="2.5" /><rect x="14.5" y="1" width="4" height="1.2" /></svg>;
+    default:
+      return <svg className={cls} viewBox="0 0 32 12" fill="currentColor"><path d="M1 5h5V3.4h2.4V5h14v1.8h-5.6l-1.2 3h-3l1-3H6.4L5 8.6H1.8L3 6.8H1z" /></svg>;
+  }
+}
+
 export function ReplayView({ data, onExit, walls }: { data: { mode: string; frames: number[][]; events: { t: number; e: string }[]; botTrack?: number[][]; botsMeta?: [number, string, string][] }; onExit: () => void; walls?: [number, number, number, number, number, number][] }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [speed, setSpeed] = useState(1);
   const speedRef = useRef(1);
   speedRef.current = speed;
+  const [cam, setCam] = useState<"ego" | "orbit" | "top">("ego");
+  const camRef = useRef<"ego" | "orbit" | "top">("ego");
+  camRef.current = cam;
   const [ui, setUi] = useState({ t: 0, feed: [] as string[], done: false });
   const [heat, setHeat] = useState(false);
 
@@ -810,6 +830,22 @@ export function ReplayView({ data, onExit, walls }: { data: { mode: string; fram
     let uiAcc = 0;
     const feedLocal: string[] = [];
     const fr = data.frames;
+    /* ---- Broadcast-Kamera: Orbit (Drag+Zoom) & Top-Down ---- */
+    let orbYaw = 0.7, orbPitch = 0.72, orbDist = 40;
+    let dragging = false, lastPX = 0, lastPY = 0;
+    const onPDown = (e: PointerEvent) => { dragging = true; lastPX = e.clientX; lastPY = e.clientY; };
+    const onPMove = (e: PointerEvent) => {
+      if (!dragging) return;
+      orbYaw -= (e.clientX - lastPX) * 0.006;
+      orbPitch = Math.max(0.15, Math.min(1.35, orbPitch + (e.clientY - lastPY) * 0.004));
+      lastPX = e.clientX; lastPY = e.clientY;
+    };
+    const onPUp = () => { dragging = false; };
+    const onWheel = (e: WheelEvent) => { orbDist = Math.max(12, Math.min(90, orbDist + e.deltaY * 0.04)); };
+    mount.addEventListener("pointerdown", onPDown);
+    window.addEventListener("pointermove", onPMove);
+    window.addEventListener("pointerup", onPUp);
+    mount.addEventListener("wheel", onWheel, { passive: true });
     const loop = () => {
       raf = requestAnimationFrame(loop);
       const now = performance.now();
@@ -820,8 +856,20 @@ export function ReplayView({ data, onExit, walls }: { data: { mode: string; fram
         const a = fr[ptr];
         const b = fr[Math.min(ptr + 1, fr.length - 1)];
         const f = b[0] > a[0] ? Math.max(0, Math.min(1, (t - a[0]) / (b[0] - a[0]))) : 0;
-        camera.position.set(a[1] + (b[1] - a[1]) * f, 1.7, a[2] + (b[2] - a[2]) * f);
-        camera.rotation.set(0, a[3] + (b[3] - a[3]) * f, 0, "YXZ");
+        const px = a[1] + (b[1] - a[1]) * f;
+        const pz = a[2] + (b[2] - a[2]) * f;
+        const cm = camRef.current;
+        if (cm === "ego") {
+          camera.position.set(px, 1.7, pz);
+          camera.rotation.set(0, a[3] + (b[3] - a[3]) * f, 0, "YXZ");
+        } else if (cm === "top") {
+          camera.position.set(px, 36, pz + 12);
+          camera.lookAt(px, 0, pz);
+        }
+      }
+      if (camRef.current === "orbit") {
+        camera.position.set(Math.sin(orbYaw) * Math.cos(orbPitch) * orbDist, Math.sin(orbPitch) * orbDist, Math.cos(orbYaw) * Math.cos(orbPitch) * orbDist);
+        camera.lookAt(0, 1, 0);
       }
       while (evIdx < data.events.length && data.events[evIdx].t <= t) {
         feedLocal.push(`[${data.events[evIdx].t}s] ${data.events[evIdx].e}`);
@@ -850,6 +898,10 @@ export function ReplayView({ data, onExit, walls }: { data: { mode: string; fram
     }
     return () => {
       cancelAnimationFrame(raf);
+      mount.removeEventListener("pointerdown", onPDown);
+      window.removeEventListener("pointermove", onPMove);
+      window.removeEventListener("pointerup", onPUp);
+      mount.removeEventListener("wheel", onWheel);
       if (heatPts) scene.remove(heatPts);
       renderer.dispose();
       if (renderer.domElement.parentElement === mount) mount.removeChild(renderer.domElement);
@@ -873,6 +925,21 @@ export function ReplayView({ data, onExit, walls }: { data: { mode: string; fram
         >
           🔥 HEAT
         </button>
+        {(["ego", "orbit", "top"] as const).map((c) => (
+          <button
+            key={c}
+            type="button"
+            onClick={() => setCam(c)}
+            className={`font-mono text-[10px] px-2 py-1 rounded-sm border min-h-[28px] ${cam === c ? "border-primary text-primary box-glow-neon" : "border-border text-muted-foreground"}`}
+          >
+            {c === "ego" ? "👁 EGO" : c === "orbit" ? "🎥 ORBIT" : "🗺 TOP"}
+          </button>
+        ))}
+      </div>
+      {cam === "orbit" && (
+        <p className="absolute top-[calc(10%+76px)] right-4 font-mono text-[9px] text-muted-foreground pointer-events-none tracking-wider">DRAG = SCHWENKEN · SCROLL/PINCH = ZOOM</p>
+      )}
+      <div className="absolute top-[calc(10%+38px)] right-4 flex gap-2">
         <button
           type="button"
           onClick={() => {
@@ -940,14 +1007,14 @@ export function RealGame() {
   }, [screen]);
   const [hud, setHud] = useState({
     hp: 100, ammo: 24, reloading: false, weapon: "DORN",
-    scores: "", feed: [] as string[], kills: 0, objective: "", tactics: false,
+    scores: "", feed: [] as { t: string; w?: string }[], kills: 0, objective: "", tactics: false,
     shield: 100, bloom: 0, grenades: 2, dmgDirs: [] as { a: number; age: number }[],
     codes: 0, upg: [] as string[], bioOpen: false, announce: null as string | null, skin: "#22ff55",
     fps: 60, killcam: null as string | null, subtitle: null as { speaker: string; text: string } | null,
     m8Offer: null as "vega" | "data" | null, marenHp: -1, lowhp: false,
   });
   const apiRef = useRef<{ dispose: () => void; upgrade?: (id: string) => void } | null>(null);
-  const feedRef = useRef<string[]>([]);
+  const feedRef = useRef<{ t: string; w?: string }[]>([]);
 
   useEffect(() => () => apiRef.current?.dispose(), []);
 
@@ -1475,13 +1542,13 @@ export function RealGame() {
       drocks.push({ x: at.x, z: at.z, until: gameTime + 6 });
       sThrow();
       burst(new THREE.Vector3(at.x, 0.5, at.z), 0x8899ff, 12);
-      pushFeed(" Lockdrock aktiv – sie riechen es.");
-      for (const b of bots) {
-        if (b.alive && Math.hypot(b.group.position.x - at.x, b.group.position.z - at.z) < 16) {
-          b.hp -= 15;
-          if (b.hp <= 0) kill(0, b.id);
+        pushFeed("🎿 Lockdrock aktiv – sie riechen es.");
+        for (const b of bots) {
+          if (b.alive && Math.hypot(b.group.position.x - at.x, b.group.position.z - at.z) < 16) {
+            b.hp -= 15;
+            if (b.hp <= 0) kill(0, b.id, "nade");
+          }
         }
-      }
     };
 
     /* ---------- Spieler-State ---------- */
@@ -1551,14 +1618,14 @@ export function RealGame() {
       setScreen("end");
     };
 
-    const pushFeed = (t: string) => {
-      feedRef.current.push(t);
+    const pushFeed = (t: string, w?: string) => {
+      feedRef.current.push({ t, w });
       if (feedRef.current.length > 5) feedRef.current.shift();
     };
 
     const nameOf = (id: number) =>
       id === 0 ? "DU" : id >= 100 ? ALLY_NAMES[id - 101] ?? "?" : BOT_NAMES[id - 1] ?? "?";
-    const kill = (killerId: number, victimId: number) => {
+    const kill = (killerId: number, victimId: number, weap?: string) => {
       if (victimId === 0) { player.hp = 0; player.deaths++; player.respawnAt = gameTime + 3; player.streak = 0; player.revengeTarget = killerId; banter("death"); }
       else if (victimId >= 100) {
         const a = allies.find((x) => x.id === victimId)!;
@@ -1628,7 +1695,7 @@ export function RealGame() {
         }
       } else if (mode === "ffa") { if (killerId < 6) ffaScore[killerId]++; }
       else teamScore[killerId === 0 || killerId >= 100 ? 0 : bots.find((x) => x.id === killerId)!.team]++;
-      pushFeed(`${nameOf(killerId)} ⚡ ${nameOf(victimId)}`);
+      pushFeed(`${nameOf(killerId)} ⚡ ${nameOf(victimId)}`, weap);
     };
 
     const strikes: { at: number; pos: THREE.Vector3 }[] = [];
@@ -1951,7 +2018,7 @@ export function RealGame() {
           botHit.hp -= dmg;
           burst(h.point, head ? 0xffcc33 : 0xff5544, head ? 10 : 6);
           spawnDmgNum(h.point.clone(), dmg, botHit.hp <= 0);
-          if (botHit.hp <= 0) kill(0, botHit.id);
+          if (botHit.hp <= 0) kill(0, botHit.id, player.weapon);
           }
         } else if (!botHit) {
           const wall = walls.find((w) => w.active && w.mesh === h.object);
@@ -2010,7 +2077,7 @@ export function RealGame() {
             if (silent) { pushFeed("🗡 Lautlos ausgeschaltet. +50 XP"); addXp(50 * xpMul); }
             burst(b.group.position.clone().add(new THREE.Vector3(0, 1.2, 0)), 0xffffff, 8);
             sHit();
-            if (b.hp <= 0) kill(0, b.id);
+            if (b.hp <= 0) kill(0, b.id, "melee");
           }
         }
       }
@@ -2128,7 +2195,7 @@ export function RealGame() {
         const d = Math.hypot(b.group.position.x - pos.x, b.group.position.z - pos.z);
         if (d < 3.2) {
           b.hp -= Math.round(95 * (1 - d / 3.6));
-          if (b.hp <= 0) kill(0, b.id);
+          if (b.hp <= 0) kill(0, b.id, "nade");
         }
       }
       const dP = Math.hypot(player.x - pos.x, player.z - pos.z);
@@ -2677,7 +2744,7 @@ export function RealGame() {
         sShot("dorn", from);
         const v = bots.find((x) => x.id === target!.id)!;
         v.hp -= 12;
-        if (v.hp <= 0) kill(a.id, v.id);
+        if (v.hp <= 0) kill(a.id, v.id, "dorn");
       }
     };
 
@@ -4447,9 +4514,17 @@ const banterCd: Record<string, number> = {};
         </div>
       )}
       <div className="absolute top-12 left-3 pointer-events-none space-y-1">
-        {hud.feed.map((f, i) => (
-          <p key={i} className="font-mono text-[10px] text-primary/90">{f}</p>
-        ))}
+        {hud.feed.map((f, i) => {
+          if (f.w && f.t.includes(" ⚡ ")) {
+            const [k, v] = f.t.split(" ⚡ ");
+            return (
+              <p key={i} className="font-mono text-[10px] text-primary/90 flex items-center gap-1.5">
+                <span>{k}</span><WeaponIcon kind={f.w} /><span>{v}</span>
+              </p>
+            );
+          }
+          return <p key={i} className="font-mono text-[10px] text-primary/90">{f.t}</p>;
+        })}
       </div>
       <div className="absolute bottom-3 left-3 pointer-events-none">
         <p className="font-mono text-[10px] text-muted-foreground tracking-wider">SCHILD // INTEGRITÄT</p>
