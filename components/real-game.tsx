@@ -254,6 +254,12 @@ const DIFFS = [
 ];
 export function loadDiff() { try { return localStorage.getItem(DIFF_KEY) ?? "veteran"; } catch { return "veteran"; } }
 const UPG_KEY = "wirrwarr-upg";
+export function seasonSkinUnlocked(): boolean {
+  return loadSeason().xp >= 500;
+}
+export function seasonSkinOn(): boolean {
+  try { return localStorage.getItem("wirrwarr-seasonskin") === "1" && seasonSkinUnlocked(); } catch { return false; }
+}
 export function loadUpgOwned(): string[] {
   try { return JSON.parse(localStorage.getItem(UPG_KEY) ?? "null") ?? []; } catch { return []; }
 }
@@ -583,6 +589,7 @@ export function ReplayView({ data, onExit, walls }: { data: { mode: string; fram
   const speedRef = useRef(1);
   speedRef.current = speed;
   const [ui, setUi] = useState({ t: 0, feed: [] as string[], done: false });
+  const [heat, setHeat] = useState(false);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -637,8 +644,26 @@ export function ReplayView({ data, onExit, walls }: { data: { mode: string; fram
       renderer.render(scene, camera);
     };
     loop();
-    return () => { cancelAnimationFrame(raf); renderer.dispose(); if (renderer.domElement.parentElement === mount) mount.removeChild(renderer.domElement); };
-  }, [data]);
+    let heatPts: THREE.Points | null = null;
+    if (heat) {
+      const pos: number[] = [];
+      for (const ev of data.events) {
+        if (!ev.e.startsWith("kill")) continue;
+        const fr = data.frames.find((f) => f[0] >= ev.t) ?? data.frames[data.frames.length - 1];
+        if (fr) pos.push(fr[1], 0.15, fr[2]);
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(pos), 3));
+      heatPts = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xff3333, size: 1.2, transparent: true, opacity: 0.5 }));
+      scene.add(heatPts);
+    }
+    return () => {
+      cancelAnimationFrame(raf);
+      if (heatPts) scene.remove(heatPts);
+      renderer.dispose();
+      if (renderer.domElement.parentElement === mount) mount.removeChild(renderer.domElement);
+    };
+  }, [data, heat]);
 
   return (
     <div className="relative h-screen w-full bg-black overflow-hidden">
@@ -650,6 +675,13 @@ export function ReplayView({ data, onExit, walls }: { data: { mode: string; fram
         {[1, 2, 4].map((s) => (
           <button key={s} type="button" onClick={() => setSpeed(s)} className={`font-mono text-[10px] px-2 py-1 rounded-sm border min-h-[28px] ${speed === s ? "border-primary text-primary" : "border-border text-muted-foreground"}`}>{s}×</button>
         ))}
+        <button
+          type="button"
+          onClick={() => setHeat(!heat)}
+          className={`font-mono text-[10px] px-2 py-1 rounded-sm border min-h-[28px] ${heat ? "border-destructive text-destructive" : "border-border text-muted-foreground"}`}
+        >
+          🔥 HEAT
+        </button>
         <button
           type="button"
           onClick={() => {
@@ -1155,7 +1187,7 @@ export function RealGame() {
       codes: 0, upg: {} as Record<string, boolean>, bioOpen: false, usedRevive: false,
       streak: 0, revengeTarget: -1, multiKills: [] as number[], announce: null as { text: string; t: number } | null,
       headshots: 0, melees: 0,
-      skinColor: SKINS.find((s) => s.id === loadout.skin && level >= s.level)?.color ?? "#22ff55",
+      skinColor: seasonSkinOn() ? "#ff44ff" : SKINS.find((s) => s.id === loadout.skin && level >= s.level)?.color ?? "#22ff55",
       rageT: 0, bonusXp: 0, usedStreaks: [] as number[],
       bestStreakM: 0, shakeT: 0,
       noGun: false, dornFound: false, frags: 0, terminals: 0, termProg: 0,
@@ -3105,6 +3137,19 @@ export function RealGame() {
               ))}
             </div>
           </div>
+
+          {seasonSkinUnlocked() && (
+            <button
+              type="button"
+              onClick={() => {
+                try { localStorage.setItem("wirrwarr-seasonskin", seasonSkinOn() ? "0" : "1"); } catch { /* */ }
+                setDailyTick((t) => t + 1);
+              }}
+              className={`mb-6 font-mono text-[10px] tracking-wider uppercase rounded-sm border px-3 py-2 min-h-[36px] ${seasonSkinOn() ? "border-[#ff44ff] text-[#ff44ff] bg-[#ff44ff]/10" : "border-border text-muted-foreground"}`}
+            >
+              🏅 Season-Skin Magenta {seasonSkinOn() ? "AN" : "AUS"} (500 Season-XP)
+            </button>
+          )}
 
           {/* Season */}
           {(() => {

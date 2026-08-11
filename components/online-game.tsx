@@ -246,7 +246,7 @@ export function OnlineGame() {
     requestAnimationFrame(() => initEngine(m, mapSel));
   };
 
-  const initEngine = (gameMode: OnlineMode, mapSel: MapSel) => {
+  const initEngine = (gameMode: OnlineMode, mapSel: MapSel, spec = false) => {
     const mount = mountRef.current;
     if (!mount) return;
 
@@ -332,7 +332,7 @@ export function OnlineGame() {
     /* ---------- Lokaler Spieler (Movement v2) ---------- */
     const upgOwned = loadUpgOwned();
     const me = {
-      id: -1, team: -1, revived: false,
+      id: -1, team: -1, revived: false, spec,
       x: 0, z: 30, y: 0, vy: 0, vx: 0, vz: 0,
       hp: 100, ammo: 24, reloading: 0, fireCd: 0,
       kills: 0, deaths: 0, respawnAt: 0,
@@ -381,6 +381,11 @@ export function OnlineGame() {
       return e;
     };
     let kc: { id: number; t: number } | null = null;
+    const vega = { on: false, x: me.x + 2, z: me.z + 2, cd: 0 };
+    const vegaMesh = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.5, 0.4), new THREE.MeshStandardMaterial({ color: 0xff99cc, emissive: 0x883366 }));
+    vegaMesh.position.y = 0.75;
+    vegaMesh.visible = false;
+    scene.add(vegaMesh);
 
     /* ---------- WS ---------- */
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
@@ -581,6 +586,7 @@ export function OnlineGame() {
     /* ---------- Schießen ---------- */
     const raycaster = new THREE.Raycaster();
     const shoot = () => {
+      if (me.spec) return;
       if (me.fireCd > 0 || me.reloading > 0 || me.ammo <= 0 || me.hp <= 0) return;
       me.fireCd = 0.18;
       me.ammo--;
@@ -622,7 +628,7 @@ export function OnlineGame() {
       const dt = Math.min(0.05, clock.getDelta());
       me.fireCd -= dt;
 
-      if (me.hp <= 0) {
+      if (me.hp <= 0 && !me.spec) {
         if (performance.now() / 1000 >= me.respawnAt) {
           me.hp = 100; me.x = (Math.random() - 0.5) * 60; me.z = 30; me.ammo = 24; me.vx = 0; me.vz = 0;
         }
@@ -640,7 +646,21 @@ export function OnlineGame() {
         me.prevCrouch = wantCrouch;
         me.slideT = Math.max(0, me.slideT - dt);
         const sliding = me.slideT > 0 && onGround;
-        const sprinting = !!keys["ShiftLeft"] && !me.crouch && sp0 > 4;
+        if (me.spec) {
+        const fsp = 14 * dt;
+        let fx = 0, fz = 0;
+        const a2 = yaw.rotation.y;
+        if (keys["KeyW"]) { fx -= Math.sin(a2); fz -= Math.cos(a2); }
+        if (keys["KeyS"]) { fx += Math.sin(a2); fz += Math.cos(a2); }
+        if (keys["KeyA"]) { fx -= Math.cos(a2); fz += Math.sin(a2); }
+        if (keys["KeyD"]) { fx += Math.cos(a2); fz -= Math.sin(a2); }
+        const fl = Math.hypot(fx, fz);
+        if (fl > 0) { me.x += (fx / fl) * fsp; me.z += (fz / fl) * fsp; }
+        if (keys["Space"]) me.y += fsp;
+        if (keys["KeyC"]) me.y = Math.max(0, me.y - fsp);
+        me.x = Math.max(-39, Math.min(39, me.x)); me.z = Math.max(-39, Math.min(39, me.z)); me.y = Math.min(20, me.y);
+      }
+      const sprinting = !!keys["ShiftLeft"] && !me.crouch && sp0 > 4;
         const maxSp = (me.prone ? 1.5 : me.crouch ? 2.6 : sprinting ? 9 : 5.2) * (upgOwned.includes("l1") ? 1.08 : 1);
         // Wish + Accel + Friction
         let wx = 0, wz = 0;
@@ -762,7 +782,31 @@ export function OnlineGame() {
       stateAcc += dt;
       if (stateAcc > 0.08) {
         stateAcc = 0;
-        send({ t: "state", x: me.x, z: me.z, yaw: yaw.rotation.y, hp: me.hp, stance: me.prone ? 3 : me.crouch ? 2 : 1 });
+        send({ t: "state", x: me.x, z: me.z, yaw: yaw.rotation.y, hp: me.spec ? -1 : me.hp, stance: me.prone ? 3 : me.crouch ? 2 : 1 });
+      }
+      // Companion VEGA (Invasion, lokal, shared damage via bhit)
+      if (gameMode === "inv" && keys["KeyJ"] !== vega.on) {
+        vega.on = !!keys["KeyJ"];
+        vegaMesh.visible = vega.on;
+        if (vega.on) { vega.x = me.x + 1.5; vega.z = me.z + 1.5; pushFeed("🎙 VEGA: ‚Deckung? Nie gehört. Los.‘"); }
+      }
+      if (vega.on) {
+        let bt2: { id: number; x: number; z: number } | null = null; let bd2 = 22;
+        for (const [id, e] of invBots) {
+          if (!e.mesh.visible) continue;
+          const d = Math.hypot(e.x - vega.x, e.z - vega.z);
+          if (d < bd2) { bd2 = d; bt2 = { id, x: e.x, z: e.z }; }
+        }
+        if (bt2) {
+          const d = bd2 || 1;
+          if (d > 1.8) { vega.x += ((bt2.x - vega.x) / d) * 5 * dt; vega.z += ((bt2.z - vega.z) / d) * 5 * dt; }
+          vega.cd -= dt;
+          if (d < 2.2 && vega.cd <= 0) { vega.cd = 0.8; send({ t: "bhit", id: bt2.id, dmg: 20, id2: me.id }); }
+        } else {
+          const d2 = Math.hypot(me.x - vega.x, me.z - vega.z);
+          if (d2 > 3) { vega.x += ((me.x - vega.x) / d2) * 5.5 * dt; vega.z += ((me.z - vega.z) / d2) * 5.5 * dt; }
+        }
+        vegaMesh.position.x = vega.x; vegaMesh.position.z = vega.z;
       }
       orec.t += dt;
       orec.acc += dt;
@@ -905,7 +949,7 @@ export function OnlineGame() {
     apiRef.current = {
       dispose: () => {
         cancelAnimationFrame(raf);
-        if (me.kills > 0) send({ t: "score", name, kills: me.kills, mode: gameMode, season: seasonId() });
+        if (!me.spec && me.kills > 0) send({ t: "score", name, kills: me.kills, mode: gameMode, season: seasonId() });
       try {
         if (orec.frames.length > 20 && orec.frames.length < 9000) {
           localStorage.setItem("wirrwarr-online-replay", JSON.stringify({ mode: gameMode, map: mapSel, frames: orec.frames, botTrack: orec.rem, botsMeta: orec.remMeta, events: orec.events, date: new Date().toISOString() }));
@@ -1004,6 +1048,14 @@ export function OnlineGame() {
               </button>
             ))}
           </div>
+          <button
+            type="button"
+            onClick={() => { setMode("ffa"); setResult(null); setScreen("game"); requestAnimationFrame(() => initEngine("ffa", mapSel, true)); }}
+            className="mb-6 text-left border border-border bg-card rounded-sm p-4 hover:border-primary/60 transition-all min-h-[44px]"
+          >
+            <p className="font-bold text-foreground mb-1">👁 Spectator</p>
+            <p className="font-mono text-[11px] text-muted-foreground">Zuschauen + frei fliegen (Space/C) + chatten.</p>
+          </button>
           {typeof window !== "undefined" && localStorage.getItem("wirrwarr-online-replay") && (
             <button
               type="button"
