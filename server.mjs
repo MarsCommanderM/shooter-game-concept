@@ -114,6 +114,22 @@ wss.on("connection", (ws, req, roomKey) => {
     } else if (m.t === "top") {
       ws.send(JSON.stringify({ t: "top", mode: m.mode, top: topFor(String(m.mode ?? "ffa")) }));
       return;
+    } else if (m.t === "vc-join-req") {
+      const others = [...room.clients].filter((c) => c !== ws && c.readyState === 1).map((c) => c.pid);
+      ws.send(JSON.stringify({ t: "vc-hello", id: ws.pid, others }));
+      return;
+    } else if (m.t === "vc-bye-broadcast") {
+      for (const c of room.clients) {
+        if (c !== ws && c.readyState === 1) c.send(JSON.stringify({ t: "vc-bye", from: ws.pid }));
+      }
+      return;
+    } else if (m.t && m.t.startsWith("vc-")) {
+      // Voice-Signaling (WebRTC): zielgerichtet an einen Client relayen
+      const target = [...room.clients].find((c) => c.pid === m.to);
+      if (target && target.readyState === 1) {
+        target.send(JSON.stringify({ ...m, from: ws.pid }));
+      }
+      return;
     } else if (m.t === "ping") {
       ws.send(JSON.stringify({ t: "pong", ts: m.ts }));
       return;

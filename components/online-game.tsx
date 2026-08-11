@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
+import { updateDaily } from "./real-game";
 
 /* ================================================================== */
 /* WIRRWARR ONLINE v2 – FFA & TDM, Movement-Polish, Stance-Sync        */
@@ -97,8 +98,90 @@ export function OnlineGame() {
   const [chatText, setChatText] = useState("");
   const [chatLog, setChatLog] = useState<{ name: string; text: string; teamChat: boolean; own: boolean }[]>([]);
   const [top10, setTop10] = useState<{ name: string; kills: number }[]>([]);
+  const [micOn, setMicOn] = useState(false);
+  const [micErr, setMicErr] = useState("");
+  const vcRef = useRef<{ toggle: () => void; stop: () => void } | null>(null);
   const [name] = useState(() => `KAEMPFER-${Math.floor(10 + Math.random() * 89)}`);
 
+  useEffect(() => {
+    if (screen !== "game") return;
+    let stream: MediaStream | null = null;
+    let myId = -1;
+    const pcs = new Map<number, RTCPeerConnection>();
+    const audios = new Map<number, HTMLAudioElement>();
+    const CFG: RTCConfiguration = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+    const sendVc = (m: Record<string, unknown>) => sendRef.current(m);
+    const attach = (pc: RTCPeerConnection, id: number) => {
+      pc.onicecandidate = (e) => { if (e.candidate) sendVc({ t: "vc-ice", to: id, cand: e.candidate }); };
+      pc.ontrack = (e) => {
+        let a = audios.get(id);
+        if (!a) { a = new Audio(); audios.set(id, a); }
+        a.srcObject = e.streams[0];
+        a.autoplay = true;
+        void a.play().catch(() => {});
+      };
+      pc.onconnectionstatechange = () => {
+        if (["failed", "closed", "disconnected"].includes(pc.connectionState)) {
+          pc.close(); pcs.delete(id);
+          const a = audios.get(id); if (a) { a.srcObject = null; audios.delete(id); }
+        }
+      };
+    };
+    const addTracks = (pc: RTCPeerConnection) => { const s = stream; if (s) s.getTracks().forEach((t) => pc.addTrack(t, s)); };
+    const makeOffer = async (id: number) => {
+      const pc = new RTCPeerConnection(CFG);
+      pcs.set(id, pc); attach(pc, id); addTracks(pc);
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      sendVc({ t: "vc-offer", to: id, sdp: offer });
+    };
+    const onMsg = (ev: Event) => {
+      const m = (ev as MessageEvent).data as Record<string, any>;
+      if (!m || typeof m !== "object") return;
+      (async () => {
+        if (m.t === "vc-hello") {
+          myId = m.id;
+          for (const pid of (m.others as number[]) ?? []) if (pid < myId) await makeOffer(pid);
+        }
+        if (m.t === "vc-offer" && stream) {
+          let pc = pcs.get(m.from);
+          if (!pc) { pc = new RTCPeerConnection(CFG); pcs.set(m.from, pc); attach(pc, m.from); addTracks(pc); }
+          await pc.setRemoteDescription(m.sdp);
+          const ans = await pc.createAnswer();
+          await pc.setLocalDescription(ans);
+          sendVc({ t: "vc-answer", to: m.from, sdp: ans });
+        }
+        if (m.t === "vc-answer") { const pc = pcs.get(m.from); if (pc) await pc.setRemoteDescription(m.sdp); }
+        if (m.t === "vc-ice") { const pc = pcs.get(m.from); if (pc && m.cand) await pc.addIceCandidate(m.cand).catch(() => {}); }
+        if (m.t === "vc-bye") {
+          const pc = pcs.get(m.from); if (pc) pc.close();
+          pcs.delete(m.from);
+          const a = audios.get(m.from); if (a) { a.srcObject = null; audios.delete(m.from); }
+        }
+      })().catch(() => {});
+    };
+    window.addEventListener("wirrwarr-vc", onMsg);
+    navigator.mediaDevices?.getUserMedia({ audio: true })
+      .then((s) => { stream = s; setMicOn(true); sendVc({ t: "vc-join-req" }); })
+      .catch(() => setMicErr("Mikrofon nicht verfügbar / verweigert."));
+    vcRef.current = {
+      toggle: () => {
+        if (!stream) return;
+        const enabled = !stream.getAudioTracks()[0].enabled;
+        stream.getAudioTracks().forEach((t) => { t.enabled = enabled; });
+        setMicOn(enabled);
+      },
+      stop: () => {
+        sendVc({ t: "vc-bye-broadcast" });
+        pcs.forEach((pc) => pc.close());
+        stream?.getTracks().forEach((t) => t.stop());
+      },
+    };
+    return () => {
+      vcRef.current?.stop();
+      window.removeEventListener("wirrwarr-vc", onMsg);
+    };
+  }, [screen]);
   useEffect(() => () => apiRef.current?.dispose(), []);
   useEffect(() => {
     if (screen !== "game") return;
@@ -218,6 +301,7 @@ export function OnlineGame() {
       pushFeed(`${killerName} ⚡ ${victimName}`);
       const nowS = performance.now() / 1000;
       if (killerName === "DU") {
+        updateDaily("kills");
         me.streak++;
         if (me.streak === 3) announce("RAMPAGE!");
         if (me.streak === 5) announce("UNSTOPPBAR!");
@@ -292,6 +376,9 @@ export function OnlineGame() {
               }
             }
           }
+        } else if (typeof m.t === "string" && m.t.startsWith("vc-")) {
+          window.dispatchEvent(new MessageEvent("wirrwarr-vc", { data: m }));
+          return;
         } else if (m.t === "top") {
           setTop10((m.top as { name: string; kills: number }[]) ?? []);
         } else if (m.t === "chat") {
@@ -697,7 +784,17 @@ export function OnlineGame() {
           />
         </form>
       )}
-      <p className="absolute bottom-3 left-1/2 -translate-x-1/2 font-mono text-[9px] text-muted-foreground tracking-wider uppercase pointer-events-none">Enter = Chat · U = Team-Chat</p>
+      <div className="absolute bottom-10 right-3 flex flex-col items-end gap-1">
+        <button
+          type="button"
+          onClick={() => vcRef.current?.toggle()}
+          className={`font-mono text-[10px] px-3 py-2 rounded-sm border min-h-[36px] ${micOn ? "border-primary/70 text-primary bg-primary/10" : "border-border text-muted-foreground"}`}
+        >
+          {micOn ? "🎙 MIC AN" : "🔇 MIC AUS"}
+        </button>
+        {micErr && <p className="font-mono text-[9px] text-destructive">{micErr}</p>}
+      </div>
+      <p className="absolute bottom-3 left-1/2 -translate-x-1/2 font-mono text-[9px] text-muted-foreground tracking-wider uppercase pointer-events-none">Enter = Chat · U = Team-Chat · Voice = WebRTC-P2P</p>
       <Scoreboard hud={hud} top10={top10} />
       <button
         type="button"

@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 
 /* ================================================================== */
 /* WIRRWARR – Vertical Slice (echte 3D-Engine, Three.js)               */
@@ -176,6 +179,46 @@ function loadStory(): StoryData {
 }
 function loadFrags(): number {
   try { return JSON.parse(localStorage.getItem(FRAG_KEY) ?? "0") || 0; } catch { return 0; }
+}
+const DAILY_KEY = "wirrwarr-daily";
+function dayStr(): string { const d = new Date(); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; }
+function weekIdx(): number { return Math.floor(Date.now() / (7 * 86400000)); }
+const WEEKLY_EVENTS = [
+  { id: "spore", name: "SPORENSTURM", desc: "3× Sporen in der Luft · Bots +10 % Tempo" },
+  { id: "2xp", name: "DOPPEL-XP-WOCHE", desc: "Alle XP-Quellen ×2" },
+  { id: "breach", name: "BREACH-PROTOKOLL", desc: "Strukturen halten nur die halbe Zeit" },
+];
+const weeklyEvent = () => WEEKLY_EVENTS[weekIdx() % WEEKLY_EVENTS.length];
+interface DailyState { date: string; progress: Record<string, number>; claimed: Record<string, boolean>; }
+function loadDaily(): DailyState {
+  try {
+    const d = JSON.parse(localStorage.getItem(DAILY_KEY) ?? "null") as DailyState | null;
+    if (d && d.date === dayStr()) return d;
+  } catch { /* */ }
+  return { date: dayStr(), progress: {}, claimed: {} };
+}
+function saveDaily(d: DailyState) { try { localStorage.setItem(DAILY_KEY, JSON.stringify(d)); } catch { /* */ } }
+export function updateDaily(metric: string, n = 1) {
+  const d = loadDaily();
+  d.progress[metric] = (d.progress[metric] ?? 0) + n;
+  saveDaily(d);
+}
+const QUEST_POOL = [
+  { id: "kills", metric: "kills", make: (s: number) => 8 + (s % 8), text: (n: number) => `Eliminiere ${n} Gegner`, xp: 250 },
+  { id: "hs", metric: "headshots", make: (s: number) => 2 + (s % 3), text: (n: number) => `Lande ${n} Headshots`, xp: 300 },
+  { id: "dest", metric: "destroyed", make: (s: number) => 2 + (s % 2), text: (n: number) => `Sprenge ${n} Strukturen`, xp: 250 },
+  { id: "frag", metric: "frags", make: (s: number) => 2 + ((s >> 2) % 2), text: (n: number) => `Berge ${n} Lore-Fragmente`, xp: 300 },
+  { id: "win", metric: "wins", make: () => 1, text: (n: number) => `Gewinne ${n} Mission`, xp: 400 },
+];
+function dailyQuests() {
+  const s = Number(dayStr().replace(/-/g, "")) % 9973;
+  const out: typeof QUEST_POOL[number][] = [];
+  const seen = new Set<string>();
+  for (const q of [...QUEST_POOL].sort((a, b) => ((s + a.id.length) % 5) - ((s + b.id.length) % 5))) {
+    if (!seen.has(q.id)) { seen.add(q.id); out.push(q); }
+    if (out.length === 3) break;
+  }
+  return out.map((q) => ({ ...q, n: q.make(s) }));
 }
 const BANTER: Record<string, { spk: string; text: string }[]> = {
   headshot: [
@@ -518,7 +561,7 @@ function ReplayView({ data, onExit }: { data: { mode: string; frames: number[][]
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(160, 160), new THREE.MeshStandardMaterial({ color: 0x0a0f0a }));
     ground.rotation.x = -Math.PI / 2;
     scene.add(ground);
-    scene.add(new THREE.GridHelper(80, 40, 0x1a4d24, 0x10240f));
+
     for (const [x, y, z, w, h, d] of REPLAY_WALLS) {
       const msh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color: 0x2f7a3a, emissive: 0x0a2a10 }));
       msh.position.set(x, y, z);
@@ -596,6 +639,7 @@ export function RealGame() {
   const chooseM8Ref = useRef<(v: "vega" | "data") => void>(() => {});
   const replayRef = useRef<null | { mode: string; frames: number[][]; events: { t: number; e: string }[]; date: string }>(null);
   const [ngMods, setNgMods] = useState<string[]>(() => loadNG().mods);
+  const [, setDailyTick] = useState(0);
   const [doneMissions, setDoneMissions] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem(STORY_KEY) ?? "null")?.done ?? []; } catch { return []; } });
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -639,6 +683,8 @@ export function RealGame() {
     quality: "low" | "med" | "high" = "med"
   ) => {
     const mission = MISSIONS.find((m) => m.id === mode) ?? null;
+    const xpMul = weeklyEvent().id === "2xp" ? 2 : 1;
+    const breachMul = weeklyEvent().id === "breach" ? 2 : 1;
     const mount = mountRef.current;
     if (!mount) return;
 
@@ -647,7 +693,8 @@ export function RealGame() {
     renderer.setPixelRatio(quality === "low" ? 1 : quality === "med" ? Math.min(window.devicePixelRatio, 1.5) : Math.min(window.devicePixelRatio, 2));
     const particleCap = quality === "low" ? 60 : quality === "med" ? 150 : 250;
     renderer.setSize(mount.clientWidth, mount.clientHeight);
-    renderer.shadowMap.enabled = false;
+    renderer.shadowMap.enabled = quality === "high";
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     mount.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
@@ -665,6 +712,12 @@ export function RealGame() {
     scene.add(new THREE.HemisphereLight(0x22ff55, 0x000000, 0.5));
     const dir = new THREE.DirectionalLight(0x88ffaa, 0.7);
     dir.position.set(20, 40, 10);
+    if (quality === "high") {
+      dir.castShadow = true;
+      dir.shadow.mapSize.set(1024, 1024);
+      dir.shadow.camera.left = -50; dir.shadow.camera.right = 50;
+      dir.shadow.camera.top = 50; dir.shadow.camera.bottom = -50;
+    }
     scene.add(dir);
 
     /* ---------- Boden ---------- */
@@ -674,6 +727,53 @@ export function RealGame() {
     );
     ground.rotation.x = -Math.PI / 2;
     scene.add(ground);
+    // ---- Knaller-Optik: Himmel, Sterne, Planet, Sporen, Neon ----
+    const sky = new THREE.Mesh(
+      new THREE.SphereGeometry(160, 24, 16),
+      new THREE.ShaderMaterial({
+        side: THREE.BackSide,
+        uniforms: { top: { value: new THREE.Color(0x010402) }, bot: { value: new THREE.Color(0x0a3315) } },
+        vertexShader: "varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
+        fragmentShader: "varying vec3 vP; uniform vec3 top; uniform vec3 bot; void main(){ float h = normalize(vP).y * 0.5 + 0.5; gl_FragColor = vec4(mix(bot, top, pow(h, 0.55)), 1.0); }",
+      })
+    );
+    scene.add(sky);
+    const starGeo = new THREE.BufferGeometry();
+    const starPos = new Float32Array(300 * 3);
+    for (let i = 0; i < 300; i++) {
+      const a = Math.random() * Math.PI * 2, e = Math.random() * Math.PI * 0.45 + 0.08, r = 150;
+      starPos[i * 3] = Math.cos(a) * Math.cos(e) * r;
+      starPos[i * 3 + 1] = Math.sin(e) * r;
+      starPos[i * 3 + 2] = Math.sin(a) * Math.cos(e) * r;
+    }
+    starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3));
+    scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0x99ffcc, size: 0.7, transparent: true, opacity: 0.8 })));
+    const planet = new THREE.Mesh(new THREE.SphereGeometry(14, 24, 24), new THREE.MeshStandardMaterial({ color: 0x0c2a12, emissive: 0x1f8f3a, emissiveIntensity: 0.55, roughness: 1 }));
+    planet.position.set(-70, 55, -90);
+    scene.add(planet);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(18, 24, 48), new THREE.MeshBasicMaterial({ color: 0x22ff55, transparent: true, opacity: 0.22, side: THREE.DoubleSide }));
+    ring.position.copy(planet.position);
+    ring.rotation.x = 1.2;
+    scene.add(ring);
+    const sporeCount = (quality === "low" ? 60 : 160) * (weeklyEvent().id === "spore" ? 3 : 1);
+    const sporeGeo = new THREE.BufferGeometry();
+    const sporePos = new Float32Array(sporeCount * 3);
+    for (let i = 0; i < sporeCount; i++) {
+      sporePos[i * 3] = (Math.random() - 0.5) * 80;
+      sporePos[i * 3 + 1] = Math.random() * 8;
+      sporePos[i * 3 + 2] = (Math.random() - 0.5) * 80;
+    }
+    sporeGeo.setAttribute("position", new THREE.BufferAttribute(sporePos, 3));
+    scene.add(new THREE.Points(sporeGeo, new THREE.PointsMaterial({ color: 0x66ff88, size: 0.09, transparent: true, opacity: 0.55 })));
+    const neonMat = new THREE.MeshBasicMaterial({ color: 0x22ff55 });
+    [
+      [0, -39.4, 80, 0.12], [0, 39.4, 80, 0.12], [-39.4, 0, 0.12, 80], [39.4, 0, 0.12, 80],
+    ].forEach(([x, z, w, d]) => {
+      const m2 = new THREE.Mesh(new THREE.BoxGeometry(w, 0.12, d), neonMat);
+      m2.position.set(x, 0.35, z);
+      scene.add(m2);
+    });
+    scene.add(new THREE.GridHelper(80, 40, 0x1a4d24, 0x10240f));
     const grid = new THREE.GridHelper(ARENA * 2, 48, 0x1a4d24, 0x10240f);
     scene.add(grid);
 
@@ -1026,7 +1126,7 @@ export function RealGame() {
     let missionKills = 0;
     let missionDestroyed = 0;
     const finishMission = (win: boolean) => {
-      if (win) addXp(250);
+      if (win) { addXp(250 * xpMul); updateDaily("wins"); }
       fillEnd();
       ended = true;
       setFailed(!win);
@@ -1064,6 +1164,7 @@ export function RealGame() {
       if (killerId >= 100) allies.find((x) => x.id === killerId)!.kills++;
       else if (killerId > 0) bots.find((x) => x.id === killerId)!.kills++;
       recEvent(`kill:${victimId}`);
+      if (killerId === 0 && victimId > 0 && victimId < 100) updateDaily("kills");
       if (victimId > 0 && victimId < 100 && Math.random() < 0.4) {
         const other = bots.find((x) => x.alive && x.id !== victimId);
         if (other) pushFeed(`📻 ${other.name}: „${nameOf(victimId)} ist down! Bleibt scharf!“`);
@@ -1086,7 +1187,7 @@ export function RealGame() {
         // Revenge
         if (victimId === player.revengeTarget) { player.announce = { text: "REVENGE!", t: gameTime }; sAnnounce(); player.revengeTarget = -1; }
         // XP
-        addXp(100 + player.bonusXp);
+        addXp((100 + player.bonusXp) * xpMul);
         player.bonusXp = 0;
         // Killstreaks (CoD-DNA)
         for (const ks of KSTREAKS) {
@@ -1351,7 +1452,7 @@ export function RealGame() {
           let dmg = player.weapon === "brecher" ? 80 : player.weapon === "richter" ? 100 : 26;
           if (player.rageT > 0) dmg = Math.round(dmg * 1.5);
           dmg = Math.round(dmg * dmgMul);
-          if (head) { dmg = Math.round(dmg * 2.5); sHeadshot(); pushFeed("🎯 HEADSHOT!"); player.headshots++; }
+          if (head) { dmg = Math.round(dmg * 2.5); sHeadshot(); pushFeed("🎯 HEADSHOT!"); player.headshots++; updateDaily("headshots"); }
           if (player.upg.s2) botHit.markedT = gameTime + 3;
           botHit.hp -= dmg;
           burst(h.point, head ? 0xffcc33 : 0xff5544, head ? 10 : 6);
@@ -1362,7 +1463,7 @@ export function RealGame() {
           const wall = walls.find((w) => w.active && w.mesh === h.object);
           if (wall) {
             if (player.weapon === "brecher" && wall.destructible) {
-              wall.hp -= 100;
+              wall.hp -= 100 * breachMul;
               if (pylonWalls.includes(wall) && wall.hp <= 0) {
                 const boss = bots.find((b) => b.isBoss);
                 if (boss) {
@@ -1411,7 +1512,7 @@ export function RealGame() {
           if ((dx / d) * vx_ + (dz / d) * vz_ > 0.5) {
             const silent = mode === "m5" && !player.alarm && b.hp <= 70;
             b.hp -= 70;
-            if (silent) { pushFeed("🗡 Lautlos ausgeschaltet. +50 XP"); addXp(50); }
+            if (silent) { pushFeed("🗡 Lautlos ausgeschaltet. +50 XP"); addXp(50 * xpMul); }
             burst(b.group.position.clone().add(new THREE.Vector3(0, 1.2, 0)), 0xffffff, 8);
             sHit();
             if (b.hp <= 0) kill(0, b.id);
@@ -1491,6 +1592,14 @@ export function RealGame() {
       }
     };
 
+    /* ---------- Postprocessing: Bloom ab Med ---------- */
+    let composer: EffectComposer | null = null;
+    if (quality !== "low") {
+      composer = new EffectComposer(renderer);
+      composer.addPass(new RenderPass(scene, camera));
+      composer.addPass(new UnrealBloomPass(new THREE.Vector2(mount.clientWidth, mount.clientHeight), quality === "high" ? 0.65 : 0.4, 0.7, 0.72));
+    }
+
     /* ---------- Explosions-Licht ---------- */
     const flashLight = new THREE.PointLight(0xffaa33, 0, 16);
     scene.add(flashLight);
@@ -1536,6 +1645,7 @@ export function RealGame() {
             burst(w.mesh.position.clone(), 0x22ff55, 24);
             pushFeed("💥 BRESCHE GESPRENGT!");
             missionDestroyed++;
+            updateDaily("destroyed");
             if (typeof pylonWalls !== "undefined" && pylonWalls.includes(w)) {
               const boss = bots.find((b) => b.isBoss);
               if (boss) {
@@ -1628,6 +1738,7 @@ export function RealGame() {
             pushFeed(`◆ Lore-Fragment geborgen (${player.frags}/3)`);
             sPickup();
             banter("frag");
+            updateDaily("frags");
           }
         }
       }
@@ -2407,7 +2518,7 @@ export function RealGame() {
           ended = true;
           fillEnd();
           const acc = player.shots > 0 ? Math.round((player.rangeHits / player.shots) * 100) : 0;
-          addXp(player.rangeHits * 5);
+          addXp(player.rangeHits * 5 * xpMul);
           setWinner(`RANGE: ${player.rangeHits} Treffer · ${acc} % Genauigkeit`);
           setScreen("end");
         }
@@ -2451,6 +2562,16 @@ export function RealGame() {
       if (player.hp < 30 && player.hp > 0 && heart > 1.0) {
         (player as unknown as { heartAcc?: number }).heartAcc = 0;
         sHeart();
+      }
+      {
+        const arr = sporeGeo.attributes.position as THREE.BufferAttribute;
+        for (let i = 0; i < arr.count; i++) {
+          let y = arr.getY(i) + dt * 0.35;
+          if (y > 8) y = 0;
+          arr.setY(i, y);
+          arr.setX(i, arr.getX(i) + Math.sin(gameTime * 0.7 + i) * dt * 0.15);
+        }
+        arr.needsUpdate = true;
       }
       rec.acc += dt;
       if (rec.acc >= 0.15) {
@@ -2515,6 +2636,7 @@ export function RealGame() {
 
     const onResize = () => {
       renderer.setSize(mount.clientWidth, mount.clientHeight);
+      if (composer) composer.setSize(mount.clientWidth, mount.clientHeight);
       camera.aspect = mount.clientWidth / mount.clientHeight;
       camera.updateProjectionMatrix();
     };
@@ -2773,6 +2895,53 @@ export function RealGame() {
               ))}
             </div>
           </div>
+
+          {/* Daily Ops + Weekly Event */}
+          {(() => {
+            const d = loadDaily();
+            const ev = weeklyEvent();
+            return (
+              <div className="border border-border bg-card rounded-sm p-4 mb-6">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                  <p className="font-mono text-[10px] tracking-[0.25em] uppercase text-primary glow-neon-sm">📅 Daily Ops // {dayStr()}</p>
+                  <p className="font-mono text-[10px] text-accent">🌐 Weekly-Event: {ev.name} – {ev.desc}</p>
+                </div>
+                <div className="grid sm:grid-cols-3 gap-2">
+                  {dailyQuests().map((q) => {
+                    const prog = Math.min(d.progress[q.metric] ?? 0, q.n);
+                    const done = prog >= q.n;
+                    const claimed = !!d.claimed[q.id];
+                    return (
+                      <div key={q.id} className={`rounded-sm border p-2.5 ${done ? "border-accent/60 bg-accent/10" : "border-border bg-secondary/30"}`}>
+                        <p className="text-xs font-bold text-foreground mb-1">{q.text(q.n)}</p>
+                        <div className="w-full h-1 bg-secondary rounded-full overflow-hidden mb-1.5">
+                          <div className="h-full bg-primary rounded-full" style={{ width: `${(prog / q.n) * 100}%` }} />
+                        </div>
+                        <p className="font-mono text-[9px] text-muted-foreground mb-1">{prog}/{q.n} · +{q.xp} XP</p>
+                        <button
+                          type="button"
+                          disabled={!done || claimed}
+                          onClick={() => {
+                            d.claimed[q.id] = true;
+                            saveDaily(d);
+                            setProfile((pr) => {
+                              const np = { xp: pr.xp + q.xp };
+                              try { localStorage.setItem(PROF_KEY, JSON.stringify(np)); } catch { /* */ }
+                              return np;
+                            });
+                            setDailyTick((t) => t + 1);
+                          }}
+                          className={`font-mono text-[9px] rounded-sm border px-2 py-1 min-h-[26px] ${claimed ? "opacity-40 border-border text-muted-foreground" : done ? "border-accent/70 text-accent hover:bg-accent/10" : "border-border text-muted-foreground"}`}
+                        >
+                          {claimed ? "✓ CLAIMED" : done ? "CLAIM" : "OFFEN"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* NG+ */}
           {MISSIONS.every((m) => doneMissions.includes(m.id)) ? (
