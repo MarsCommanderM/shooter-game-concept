@@ -366,8 +366,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
   var col = (kd * draw.base.xyz / 3.14159265 + spec) * frame.light_col.xyz * frame.light_col.w * no_l * sh
             + frame.amb.xyz * draw.base.xyz;
   if (draw.params.w > 1.5) { col += vec3<f32>(0.0); }
-  col += draw.base.xyz * draw.params.z; // Emissive (Neon)
-  col += draw.base.xyz * draw.params.z; // Emissive (Neon)
+  col += draw.base.xyz * draw.params.z * 2.0; // Bestehende Neon-Intensitaet, linear erhalten
   if (draw.params.w > 0.5) {
     // Belebte Fassade: Fenster-Grid aus World-Pos, manche warm beleuchtet
     let fp = vec2<f32>((in.wpos.x + in.wpos.z) * 0.35, in.wpos.y * 0.45);
@@ -379,8 +378,6 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
     col += vec3<f32>(1.0, 0.75, 0.4) * inwin * lit * 1.6;
     col = mix(col, col * 0.55, inwin * (1.0 - lit)); // dunkle Fenster
   }
-  col = aces(col);
-  col = pow(col, vec3<f32>(1.0 / 2.2));
   return vec4<f32>(col, 1.0);
 }
 
@@ -421,26 +418,37 @@ fn fs_sky(in: VSOut) -> @location(0) vec4<f32> {
 @group(0) @binding(0) var t_scene: texture_2d<f32>;
 @group(0) @binding(1) var t_bloom: texture_2d<f32>;
 @group(0) @binding(2) var post_smp: sampler;
+struct PostU {
+  scene_size: vec2<f32>,
+  bloom_size: vec2<f32>,
+};
+@group(0) @binding(3) var<uniform> post: PostU;
 
 @vertex
 fn vs_post(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4<f32> {
   var p = array<vec2<f32>, 3>(vec2<f32>(-1.0, -3.0), vec2<f32>(3.0, 1.0), vec2<f32>(-1.0, 1.0));
   return vec4<f32>(p[vi], 0.0, 1.0);
 }
-@fragment
-fn fs_bright(@builtin(position) fc: vec4<f32>) -> @location(0) vec4<f32> {
-  let dims = textureDimensions(t_scene);
-  let uv = vec2<f32>(fc.x / f32(dims.x), 1.0 - fc.y / f32(dims.y));
-  let c = textureSample(t_scene, post_smp, uv).rgb;
-  let l = dot(c, vec3<f32>(0.299, 0.587, 0.114));
-  return vec4<f32>(c * smoothstep(0.4, 0.95, l), 1.0);
+fn bright_uv(fc: vec4<f32>) -> vec2<f32> {
+  return vec2<f32>(fc.x / post.bloom_size.x, 1.0 - fc.y / post.bloom_size.y);
 }
 @fragment
-fn fs_comp(@builtin(position) fc: vec4<f32>) -> @location(0) vec4<f32> {
-  let dims = textureDimensions(t_scene);
-  let uv = vec2<f32>(fc.x / f32(dims.x), 1.0 - fc.y / f32(dims.y));
-  let bd = textureDimensions(t_bloom);
-  let tx = 1.0 / vec2<f32>(f32(bd.x), f32(bd.y));
+fn fs_bright_hdr(@builtin(position) fc: vec4<f32>) -> @location(0) vec4<f32> {
+  let uv = bright_uv(fc);
+  let c = textureSample(t_scene, post_smp, uv).rgb;
+  let l = dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
+  return vec4<f32>(c * smoothstep(1.0, 2.0, l), 1.0);
+}
+@fragment
+fn fs_bright_ldr(@builtin(position) fc: vec4<f32>) -> @location(0) vec4<f32> {
+  let uv = bright_uv(fc);
+  let c = textureSample(t_scene, post_smp, uv).rgb;
+  let l = dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
+  return vec4<f32>(c * smoothstep(0.4, 0.95, l), 1.0);
+}
+fn composite_color(fc: vec4<f32>) -> vec3<f32> {
+  let uv = vec2<f32>(fc.x / post.scene_size.x, 1.0 - fc.y / post.scene_size.y);
+  let tx = 1.0 / post.bloom_size;
   var bloom = vec3<f32>(0.0);
   for (var x = -2; x <= 2; x++) {
     for (var y = -2; y <= 2; y++) {
@@ -454,9 +462,196 @@ fn fs_comp(@builtin(position) fc: vec4<f32>) -> @location(0) vec4<f32> {
   let luma = dot(col, vec3<f32>(0.299, 0.587, 0.114));
   col = mix(vec3<f32>(luma), col, 1.12);
   col = col * vec3<f32>(1.04, 1.0, 0.96);
-  return vec4<f32>(col, 1.0);
+  return aces(max(col, vec3<f32>(0.0)));
+}
+@fragment
+fn fs_comp_srgb_surface(@builtin(position) fc: vec4<f32>) -> @location(0) vec4<f32> {
+  // Das sRGB-Surface fuehrt den Display-Transfer beim Schreiben exakt einmal aus.
+  return vec4<f32>(composite_color(fc), 1.0);
+}
+@fragment
+fn fs_comp_linear_surface(@builtin(position) fc: vec4<f32>) -> @location(0) vec4<f32> {
+  // Nicht-sRGB-Surfaces benoetigen den Display-Transfer explizit im Final-Pass.
+  return vec4<f32>(pow(composite_color(fc), vec3<f32>(1.0 / 2.2)), 1.0);
 }
 "#;
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct PostU {
+    scene_size: [f32; 2],
+    bloom_size: [f32; 2],
+}
+
+struct PostResources {
+    _scene_texture: wgpu::Texture,
+    scene_view: wgpu::TextureView,
+    _bloom_texture: wgpu::Texture,
+    bloom_view: wgpu::TextureView,
+    _uniform_buffer: wgpu::Buffer,
+    bright_bg: wgpu::BindGroup,
+    composite_bg: wgpu::BindGroup,
+}
+
+impl PostResources {
+    fn new(
+        device: &wgpu::Device,
+        bright_bgl: &wgpu::BindGroupLayout,
+        composite_bgl: &wgpu::BindGroupLayout,
+        sampler: &wgpu::Sampler,
+        format: wgpu::TextureFormat,
+        width: u32,
+        height: u32,
+    ) -> Self {
+        debug_assert!(width > 0 && height > 0);
+        let bloom_width = (width / 8).max(8);
+        let bloom_height = (height / 8).max(8);
+        let scene_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("scene"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let scene_view = scene_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let bloom_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("bloom"),
+            size: wgpu::Extent3d {
+                width: bloom_width,
+                height: bloom_height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let bloom_view = bloom_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("post_uniform"),
+            contents: bytemuck::cast_slice(&[PostU {
+                scene_size: [width as f32, height as f32],
+                bloom_size: [bloom_width as f32, bloom_height as f32],
+            }]),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
+        let bright_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("post_bright_bg"),
+            layout: bright_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&scene_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: uniform_buffer.as_entire_binding(),
+                },
+            ],
+        });
+        let composite_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("post_composite_bg"),
+            layout: composite_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&scene_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&bloom_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: uniform_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
+        Self {
+            _scene_texture: scene_texture,
+            scene_view,
+            _bloom_texture: bloom_texture,
+            bloom_view,
+            _uniform_buffer: uniform_buffer,
+            bright_bg,
+            composite_bg,
+        }
+    }
+}
+
+struct FullFx {
+    sky_pipeline: wgpu::RenderPipeline,
+    bright_pipeline: wgpu::RenderPipeline,
+    composite_pipeline: wgpu::RenderPipeline,
+    bright_bgl: wgpu::BindGroupLayout,
+    composite_bgl: wgpu::BindGroupLayout,
+    sampler: wgpu::Sampler,
+    targets: PostResources,
+}
+
+impl FullFx {
+    fn rebuild_targets(
+        &mut self,
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        width: u32,
+        height: u32,
+    ) {
+        self.targets = PostResources::new(
+            device,
+            &self.bright_bgl,
+            &self.composite_bgl,
+            &self.sampler,
+            format,
+            width,
+            height,
+        );
+    }
+}
+
+fn create_depth_target(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+) -> (wgpu::Texture, wgpu::TextureView) {
+    debug_assert!(width > 0 && height > 0);
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("depth"),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Depth32Float,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        view_formats: &[],
+    });
+    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    (texture, view)
+}
 
 struct State {
     window: Arc<winit::window::Window>,
@@ -464,6 +659,7 @@ struct State {
     queue: wgpu::Queue,
     surface: wgpu::Surface<'static>,
     config: wgpu::SurfaceConfiguration,
+    _depth_texture: wgpu::Texture,
     depth_view: wgpu::TextureView,
     pipeline: wgpu::RenderPipeline,
     shadow_pipeline: wgpu::RenderPipeline,
@@ -485,14 +681,9 @@ struct State {
     net: Option<Net>,
     seq: u32,
     unit_cube: usize,
-    sky_pipeline: Option<wgpu::RenderPipeline>,
-    bright_pipeline: Option<wgpu::RenderPipeline>,
-    comp_pipeline: Option<wgpu::RenderPipeline>,
-    post_bg: Option<wgpu::BindGroup>,
-    color_view: Option<wgpu::TextureView>,
-    color_tex: Option<wgpu::Texture>,
-    bloom_view: Option<wgpu::TextureView>,
-    bloom_tex: Option<wgpu::Texture>,
+    full_fx: Option<FullFx>,
+    scene_format: wgpu::TextureFormat,
+    surface_suspended: bool,
     touch: Rc<RefCell<TouchState>>,
     hp: u32,
     fire_cd: f32,
@@ -611,6 +802,30 @@ impl State {
         let config = surface
             .get_default_config(&adapter, size.width.max(1), size.height.max(1))
             .expect("Surface-Config");
+        let hdr_features =
+            adapter.get_texture_format_features(wgpu::TextureFormat::Rgba16Float);
+        let hdr_usages =
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
+        let hdr_enabled = fx_full
+            && hdr_features.allowed_usages.contains(hdr_usages)
+            && hdr_features
+                .flags
+                .contains(wgpu::TextureFormatFeatureFlags::FILTERABLE);
+        let scene_format = if fx_full {
+            if hdr_enabled {
+                wgpu::TextureFormat::Rgba16Float
+            } else {
+                wgpu::TextureFormat::Rgba8Unorm
+            }
+        } else {
+            config.format
+        };
+        if hdr_enabled {
+            log("NOVA render target: HDR RGBA16F");
+        } else {
+            log("NOVA render target: LDR fallback");
+        }
+        log(&format!("NOVA surface format: {:?}", config.format));
         surface.configure(&device, &config);
 
         log("N5: shader");
@@ -691,10 +906,14 @@ impl State {
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: if cfg!(target_arch = "wasm32") { "fs_lite" } else { "fs_main" },
+                entry_point: if fx_full && !cfg!(target_arch = "wasm32") {
+                    "fs_main"
+                } else {
+                    "fs_lite"
+                },
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
+                    format: scene_format,
+                    blend: None,
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
             }),
@@ -719,15 +938,7 @@ impl State {
                 entry_point: "vs_shadow",
                 buffers: &[vbuf_layout.clone()],
             },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: "fs_shadow",
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
+            fragment: None,
             primitive: wgpu::PrimitiveState {
                 cull_mode: Some(wgpu::Face::Front),
                 ..Default::default()
@@ -743,115 +954,225 @@ impl State {
             multiview: None,
         });
 
-        let mut sky_pipeline = None;
-        let mut bright_pipeline = None;
-        let mut comp_pipeline = None;
-        let mut post_bg = None;
-        let mut color_view = None;
-        let mut color_tex = None;
-        let mut bloom_view = None;
-        let mut bloom_tex = None;
-        let mut sky = None;
-        if fx_full {
-        // Sky-Pipeline (Front-Culling, invertierte Sphäre)
-        log("N9: sky pipeline");
-        let sky_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("sky"),
-            layout: Some(&layout),
-            vertex: wgpu::VertexState { module: &shader, entry_point: "vs_main", buffers: &[vbuf_layout.clone()] },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: "fs_sky",
-                targets: &[Some(wgpu::ColorTargetState { format: wgpu::TextureFormat::Rgba8Unorm, blend: Some(wgpu::BlendState::REPLACE), write_mask: wgpu::ColorWrites::ALL })],
-            }),
-            primitive: wgpu::PrimitiveState { cull_mode: Some(wgpu::Face::Front), ..Default::default() },
-            depth_stencil: Some(wgpu::DepthStencilState { format: wgpu::TextureFormat::Depth32Float, depth_write_enabled: false, depth_compare: wgpu::CompareFunction::LessEqual, bias: wgpu::DepthBiasState::default(), stencil: wgpu::StencilState::default() }),
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-        });
+        let (full_fx, sky) = if fx_full {
+            // Sky-Pipeline (Front-Culling, invertierte Sphäre)
+            log("N9: sky pipeline");
+            let sky_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("sky"),
+                layout: Some(&layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: "vs_main",
+                    buffers: &[vbuf_layout.clone()],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: "fs_sky",
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: scene_format,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    cull_mode: Some(wgpu::Face::Front),
+                    ..Default::default()
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: wgpu::TextureFormat::Depth32Float,
+                    depth_write_enabled: false,
+                    depth_compare: wgpu::CompareFunction::LessEqual,
+                    bias: wgpu::DepthBiasState::default(),
+                    stencil: wgpu::StencilState::default(),
+                }),
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+            });
 
-        // Post-Processing
-        log("N10: post");
-        let post_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("post"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: true }, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false }, count: None },
-                wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: true }, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false }, count: None },
-                wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering), count: None },
-            ],
-        });
-        let post_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: Some("postl"), bind_group_layouts: &[&post_bgl], push_constant_ranges: &[] });
-        let mk_post = |entry: &str| device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some(entry),
-            layout: Some(&post_layout),
-            vertex: wgpu::VertexState { module: &shader, entry_point: "vs_post", buffers: &[] },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: entry,
-                targets: &[Some(wgpu::ColorTargetState { format: wgpu::TextureFormat::Rgba8Unorm, blend: Some(wgpu::BlendState::REPLACE), write_mask: wgpu::ColorWrites::ALL })],
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-        });
-        let bright_pipeline = mk_post("fs_bright");
-        let comp_pipeline = mk_post("fs_comp");
+            // Post-Processing: Bright-Pass liest nur Scene, Composite liest Scene + Bloom.
+            log("N10: post");
+            let texture_entry = |binding| wgpu::BindGroupLayoutEntry {
+                binding,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            };
+            let sampler_entry = wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            };
+            let uniform_entry = wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            };
+            let bright_bgl =
+                device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("post_bright_bgl"),
+                    entries: &[texture_entry(0), sampler_entry, uniform_entry],
+                });
+            let composite_bgl =
+                device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("post_composite_bgl"),
+                    entries: &[
+                        texture_entry(0),
+                        texture_entry(1),
+                        sampler_entry,
+                        uniform_entry,
+                    ],
+                });
+            let bright_layout =
+                device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("post_bright_layout"),
+                    bind_group_layouts: &[&bright_bgl],
+                    push_constant_ranges: &[],
+                });
+            let composite_layout =
+                device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("post_composite_layout"),
+                    bind_group_layouts: &[&composite_bgl],
+                    push_constant_ranges: &[],
+                });
+            let bright_pipeline =
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("post_bright"),
+                    layout: Some(&bright_layout),
+                    vertex: wgpu::VertexState {
+                        module: &shader,
+                        entry_point: "vs_post",
+                        buffers: &[],
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &shader,
+                        entry_point: if hdr_enabled {
+                            "fs_bright_hdr"
+                        } else {
+                            "fs_bright_ldr"
+                        },
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format: scene_format,
+                            blend: None,
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
+                    }),
+                    primitive: wgpu::PrimitiveState::default(),
+                    depth_stencil: None,
+                    multisample: wgpu::MultisampleState::default(),
+                    multiview: None,
+                });
+            let composite_pipeline =
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("post_composite"),
+                    layout: Some(&composite_layout),
+                    vertex: wgpu::VertexState {
+                        module: &shader,
+                        entry_point: "vs_post",
+                        buffers: &[],
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &shader,
+                        entry_point: if config.format.is_srgb() {
+                            "fs_comp_srgb_surface"
+                        } else {
+                            "fs_comp_linear_surface"
+                        },
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format: config.format,
+                            blend: None,
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
+                    }),
+                    primitive: wgpu::PrimitiveState::default(),
+                    depth_stencil: None,
+                    multisample: wgpu::MultisampleState::default(),
+                    multiview: None,
+                });
+            let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+                label: Some("post_sampler"),
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Linear,
+                ..Default::default()
+            });
+            let targets = PostResources::new(
+                &device,
+                &bright_bgl,
+                &composite_bgl,
+                &sampler,
+                scene_format,
+                size.width.max(1),
+                size.height.max(1),
+            );
+            log("N11: offscreen targets");
 
-        let (ww, hh) = (size.width.max(1), size.height.max(1));
-        log("N11: offscreen tex");
-        let color_tex = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("scene"), size: wgpu::Extent3d { width: ww, height: hh, depth_or_array_layers: 1 },
-            mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING, view_formats: &[],
-        });
-        let color_view = color_tex.create_view(&wgpu::TextureViewDescriptor::default());
-        let bloom_tex = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("bloom"), size: wgpu::Extent3d { width: (ww / 8).max(8), height: (hh / 8).max(8), depth_or_array_layers: 1 },
-            mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING, view_formats: &[],
-        });
-        let bloom_view = bloom_tex.create_view(&wgpu::TextureViewDescriptor::default());
-        let post_smp = device.create_sampler(&wgpu::SamplerDescriptor { label: Some("postsmp"), mag_filter: wgpu::FilterMode::Linear, min_filter: wgpu::FilterMode::Linear, ..Default::default() });
-        let post_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("postbg"), layout: &post_bgl,
-            entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&color_view) },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&bloom_view) },
-                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&post_smp) },
-            ],
-        });
-
-        // Sky-Sphäre
-        sky = Some({
-            let (rings, sectors, rad) = (14usize, 24usize, 240.0f32);
-            let mut v: Vec<f32> = Vec::new();
-            let mut idx: Vec<u32> = Vec::new();
-            for r in 0..=rings {
-                let phi = std::f32::consts::PI * r as f32 / rings as f32;
-                for sc in 0..=sectors {
-                    let th = 2.0 * std::f32::consts::PI * sc as f32 / sectors as f32;
-                    let p = [rad * phi.sin() * th.cos(), rad * phi.cos(), rad * phi.sin() * th.sin()];
-                    v.extend_from_slice(&p);
-                    v.extend_from_slice(&[0.0, 1.0, 0.0]);
-                    v.extend_from_slice(&[0.0, 0.0]);
+            let sky = {
+                let (rings, sectors, rad) = (14usize, 24usize, 240.0f32);
+                let mut v: Vec<f32> = Vec::new();
+                let mut idx: Vec<u32> = Vec::new();
+                for r in 0..=rings {
+                    let phi = std::f32::consts::PI * r as f32 / rings as f32;
+                    for sc in 0..=sectors {
+                        let th = 2.0 * std::f32::consts::PI * sc as f32 / sectors as f32;
+                        let p = [
+                            rad * phi.sin() * th.cos(),
+                            rad * phi.cos(),
+                            rad * phi.sin() * th.sin(),
+                        ];
+                        v.extend_from_slice(&p);
+                        v.extend_from_slice(&[0.0, 1.0, 0.0]);
+                        v.extend_from_slice(&[0.0, 0.0]);
+                    }
                 }
-            }
-            for r in 0..rings {
-                for sc in 0..sectors {
-                    let aa = (r * (sectors + 1) + sc) as u32;
-                    let bb = aa + sectors as u32 + 1;
-                    idx.extend_from_slice(&[aa, bb, aa + 1, aa + 1, bb, bb + 1]);
+                for r in 0..rings {
+                    for sc in 0..sectors {
+                        let aa = (r * (sectors + 1) + sc) as u32;
+                        let bb = aa + sectors as u32 + 1;
+                        idx.extend_from_slice(&[aa, bb, aa + 1, aa + 1, bb, bb + 1]);
+                    }
                 }
-            }
-            let vb = device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("skyvb"), contents: bytemuck::cast_slice(&v), usage: wgpu::BufferUsages::VERTEX });
-            let ib = device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: Some("skyib"), contents: bytemuck::cast_slice(&idx), usage: wgpu::BufferUsages::INDEX });
-            ModelMesh { vb, ib, count: idx.len() as u32, mat: MAT_CONCRETE }
-        });
+                let vb = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("skyvb"),
+                    contents: bytemuck::cast_slice(&v),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+                let ib = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("skyib"),
+                    contents: bytemuck::cast_slice(&idx),
+                    usage: wgpu::BufferUsages::INDEX,
+                });
+                ModelMesh {
+                    vb,
+                    ib,
+                    count: idx.len() as u32,
+                    mat: MAT_CONCRETE,
+                }
+            };
 
-        }
+            (
+                Some(FullFx {
+                    sky_pipeline,
+                    bright_pipeline,
+                    composite_pipeline,
+                    bright_bgl,
+                    composite_bgl,
+                    sampler,
+                    targets,
+                }),
+                Some(sky),
+            )
+        } else {
+            (None, None)
+        };
         log("N12: shadowmap");
         // Shadow-Map 2048²
         let shadow_tex = device.create_texture(&wgpu::TextureDescriptor {
@@ -908,21 +1229,8 @@ impl State {
 
         // Depth für Main-Pass
         log("N13: depth");
-        let depth_tex = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("depth"),
-            size: wgpu::Extent3d {
-                width: size.width.max(1),
-                height: size.height.max(1),
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Depth32Float,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
-        });
-        let depth_view = depth_tex.create_view(&wgpu::TextureViewDescriptor::default());
+        let (depth_texture, depth_view) =
+            create_depth_target(&device, size.width.max(1), size.height.max(1));
 
         // Einheitswürfel = einzige Geometrie; die Arena ist prozedural instanziert
         let raw: Vec<(Vec<f32>, Vec<u32>, Material)> = vec![cube_mesh_data()];
@@ -956,6 +1264,7 @@ impl State {
             queue,
             surface,
             config,
+            _depth_texture: depth_texture,
             depth_view,
             pipeline,
             shadow_pipeline,
@@ -976,14 +1285,9 @@ impl State {
             net: None,
             seq: 0,
             unit_cube,
-            sky_pipeline,
-            bright_pipeline,
-            comp_pipeline,
-            post_bg,
-            color_view,
-            color_tex,
-            bloom_view,
-            bloom_tex,
+            full_fx,
+            scene_format,
+            surface_suspended: size.width == 0 || size.height == 0,
             touch: touch_val,
             hp: 100,
             fire_cd: 0.0,
@@ -1005,44 +1309,67 @@ impl State {
         }
     }
 
-    fn resize(&mut self, size: PhysicalSize<u32>) {
-        log("RS1: resize start");
+    fn rebuild_surface_resources(&mut self, size: PhysicalSize<u32>) -> bool {
         if size.width == 0 || size.height == 0 {
-            return;
+            self.surface_suspended = true;
+            log("NOVA surface suspended: zero-sized window");
+            return false;
         }
+
         self.config.width = size.width;
         self.config.height = size.height;
         self.surface.configure(&self.device, &self.config);
-        if self.color_tex.is_some() {
-            let (ww, hh) = (size.width.max(1), size.height.max(1));
-            let ct = self.device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("scene"), size: wgpu::Extent3d { width: ww, height: hh, depth_or_array_layers: 1 },
-                mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8Unorm,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING, view_formats: &[],
-            });
-            self.color_view = Some(ct.create_view(&wgpu::TextureViewDescriptor::default()));
-            self.color_tex = Some(ct);
-            let bt = self.device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("bloom"), size: wgpu::Extent3d { width: (ww / 8).max(8), height: (hh / 8).max(8), depth_or_array_layers: 1 },
-                mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8Unorm,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING, view_formats: &[],
-            });
-            self.bloom_view = Some(bt.create_view(&wgpu::TextureViewDescriptor::default()));
-            self.bloom_tex = Some(bt);
+        let (depth_texture, depth_view) =
+            create_depth_target(&self.device, size.width, size.height);
+        self._depth_texture = depth_texture;
+        self.depth_view = depth_view;
+        if let Some(full_fx) = self.full_fx.as_mut() {
+            full_fx.rebuild_targets(
+                &self.device,
+                self.scene_format,
+                size.width,
+                size.height,
+            );
         }
-        let depth_tex = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("depth"),
-            size: wgpu::Extent3d { width: size.width, height: size.height, depth_or_array_layers: 1 },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Depth32Float,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
-        });
-        self.depth_view = depth_tex.create_view(&wgpu::TextureViewDescriptor::default());
+        self.surface_suspended = false;
+        true
+    }
+
+    fn resize(&mut self, size: PhysicalSize<u32>) {
+        log("RS1: resize start");
+        self.rebuild_surface_resources(size);
+    }
+
+    fn acquire_surface_texture(
+        &mut self,
+    ) -> Result<Option<wgpu::SurfaceTexture>, wgpu::SurfaceError> {
+        if self.surface_suspended {
+            return Ok(None);
+        }
+
+        match self.surface.get_current_texture() {
+            Ok(texture) => Ok(Some(texture)),
+            Err(wgpu::SurfaceError::Timeout) => {
+                log("NOVA surface timeout: frame skipped");
+                Ok(None)
+            }
+            Err(wgpu::SurfaceError::Lost) | Err(wgpu::SurfaceError::Outdated) => {
+                log("NOVA surface recovery: reconfigure and rebuild render targets");
+                let size = self.window.inner_size();
+                if !self.rebuild_surface_resources(size) {
+                    return Ok(None);
+                }
+                match self.surface.get_current_texture() {
+                    Ok(texture) => Ok(Some(texture)),
+                    Err(wgpu::SurfaceError::Timeout) => {
+                        log("NOVA surface timeout after recovery: frame skipped");
+                        Ok(None)
+                    }
+                    Err(error) => Err(error),
+                }
+            }
+            Err(wgpu::SurfaceError::OutOfMemory) => Err(wgpu::SurfaceError::OutOfMemory),
+        }
     }
 
     fn update(&mut self) {
@@ -1233,8 +1560,14 @@ impl State {
         }
     }
 
-    fn render(&mut self, remotes: &[(u32, [f32; 3], f32, u8)]) {
+    fn render(
+        &mut self,
+        remotes: &[(u32, [f32; 3], f32, u8)],
+    ) -> Result<(), wgpu::SurfaceError> {
         log("R3: render start");
+        let Some(out) = self.acquire_surface_texture()? else {
+            return Ok(());
+        };
         if self.hidden.len() != self.arena.len() {
             self.hidden.resize(self.arena.len(), false);
         }
@@ -1261,7 +1594,7 @@ impl State {
             if self.hidden.get(k) == Some(&true) { continue; }
             draws.push((self.unit_cube, *model, *mat));
         }
-        for (pid, p, yaw, team) in remotes {
+        for (_pid, p, yaw, team) in remotes {
             let enemy = *team != self.my_team;
             let col: [f32; 4] = if enemy { [1.0, 0.16, 0.12, 1.0] } else { [0.2, 0.85, 1.0, 1.0] };
             let model = Mat4::from_translation(Vec3::new(p[0], p[1] + 0.85, p[2]))
@@ -1277,8 +1610,6 @@ impl State {
             let model = Mat4::from_translation((t.from + t.to) * 0.5) * rot * Mat4::from_scale(Vec3::new(t.thick, t.thick, len));
             draws.push((self.unit_cube, model, Material { base: [t.col[0], t.col[1], t.col[2], 1.0], metallic: 0.0, roughness: 0.5, emissive: 3.0, win: 0.0 }));
         }
-
-        let bg1s: Vec<wgpu::BindGroup> = draws.iter().map(|_| self.bg1()).collect();
 
         // ---- Mobile-Safe-Mode: direkt auf Surface, ohne Offscreen/Bloom/Sky ----
         if !self.fx_full {
@@ -1296,10 +1627,7 @@ impl State {
             for (tp, ts, tc) in tests.iter() {
                 draws.push((self.unit_cube, Mat4::from_translation(*tp) * Mat4::from_scale(*ts), Material { base: [tc[0], tc[1], tc[2], 1.0], metallic: 0.0, roughness: 0.5, emissive: 0.0, win: 0.0 }));
             }
-            let out = match self.surface.get_current_texture() {
-                Ok(t) => t,
-                Err(_) => return,
-            };
+            let bg1s: Vec<wgpu::BindGroup> = draws.iter().map(|_| self.bg1()).collect();
             let view = out.texture.create_view(&wgpu::TextureViewDescriptor::default());
             let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("m") });
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -1334,8 +1662,19 @@ impl State {
             log("R6: present");
             out.present();
             log("R7: frame done");
-            return;
+            return Ok(());
         }
+
+        let Some(full_fx) = self.full_fx.as_ref() else {
+            log("NOVA Full-FX resources unavailable: frame skipped");
+            return Ok(());
+        };
+        let Some(sky) = self.sky.as_ref() else {
+            log("NOVA sky resources unavailable: frame skipped");
+            return Ok(());
+        };
+        let bg1s: Vec<wgpu::BindGroup> = draws.iter().map(|_| self.bg1()).collect();
+        let sky_bg = self.bg1();
 
         // ---- Pass 1: Shadow ----
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("frame") });
@@ -1371,7 +1710,7 @@ impl State {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("main"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: self.color_view.as_ref().unwrap(),
+                    view: &full_fx.targets.scene_view,
                     resolve_target: None,
                     ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.012, g: 0.02, b: 0.012, a: 1.0 }), store: wgpu::StoreOp::Store },
                 })],
@@ -1384,14 +1723,14 @@ impl State {
                 occlusion_query_set: None,
             });
             // Sky zuerst
-            pass.set_pipeline(self.sky_pipeline.as_ref().unwrap());
+            pass.set_pipeline(&full_fx.sky_pipeline);
             pass.set_bind_group(0, &self.bg0, &[]);
-            pass.set_bind_group(1, &bg1s[0], &[]);
+            pass.set_bind_group(1, &sky_bg, &[]);
             let du_sky = DrawU { model: Mat4::from_translation(self.pos), base: Vec4::ZERO, params: Vec4::ZERO };
             self.queue.write_buffer(&self.draw_buf, 0, bytemuck::cast_slice(&[du_sky]));
-            pass.set_vertex_buffer(0, self.sky.as_ref().unwrap().vb.slice(..));
-            pass.set_index_buffer(self.sky.as_ref().unwrap().ib.slice(..), wgpu::IndexFormat::Uint32);
-            pass.draw_indexed(0..self.sky.as_ref().unwrap().count, 0, 0..1);
+            pass.set_vertex_buffer(0, sky.vb.slice(..));
+            pass.set_index_buffer(sky.ib.slice(..), wgpu::IndexFormat::Uint32);
+            pass.draw_indexed(0..sky.count, 0, 0..1);
 
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &self.bg0, &[]);
@@ -1414,7 +1753,7 @@ impl State {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("bright"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: self.bloom_view.as_ref().unwrap(),
+                    view: &full_fx.targets.bloom_view,
                     resolve_target: None,
                     ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
                 })],
@@ -1422,8 +1761,8 @@ impl State {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
-            pass.set_pipeline(self.bright_pipeline.as_ref().unwrap());
-            pass.set_bind_group(0, self.post_bg.as_ref().unwrap(), &[]);
+            pass.set_pipeline(&full_fx.bright_pipeline);
+            pass.set_bind_group(0, &full_fx.targets.bright_bg, &[]);
             pass.draw(0..3, 0..1);
             drop(pass);
             self.queue.submit(std::iter::once(encoder.finish()));
@@ -1431,10 +1770,6 @@ impl State {
 
         // ---- Pass 4: Composite -> Surface ----
         {
-            let out = match self.surface.get_current_texture() {
-                Ok(t) => t,
-                Err(_) => return,
-            };
             let view = out.texture.create_view(&wgpu::TextureViewDescriptor::default());
             let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("comp") });
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -1448,13 +1783,14 @@ impl State {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
-            pass.set_pipeline(self.comp_pipeline.as_ref().unwrap());
-            pass.set_bind_group(0, self.post_bg.as_ref().unwrap(), &[]);
+            pass.set_pipeline(&full_fx.composite_pipeline);
+            pass.set_bind_group(0, &full_fx.targets.composite_bg, &[]);
             pass.draw(0..3, 0..1);
             drop(pass);
             self.queue.submit(std::iter::once(encoder.finish()));
             out.present();
         }
+        Ok(())
     }
 
     fn forward(&self) -> Vec3 {
@@ -1515,7 +1851,16 @@ fn handle(state: &mut State, event: Event<()>, elwt: &EventLoopWindowTarget<()>)
                 .map(|n| n.remotes(Duration::from_millis(100)))
                 .unwrap_or_default();
             state.update();
-            state.render(&remotes);
+            match state.render(&remotes) {
+                Ok(()) => {}
+                Err(wgpu::SurfaceError::OutOfMemory) => {
+                    log("NOVA fatal surface error: out of memory");
+                    elwt.exit();
+                }
+                Err(error) => {
+                    log(&format!("NOVA surface frame skipped after recovery: {error}"));
+                }
+            }
         }
         _ => {}
     }
