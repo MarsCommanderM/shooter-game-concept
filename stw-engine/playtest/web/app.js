@@ -10,6 +10,12 @@ let currentFrameUrl = null;
 let movement = { x: 0, y: 0 };
 let look = { x: 0, y: 0 };
 let bridgeRunning = false;
+let activeTest = null;
+let cameraRequestInFlight = false;
+let frameEtag = "";
+let frameArrivals = [];
+let lastFrameArrival = 0;
+let testSelectionTouched = false;
 
 const checklistItems = {
   skinning: [
@@ -71,15 +77,27 @@ function updateStatus(payload) {
   const engine = payload.engine;
   const bridge = payload.bridge ?? {};
   bridgeRunning = bridge.state === "running";
-  setConnection(bridgeRunning, (bridge.state ?? "offline").toUpperCase());
-  document.querySelector("#status-test").textContent = engine?.playtest ?? bridge.test ?? "—";
+  activeTest = engine?.playtest ?? bridge.test ?? null;
+  setConnection(true, `CONNECTED · ${(bridge.state ?? "idle").toUpperCase()}`);
+  if (activeTest && !testSelectionTouched) {
+    testSelect.value = activeTest;
+  }
+  document.querySelector("#status-test").textContent = activeTest ?? "—";
   document.querySelector("#status-state").textContent = engine?.state ?? bridge.state ?? "—";
   document.querySelector("#status-fps").textContent = formatNumber(engine?.fps, 1);
   document.querySelector("#status-frame").textContent = engine ? `${formatNumber(engine.frameTimeMs, 1)} ms` : "—";
+  document.querySelector("#status-rx-fps").textContent =
+    lastFrameArrival && performance.now() - lastFrameArrival < 2500
+      ? formatNumber(receivedFrameRate(), 1)
+      : "0.0";
   document.querySelector("#status-time").textContent = engine ? `${formatNumber(engine.animationTime, 2)} s` : "—";
   document.querySelector("#status-clip").textContent = engine?.clip ?? "—";
   document.querySelector("#status-joints").textContent = engine?.jointCount ?? "—";
   document.querySelector("#status-palette").textContent = engine?.paletteSize ?? "—";
+  document.querySelector("#status-loop").textContent =
+    typeof engine?.looping === "boolean" ? (engine.looping ? "YES" : "NO") : "—";
+  document.querySelector("#status-slow").textContent =
+    typeof engine?.slowMotion === "boolean" ? (engine.slowMotion ? "ON" : "OFF") : "—";
   const error = engine?.lastError || bridge.error || "";
   const errorElement = document.querySelector("#last-error");
   errorElement.textContent = `Last error: ${error || "none"}`;
@@ -96,20 +114,40 @@ async function pollStatus() {
     updateStatus(await requestJson("/status"));
   } catch (error) {
     bridgeRunning = false;
-    setConnection(false, "OFFLINE");
-    document.querySelector("#last-error").textContent = `Last error: ${error.message}`;
+    activeTest = null;
+    setConnection(false, "DISCONNECTED");
+    const errorElement = document.querySelector("#last-error");
+    errorElement.textContent = `Last error: ${error.message}`;
+    errorElement.classList.add("active");
   }
   setTimeout(pollStatus, 500);
+}
+
+function receivedFrameRate() {
+  if (frameArrivals.length < 2) return frameArrivals.length;
+  const elapsedSeconds =
+    (frameArrivals[frameArrivals.length - 1] - frameArrivals[0]) / 1000;
+  return elapsedSeconds > 0 ? (frameArrivals.length - 1) / elapsedSeconds : 0;
+}
+
+function recordFrameArrival() {
+  const now = performance.now();
+  frameArrivals.push(now);
+  frameArrivals = frameArrivals.filter((timestamp) => now - timestamp <= 2000);
+  lastFrameArrival = now;
 }
 
 async function pollFrame() {
   if (tokenInput.value && bridgeRunning) {
     try {
-      const response = await fetch(`${apiRoot}/frame?fresh=${Date.now()}`, {
+      const requestHeaders = authorizationHeaders();
+      if (frameEtag) requestHeaders["If-None-Match"] = frameEtag;
+      const response = await fetch(`${apiRoot}/frame`, {
         cache: "no-store",
-        headers: authorizationHeaders(),
+        headers: requestHeaders,
       });
       if (response.ok) {
+        frameEtag = response.headers.get("etag") ?? "";
         const blob = await response.blob();
         const nextUrl = URL.createObjectURL(blob);
         frame.src = nextUrl;
@@ -117,6 +155,7 @@ async function pollFrame() {
         framePlaceholder.style.display = "none";
         if (currentFrameUrl) URL.revokeObjectURL(currentFrameUrl);
         currentFrameUrl = nextUrl;
+        recordFrameArrival();
       }
     } catch {
       // Status polling owns connection/error reporting.
@@ -136,10 +175,18 @@ async function sendCommand(command, values) {
 document.querySelector("#start").addEventListener("click", async () => {
   try {
     if (!tokenInput.value) throw new Error("enter the playtest token first");
-    await requestJson("/start", {
+    const selectedTest = testSelect.value;
+    const endpoint = bridgeRunning && activeTest !== selectedTest
+      ? "/restart"
+      : "/start";
+    await requestJson(endpoint, {
       method: "POST",
-      body: JSON.stringify({ test: testSelect.value }),
+      body: JSON.stringify({ test: selectedTest }),
     });
+    frameEtag = "";
+    frameArrivals = [];
+    lastFrameArrival = 0;
+    testSelectionTouched = false;
     setConnection(true, "STARTING");
   } catch (error) {
     setConnection(false, "ERROR");
@@ -196,9 +243,19 @@ bindPad(document.querySelector("#look-pad"), document.querySelector("#look-knob"
   look = { x, y };
 });
 
+document.querySelector("#viewer").addEventListener("touchmove", (event) => {
+  event.preventDefault();
+}, { passive: false });
+document.addEventListener("gesturestart", (event) => event.preventDefault());
+
 setInterval(() => {
-  if (!bridgeRunning || !tokenInput.value) return;
-  sendCommand("camera", [movement.x, movement.y, look.x, look.y]).catch(() => {});
+  if (!bridgeRunning || !tokenInput.value || cameraRequestInFlight) return;
+  cameraRequestInFlight = true;
+  sendCommand("camera", [movement.x, movement.y, look.x, look.y])
+    .catch(() => {})
+    .finally(() => {
+      cameraRequestInFlight = false;
+    });
 }, 100);
 
 function storageKey(suffix) {
@@ -243,7 +300,10 @@ document.querySelector("#fail-verdict").addEventListener("click", () => {
   localStorage.setItem(storageKey("verdict"), "FAIL");
   showVerdict("FAIL");
 });
-testSelect.addEventListener("change", renderChecklist);
+testSelect.addEventListener("change", () => {
+  testSelectionTouched = true;
+  renderChecklist();
+});
 
 renderChecklist();
 pollStatus();

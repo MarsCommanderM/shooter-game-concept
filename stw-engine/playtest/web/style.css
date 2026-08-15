@@ -26,6 +26,7 @@ body {
 
 button, input, select { font: inherit; }
 button, .touch-pad, .viewer { -webkit-tap-highlight-color: transparent; }
+button { touch-action: manipulation; }
 
 header {
   max-width: 1500px;
@@ -178,6 +179,7 @@ input, select {
   padding: 0 10px;
   background: #07121a;
   color: #eefaff;
+  font-size: 16px;
 }
 .start-row select { min-width: 0; }
 .start-row button { flex: 0 0 auto; }
@@ -207,7 +209,7 @@ dd { margin: 3px 0 0; overflow: hidden; color: #effaff; font-size: 0.85rem; font
 @media (orientation: portrait) and (max-width: 820px) {
   .viewer { height: 48svh; min-height: 310px; }
   .primary-controls { display: grid; grid-template-columns: repeat(5, 1fr); }
-  .primary-controls button { min-width: 0; font-size: 0.64rem; }
+  .primary-controls button { min-width: 0; padding-inline: 3px; font-size: 0.58rem; }
 }
 
 @media (orientation: landscape) and (max-height: 600px) {

@@ -37,7 +37,7 @@
           <button data-command="pause">PAUSE</button>
           <button data-command="reset">RESET</button>
           <button data-command="bind">BIND</button>
-          <button class="accent" data-command="play">PLAY</button>
+          <button class="accent" data-command="play">PLAY / ANIM</button>
           <button data-command="slow">SLOW</button>
         </div>
       </section>
@@ -52,7 +52,7 @@
               <option value="skinning">T3-A GPU Skinning</option>
               <option value="animation">T3-B Imported Animation</option>
             </select>
-            <button id="start" class="accent">START</button>
+            <button id="start" class="accent">START / SWITCH</button>
           </div>
           <p class="hint">The token stays in this browser tab only.</p>
         </section>
@@ -64,10 +64,13 @@
             <div><dt>STATE</dt><dd id="status-state">—</dd></div>
             <div><dt>FPS</dt><dd id="status-fps">—</dd></div>
             <div><dt>FRAME</dt><dd id="status-frame">—</dd></div>
+            <div><dt>RECEIVED FPS</dt><dd id="status-rx-fps">0.0</dd></div>
             <div><dt>TIME</dt><dd id="status-time">—</dd></div>
             <div><dt>CLIP</dt><dd id="status-clip">—</dd></div>
             <div><dt>JOINTS</dt><dd id="status-joints">—</dd></div>
             <div><dt>PALETTE</dt><dd id="status-palette">—</dd></div>
+            <div><dt>LOOP</dt><dd id="status-loop">—</dd></div>
+            <div><dt>SLOW</dt><dd id="status-slow">—</dd></div>
           </dl>
           <p id="last-error" class="last-error">Last error: none</p>
         </section>
