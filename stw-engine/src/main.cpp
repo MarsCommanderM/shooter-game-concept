@@ -17,8 +17,13 @@
 #include "Weapons.hpp"
 #include "FpsController.hpp"
 #include "Targets.hpp"
+#include "playtest/PlaytestRegistry.hpp"
 
 int main(int argc, char** argv) {
+  if (stw::IsPlaytestCommand(argc, argv)) {
+    return stw::RunPlaytestCommand(argc, argv);
+  }
+
   if (SDL_Init(SDL_INIT_VIDEO) != 0) {
     SDL_Log("SDL-Init fehlgeschlagen: %s", SDL_GetError());
     return 1;

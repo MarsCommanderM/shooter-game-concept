@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#071018">
+    <title>STW Remote Playtest</title>
+    <link rel="stylesheet" href="./style.css">
+  </head>
+  <body>
+    <header>
+      <div>
+        <p class="eyebrow">REAL STW RUNTIME</p>
+        <h1>Playtest V1</h1>
+      </div>
+      <span id="connection" class="badge offline">OFFLINE</span>
+    </header>
+
+    <main>
+      <section class="viewer-card" aria-label="Real STW renderer stream">
+        <div id="viewer" class="viewer">
+          <img id="frame" alt="Latest frame captured from the real STW OpenGL renderer">
+          <div id="frame-placeholder" class="placeholder">
+            Configure a token, choose a test, then press Start.
+          </div>
+          <div class="viewer-label">LIVE · STW OPENGL READBACK</div>
+
+          <div id="move-pad" class="touch-pad move-pad" aria-label="Movement joystick">
+            <span>MOVE</span><i id="move-knob"></i>
+          </div>
+          <div id="look-pad" class="touch-pad look-pad" aria-label="Look drag area">
+            <span>LOOK</span><i id="look-knob"></i>
+          </div>
+        </div>
+
+        <div class="primary-controls">
+          <button data-command="pause">PAUSE</button>
+          <button data-command="reset">RESET</button>
+          <button data-command="bind">BIND</button>
+          <button class="accent" data-command="play">PLAY</button>
+          <button data-command="slow">SLOW</button>
+        </div>
+      </section>
+
+      <aside>
+        <section class="panel connection-panel">
+          <label for="token">Session token</label>
+          <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="STW_PLAYTEST_TOKEN">
+          <label for="test-select">Playtest</label>
+          <div class="start-row">
+            <select id="test-select">
+              <option value="skinning">T3-A GPU Skinning</option>
+              <option value="animation">T3-B Imported Animation</option>
+            </select>
+            <button id="start" class="accent">START</button>
+          </div>
+          <p class="hint">The token stays in this browser tab only.</p>
+        </section>
+
+        <section class="panel status-panel">
+          <h2>Runtime</h2>
+          <dl>
+            <div><dt>PLAYTEST</dt><dd id="status-test">—</dd></div>
+            <div><dt>STATE</dt><dd id="status-state">—</dd></div>
+            <div><dt>FPS</dt><dd id="status-fps">—</dd></div>
+            <div><dt>FRAME</dt><dd id="status-frame">—</dd></div>
+            <div><dt>TIME</dt><dd id="status-time">—</dd></div>
+            <div><dt>CLIP</dt><dd id="status-clip">—</dd></div>
+            <div><dt>JOINTS</dt><dd id="status-joints">—</dd></div>
+            <div><dt>PALETTE</dt><dd id="status-palette">—</dd></div>
+          </dl>
+          <p id="last-error" class="last-error">Last error: none</p>
+        </section>
+
+        <section class="panel checklist-panel">
+          <h2>Manual acceptance</h2>
+          <div id="checklist"></div>
+          <div class="verdict-row">
+            <button id="fail-verdict" class="danger">FAIL</button>
+            <button id="pass-verdict" class="success">PASS</button>
+          </div>
+          <p id="verdict" class="verdict">Not reported</p>
+        </section>
+      </aside>
+    </main>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>

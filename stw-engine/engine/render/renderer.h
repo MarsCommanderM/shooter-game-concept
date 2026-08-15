@@ -64,6 +64,19 @@ class IRenderer {
   virtual void SetIBL(const IBLResources& r) { (void)r; }
   virtual uint32_t UploadTextureRGBA(const unsigned char* px, int w, int h) { (void)px; (void)w; (void)h; return 0; }
   virtual void SetNormalTexture(uint32_t t) { (void)t; }
+  // Queues at most one readback of the real renderer output. A newer request
+  // replaces an older pending request so remote streaming cannot build an
+  // unbounded frame backlog. The result becomes available after EndFrame().
+  virtual bool RequestFrameCapture(const std::string& path,
+                                   std::string* error = nullptr) {
+    (void)path;
+    if (error) *error = "renderer backend does not support frame capture";
+    return false;
+  }
+  virtual bool ConsumeFrameCaptureResult(std::string* error = nullptr) {
+    if (error) *error = "renderer backend has no frame capture result";
+    return false;
+  }
   virtual void EndFrame() = 0;
   virtual void Shutdown() = 0;
 };

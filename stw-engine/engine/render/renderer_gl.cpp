@@ -1,6 +1,7 @@
 // STW-ENGINE: OpenGL-4.5-Backend (Forward+, PBR metallic/roughness, ACES)
 // Phase 2+: Render-Paesse getrennt (Shadow-Depth -> Main), Frustum-Culling, PCF-Shadows
 #include "renderer.h"
+#include "render/FrameCapture.hpp"
 #include "render/IBL.hpp"
 #include "render/Vertex.hpp"
 #include "animation/SkinningPalette.hpp"
@@ -633,6 +634,31 @@ class GLRenderer : public IRenderer {
     return true;
   }
 
+  bool RequestFrameCapture(const std::string& path,
+                           std::string* error) override {
+    if (error) error->clear();
+    if (path.empty()) return Fail(error, "frame capture path must not be empty");
+    // One slot is intentional: remote streaming always wants the newest frame.
+    pendingCapturePath_ = path;
+    captureResultReady_ = false;
+    captureSucceeded_ = false;
+    captureError_.clear();
+    return true;
+  }
+
+  bool ConsumeFrameCaptureResult(std::string* error) override {
+    if (error) error->clear();
+    if (!captureResultReady_) {
+      return Fail(error, "frame capture result is not ready");
+    }
+    captureResultReady_ = false;
+    if (!captureSucceeded_) {
+      if (error) *error = captureError_;
+      return false;
+    }
+    return true;
+  }
+
   void EndFrame() override {
     // Light-VP (orthografisch, feste Box um Ursprung)
     glm::vec3 ldir = glm::normalize(glm::vec3(light_.dir[0], light_.dir[1], light_.dir[2]));
@@ -722,6 +748,49 @@ class GLRenderer : public IRenderer {
       glBindVertexArray_(g.vao);
       glDrawElements(GL_TRIANGLES, g.count, GL_UNSIGNED_INT, nullptr);
     }
+
+    if (!pendingCapturePath_.empty()) {
+      captureResultReady_ = true;
+      captureSucceeded_ = false;
+      captureError_.clear();
+
+      const std::size_t captureWidth = w > 0 ? static_cast<std::size_t>(w) : 0u;
+      const std::size_t captureHeight = h > 0 ? static_cast<std::size_t>(h) : 0u;
+      if (captureWidth == 0u || captureHeight == 0u ||
+          captureWidth > std::numeric_limits<std::size_t>::max() / 3u ||
+          captureWidth * 3u >
+              std::numeric_limits<std::size_t>::max() / captureHeight) {
+        captureError_ = "frame capture dimensions are invalid";
+      } else {
+        const std::size_t pixelBytes = captureWidth * captureHeight * 3u;
+        constexpr std::size_t kMaxCaptureBytes = 64u * 1024u * 1024u;
+        if (pixelBytes > kMaxCaptureBytes) {
+          captureError_ = "frame capture exceeds the 64 MiB safety limit";
+        } else {
+          std::vector<std::uint8_t> pixels(pixelBytes);
+          GLint previousPackAlignment = 4;
+          glGetIntegerv(GL_PACK_ALIGNMENT, &previousPackAlignment);
+          glPixelStorei(GL_PACK_ALIGNMENT, 1);
+          while (glGetError() != GL_NO_ERROR) {
+          }
+          glReadBuffer(GL_BACK);
+          glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE,
+                       pixels.data());
+          const GLenum readError = glGetError();
+          glPixelStorei(GL_PACK_ALIGNMENT, previousPackAlignment);
+          if (readError != GL_NO_ERROR) {
+            captureError_ = "OpenGL backbuffer readback failed";
+          } else {
+            captureSucceeded_ = WriteRgb8PngAtomic(
+                pendingCapturePath_, w, h, pixels, true, &captureError_);
+          }
+        }
+      }
+      if (!captureSucceeded_) {
+        SDL_Log("Frame-Capture fehlgeschlagen: %s", captureError_.c_str());
+      }
+      pendingCapturePath_.clear();
+    }
     SDL_GL_SwapWindow(win_);
   }
 
@@ -805,6 +874,10 @@ class GLRenderer : public IRenderer {
   Light light_;
   std::vector<GLMesh> meshes_;
   std::vector<DrawCmd> cmds_;
+  std::string pendingCapturePath_;
+  std::string captureError_;
+  bool captureResultReady_ = false;
+  bool captureSucceeded_ = false;
 };
 
 }  // namespace
