@@ -18,6 +18,7 @@ add_executable(stw
   src/animation/Animator.cpp
   src/animation/SkinInfluence.cpp
   src/animation/SkinningPalette.cpp
+  src/animation/ModelAnimationBinding.cpp
   engine/assets/json_mini.cpp
   engine/assets/gltf.cpp
   engine/assets/TangentGenerator.cpp
@@ -32,6 +33,8 @@ target_compile_options(stw PRIVATE -Wall)
 add_executable(cache_builder
   tools/cache_builder.cpp
   src/animation/Skeleton.cpp
+  src/animation/AnimationClip.cpp
+  src/animation/Pose.cpp
   src/animation/SkinInfluence.cpp
   engine/assets/json_mini.cpp
   engine/assets/gltf.cpp

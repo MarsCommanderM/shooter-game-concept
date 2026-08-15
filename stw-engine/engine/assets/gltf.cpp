@@ -13,6 +13,7 @@
 #include <functional>
 #include <iterator>
 #include <limits>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,6 +29,11 @@ constexpr int kComponentUnsignedByte = 5121;
 constexpr int kComponentUnsignedShort = 5123;
 constexpr int kComponentUnsignedInt = 5125;
 constexpr int kComponentFloat = 5126;
+
+bool FailImport(std::string* error, const std::string& message) {
+  if (error) *error = message;
+  return false;
+}
 
 bool IsFinite(float value) {
   return std::isfinite(static_cast<double>(value));
@@ -48,7 +54,7 @@ bool NormalizeQuaternion(glm::quat& value) {
       static_cast<double>(value.x) * value.x +
       static_cast<double>(value.y) * value.y +
       static_cast<double>(value.z) * value.z;
-  if (!std::isfinite(lengthSquared) || lengthSquared <= 1.0e-16) return false;
+  if (!std::isfinite(lengthSquared) || lengthSquared <= 0.0) return false;
 
   const double length = std::sqrt(lengthSquared);
   value = glm::quat(static_cast<float>(value.w / length),
@@ -623,7 +629,8 @@ bool ReadFloatArray(const Json* value,
   return true;
 }
 
-bool DocumentContainsSkinData(const Json& document) {
+bool DocumentRequiresUncachedRuntimeData(const Json& document) {
+  if (document.get("animations")) return true;
   if (document.get("skins")) return true;
   const Json* meshes = document.get("meshes");
   if (!meshes || meshes->t != Json::T::Arr) return false;
@@ -1042,6 +1049,377 @@ bool ParseSkins(const Json& document,
   return true;
 }
 
+struct GltfAnimationSampler {
+  std::vector<float> keyTimes;
+  int outputAccessor = -1;
+  AnimationInterpolation interpolation = AnimationInterpolation::Linear;
+};
+
+struct GltfAnimationChannel {
+  std::size_t targetNode = 0;
+  AnimationTarget targetPath = AnimationTarget::Translation;
+  AnimationInterpolation interpolation = AnimationInterpolation::Linear;
+  std::vector<float> keyTimes;
+  AnimationValues values{AnimationVec3Values{}};
+};
+
+bool DecodeAnimationTimes(const AccessorContext& context,
+                          int accessorIndex,
+                          std::vector<float>& output,
+                          std::string* error,
+                          const std::string& prefix) {
+  AccessorView view;
+  if (!BuildAccessorView(context, accessorIndex, view)) {
+    return FailImport(error, prefix + " input accessor has an invalid range or layout");
+  }
+  if (view.shape != AccessorShape::Scalar) {
+    return FailImport(error, prefix + " input accessor must be SCALAR");
+  }
+  if (view.componentType != kComponentFloat || view.normalized) {
+    return FailImport(error, prefix + " input accessor must use non-normalized FLOAT values");
+  }
+
+  std::vector<float> candidate(view.count, 0.0f);
+  float previous = 0.0f;
+  for (std::size_t keyIndex = 0; keyIndex < view.count; ++keyIndex) {
+    float value = 0.0f;
+    if (!ReadFloatComponent(view, keyIndex, 0, value) || !IsFinite(value)) {
+      return FailImport(error, prefix + " input contains a non-finite key time");
+    }
+    if (value < 0.0f) {
+      return FailImport(error, prefix + " input contains a negative key time");
+    }
+    if (keyIndex > 0 && value < previous) {
+      return FailImport(error, prefix + " input key times are not monotonic");
+    }
+    candidate[keyIndex] = value;
+    previous = value;
+  }
+
+  output = std::move(candidate);
+  return true;
+}
+
+bool DecodeAnimationVec3(const AccessorContext& context,
+                         int accessorIndex,
+                         std::size_t expectedCount,
+                         AnimationVec3Values& output,
+                         std::string* error,
+                         const std::string& prefix) {
+  AccessorView view;
+  if (!BuildAccessorView(context, accessorIndex, view)) {
+    return FailImport(error, prefix + " output accessor has an invalid range or layout");
+  }
+  if (view.shape != AccessorShape::Vec3) {
+    return FailImport(error, prefix + " output accessor must be VEC3");
+  }
+  if (view.componentType != kComponentFloat || view.normalized) {
+    return FailImport(error, prefix + " output accessor must use non-normalized FLOAT values");
+  }
+  if (view.count != expectedCount) {
+    return FailImport(error, prefix + " input/output key counts do not match");
+  }
+
+  AnimationVec3Values candidate(view.count, glm::vec3(0.0f));
+  for (std::size_t keyIndex = 0; keyIndex < view.count; ++keyIndex) {
+    float components[3] = {};
+    for (std::size_t component = 0; component < 3; ++component) {
+      if (!ReadFloatComponent(view, keyIndex, component, components[component])) {
+        return FailImport(error, prefix + " output contains a non-finite vec3 value");
+      }
+    }
+    candidate[keyIndex] = glm::vec3(components[0], components[1], components[2]);
+  }
+
+  output = std::move(candidate);
+  return true;
+}
+
+bool DecodeAnimationQuaternions(const AccessorContext& context,
+                                int accessorIndex,
+                                std::size_t expectedCount,
+                                AnimationQuatValues& output,
+                                std::string* error,
+                                const std::string& prefix) {
+  AccessorView view;
+  if (!BuildAccessorView(context, accessorIndex, view)) {
+    return FailImport(error, prefix + " output accessor has an invalid range or layout");
+  }
+  if (view.shape != AccessorShape::Vec4) {
+    return FailImport(error, prefix + " rotation output accessor must be VEC4");
+  }
+  if (view.componentType != kComponentFloat || view.normalized) {
+    return FailImport(error, prefix + " rotation output accessor must use non-normalized FLOAT values");
+  }
+  if (view.count != expectedCount) {
+    return FailImport(error, prefix + " input/output key counts do not match");
+  }
+
+  AnimationQuatValues candidate;
+  candidate.reserve(view.count);
+  for (std::size_t keyIndex = 0; keyIndex < view.count; ++keyIndex) {
+    float components[4] = {};
+    for (std::size_t component = 0; component < 4; ++component) {
+      if (!ReadFloatComponent(view, keyIndex, component, components[component])) {
+        return FailImport(error, prefix + " output contains a non-finite rotation");
+      }
+    }
+    // glTF stores [x, y, z, w], while GLM's constructor is [w, x, y, z].
+    glm::quat rotation(components[3], components[0], components[1], components[2]);
+    if (!NormalizeQuaternion(rotation)) {
+      return FailImport(error, prefix + " output contains a zero-length rotation");
+    }
+    candidate.push_back(rotation);
+  }
+
+  output = std::move(candidate);
+  return true;
+}
+
+bool ParseAnimationInterpolation(const Json* value,
+                                 AnimationInterpolation& output,
+                                 std::string* error,
+                                 const std::string& prefix) {
+  if (!value) {
+    output = AnimationInterpolation::Linear;
+    return true;
+  }
+  if (value->t != Json::T::Str) {
+    return FailImport(error, prefix + " interpolation must be a string");
+  }
+  if (value->str == "STEP") {
+    output = AnimationInterpolation::Step;
+    return true;
+  }
+  if (value->str == "LINEAR") {
+    output = AnimationInterpolation::Linear;
+    return true;
+  }
+  if (value->str == "CUBICSPLINE") {
+    return FailImport(error, prefix + " uses unsupported CUBICSPLINE interpolation");
+  }
+  return FailImport(error, prefix + " uses an unknown interpolation mode");
+}
+
+bool ParseAnimationTarget(const Json* value,
+                          AnimationTarget& output,
+                          std::string* error,
+                          const std::string& prefix) {
+  if (!value || value->t != Json::T::Str) {
+    return FailImport(error, prefix + " target path must be a string");
+  }
+  if (value->str == "translation") {
+    output = AnimationTarget::Translation;
+    return true;
+  }
+  if (value->str == "rotation") {
+    output = AnimationTarget::Rotation;
+    return true;
+  }
+  if (value->str == "scale") {
+    output = AnimationTarget::Scale;
+    return true;
+  }
+  if (value->str == "weights") {
+    return FailImport(error, prefix + " uses unsupported morph weights animation");
+  }
+  return FailImport(error, prefix + " uses an unknown target path");
+}
+
+bool ParseAnimations(const Json& document,
+                     const std::vector<GltfNode>& nodes,
+                     const AccessorContext& accessors,
+                     StwModel& output,
+                     std::string* error) {
+  const Json* animationsJson = document.get("animations");
+  if (!animationsJson) {
+    output.animations.clear();
+    return true;
+  }
+  if (animationsJson->t != Json::T::Arr) {
+    return FailImport(error, "glTF animations must be an array");
+  }
+
+  std::vector<StwAnimation> importedAnimations;
+  importedAnimations.reserve(animationsJson->arr.size());
+  for (std::size_t animationIndex = 0;
+       animationIndex < animationsJson->arr.size();
+       ++animationIndex) {
+    if (animationIndex >
+        static_cast<std::size_t>(std::numeric_limits<uint32_t>::max())) {
+      return FailImport(error, "glTF animation index exceeds the model index range");
+    }
+
+    const Json& animationJson = animationsJson->arr[animationIndex];
+    const std::string animationPrefix =
+        "glTF animation " + std::to_string(animationIndex);
+    if (animationJson.t != Json::T::Obj) {
+      return FailImport(error, animationPrefix + " must be an object");
+    }
+
+    const Json* samplersJson = animationJson.get("samplers");
+    const Json* channelsJson = animationJson.get("channels");
+    if (!samplersJson || samplersJson->t != Json::T::Arr ||
+        samplersJson->arr.empty()) {
+      return FailImport(error, animationPrefix + " must contain samplers");
+    }
+    if (!channelsJson || channelsJson->t != Json::T::Arr ||
+        channelsJson->arr.empty()) {
+      return FailImport(error, animationPrefix + " must contain channels");
+    }
+
+    StwAnimation imported;
+    imported.sourceAnimationIndex = static_cast<uint32_t>(animationIndex);
+    imported.skinClips.resize(output.skins.size());
+    if (const Json* name = animationJson.get("name")) {
+      if (name->t != Json::T::Str) {
+        return FailImport(error, animationPrefix + " name must be a string");
+      }
+      imported.name = name->str;
+    }
+
+    std::vector<GltfAnimationSampler> samplers;
+    samplers.reserve(samplersJson->arr.size());
+    for (std::size_t samplerIndex = 0;
+         samplerIndex < samplersJson->arr.size();
+         ++samplerIndex) {
+      const Json& samplerJson = samplersJson->arr[samplerIndex];
+      const std::string samplerPrefix = animationPrefix + " sampler " +
+                                        std::to_string(samplerIndex);
+      if (samplerJson.t != Json::T::Obj) {
+        return FailImport(error, samplerPrefix + " must be an object");
+      }
+
+      int inputAccessor = -1;
+      GltfAnimationSampler sampler;
+      if (!ReadJsonInt(samplerJson.get("input"), inputAccessor)) {
+        return FailImport(error, samplerPrefix + " has an invalid input accessor");
+      }
+      if (!ReadJsonInt(samplerJson.get("output"), sampler.outputAccessor) ||
+          static_cast<std::size_t>(sampler.outputAccessor) >= accessors.accessors.arr.size()) {
+        return FailImport(error, samplerPrefix + " has an invalid output accessor");
+      }
+      if (!ParseAnimationInterpolation(samplerJson.get("interpolation"),
+                                       sampler.interpolation,
+                                       error, samplerPrefix) ||
+          !DecodeAnimationTimes(accessors, inputAccessor, sampler.keyTimes,
+                                error, samplerPrefix)) {
+        return false;
+      }
+      samplers.push_back(std::move(sampler));
+    }
+
+    std::vector<GltfAnimationChannel> sourceChannels;
+    sourceChannels.reserve(channelsJson->arr.size());
+    std::set<std::pair<std::size_t, AnimationTarget>> uniqueTargets;
+    for (std::size_t channelIndex = 0;
+         channelIndex < channelsJson->arr.size();
+         ++channelIndex) {
+      const Json& channelJson = channelsJson->arr[channelIndex];
+      const std::string channelPrefix = animationPrefix + " channel " +
+                                        std::to_string(channelIndex);
+      if (channelJson.t != Json::T::Obj) {
+        return FailImport(error, channelPrefix + " must be an object");
+      }
+
+      std::size_t samplerIndex = 0;
+      if (!ReadJsonSize(channelJson.get("sampler"), samplerIndex) ||
+          samplerIndex >= samplers.size()) {
+        return FailImport(error, channelPrefix + " has an invalid sampler index");
+      }
+      const Json* targetJson = channelJson.get("target");
+      if (!targetJson || targetJson->t != Json::T::Obj) {
+        return FailImport(error, channelPrefix + " target must be an object");
+      }
+
+      GltfAnimationChannel channel;
+      if (!ReadJsonSize(targetJson->get("node"), channel.targetNode) ||
+          channel.targetNode >= nodes.size()) {
+        return FailImport(error, channelPrefix + " has an invalid target node");
+      }
+      if (!ParseAnimationTarget(targetJson->get("path"), channel.targetPath,
+                                error, channelPrefix)) {
+        return false;
+      }
+      if (!uniqueTargets.emplace(channel.targetNode, channel.targetPath).second) {
+        return FailImport(error, channelPrefix +
+                                     " duplicates a target node/path channel");
+      }
+
+      const GltfAnimationSampler& sampler = samplers[samplerIndex];
+      channel.interpolation = sampler.interpolation;
+      channel.keyTimes = sampler.keyTimes;
+      if (channel.targetPath == AnimationTarget::Rotation) {
+        AnimationQuatValues values;
+        if (!DecodeAnimationQuaternions(
+                accessors, sampler.outputAccessor, sampler.keyTimes.size(),
+                values, error, channelPrefix)) {
+          return false;
+        }
+        channel.values = std::move(values);
+      } else {
+        AnimationVec3Values values;
+        if (!DecodeAnimationVec3(
+                accessors, sampler.outputAccessor, sampler.keyTimes.size(),
+                values, error, channelPrefix)) {
+          return false;
+        }
+        channel.values = std::move(values);
+      }
+      sourceChannels.push_back(std::move(channel));
+    }
+
+    for (std::size_t skinIndex = 0; skinIndex < output.skins.size(); ++skinIndex) {
+      const StwSkin& skin = output.skins[skinIndex];
+      if (skin.jointNodes.size() >
+          static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+        return FailImport(error, animationPrefix + " skin joint count is too large");
+      }
+
+      std::vector<int> nodeToJoint(nodes.size(), -1);
+      for (std::size_t jointIndex = 0;
+           jointIndex < skin.jointNodes.size();
+           ++jointIndex) {
+        const std::size_t nodeIndex = skin.jointNodes[jointIndex];
+        if (nodeIndex >= nodes.size()) {
+          return FailImport(error, animationPrefix +
+                                       " skin contains an invalid joint node");
+        }
+        nodeToJoint[nodeIndex] = static_cast<int>(jointIndex);
+      }
+
+      AnimationClipInput clipInput;
+      clipInput.name = imported.name;
+      for (const GltfAnimationChannel& sourceChannel : sourceChannels) {
+        const int jointIndex = nodeToJoint[sourceChannel.targetNode];
+        if (jointIndex < 0) continue;
+
+        AnimationChannel channel;
+        channel.targetIndex = jointIndex;
+        channel.targetPath = sourceChannel.targetPath;
+        channel.interpolation = sourceChannel.interpolation;
+        channel.keyTimes = sourceChannel.keyTimes;
+        channel.values = sourceChannel.values;
+        clipInput.channels.push_back(std::move(channel));
+      }
+
+      if (clipInput.channels.empty()) continue;
+      AnimationClip clip;
+      std::string clipError;
+      if (!AnimationClip::Build(clipInput, clip, &clipError)) {
+        return FailImport(error, animationPrefix + " failed to build skin " +
+                                     std::to_string(skinIndex) + " clip: " + clipError);
+      }
+      imported.skinClips[skinIndex] = std::move(clip);
+    }
+
+    importedAnimations.push_back(std::move(imported));
+  }
+
+  output.animations = std::move(importedAnimations);
+  return true;
+}
+
 bool ReadAccessorIndex(const Json* value, int& output) {
   return ReadJsonInt(value, output);
 }
@@ -1298,19 +1676,25 @@ bool LoadPrimaryBuffer(const Json& document,
 
 }  // namespace
 
-bool LoadGLTF(const std::string& path, StwModel& out) {
+bool LoadGLTF(const std::string& path, StwModel& out, std::string* error) {
+  if (error) error->clear();
   const std::vector<uint8_t> raw = ReadFile(path);
-  if (raw.empty()) return false;
+  if (raw.empty()) return FailImport(error, "failed to read glTF source");
 
   std::string jsonText;
   std::vector<uint8_t> glbBinary;
-  if (!ExtractGlb(raw, jsonText, glbBinary)) return false;
+  if (!ExtractGlb(raw, jsonText, glbBinary)) {
+    return FailImport(error, "failed to extract glTF/GLB document");
+  }
 
   Json document;
-  if (!ParseJson(jsonText, document) || document.t != Json::T::Obj) return false;
+  if (!ParseJson(jsonText, document) || document.t != Json::T::Obj) {
+    return FailImport(error, "failed to parse glTF JSON document");
+  }
 
-  const bool documentContainsSkinData = DocumentContainsSkinData(document);
-  if (!documentContainsSkinData) {
+  const bool requiresUncachedRuntimeData =
+      DocumentRequiresUncachedRuntimeData(document);
+  if (!requiresUncachedRuntimeData) {
     StwModel cached;
     if (TryCache(path, cached)) {
       out = std::move(cached);
@@ -1319,28 +1703,43 @@ bool LoadGLTF(const std::string& path, StwModel& out) {
   }
 
   std::vector<uint8_t> binary;
-  if (!LoadPrimaryBuffer(document, path, glbBinary, binary)) return false;
+  if (!LoadPrimaryBuffer(document, path, glbBinary, binary)) {
+    return FailImport(error, "failed to load the primary glTF buffer");
+  }
 
   const Json* bufferViews = document.get("bufferViews");
   const Json* accessors = document.get("accessors");
   if (!bufferViews || bufferViews->t != Json::T::Arr ||
       !accessors || accessors->t != Json::T::Arr) {
-    return false;
+    return FailImport(error, "glTF bufferViews/accessors are missing or invalid");
   }
   const AccessorContext accessorContext{binary, *bufferViews, *accessors};
 
   StwModel candidate;
-  if (!ParseMaterials(document, candidate)) return false;
+  if (!ParseMaterials(document, candidate)) {
+    return FailImport(error, "failed to parse glTF materials");
+  }
 
   std::vector<GltfNode> nodes;
-  if (!ParseNodes(document, nodes)) return false;
-  if (!ParseSkins(document, nodes, accessorContext, candidate)) return false;
+  if (!ParseNodes(document, nodes)) {
+    return FailImport(error, "failed to parse glTF nodes");
+  }
+  if (!ParseSkins(document, nodes, accessorContext, candidate)) {
+    return FailImport(error, "failed to parse glTF skins");
+  }
+  if (!ParseAnimations(document, nodes, accessorContext, candidate, error)) {
+    return false;
+  }
 
   std::vector<std::vector<uint32_t>> meshPrimitiveMap;
-  if (!ParseMeshes(document, accessorContext, candidate, meshPrimitiveMap)) return false;
-  if (!BindSkinInstances(nodes, meshPrimitiveMap, candidate)) return false;
+  if (!ParseMeshes(document, accessorContext, candidate, meshPrimitiveMap)) {
+    return FailImport(error, "failed to parse glTF meshes");
+  }
+  if (!BindSkinInstances(nodes, meshPrimitiveMap, candidate)) {
+    return FailImport(error, "failed to bind glTF skin instances");
+  }
 
-  if (!documentContainsSkinData) {
+  if (!requiresUncachedRuntimeData) {
     WriteCache(path, candidate, FnvHash(raw));
   }
   out = std::move(candidate);
