@@ -31,9 +31,11 @@ target_compile_options(stw PRIVATE -Wall)
 
 add_executable(cache_builder
   tools/cache_builder.cpp
+  src/animation/Skeleton.cpp
+  src/animation/SkinInfluence.cpp
   engine/assets/json_mini.cpp
   engine/assets/gltf.cpp
   engine/assets/TangentGenerator.cpp
 )
-target_include_directories(cache_builder PRIVATE engine engine/assets)
+target_include_directories(cache_builder PRIVATE src engine engine/assets)
 target_compile_options(cache_builder PRIVATE -Wall)

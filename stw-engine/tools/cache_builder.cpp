@@ -1,4 +1,5 @@
-// tools/cache_builder: glTF -> .stwc (v3, inkl. Tangents + Materials).
+// tools/cache_builder: statisches glTF -> .stwc (v3, inkl. Tangents + Materials).
+// Skin-Daten werden importiert, aber bis zu einem späteren Cache-Format bewusst nicht gecacht.
 // Usage: cache_builder <file.gltf>
 #include "../engine/assets/gltf.h"
 
@@ -16,7 +17,12 @@ int main(int argc, char** argv) {
     }
     size_t verts = 0;
     for (auto& me : m.meshes) verts += me.pos.size() / 3;
-    std::printf("ok: %zu meshes, %zu verts, %zu materials -> %s.stwc (v3)\n", m.meshes.size(), verts,
-                m.mats.size(), argv[1]);
+    if (!m.skins.empty() || !m.skinnedMeshes.empty()) {
+        std::printf("ok: %zu meshes, %zu verts, %zu materials; skin data imported, STWC v3 bypassed\n",
+                    m.meshes.size(), verts, m.mats.size());
+    } else {
+        std::printf("ok: %zu meshes, %zu verts, %zu materials -> %s.stwc (v3)\n",
+                    m.meshes.size(), verts, m.mats.size(), argv[1]);
+    }
     return 0;
 }
