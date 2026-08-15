@@ -10,6 +10,8 @@
 
 namespace stw {
 
+class SkinningPalette;
+
 class Animator {
 public:
     static bool Create(const Skeleton& skeleton,
@@ -28,6 +30,8 @@ public:
 
     bool update(float deltaSeconds, std::string* error = nullptr);
     bool evaluate(std::string* error = nullptr);
+    bool buildSkinningPalette(SkinningPalette& out,
+                              std::string* error = nullptr) const;
 
     const Pose& pose() const noexcept;
     const std::vector<glm::mat4>& globalMatrices() const noexcept;

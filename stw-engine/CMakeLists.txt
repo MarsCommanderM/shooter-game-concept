@@ -16,6 +16,8 @@ add_executable(stw
   src/animation/AnimationClip.cpp
   src/animation/Pose.cpp
   src/animation/Animator.cpp
+  src/animation/SkinInfluence.cpp
+  src/animation/SkinningPalette.cpp
   engine/assets/json_mini.cpp
   engine/assets/gltf.cpp
   engine/assets/TangentGenerator.cpp

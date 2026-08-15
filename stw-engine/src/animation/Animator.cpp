@@ -1,5 +1,7 @@
 #include "Animator.hpp"
 
+#include "SkinningPalette.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -296,6 +298,16 @@ bool Animator::evaluate(std::string* error) {
     pose_ = std::move(candidatePose);
     globalMatrices_ = std::move(candidateGlobals);
     return true;
+}
+
+bool Animator::buildSkinningPalette(SkinningPalette& out, std::string* error) const {
+    if (error) {
+        error->clear();
+    }
+    if (!skeleton_) {
+        return Fail(error, "animator is not initialized");
+    }
+    return SkinningPalette::Build(*skeleton_, globalMatrices_, out, error);
 }
 
 const Pose& Animator::pose() const noexcept {
