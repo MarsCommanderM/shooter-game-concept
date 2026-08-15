@@ -10,6 +10,8 @@
 
 namespace stw {
 
+class Pose;
+
 enum class AnimationInterpolation {
     Step,
     Linear,
@@ -43,6 +45,8 @@ public:
     static bool Build(const AnimationClipInput& input,
                       AnimationClip& out,
                       std::string* error = nullptr);
+
+    bool Sample(float time, Pose& pose, std::string* error = nullptr) const;
 
     const std::string& name() const noexcept;
     float duration() const noexcept;
