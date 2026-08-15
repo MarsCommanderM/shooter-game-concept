@@ -12,6 +12,8 @@ find_package(OpenGL REQUIRED)
 
 add_executable(stw
   src/main.cpp
+  src/animation/Skeleton.cpp
+  src/animation/AnimationClip.cpp
   engine/assets/json_mini.cpp
   engine/assets/gltf.cpp
   engine/assets/TangentGenerator.cpp
