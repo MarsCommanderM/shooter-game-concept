@@ -34,14 +34,14 @@ async function main() {
     `STW playtest bridge listening on http://${host}:${port}${config.routePrefix}/`,
   );
   console.log(
-    `Native scene=${config.initialScene} stream=${config.streamFramesPerSecond}fps display=${config.display}`,
+    `Native scene=game stream=${config.streamFramesPerSecond}fps display=${config.display}`,
   );
-  console.log("Remote control enabled with bearer-token authentication");
+  console.log("Fixed game controls enabled; technical debug remains token-protected");
 
   if (shuttingDown) return;
-  await bridge.supervisor.start(config.initialScene);
+  await bridge.supervisor.connectGame();
   if (!shuttingDown) {
-    console.log(`Native STW playtest started: ${config.initialScene}`);
+    console.log("Native STW game runtime started at its real menu");
   }
 }
 

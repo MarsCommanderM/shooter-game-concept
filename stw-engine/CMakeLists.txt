@@ -13,6 +13,7 @@ find_package(ZLIB QUIET)
 
 add_executable(stw
   src/main.cpp
+  src/game/GameRuntime.cpp
   src/animation/Skeleton.cpp
   src/animation/AnimationClip.cpp
   src/animation/Pose.cpp

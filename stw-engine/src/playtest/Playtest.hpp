@@ -14,6 +14,7 @@ struct PlaytestOptions {
   float durationSeconds = 0.0f;
   bool noInput = false;
   bool hiddenWindow = false;
+  bool autoStart = false;
   std::string capturePath;
   std::string remoteDirectory;
   int streamFramesPerSecond = 10;

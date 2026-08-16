@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>STW Technical Debug</title>
+    <link rel="stylesheet" href="./debug.css">
+  </head>
+  <body>
+    <main>
+      <h1>STW technical debug</h1>
+      <p>This secondary page controls the native diagnostic scenes. Return to <a href="../">the real game</a>.</p>
+      <label>Debug token <input id="token" type="password" autocomplete="off"></label>
+      <label>Scene <select id="scene"><option>skinning</option><option>animation</option><option>game</option></select></label>
+      <div class="row"><button id="restart">START / SWITCH</button><button data-command="play">PLAY</button><button data-command="pause">PAUSE</button><button data-command="reset">RESET</button><button data-command="bind">BIND</button><button data-command="slow">SLOW</button></div>
+      <pre id="status">Disconnected</pre>
+      <img id="frame" alt="Native STW diagnostic frame">
+    </main>
+    <script src="./debug.js" type="module"></script>
+  </body>
+</html>

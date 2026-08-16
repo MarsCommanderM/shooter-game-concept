@@ -1,6 +1,7 @@
 #include "PlaytestRegistry.hpp"
 
 #include "Playtest.hpp"
+#include "game/GameRuntime.hpp"
 
 #include <cerrno>
 #include <cmath>
@@ -25,6 +26,7 @@ struct PlaytestDescriptor {
 
 const std::vector<PlaytestDescriptor>& Registry() {
   static const std::vector<PlaytestDescriptor> registry{
+      {"game", "real STW menu, map, player, weapons, and renderer", nullptr},
       {"skinning", "T3-A procedural two-joint GPU skinning",
        &CreateSkinningPlaytest},
       {"animation", "T3-B imported glTF animation runtime binding",
@@ -38,7 +40,7 @@ void PrintUsage(std::ostream& output) {
          << "  stw --playtest list\n"
          << "  stw --playtest <name> [--frames N] [--duration SECONDS]\n"
          << "      [--no-input] [--capture PATH] [--hidden]\n"
-         << "      [--remote-dir PATH] [--stream-fps 1..30]\n";
+         << "      [--remote-dir PATH] [--stream-fps 1..30] [--auto-start]\n";
 }
 
 bool ParsePositiveInt(const char* text, int& value) {
@@ -151,6 +153,8 @@ int RunPlaytestCommand(int argc, char** argv) {
       options.noInput = true;
     } else if (flag == "--hidden") {
       options.hiddenWindow = true;
+    } else if (flag == "--auto-start") {
+      options.autoStart = true;
     } else {
       std::cerr << "Unknown playtest option: " << flag << "\n";
       PrintUsage(std::cerr);
@@ -158,6 +162,18 @@ int RunPlaytestCommand(int argc, char** argv) {
     }
   }
 
+  if (requestedName == "game") {
+    GameRuntimeOptions gameOptions;
+    gameOptions.frameLimit = options.frameLimit;
+    gameOptions.durationSeconds = options.durationSeconds;
+    gameOptions.noInput = options.noInput;
+    gameOptions.hiddenWindow = options.hiddenWindow;
+    gameOptions.autoStart = options.autoStart;
+    gameOptions.capturePath = options.capturePath;
+    gameOptions.remoteDirectory = options.remoteDirectory;
+    gameOptions.streamFramesPerSecond = options.streamFramesPerSecond;
+    return RunGameRuntime(gameOptions);
+  }
   return RunPlaytestRuntime(options, descriptor->factory());
 }
 

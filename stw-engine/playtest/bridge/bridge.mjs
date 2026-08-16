@@ -1,7 +1,9 @@
 import { timingSafeEqual } from "node:crypto";
 import { spawn as spawnChild } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
-import { access, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import {
+  access, mkdtemp, readFile, rename, rm, stat, writeFile,
+} from "node:fs/promises";
 import { createServer as createHttpServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -12,30 +14,20 @@ const defaultEngineDirectory = path.resolve(bridgeDirectory, "../..");
 const defaultWebDirectory = path.resolve(bridgeDirectory, "../web");
 
 export const ROUTE_PREFIX = "/stw-playtest";
-export const KNOWN_TESTS = Object.freeze(["skinning", "animation"]);
-export const SIMPLE_COMMANDS = Object.freeze([
+export const KNOWN_TESTS = Object.freeze(["game", "skinning", "animation"]);
+export const DEBUG_COMMANDS = Object.freeze([
   "play", "pause", "reset", "bind", "slow", "stop",
 ]);
+export const GAME_ACTIONS = Object.freeze(["start", "pause", "reset", "weapon"]);
 
 const knownTests = new Set(KNOWN_TESTS);
-const simpleCommands = new Set(SIMPLE_COMMANDS);
+const debugCommands = new Set(DEBUG_COMMANDS);
+const gameActions = new Set(GAME_ACTIONS);
 const childEnvironmentNames = Object.freeze([
-  "DRI_PRIME",
-  "GALLIUM_DRIVER",
-  "HOME",
-  "LANG",
-  "LC_ALL",
-  "LC_CTYPE",
-  "LD_LIBRARY_PATH",
-  "LIBGL_ALWAYS_SOFTWARE",
-  "LIBGL_DRIVERS_PATH",
-  "MESA_LOADER_DRIVER_OVERRIDE",
-  "PATH",
-  "SDL_AUDIODRIVER",
-  "SDL_VIDEODRIVER",
-  "TMPDIR",
-  "XAUTHORITY",
-  "XDG_RUNTIME_DIR",
+  "DRI_PRIME", "GALLIUM_DRIVER", "HOME", "LANG", "LC_ALL", "LC_CTYPE",
+  "LD_LIBRARY_PATH", "LIBGL_ALWAYS_SOFTWARE", "LIBGL_DRIVERS_PATH",
+  "MESA_LOADER_DRIVER_OVERRIDE", "PATH", "SDL_AUDIODRIVER",
+  "SDL_VIDEODRIVER", "TMPDIR", "XAUTHORITY", "XDG_RUNTIME_DIR",
   "__GLX_VENDOR_LIBRARY_NAME",
 ]);
 
@@ -66,43 +58,38 @@ function parseInteger(value, name, minimum, maximum) {
 }
 
 export function loadBridgeConfig(environment = process.env) {
-  const token = requiredEnvironment(environment, "STW_PLAYTEST_TOKEN");
-  if (Buffer.byteLength(token, "utf8") < 16) {
-    throw new Error("STW_PLAYTEST_TOKEN must contain at least 16 bytes");
-  }
-
   const binaryPath = requiredEnvironment(environment, "STW_PLAYTEST_BINARY");
   if (!path.isAbsolute(binaryPath)) {
     throw new Error("STW_PLAYTEST_BINARY must be an absolute path");
   }
-
-  const initialScene = requiredEnvironment(environment, "STW_PLAYTEST_SCENE");
+  const initialScene = environment.STW_PLAYTEST_SCENE ?? "game";
   if (!knownTests.has(initialScene)) {
-    throw new Error("STW_PLAYTEST_SCENE must be skinning or animation");
+    throw new Error("STW_PLAYTEST_SCENE must be game, skinning, or animation");
   }
-
+  const debugToken = environment.STW_PLAYTEST_DEBUG_TOKEN ??
+    environment.STW_PLAYTEST_TOKEN ?? "";
+  if (debugToken && Buffer.byteLength(debugToken, "utf8") < 16) {
+    throw new Error("STW_PLAYTEST_DEBUG_TOKEN must contain at least 16 bytes");
+  }
   const host = environment.STW_PLAYTEST_HOST ?? "127.0.0.1";
   if (!host || !/^[A-Za-z0-9_.:-]+$/.test(host)) {
     throw new Error("STW_PLAYTEST_HOST contains unsupported characters");
   }
-  const port = parseInteger(
-    environment.STW_PLAYTEST_PORT ?? "8791",
-    "STW_PLAYTEST_PORT", 1, 65535,
-  );
+  const port = parseInteger(environment.STW_PLAYTEST_PORT ?? "8791",
+                            "STW_PLAYTEST_PORT", 1, 65535);
   const streamFramesPerSecond = parseInteger(
     environment.STW_PLAYTEST_STREAM_FPS ?? "10",
     "STW_PLAYTEST_STREAM_FPS", 1, 30,
   );
-
   const display = environment.STW_PLAYTEST_DISPLAY || environment.DISPLAY;
   if (!display) {
     throw new Error(
-      "no OpenGL display configured; set STW_PLAYTEST_DISPLAY or run the bridge under xvfb-run",
+      "no OpenGL display configured; set STW_PLAYTEST_DISPLAY or run under xvfb-run",
     );
   }
-
   return Object.freeze({
     binaryPath,
+    debugToken,
     display,
     engineDirectory: defaultEngineDirectory,
     host,
@@ -111,7 +98,6 @@ export function loadBridgeConfig(environment = process.env) {
     routePrefix: ROUTE_PREFIX,
     stopTimeoutMilliseconds: 3000,
     streamFramesPerSecond,
-    token,
     webDirectory: defaultWebDirectory,
   });
 }
@@ -128,17 +114,13 @@ function sanitizeDiagnostic(value) {
 function buildChildEnvironment(display) {
   const environment = { DISPLAY: display };
   for (const name of childEnvironmentNames) {
-    if (typeof process.env[name] === "string") {
-      environment[name] = process.env[name];
-    }
+    if (typeof process.env[name] === "string") environment[name] = process.env[name];
   }
   return environment;
 }
 
 function waitForExit(child, milliseconds) {
-  if (child.exitCode !== null || child.signalCode !== null) {
-    return Promise.resolve(true);
-  }
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(true);
   return new Promise((resolve) => {
     let completed = false;
     const finish = (exited) => {
@@ -177,13 +159,18 @@ function sendJson(response, status, payload) {
   response.end(`${JSON.stringify(payload)}\n`);
 }
 
-function authorize(request, response, token) {
+function authorizeDebug(request, response, config) {
+  if (!config.debugToken && !config.token) {
+    sendJson(response, 404, { error: "technical debug API is disabled" });
+    return false;
+  }
+  const configuredToken = config.debugToken || config.token;
   const authorization = request.headers.authorization ?? "";
   const prefix = "Bearer ";
   if (!authorization.startsWith(prefix) ||
-      !tokenMatches(token, authorization.slice(prefix.length))) {
-    response.setHeader("WWW-Authenticate", "Bearer realm=\"stw-playtest\"");
-    sendJson(response, 401, { error: "invalid playtest token" });
+      !tokenMatches(configuredToken, authorization.slice(prefix.length))) {
+    response.setHeader("WWW-Authenticate", "Bearer realm=\"stw-playtest-debug\"");
+    sendJson(response, 401, { error: "invalid debug token" });
     return false;
   }
   return true;
@@ -227,25 +214,47 @@ function hasOnlyKeys(object, expectedKeys) {
 function validateTestBody(body) {
   if (!hasOnlyKeys(body, ["test"]) || typeof body.test !== "string" ||
       !knownTests.has(body.test)) {
-    throw new HttpError(400, "body must contain only test: skinning or animation");
+    throw new HttpError(400, "body must contain only a known test name");
   }
   return body.test;
 }
 
-function validateControlBody(body) {
-  if (hasOnlyKeys(body, ["command"]) && simpleCommands.has(body.command)) {
-    return { accepted: body.command, commandText: body.command };
+function validateDebugControl(body) {
+  if (hasOnlyKeys(body, ["command"]) && debugCommands.has(body.command)) {
+    return body.command;
   }
   if (hasOnlyKeys(body, ["command", "values"]) && body.command === "camera" &&
       Array.isArray(body.values) && body.values.length === 4 &&
       body.values.every((value) => typeof value === "number" &&
         Number.isFinite(value) && value >= -1 && value <= 1)) {
-    return {
-      accepted: "camera",
-      commandText: `camera ${body.values.join(" ")}`,
-    };
+    return `camera ${body.values.join(" ")}`;
   }
-  throw new HttpError(400, "command is not allowlisted or has invalid fields");
+  throw new HttpError(400, "debug command is not allowlisted or has invalid fields");
+}
+
+function validateGameAction(body) {
+  if (!hasOnlyKeys(body, ["action"]) || typeof body.action !== "string" ||
+      !gameActions.has(body.action)) {
+    throw new HttpError(400, "game action is not allowlisted or has invalid fields");
+  }
+  return body.action;
+}
+
+function validateGameInput(body) {
+  const keys = ["fire", "forward", "lookX", "lookY", "sprint", "strafe"];
+  if (!hasOnlyKeys(body, keys)) {
+    throw new HttpError(400, "game input has missing or unexpected fields");
+  }
+  for (const name of ["forward", "lookX", "lookY", "strafe"]) {
+    if (typeof body[name] !== "number" || !Number.isFinite(body[name]) ||
+        body[name] < -1 || body[name] > 1) {
+      throw new HttpError(400, `${name} must be a finite number between -1 and 1`);
+    }
+  }
+  if (typeof body.fire !== "boolean" || typeof body.sprint !== "boolean") {
+    throw new HttpError(400, "fire and sprint must be booleans");
+  }
+  return body;
 }
 
 export class PlaytestSupervisor {
@@ -254,7 +263,9 @@ export class PlaytestSupervisor {
     this.spawnProcess = dependencies.spawnProcess ?? spawnChild;
     this.child = null;
     this.commandOperation = Promise.resolve();
+    this.inputOperation = Promise.resolve();
     this.commandSequence = 0;
+    this.inputSequence = 0;
     this.error = "";
     this.exitCode = null;
     this.expectedStop = false;
@@ -265,12 +276,7 @@ export class PlaytestSupervisor {
   }
 
   snapshot() {
-    return {
-      state: this.state,
-      test: this.test,
-      exitCode: this.exitCode,
-      error: this.error,
-    };
+    return { state: this.state, test: this.test, exitCode: this.exitCode, error: this.error };
   }
 
   isRunning() {
@@ -284,55 +290,53 @@ export class PlaytestSupervisor {
     return next;
   }
 
-  start(test) {
-    return this._exclusive(() => this._start(test));
-  }
-
+  start(test) { return this._exclusive(() => this._start(test)); }
   restart(test) {
     return this._exclusive(async () => {
       await this._stop({ cleanupSession: true });
       return this._start(test);
     });
   }
-
-  stop(options = {}) {
-    return this._exclusive(() => this._stop(options));
+  connectGame() {
+    return this._exclusive(async () => {
+      if (this.isRunning() && this.test === "game") {
+        return { reused: true, ...this.snapshot() };
+      }
+      if (this.child) await this._stop({ cleanupSession: true });
+      return { reused: false, ...await this._start("game") };
+    });
   }
-
-  shutdown() {
-    return this._exclusive(() => this._stop({ cleanupSession: true }));
-  }
+  stop(options = {}) { return this._exclusive(() => this._stop(options)); }
+  shutdown() { return this._exclusive(() => this._stop({ cleanupSession: true })); }
 
   async _start(test) {
     if (!knownTests.has(test)) throw new HttpError(400, "unknown playtest");
     if (this.child && this.child.exitCode === null && this.child.signalCode === null) {
       throw new HttpError(409, "a playtest process is already active");
     }
-
     await access(this.config.binaryPath, fsConstants.X_OK);
     await this._cleanupSession();
-    this.sessionDirectory = await mkdtemp(path.join(tmpdir(), "stw-playtest-v1-"));
+    this.sessionDirectory = await mkdtemp(path.join(tmpdir(), "stw-playtest-v2-"));
     this.commandSequence = 0;
+    this.inputSequence = 0;
     this.error = "";
     this.exitCode = null;
     this.expectedStop = false;
     this.state = "starting";
     this.test = test;
 
-    const childEnvironment = buildChildEnvironment(this.config.display);
     const argumentsList = [
       "--playtest", test,
       "--remote-dir", this.sessionDirectory,
       "--hidden",
       "--stream-fps", String(this.config.streamFramesPerSecond),
     ];
-
     let child;
     try {
       child = this.spawnProcess(this.config.binaryPath, argumentsList, {
         cwd: this.config.engineDirectory,
         detached: false,
-        env: childEnvironment,
+        env: buildChildEnvironment(this.config.display),
         shell: false,
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -355,18 +359,13 @@ export class PlaytestSupervisor {
       if (this.child !== child) return;
       this.child = null;
       this.exitCode = Number.isInteger(code) ? code : null;
-      if (this.expectedStop || code === 0) {
-        this.state = "stopped";
-      } else {
+      if (this.expectedStop || code === 0) this.state = "stopped";
+      else {
         this.state = "error";
-        if (signal) {
-          this.error = `playtest exited after signal ${signal}`;
-        } else if (!this.error) {
-          this.error = `playtest exited with code ${String(code)}`;
-        }
+        if (signal) this.error = `playtest exited after signal ${signal}`;
+        else if (!this.error) this.error = `playtest exited with code ${String(code)}`;
       }
     });
-
     try {
       await new Promise((resolve, reject) => {
         const onSpawn = () => {
@@ -395,27 +394,15 @@ export class PlaytestSupervisor {
     if (child && child.exitCode === null && child.signalCode === null) {
       this.expectedStop = true;
       this.state = "stopping";
-      try {
-        await this._queueCommand("stop");
-      } catch (error) {
-        this.error = sanitizeDiagnostic(error.message);
-      }
-
+      try { await this._queueCommand("stop"); }
+      catch (error) { this.error = sanitizeDiagnostic(error.message); }
       let exited = await waitForExit(child, this.config.stopTimeoutMilliseconds);
       if (!exited) {
-        try {
-          child.kill("SIGTERM");
-        } catch (error) {
-          this.error = sanitizeDiagnostic(error.message);
-        }
+        child.kill("SIGTERM");
         exited = await waitForExit(child, this.config.stopTimeoutMilliseconds);
       }
       if (!exited) {
-        try {
-          child.kill("SIGKILL");
-        } catch (error) {
-          this.error = sanitizeDiagnostic(error.message);
-        }
+        child.kill("SIGKILL");
         exited = await waitForExit(child, 1000);
       }
       if (!exited) {
@@ -424,25 +411,26 @@ export class PlaytestSupervisor {
         throw new Error(this.error);
       }
     }
-
     if (this.state !== "error") this.state = "stopped";
     if (cleanupSession) await this._cleanupSession();
     return this.snapshot();
   }
 
   async _cleanupSession() {
-    await this.commandOperation.catch(() => {});
+    await Promise.all([
+      this.commandOperation.catch(() => {}),
+      this.inputOperation.catch(() => {}),
+    ]);
     const directory = this.sessionDirectory;
     this.sessionDirectory = null;
     if (directory) await rm(directory, { force: true, recursive: true });
   }
 
-  async _writeCommand(commandText, directory = this.sessionDirectory) {
+  async _writeSequenced(fileName, sequence, payload, directory) {
     if (!directory) throw new Error("no active playtest session");
-    this.commandSequence += 1;
-    const finalPath = path.join(directory, "command.txt");
-    const temporaryPath = `${finalPath}.${this.commandSequence}.tmp`;
-    await writeFile(temporaryPath, `${this.commandSequence} ${commandText}\n`, {
+    const finalPath = path.join(directory, fileName);
+    const temporaryPath = `${finalPath}.${sequence}.tmp`;
+    await writeFile(temporaryPath, `${sequence} ${payload}\n`, {
       encoding: "utf8",
       mode: 0o600,
     });
@@ -451,10 +439,23 @@ export class PlaytestSupervisor {
 
   _queueCommand(commandText) {
     const directory = this.sessionDirectory;
+    const sequence = ++this.commandSequence;
     const next = this.commandOperation.then(
-      () => this._writeCommand(commandText, directory),
+      () => this._writeSequenced("command.txt", sequence, commandText, directory),
     );
     this.commandOperation = next.catch(() => {});
+    return next;
+  }
+
+  _queueInput(input) {
+    const directory = this.sessionDirectory;
+    const sequence = ++this.inputSequence;
+    const values = [input.strafe, input.forward, input.lookX, input.lookY,
+      input.fire ? 1 : 0, input.sprint ? 1 : 0].join(" ");
+    const next = this.inputOperation.then(
+      () => this._writeSequenced("input.txt", sequence, `input ${values}`, directory),
+    );
+    this.inputOperation = next.catch(() => {});
     return next;
   }
 
@@ -463,16 +464,31 @@ export class PlaytestSupervisor {
     await this._queueCommand(commandText);
   }
 
+  async publishGameAction(action) {
+    if (!this.isRunning() || this.test !== "game") {
+      throw new HttpError(409, "the real game runtime is not connected");
+    }
+    const command = { start: "game_start", pause: "game_pause",
+      reset: "game_reset", weapon: "game_weapon" }[action];
+    await this._queueCommand(command);
+  }
+
+  async publishGameInput(input) {
+    if (!this.isRunning() || this.test !== "game") {
+      throw new HttpError(409, "the real game runtime is not connected");
+    }
+    await this._queueInput(input);
+  }
+
   async readEngineStatus() {
     if (!this.sessionDirectory) return null;
-    const statusPath = path.join(this.sessionDirectory, "status.json");
     try {
+      const statusPath = path.join(this.sessionDirectory, "status.json");
       const metadata = await stat(statusPath, { bigint: true });
       if (metadata.size > 65536n) throw new Error("native status file exceeds 64 KiB");
       const parsed = JSON.parse(await readFile(statusPath, "utf8"));
       return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-        ? parsed
-        : null;
+        ? parsed : null;
     } catch (error) {
       if (error.code === "ENOENT") return null;
       this.error = sanitizeDiagnostic(error.message);
@@ -482,8 +498,8 @@ export class PlaytestSupervisor {
 
   async readFrame(ifNoneMatch = "") {
     if (!this.sessionDirectory) throw new HttpError(404, "no frame is available");
-    const framePath = path.join(this.sessionDirectory, "frame.png");
     try {
+      const framePath = path.join(this.sessionDirectory, "frame.png");
       const metadata = await stat(framePath, { bigint: true });
       if (metadata.size > 32n * 1024n * 1024n) {
         throw new Error("native frame exceeds 32 MiB");
@@ -492,31 +508,30 @@ export class PlaytestSupervisor {
       if (ifNoneMatch === etag) return { etag, notModified: true };
       return { etag, frame: await readFile(framePath), notModified: false };
     } catch (error) {
-      if (error instanceof HttpError) throw error;
-      if (error.code === "ENOENT") {
-        throw new HttpError(404, "no frame is available yet");
-      }
+      if (error.code === "ENOENT") throw new HttpError(404, "no frame is available yet");
       throw new HttpError(503, sanitizeDiagnostic(error.message));
     }
   }
 }
 
 async function serveStatic(response, pathname, config) {
-  const staticFiles = new Map([
+  const files = new Map([
     [`${config.routePrefix}/`, ["index.html", "text/html; charset=utf-8"]],
     [`${config.routePrefix}/index.html`, ["index.html", "text/html; charset=utf-8"]],
     [`${config.routePrefix}/app.js`, ["app.js", "text/javascript; charset=utf-8"]],
     [`${config.routePrefix}/style.css`, ["style.css", "text/css; charset=utf-8"]],
+    [`${config.routePrefix}/debug/`, ["debug.html", "text/html; charset=utf-8"]],
+    [`${config.routePrefix}/debug/index.html`, ["debug.html", "text/html; charset=utf-8"]],
+    [`${config.routePrefix}/debug/debug.js`, ["debug.js", "text/javascript; charset=utf-8"]],
+    [`${config.routePrefix}/debug/debug.css`, ["debug.css", "text/css; charset=utf-8"]],
   ]);
-  const entry = staticFiles.get(pathname);
+  const entry = files.get(pathname);
   if (!entry) return false;
   const [fileName, contentType] = entry;
   const contents = await readFile(path.join(config.webDirectory, fileName));
   setHeaders(response, 200, contentType);
-  response.setHeader(
-    "Content-Security-Policy",
-    "default-src 'self'; img-src 'self' blob:; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
-  );
+  response.setHeader("Content-Security-Policy",
+    "default-src 'self'; img-src 'self' blob:; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
   response.end(contents);
   return true;
 }
@@ -531,54 +546,73 @@ function createRequestHandler(config, supervisor) {
         response.end();
         return;
       }
-      if (request.method === "GET" &&
-          await serveStatic(response, url.pathname, config)) return;
-
+      if (request.method === "GET" && await serveStatic(response, url.pathname, config)) return;
       if (!url.pathname.startsWith(`${config.routePrefix}/api/`)) {
         sendJson(response, 404, { error: "not found" });
         return;
       }
-      if (!authorize(request, response, config.token)) return;
 
-      if (request.method === "POST" &&
-          url.pathname === `${config.routePrefix}/api/start`) {
-        const test = validateTestBody(await readJsonBody(request));
-        if (supervisor.isRunning()) {
-          if (supervisor.test === test) {
+      if (url.pathname.startsWith(`${config.routePrefix}/api/debug/`)) {
+        if (!authorizeDebug(request, response, config)) return;
+        if (request.method === "POST" &&
+            url.pathname === `${config.routePrefix}/api/debug/start`) {
+          const test = validateTestBody(await readJsonBody(request));
+          if (supervisor.isRunning() && supervisor.test === test) {
             sendJson(response, 200, { reused: true, ...supervisor.snapshot() });
+          } else if (supervisor.isRunning()) {
+            sendJson(response, 409, { error: "another runtime is active; use restart" });
           } else {
-            sendJson(response, 409, {
-              error: "another playtest is running; use the restart endpoint to switch",
-            });
+            sendJson(response, 202, await supervisor.start(test));
           }
           return;
         }
-        sendJson(response, 202, await supervisor.start(test));
-        return;
-      }
-
-      if (request.method === "POST" &&
-          url.pathname === `${config.routePrefix}/api/restart`) {
-        const test = validateTestBody(await readJsonBody(request));
-        sendJson(response, 202, await supervisor.restart(test));
-        return;
-      }
-
-      if (request.method === "POST" &&
-          url.pathname === `${config.routePrefix}/api/command`) {
-        const control = validateControlBody(await readJsonBody(request));
-        if (control.accepted === "stop") {
-          await supervisor.stop();
-        } else {
-          await supervisor.publishCommand(control.commandText);
+        if (request.method === "POST" &&
+            url.pathname === `${config.routePrefix}/api/debug/restart`) {
+          const test = validateTestBody(await readJsonBody(request));
+          sendJson(response, 202, await supervisor.restart(test));
+          return;
         }
-        sendJson(response, 202, {
-          accepted: control.accepted,
-          state: supervisor.state,
-        });
+        if (request.method === "POST" &&
+            url.pathname === `${config.routePrefix}/api/debug/command`) {
+          const command = validateDebugControl(await readJsonBody(request));
+          if (command === "stop") await supervisor.stop();
+          else await supervisor.publishCommand(command);
+          sendJson(response, 202, { accepted: command, state: supervisor.state });
+          return;
+        }
+        if (request.method === "GET" &&
+            url.pathname === `${config.routePrefix}/api/debug/status`) {
+          sendJson(response, 200, {
+            bridge: supervisor.snapshot(),
+            engine: await supervisor.readEngineStatus(),
+            streamFramesPerSecond: config.streamFramesPerSecond,
+          });
+          return;
+        }
+        sendJson(response, 404, { error: "debug endpoint not found" });
         return;
       }
 
+      if (request.method === "POST" &&
+          url.pathname === `${config.routePrefix}/api/connect`) {
+        const body = await readJsonBody(request);
+        if (!hasOnlyKeys(body, [])) throw new HttpError(400, "connect body must be empty");
+        sendJson(response, 202, await supervisor.connectGame());
+        return;
+      }
+      if (request.method === "POST" &&
+          url.pathname === `${config.routePrefix}/api/input`) {
+        await supervisor.publishGameInput(validateGameInput(await readJsonBody(request)));
+        sendJson(response, 202, { accepted: "input" });
+        return;
+      }
+      if (request.method === "POST" &&
+          url.pathname === `${config.routePrefix}/api/action`) {
+        const action = validateGameAction(await readJsonBody(request));
+        await supervisor.publishGameAction(action);
+        sendJson(response, 202, { accepted: action });
+        return;
+      }
       if (request.method === "GET" &&
           url.pathname === `${config.routePrefix}/api/status`) {
         sendJson(response, 200, {
@@ -588,7 +622,6 @@ function createRequestHandler(config, supervisor) {
         });
         return;
       }
-
       if (request.method === "GET" &&
           url.pathname === `${config.routePrefix}/api/frame`) {
         const result = await supervisor.readFrame(request.headers["if-none-match"] ?? "");
@@ -597,21 +630,19 @@ function createRequestHandler(config, supervisor) {
           response.statusCode = 304;
           response.setHeader("Cache-Control", "no-store, max-age=0");
           response.end();
-          return;
+        } else {
+          setHeaders(response, 200, "image/png");
+          response.setHeader("Content-Length", result.frame.length);
+          response.end(result.frame);
         }
-        setHeaders(response, 200, "image/png");
-        response.setHeader("Content-Length", result.frame.length);
-        response.end(result.frame);
         return;
       }
-
       response.setHeader("Allow", "GET, POST");
       sendJson(response, 405, { error: "method not allowed" });
     } catch (error) {
       const status = error instanceof HttpError ? error.status : 500;
       const message = status >= 500
-        ? `bridge error: ${sanitizeDiagnostic(error.message)}`
-        : error.message;
+        ? `bridge error: ${sanitizeDiagnostic(error.message)}` : error.message;
       sendJson(response, status, { error: message });
     }
   };
@@ -621,7 +652,6 @@ export function createPlaytestBridge(config, dependencies = {}) {
   const supervisor = new PlaytestSupervisor(config, dependencies);
   const server = createHttpServer(createRequestHandler(config, supervisor));
   let listening = false;
-
   return {
     server,
     supervisor,
@@ -645,11 +675,8 @@ export function createPlaytestBridge(config, dependencies = {}) {
     },
     async close() {
       let shutdownError = null;
-      try {
-        await supervisor.shutdown();
-      } catch (error) {
-        shutdownError = error;
-      }
+      try { await supervisor.shutdown(); }
+      catch (error) { shutdownError = error; }
       if (listening) {
         await new Promise((resolve, reject) => {
           server.close((error) => error ? reject(error) : resolve());

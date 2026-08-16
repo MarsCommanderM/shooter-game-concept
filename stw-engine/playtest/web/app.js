@@ -1,310 +1,310 @@
 const apiRoot = "/stw-playtest/api";
-const tokenInput = document.querySelector("#token");
-const testSelect = document.querySelector("#test-select");
-const connection = document.querySelector("#connection");
+const game = document.querySelector("#game");
 const frame = document.querySelector("#frame");
-const framePlaceholder = document.querySelector("#frame-placeholder");
-const checklist = document.querySelector("#checklist");
-const verdict = document.querySelector("#verdict");
-let currentFrameUrl = null;
-let movement = { x: 0, y: 0 };
-let look = { x: 0, y: 0 };
-let bridgeRunning = false;
-let activeTest = null;
-let cameraRequestInFlight = false;
-let frameEtag = "";
-let frameArrivals = [];
-let lastFrameArrival = 0;
-let testSelectionTouched = false;
+const connecting = document.querySelector("#connecting");
+const connectingText = document.querySelector("#connecting-text");
+const menuStart = document.querySelector("#menu-start");
+const connection = document.querySelector("#connection");
+const lastError = document.querySelector("#last-error");
 
-const checklistItems = {
-  skinning: [
-    "mesh visible",
-    "bind pose works",
-    "animation bends mesh",
-    "no exploding vertices",
-    "no visible NaN/flicker",
-    "pause/resume works",
-    "reset works",
-  ],
-  animation: [
-    "glTF loaded",
-    "clip detected",
-    "animation moves joints",
-    "loop works",
-    "bind pose works",
-    "pause/resume works",
-    "reset works",
-  ],
+const input = {
+  strafe: 0,
+  forward: 0,
+  lookX: 0,
+  lookY: 0,
+  fire: false,
+  sprint: false,
 };
+const keyboard = new Set();
+const touchMovement = { strafe: 0, forward: 0 };
+let connected = false;
+let engineState = "";
+let frameEtag = "";
+let currentFrameUrl = null;
+let frameInFlight = false;
+let inputInFlight = false;
+let statusInFlight = false;
+let connectInFlight = false;
+let reconnectTimer = null;
+let reconnectDelay = 500;
+let frameArrivals = [];
 
-tokenInput.value = sessionStorage.getItem("stw-playtest-token") ?? "";
-tokenInput.addEventListener("input", () => {
-  sessionStorage.setItem("stw-playtest-token", tokenInput.value);
-});
-
-function authorizationHeaders(json = false) {
-  const headers = { Authorization: `Bearer ${tokenInput.value}` };
-  if (json) headers["Content-Type"] = "application/json";
-  return headers;
-}
-
-async function requestJson(path, options = {}) {
+async function jsonRequest(path, body) {
   const response = await fetch(`${apiRoot}${path}`, {
-    ...options,
+    method: body === undefined ? "GET" : "POST",
     cache: "no-store",
-    headers: {
-      ...authorizationHeaders(options.body !== undefined),
-      ...(options.headers ?? {}),
-    },
+    headers: body === undefined ? {} : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.error ?? `HTTP ${response.status}`);
   return payload;
 }
 
-function setConnection(online, label = online ? "ONLINE" : "OFFLINE") {
-  connection.textContent = label;
-  connection.classList.toggle("online", online);
-  connection.classList.toggle("offline", !online);
+function showError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  lastError.textContent = message;
+  lastError.classList.add("error");
 }
 
-function formatNumber(value, digits = 1) {
-  return Number.isFinite(value) ? Number(value).toFixed(digits) : "—";
+function recordFrame() {
+  const now = performance.now();
+  frameArrivals.push(now);
+  frameArrivals = frameArrivals.filter((time) => now - time <= 2000);
+  const first = frameArrivals[0];
+  const rate = frameArrivals.length > 1 && now > first
+    ? (frameArrivals.length - 1) / ((now - first) / 1000)
+    : frameArrivals.length;
+  document.querySelector("#rx-fps").textContent = rate.toFixed(1);
 }
 
-function updateStatus(payload) {
-  const engine = payload.engine;
-  const bridge = payload.bridge ?? {};
-  bridgeRunning = bridge.state === "running";
-  activeTest = engine?.playtest ?? bridge.test ?? null;
-  setConnection(true, `CONNECTED · ${(bridge.state ?? "idle").toUpperCase()}`);
-  if (activeTest && !testSelectionTouched) {
-    testSelect.value = activeTest;
+async function connect() {
+  if (connectInFlight) return;
+  connectInFlight = true;
+  if (reconnectTimer !== null) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
   }
-  document.querySelector("#status-test").textContent = activeTest ?? "—";
-  document.querySelector("#status-state").textContent = engine?.state ?? bridge.state ?? "—";
-  document.querySelector("#status-fps").textContent = formatNumber(engine?.fps, 1);
-  document.querySelector("#status-frame").textContent = engine ? `${formatNumber(engine.frameTimeMs, 1)} ms` : "—";
-  document.querySelector("#status-rx-fps").textContent =
-    lastFrameArrival && performance.now() - lastFrameArrival < 2500
-      ? formatNumber(receivedFrameRate(), 1)
-      : "0.0";
-  document.querySelector("#status-time").textContent = engine ? `${formatNumber(engine.animationTime, 2)} s` : "—";
-  document.querySelector("#status-clip").textContent = engine?.clip ?? "—";
-  document.querySelector("#status-joints").textContent = engine?.jointCount ?? "—";
-  document.querySelector("#status-palette").textContent = engine?.paletteSize ?? "—";
-  document.querySelector("#status-loop").textContent =
-    typeof engine?.looping === "boolean" ? (engine.looping ? "YES" : "NO") : "—";
-  document.querySelector("#status-slow").textContent =
-    typeof engine?.slowMotion === "boolean" ? (engine.slowMotion ? "ON" : "OFF") : "—";
+  try {
+    await jsonRequest("/connect", {});
+    connected = true;
+    reconnectDelay = 500;
+    connection.textContent = "CONNECTED";
+    connection.classList.add("online");
+    connectingText.textContent = "Waiting for the native renderer…";
+  } catch (error) {
+    connected = false;
+    connection.textContent = "DISCONNECTED";
+    connection.classList.remove("online");
+    connectingText.textContent = "Native runtime unavailable — reconnecting…";
+    showError(error);
+    reconnectTimer = setTimeout(() => void connect(), reconnectDelay);
+    reconnectDelay = Math.min(reconnectDelay * 2, 5000);
+  } finally {
+    connectInFlight = false;
+  }
+}
+
+function renderStatus(payload) {
+  const bridge = payload.bridge ?? {};
+  const engine = payload.engine ?? null;
+  connected = bridge.state === "running" && bridge.test === "game";
+  connection.textContent = connected ? "CONNECTED" : String(bridge.state ?? "OFFLINE").toUpperCase();
+  connection.classList.toggle("online", connected);
+  engineState = engine?.state ?? "";
+  document.querySelector("#scene").textContent = engine?.scene ?? "starting";
+  document.querySelector("#native-fps").textContent = Number.isFinite(engine?.fps)
+    ? Number(engine.fps).toFixed(1) : "0.0";
+  document.querySelector("#weapon").textContent = engine?.weapon ?? "—";
   const error = engine?.lastError || bridge.error || "";
-  const errorElement = document.querySelector("#last-error");
-  errorElement.textContent = `Last error: ${error || "none"}`;
-  errorElement.classList.toggle("active", Boolean(error));
+  lastError.textContent = error || "no error";
+  lastError.classList.toggle("error", Boolean(error));
+  menuStart.classList.toggle("visible", engineState === "MENU");
+  if (!connected && bridge.state !== "starting") {
+    void connect();
+  }
 }
 
 async function pollStatus() {
-  if (!tokenInput.value) {
-    setConnection(false, "TOKEN NEEDED");
-    setTimeout(pollStatus, 600);
-    return;
-  }
+  if (statusInFlight) return;
+  statusInFlight = true;
   try {
-    updateStatus(await requestJson("/status"));
+    renderStatus(await jsonRequest("/status"));
   } catch (error) {
-    bridgeRunning = false;
-    activeTest = null;
-    setConnection(false, "DISCONNECTED");
-    const errorElement = document.querySelector("#last-error");
-    errorElement.textContent = `Last error: ${error.message}`;
-    errorElement.classList.add("active");
+    connected = false;
+    showError(error);
+  } finally {
+    statusInFlight = false;
   }
-  setTimeout(pollStatus, 500);
-}
-
-function receivedFrameRate() {
-  if (frameArrivals.length < 2) return frameArrivals.length;
-  const elapsedSeconds =
-    (frameArrivals[frameArrivals.length - 1] - frameArrivals[0]) / 1000;
-  return elapsedSeconds > 0 ? (frameArrivals.length - 1) / elapsedSeconds : 0;
-}
-
-function recordFrameArrival() {
-  const now = performance.now();
-  frameArrivals.push(now);
-  frameArrivals = frameArrivals.filter((timestamp) => now - timestamp <= 2000);
-  lastFrameArrival = now;
 }
 
 async function pollFrame() {
-  if (tokenInput.value && bridgeRunning) {
-    try {
-      const requestHeaders = authorizationHeaders();
-      if (frameEtag) requestHeaders["If-None-Match"] = frameEtag;
-      const response = await fetch(`${apiRoot}/frame`, {
-        cache: "no-store",
-        headers: requestHeaders,
-      });
-      if (response.ok) {
-        frameEtag = response.headers.get("etag") ?? "";
-        const blob = await response.blob();
-        const nextUrl = URL.createObjectURL(blob);
-        frame.src = nextUrl;
-        frame.style.display = "block";
-        framePlaceholder.style.display = "none";
-        if (currentFrameUrl) URL.revokeObjectURL(currentFrameUrl);
-        currentFrameUrl = nextUrl;
-        recordFrameArrival();
-      }
-    } catch {
-      // Status polling owns connection/error reporting.
-    }
-  }
-  setTimeout(pollFrame, 100);
-}
-
-async function sendCommand(command, values) {
-  if (!tokenInput.value) throw new Error("enter the playtest token first");
-  return requestJson("/command", {
-    method: "POST",
-    body: JSON.stringify(values ? { command, values } : { command }),
-  });
-}
-
-document.querySelector("#start").addEventListener("click", async () => {
+  if (frameInFlight || !connected) return;
+  frameInFlight = true;
   try {
-    if (!tokenInput.value) throw new Error("enter the playtest token first");
-    const selectedTest = testSelect.value;
-    const endpoint = bridgeRunning && activeTest !== selectedTest
-      ? "/restart"
-      : "/start";
-    await requestJson(endpoint, {
-      method: "POST",
-      body: JSON.stringify({ test: selectedTest }),
-    });
-    frameEtag = "";
-    frameArrivals = [];
-    lastFrameArrival = 0;
-    testSelectionTouched = false;
-    setConnection(true, "STARTING");
+    const headers = frameEtag ? { "If-None-Match": frameEtag } : {};
+    const response = await fetch(`${apiRoot}/frame`, { cache: "no-store", headers });
+    if (response.ok) {
+      frameEtag = response.headers.get("etag") ?? "";
+      const nextUrl = URL.createObjectURL(await response.blob());
+      frame.src = nextUrl;
+      frame.classList.add("ready");
+      connecting.classList.add("hidden");
+      if (currentFrameUrl) URL.revokeObjectURL(currentFrameUrl);
+      currentFrameUrl = nextUrl;
+      recordFrame();
+    } else if (response.status !== 304 && response.status !== 404) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error ?? `frame HTTP ${response.status}`);
+    }
   } catch (error) {
-    setConnection(false, "ERROR");
-    document.querySelector("#last-error").textContent = `Last error: ${error.message}`;
+    showError(error);
+  } finally {
+    frameInFlight = false;
   }
-});
+}
 
-document.querySelectorAll("[data-command]").forEach((button) => {
-  button.addEventListener("click", () => {
-    sendCommand(button.dataset.command).catch((error) => {
-      document.querySelector("#last-error").textContent = `Last error: ${error.message}`;
-    });
-  });
-});
+async function sendAction(action) {
+  try {
+    await jsonRequest("/action", { action });
+  } catch (error) {
+    showError(error);
+  }
+}
 
-function bindPad(pad, knob, onValue) {
+function updateKeyboardInput() {
+  input.forward = Math.max(-1, Math.min(1, touchMovement.forward +
+    (keyboard.has("KeyW") ? 1 : 0) - (keyboard.has("KeyS") ? 1 : 0)));
+  input.strafe = Math.max(-1, Math.min(1, touchMovement.strafe +
+    (keyboard.has("KeyD") ? 1 : 0) - (keyboard.has("KeyA") ? 1 : 0)));
+  input.sprint = keyboard.has("ShiftLeft") || keyboard.has("ShiftRight") ||
+    document.querySelector("#sprint").classList.contains("held");
+}
+
+async function sendInput() {
+  if (!connected || inputInFlight) return;
+  updateKeyboardInput();
+  const payload = { ...input };
+  input.lookX = 0;
+  input.lookY = 0;
+  inputInFlight = true;
+  try {
+    await jsonRequest("/input", payload);
+  } catch (error) {
+    showError(error);
+  } finally {
+    inputInFlight = false;
+  }
+}
+
+function bindStick(pad, knob) {
   let pointerId = null;
   const update = (event) => {
     const bounds = pad.getBoundingClientRect();
     const radius = bounds.width * 0.38;
-    let x = event.clientX - (bounds.left + bounds.width / 2);
-    let y = event.clientY - (bounds.top + bounds.height / 2);
+    let x = event.clientX - bounds.left - bounds.width / 2;
+    let y = event.clientY - bounds.top - bounds.height / 2;
     const length = Math.hypot(x, y);
     if (length > radius) {
-      x = (x / length) * radius;
-      y = (y / length) * radius;
+      x = x / length * radius;
+      y = y / length * radius;
     }
     knob.style.transform = `translate(${x}px, ${y}px)`;
-    onValue(x / radius, y / radius);
+    touchMovement.strafe = x / radius;
+    touchMovement.forward = -y / radius;
   };
   const release = (event) => {
-    if (pointerId !== event.pointerId) return;
+    if (event.pointerId !== pointerId) return;
     pointerId = null;
     knob.style.transform = "translate(0, 0)";
-    onValue(0, 0);
+    touchMovement.strafe = 0;
+    touchMovement.forward = 0;
   };
   pad.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "mouse") return;
     event.preventDefault();
     pointerId = event.pointerId;
     pad.setPointerCapture(pointerId);
     update(event);
   });
   pad.addEventListener("pointermove", (event) => {
-    if (pointerId === event.pointerId) update(event);
+    if (event.pointerId === pointerId) update(event);
   });
   pad.addEventListener("pointerup", release);
   pad.addEventListener("pointercancel", release);
 }
 
-bindPad(document.querySelector("#move-pad"), document.querySelector("#move-knob"), (x, y) => {
-  movement = { x, y: -y };
-});
-bindPad(document.querySelector("#look-pad"), document.querySelector("#look-knob"), (x, y) => {
-  look = { x, y };
-});
-
-document.querySelector("#viewer").addEventListener("touchmove", (event) => {
-  event.preventDefault();
-}, { passive: false });
-document.addEventListener("gesturestart", (event) => event.preventDefault());
-
-setInterval(() => {
-  if (!bridgeRunning || !tokenInput.value || cameraRequestInFlight) return;
-  cameraRequestInFlight = true;
-  sendCommand("camera", [movement.x, movement.y, look.x, look.y])
-    .catch(() => {})
-    .finally(() => {
-      cameraRequestInFlight = false;
-    });
-}, 100);
-
-function storageKey(suffix) {
-  return `stw-playtest:${testSelect.value}:${suffix}`;
-}
-
-function renderChecklist() {
-  const saved = JSON.parse(localStorage.getItem(storageKey("checks")) ?? "[]");
-  checklist.replaceChildren();
-  checklistItems[testSelect.value].forEach((label, index) => {
-    const row = document.createElement("label");
-    row.className = "check-item";
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = Boolean(saved[index]);
-    checkbox.addEventListener("change", () => {
-      const checks = [...checklist.querySelectorAll("input")].map((item) => item.checked);
-      localStorage.setItem(storageKey("checks"), JSON.stringify(checks));
-    });
-    row.append(checkbox, document.createTextNode(label));
-    checklist.append(row);
+function bindLook(pad) {
+  let pointerId = null;
+  let previousX = 0;
+  let previousY = 0;
+  pad.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "mouse") return;
+    event.preventDefault();
+    pointerId = event.pointerId;
+    previousX = event.clientX;
+    previousY = event.clientY;
+    pad.setPointerCapture(pointerId);
   });
-  const savedVerdict = localStorage.getItem(storageKey("verdict"));
-  showVerdict(savedVerdict);
+  pad.addEventListener("pointermove", (event) => {
+    if (event.pointerId !== pointerId) return;
+    input.lookX = Math.max(-1, Math.min(1, input.lookX + (event.clientX - previousX) / 45));
+    input.lookY = Math.max(-1, Math.min(1, input.lookY + (event.clientY - previousY) / 45));
+    previousX = event.clientX;
+    previousY = event.clientY;
+  });
+  const release = (event) => {
+    if (event.pointerId === pointerId) pointerId = null;
+  };
+  pad.addEventListener("pointerup", release);
+  pad.addEventListener("pointercancel", release);
 }
 
-function showVerdict(value) {
-  verdict.className = "verdict";
-  if (value === "PASS" || value === "FAIL") {
-    verdict.textContent = `${value} · saved locally`;
-    verdict.classList.add(value.toLowerCase());
-  } else {
-    verdict.textContent = "Not reported";
+function bindHeldButton(button, field) {
+  const set = (held) => {
+    input[field] = held;
+    button.classList.toggle("held", held);
+  };
+  button.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    button.setPointerCapture(event.pointerId);
+    set(true);
+  });
+  button.addEventListener("pointerup", () => set(false));
+  button.addEventListener("pointercancel", () => set(false));
+}
+
+bindStick(document.querySelector("#move-pad"), document.querySelector("#move-knob"));
+bindLook(document.querySelector("#look-pad"));
+bindHeldButton(document.querySelector("#fire"), "fire");
+bindHeldButton(document.querySelector("#sprint"), "sprint");
+
+menuStart.addEventListener("click", () => void sendAction("start"));
+document.querySelector("#weapon-button").addEventListener("click", () => void sendAction("weapon"));
+document.querySelector("#pause").addEventListener("click", () => void sendAction("pause"));
+document.querySelector("#reset").addEventListener("click", () => void sendAction("reset"));
+document.querySelector("#hud-toggle").addEventListener("click", () => {
+  document.querySelector("#hud").classList.toggle("expanded");
+});
+
+window.addEventListener("keydown", (event) => {
+  keyboard.add(event.code);
+  if (["KeyW", "KeyA", "KeyS", "KeyD", "Space"].includes(event.code)) event.preventDefault();
+  if (event.code === "Enter" || event.code === "Space") void sendAction("start");
+  if (event.code === "KeyQ" && !event.repeat) void sendAction("weapon");
+  if (event.code === "KeyR" && !event.repeat) void sendAction("reset");
+  if (event.code === "KeyP" && !event.repeat) void sendAction("pause");
+});
+window.addEventListener("keyup", (event) => keyboard.delete(event.code));
+window.addEventListener("blur", () => {
+  keyboard.clear();
+  input.fire = false;
+  input.sprint = false;
+});
+
+game.addEventListener("mousedown", (event) => {
+  if (event.button !== 0 || event.target.closest("button")) return;
+  if (engineState === "MENU") void sendAction("start");
+  else {
+    input.fire = true;
+    game.requestPointerLock?.();
   }
-}
-
-document.querySelector("#pass-verdict").addEventListener("click", () => {
-  localStorage.setItem(storageKey("verdict"), "PASS");
-  showVerdict("PASS");
 });
-document.querySelector("#fail-verdict").addEventListener("click", () => {
-  localStorage.setItem(storageKey("verdict"), "FAIL");
-  showVerdict("FAIL");
+window.addEventListener("mouseup", (event) => {
+  if (event.button === 0) input.fire = false;
 });
-testSelect.addEventListener("change", () => {
-  testSelectionTouched = true;
-  renderChecklist();
+window.addEventListener("mousemove", (event) => {
+  if (document.pointerLockElement !== game) return;
+  input.lookX = Math.max(-1, Math.min(1, input.lookX + event.movementX / 55));
+  input.lookY = Math.max(-1, Math.min(1, input.lookY + event.movementY / 55));
 });
 
-renderChecklist();
-pollStatus();
-pollFrame();
+game.addEventListener("touchmove", (event) => event.preventDefault(), { passive: false });
+document.addEventListener("gesturestart", (event) => event.preventDefault());
+document.addEventListener("contextmenu", (event) => event.preventDefault());
+
+setInterval(() => void pollStatus(), 500);
+setInterval(() => void pollFrame(), 70);
+setInterval(() => void sendInput(), 50);
+void connect();
+void pollStatus();
