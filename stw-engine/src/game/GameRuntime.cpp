@@ -159,14 +159,25 @@ bool ConfigureRuntimeAcceptanceInstances(
     return false;
   }
 
-  const std::array<float, 4> positions{-6.0f, 2.2f, 6.0f, 9.0f};
-  const std::array<float, 4> depths{-10.0f, -7.5f, -10.0f, -14.0f};
-  const std::array<float, 4> scales{1.55f, 2.05f, 1.55f, 1.45f};
+  struct AcceptancePlacement {
+    glm::vec3 position;
+    float uniformScale;
+  };
+  // Keep the HQ mannequin driven by real gameplay centered in the initial FPS
+  // view. The side instances retain bind-pose and independent-time regression
+  // coverage without competing for the small mobile viewport. Uniform scale
+  // preserves the renderer's skin direction-matrix contract.
+  const std::array<AcceptancePlacement, 4> placements{{
+      {glm::vec3(-6.5f, 0.0f, -12.0f), 1.6f},
+      {glm::vec3(0.0f, 0.3f, -8.0f), 2.0f},
+      {glm::vec3(5.5f, 0.0f, -12.0f), 1.6f},
+      {glm::vec3(9.0f, 0.0f, -16.0f), 1.6f},
+  }};
   for (std::size_t index = 0; index < candidate.size(); ++index) {
     const glm::mat4 transform =
-        glm::translate(glm::mat4(1.0f),
-                       glm::vec3(positions[index], 0.08f, depths[index])) *
-        glm::scale(glm::mat4(1.0f), glm::vec3(scales[index]));
+        glm::translate(glm::mat4(1.0f), placements[index].position) *
+        glm::scale(glm::mat4(1.0f),
+                   glm::vec3(placements[index].uniformScale));
     if (!candidate[index].SetTransform(transform, error)) return false;
   }
 
@@ -555,8 +566,8 @@ void SubmitTrainingArena(IRenderer& renderer,
 
   const StwMaterial platform =
       MakeMaterial(0.18f, 0.22f, 0.25f, 0.45f, 0.48f);
-  DrawWorldBox(renderer, cube, platform, glm::vec3(2.2f, 0.08f, -7.5f),
-               glm::vec3(2.2f, 0.16f, 1.4f));
+  DrawWorldBox(renderer, cube, platform, glm::vec3(0.0f, 0.15f, -8.0f),
+               glm::vec3(3.0f, 0.30f, 1.8f));
 }
 
 void ConfigureIbl(IRenderer& renderer, bool hq) {
@@ -1033,21 +1044,21 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
       camera.pos = controller.eye();
       camera.yaw = controller.yaw;
       camera.pitch = controller.pitch;
-      if (hq) {
-        // The visible face of the imported animation mannequin points +Z;
-        // this sun vector lights it and the arena instead of relying on a
-        // debug ambient override.
-        light.dir[0] = -0.38f;
-        light.dir[1] = -0.78f;
-        light.dir[2] = -0.55f;
-        light.color[0] = 1.0f;
-        light.color[1] = 0.94f;
-        light.color[2] = 0.84f;
-        light.ambient[0] = 0.20f;
-        light.ambient[1] = 0.24f;
-        light.ambient[2] = 0.28f;
-        light.strength = 4.35f + presentation.muzzleIntensity() * 1.25f;
-      }
+      // The HQ mannequin's visible faces point toward +Z. Keep the proven
+      // negative-Z light direction in both quality modes so Standard cannot
+      // regress to a near-black skinned draw; HQ retains its daylight balance
+      // and valid-shot muzzle response.
+      light.dir[0] = -0.38f;
+      light.dir[1] = -0.78f;
+      light.dir[2] = -0.55f;
+      light.color[0] = 1.0f;
+      light.color[1] = hq ? 0.94f : 0.95f;
+      light.color[2] = hq ? 0.84f : 0.86f;
+      light.ambient[0] = hq ? 0.20f : 0.10f;
+      light.ambient[1] = hq ? 0.24f : 0.12f;
+      light.ambient[2] = hq ? 0.28f : 0.16f;
+      light.strength = (hq ? 4.35f : 4.5f) +
+          presentation.muzzleIntensity() * 1.25f;
       renderer->SetViewProj(glm::value_ptr(camera.viewProj()));
       renderer->SetCameraPos(camera.pos.x, camera.pos.y, camera.pos.z);
       renderer->SetLight(light);

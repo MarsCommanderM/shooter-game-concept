@@ -80,7 +80,10 @@ animation state/clip, and the last native or bridge error.
 
 T4-B manual acceptance in the training map:
 
-- release movement: the HUD and controlled ribbon report `Idle` / `Idle`;
+- at spawn, the generated skinned mannequin on the center platform is the
+  gameplay-driven instance; the side instances retain bind/independent-time
+  regression coverage;
+- release movement: the HUD and controlled character report `Idle` / `Idle`;
 - move with WASD or the touch stick: they report `Move` / `Move` without the
   clip restarting every frame;
 - fire: an actual weapon shot selects the non-looping `Fire` clip;
