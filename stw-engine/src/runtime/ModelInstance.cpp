@@ -362,6 +362,23 @@ float RuntimeModelInstance::animationTime() const noexcept {
   return skinIndex_ ? animator_.time() : 0.0f;
 }
 
+float RuntimeModelInstance::animationDuration() const noexcept {
+  if (!asset_ || !skinIndex_ || !selectedAnimationIndex_ ||
+      *selectedAnimationIndex_ >= asset_->animations.size()) {
+    return 0.0f;
+  }
+  const StwAnimation& animation = asset_->animations[*selectedAnimationIndex_];
+  if (animation.skinClips.size() != asset_->skins.size() ||
+      !animation.skinClips[*skinIndex_]) {
+    return 0.0f;
+  }
+  return animation.skinClips[*skinIndex_]->duration();
+}
+
+bool RuntimeModelInstance::looping() const noexcept {
+  return skinIndex_ && animator_.looping();
+}
+
 ModelPlaybackState RuntimeModelInstance::playbackState() const noexcept {
   return playbackState_;
 }

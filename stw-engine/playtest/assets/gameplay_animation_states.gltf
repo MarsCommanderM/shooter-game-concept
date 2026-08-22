@@ -1,0 +1,328 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "STW T4-B deterministic gameplay animation fixture",
+    "extras": {
+      "purpose": "Production gameplay animation state wiring through imported glTF clips",
+      "layout": "Two-joint weighted ribbon with auditable Idle, Move, and Fire rotation clips",
+      "policy": "Idle and Move loop in runtime; Fire is a non-looping gameplay override"
+    }
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "Playtest",
+      "nodes": [
+        0,
+        2
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "RootJoint",
+      "children": [
+        1
+      ]
+    },
+    {
+      "name": "BendJoint",
+      "translation": [
+        0,
+        1.05,
+        0
+      ]
+    },
+    {
+      "name": "SkinnedRibbon",
+      "mesh": 0,
+      "skin": 0
+    }
+  ],
+  "skins": [
+    {
+      "name": "RibbonSkin",
+      "inverseBindMatrices": 7,
+      "skeleton": 0,
+      "joints": [
+        0,
+        1
+      ]
+    }
+  ],
+  "meshes": [
+    {
+      "name": "AuditableRibbon",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2,
+            "TANGENT": 3,
+            "JOINTS_0": 4,
+            "WEIGHTS_0": 5
+          },
+          "indices": 6,
+          "material": 0
+        }
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "name": "ImportedOrange",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.95,
+          0.28,
+          0.08,
+          1
+        ],
+        "metallicFactor": 0.12,
+        "roughnessFactor": 0.48
+      }
+    }
+  ],
+  "animations": [
+    {
+      "name": "Idle",
+      "samplers": [
+        {
+          "input": 8,
+          "output": 10,
+          "interpolation": "LINEAR"
+        }
+      ],
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "node": 1,
+            "path": "rotation"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Move",
+      "samplers": [
+        {
+          "input": 8,
+          "output": 9,
+          "interpolation": "LINEAR"
+        }
+      ],
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "node": 1,
+            "path": "rotation"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Fire",
+      "samplers": [
+        {
+          "input": 11,
+          "output": 12,
+          "interpolation": "LINEAR"
+        }
+      ],
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "node": 1,
+            "path": "rotation"
+          }
+        }
+      ]
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 1320,
+      "uri": "data:application/octet-stream;base64,XI/CvgAAAAAAAAAAXI/CPgAAAAAAAAAAXI/Cvs3MzD4AAAAAXI/CPs3MzD4AAAAAXI/Cvs3MTD8AAAAAXI/CPs3MTD8AAAAAXI/CvpqZmT8AAAAAXI/CPpqZmT8AAAAAXI/Cvs3MzD8AAAAAXI/CPs3MzD8AAAAAXI/CvgAAAEAAAAAAXI/CPgAAAEAAAAAAXI/CvpqZGUAAAAAAXI/CPpqZGUAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAAA/AACAPwAAAD8AAAAAAACAPwAAgD8AAIA/AAAAAAAAwD8AAIA/AADAPwAAAAAAAABAAACAPwAAAEAAAAAAAAAgQAAAgD8AACBAAAAAAAAAQEAAAIA/AABAQAAAgD8AAAAAAAAAAAAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAAAAAAAAAAACAPwAAgD8AAAAAAAAAAAAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAAAAAAAAAAACAPwAAgD8AAAAAAAAAAAAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAAAAAAAAAAACAPwAAgD8AAAAAAAAAAAAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAAAAAAAAAAACAPwAAgD8AAAAAAAAAAAAAgD8AAIA/AAAAAAAAAAAAAIA/AAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAIA/AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAdNFFPy+6aD4AAAAAAAAAAHTRRT8vumg+AAAAAAAAAABddNE+0UUXPwAAAAAAAAAAXXTRPtFFFz8AAAAAAAAAAIwuOj0XXXQ/AAAAAAAAAACMLjo9F110PwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAQADAAAAAwACAAIAAwAFAAIABQAEAAQABQAHAAQABwAGAAYABwAJAAYACQAIAAgACQALAAgACwAKAAoACwANAAoADQAMAAAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAZmaGvwAAAAAAAIA/AAAAAAAAgD8AAABAAAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAP9ezXT8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAPqoyPaDBfz8AAAAAAAAAAAAAAAAAAIA/AAAAAI/C9T2amZk+AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAytcbvzQZSz8AAAAAAAAAAAAAAAAAAIA/"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 168,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 168,
+      "byteLength": 168,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 336,
+      "byteLength": 112,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 448,
+      "byteLength": 224,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 672,
+      "byteLength": 56,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 728,
+      "byteLength": 224,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 952,
+      "byteLength": 72,
+      "target": 34963
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1024,
+      "byteLength": 128
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1152,
+      "byteLength": 12
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1164,
+      "byteLength": 48
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1212,
+      "byteLength": 48
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1260,
+      "byteLength": 12
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1272,
+      "byteLength": 48
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 14,
+      "type": "VEC3",
+      "min": [
+        -0.38,
+        0,
+        0
+      ],
+      "max": [
+        0.38,
+        2.4,
+        0
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 14,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 14,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5126,
+      "count": 14,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 4,
+      "componentType": 5121,
+      "count": 14,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 5,
+      "componentType": 5126,
+      "count": 14,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 6,
+      "componentType": 5123,
+      "count": 36,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 7,
+      "componentType": 5126,
+      "count": 2,
+      "type": "MAT4"
+    },
+    {
+      "bufferView": 8,
+      "componentType": 5126,
+      "count": 3,
+      "type": "SCALAR",
+      "min": [
+        0
+      ],
+      "max": [
+        2
+      ]
+    },
+    {
+      "bufferView": 9,
+      "componentType": 5126,
+      "count": 3,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 10,
+      "componentType": 5126,
+      "count": 3,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 11,
+      "componentType": 5126,
+      "count": 3,
+      "type": "SCALAR",
+      "min": [
+        0
+      ],
+      "max": [
+        0.3
+      ]
+    },
+    {
+      "bufferView": 12,
+      "componentType": 5126,
+      "count": 3,
+      "type": "VEC4"
+    }
+  ]
+}

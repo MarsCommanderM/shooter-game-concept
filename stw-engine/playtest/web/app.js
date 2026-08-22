@@ -96,6 +96,13 @@ function renderStatus(payload) {
   document.querySelector("#native-fps").textContent = Number.isFinite(engine?.fps)
     ? Number(engine.fps).toFixed(1) : "0.0";
   document.querySelector("#weapon").textContent = engine?.weapon ?? "—";
+  document.querySelector("#animation-state").textContent =
+    engine?.animationState ?? "Unavailable";
+  document.querySelector("#animation-clip").textContent =
+    `clip ${engine?.clip || "—"}`;
+  document.querySelector("#animation-time").textContent =
+    Number.isFinite(engine?.animationTime)
+      ? Number(engine.animationTime).toFixed(2) : "0.00";
   const error = engine?.lastError || bridge.error || "";
   lastError.textContent = error || "no error";
   lastError.classList.toggle("error", Boolean(error));

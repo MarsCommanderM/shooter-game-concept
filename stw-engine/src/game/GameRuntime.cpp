@@ -7,6 +7,7 @@
 #include "Targets.hpp"
 #include "Weapons.hpp"
 #include "camera.h"
+#include "game/CharacterAnimationController.hpp"
 #include "gltf.h"
 #include "renderer.h"
 #include "runtime/ModelInstance.hpp"
@@ -35,7 +36,8 @@
 #include <vector>
 
 #ifndef STW_RUNTIME_ACCEPTANCE_ASSET
-#define STW_RUNTIME_ACCEPTANCE_ASSET "playtest/assets/imported_animation.gltf"
+#define STW_RUNTIME_ACCEPTANCE_ASSET \
+  "playtest/assets/gameplay_animation_states.gltf"
 #endif
 
 namespace stw {
@@ -122,8 +124,11 @@ bool LoadRuntimeModelSet(const std::string& path,
   return true;
 }
 
-bool ConfigureRuntimeAcceptanceInstances(RuntimeModelSet& model,
-                                         std::string* error) {
+bool ConfigureRuntimeAcceptanceInstances(
+    RuntimeModelSet& model,
+    CharacterAnimationController& outController,
+    std::size_t& outControlledInstance,
+    std::string* error) {
   if (error) error->clear();
   if (!model.asset || model.asset->skinnedMeshes.empty()) {
     return Fail(error,
@@ -156,7 +161,15 @@ bool ConfigureRuntimeAcceptanceInstances(RuntimeModelSet& model,
     if (!candidate[index].SetTransform(transform, error)) return false;
   }
 
+  CharacterAnimationController candidateController;
+  if (!CharacterAnimationController::Create(candidate[1],
+                                             candidateController, error)) {
+    return false;
+  }
+
   model.instances = std::move(candidate);
+  outController = std::move(candidateController);
+  outControlledInstance = 1u;
   return true;
 }
 
@@ -360,6 +373,8 @@ bool WriteRemoteStatus(const std::filesystem::path& directory,
                        const WeaponSystem& weapon,
                        const TargetWorld& world,
                        bool haveModel,
+                       const CharacterAnimationController* animationController,
+                       const RuntimeModelInstance* animationInstance,
                        double fps,
                        double frameMilliseconds,
                        std::uint64_t frameNumber,
@@ -385,6 +400,18 @@ bool WriteRemoteStatus(const std::filesystem::path& directory,
        << "  \"weapon\": \"" << JsonEscape(weapon.spec().name) << "\",\n"
        << "  \"aliveTargets\": " << aliveTargets << ",\n"
        << "  \"modelLoaded\": " << (haveModel ? "true" : "false") << ",\n"
+       << "  \"animationState\": \""
+       << (animationController
+               ? CharacterAnimationStateName(animationController->state())
+               : "Unavailable")
+       << "\",\n"
+       << "  \"clip\": \""
+       << JsonEscape(animationInstance ? animationInstance->animationName()
+                                       : std::string{})
+       << "\",\n"
+       << "  \"animationTime\": "
+       << (animationInstance ? animationInstance->animationTime() : 0.0f)
+       << ",\n"
        << "  \"player\": {\"x\": " << controller.pos.x
        << ", \"y\": " << controller.pos.y
        << ", \"z\": " << controller.pos.z << "},\n"
@@ -548,11 +575,15 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
   }
 
   RuntimeModelSet animationAcceptanceModel;
+  CharacterAnimationController playerAnimationController;
+  std::size_t playerAnimationInstance = 0u;
   std::string acceptanceLoadError;
   const bool haveAnimationAcceptance =
       LoadRuntimeModelSet(STW_RUNTIME_ACCEPTANCE_ASSET, *renderer,
                           animationAcceptanceModel, &acceptanceLoadError) &&
       ConfigureRuntimeAcceptanceInstances(animationAcceptanceModel,
+                                          playerAnimationController,
+                                          playerAnimationInstance,
                                           &acceptanceLoadError);
   if (!haveAnimationAcceptance) {
     std::cerr << "GAME ANIMATION WARNING: " << acceptanceLoadError << '\n';
@@ -758,6 +789,17 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
         lastError = resetError;
         if (options.noInput) failed = true;
       }
+      resetError.clear();
+      if (haveAnimationAcceptance &&
+          (playerAnimationInstance >= animationAcceptanceModel.instances.size() ||
+           !playerAnimationController.Reset(
+               animationAcceptanceModel.instances[playerAnimationInstance],
+               &resetError))) {
+        lastError = resetError.empty()
+            ? "gameplay animation instance mapping is invalid"
+            : resetError;
+        if (options.noInput) failed = true;
+      }
     }
     if (cycleWeaponRequested) weapon.cycle();
 
@@ -779,11 +821,13 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
 
     events.clear();
     if (phase == GamePhase::Playing) {
+      bool firedThisFrame = false;
       controller.update(frameInput, deltaSeconds);
       weapon.update(deltaSeconds);
       if (const auto shot = weapon.tryFire(localFire || remoteInput.fire,
                                            controller.eye(),
                                            controller.forward(), events)) {
+        firedThisFrame = true;
         if (const auto hit = targetWorld.hitscan(
                 shot->origin, shot->dir, weapon.spec().range)) {
           events.hits.push_back({hit->second, hit->first});
@@ -793,6 +837,36 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
       targetWorld.update(deltaSeconds, events);
 
       std::string animationError;
+      bool gameplayAnimationFailed = false;
+      if (haveAnimationAcceptance) {
+        if (playerAnimationInstance >=
+            animationAcceptanceModel.instances.size()) {
+          animationError = "gameplay animation instance mapping is invalid";
+          gameplayAnimationFailed = true;
+        } else {
+          const float movementMagnitudeSquared =
+              frameInput.fwd * frameInput.fwd +
+              frameInput.strafe * frameInput.strafe;
+          const bool moving = movementMagnitudeSquared > 1.0e-6f;
+          CharacterAnimationInput animationInput;
+          animationInput.moving = moving;
+          animationInput.fireTriggered = firedThisFrame;
+          if (!playerAnimationController.Update(
+                  animationInput,
+                  animationAcceptanceModel.instances[playerAnimationInstance],
+                  &animationError)) {
+            // The instance keeps its previous valid Animator/Pose/palette.
+            gameplayAnimationFailed = true;
+          } else if (!playerAnimationController.lastDiagnostic().empty()) {
+            animationError = playerAnimationController.lastDiagnostic();
+          }
+        }
+        if (!animationError.empty()) {
+          lastError = animationError;
+          if (options.noInput && gameplayAnimationFailed) failed = true;
+        }
+      }
+      animationError.clear();
       if (haveModel &&
           !UpdateRuntimeModels(model, deltaSeconds, &animationError)) {
         lastError = animationError;
@@ -943,8 +1017,18 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
     }
     if (!remoteDirectory.empty() && statusAccumulator >= 0.1) {
       std::string statusError;
+      const RuntimeModelInstance* gameplayAnimationInstance =
+          haveAnimationAcceptance &&
+                  playerAnimationInstance <
+                      animationAcceptanceModel.instances.size()
+              ? &animationAcceptanceModel.instances[playerAnimationInstance]
+              : nullptr;
       if (!WriteRemoteStatus(remoteDirectory, phase, controller, weapon,
-                             targetWorld, haveModel, displayedFps,
+                             targetWorld, haveModel,
+                             haveAnimationAcceptance
+                                 ? &playerAnimationController
+                                 : nullptr,
+                             gameplayAnimationInstance, displayedFps,
                              static_cast<double>(deltaSeconds) * 1000.0,
                              frameNumber, lastError, &statusError)) {
         lastError = statusError;
@@ -959,8 +1043,18 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
 
   if (!remoteDirectory.empty()) {
     std::string statusError;
+    const RuntimeModelInstance* gameplayAnimationInstance =
+        haveAnimationAcceptance &&
+                playerAnimationInstance <
+                    animationAcceptanceModel.instances.size()
+            ? &animationAcceptanceModel.instances[playerAnimationInstance]
+            : nullptr;
     WriteRemoteStatus(remoteDirectory, phase, controller, weapon, targetWorld,
-                      haveModel, displayedFps, 0.0, frameNumber, lastError,
+                      haveModel,
+                      haveAnimationAcceptance ? &playerAnimationController
+                                              : nullptr,
+                      gameplayAnimationInstance, displayedFps, 0.0,
+                      frameNumber, lastError,
                       &statusError);
   }
   renderer->Shutdown();

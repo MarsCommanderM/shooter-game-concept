@@ -10,12 +10,15 @@ runtime owns the menu state, training map, `FpsController`, `WeaponSystem`,
 `TargetWorld`, glTF loading, and `GLRenderer`. The bridge starts the runtime at
 its native menu and reconnects to it after browser refresh.
 
-The training map also exercises the T4-A production model path. It contains a
+The training map also exercises the T4-B production model path. It contains a
 static imported model plus four instances of the same imported skinned model:
 one bind pose, one normally animated instance, and two animated instances with
 independent starting times. All five go through `RuntimeModelInstance` and the
 normal `Draw`/`DrawWithSkinning` submission; no playtest-only animation path is
-used.
+used. The player input and real `WeaponSystem::tryFire` event drive the second
+skinned instance through `Idle`, `Move`, and non-looping `Fire`; Fire returns to
+the current locomotion state when its imported clip completes. The optional HUD
+shows the authoritative animation state and selected clip.
 
 ## Native modes
 
@@ -60,7 +63,17 @@ The default page is a full-viewport remote display for `--playtest game`.
 There is no in-page token field. It supports touch move/look, held fire and
 sprint, weapon, pause, reset, portrait/landscape safe areas, and desktop
 keyboard/mouse input. A compact optional HUD reports connection, native scene,
-native/received FPS, weapon, and the last native or bridge error.
+native/received FPS, weapon, animation state/clip, and the last native or bridge
+error.
+
+T4-B manual acceptance in the training map:
+
+- release movement: the HUD and controlled ribbon report `Idle` / `Idle`;
+- move with WASD or the touch stick: they report `Move` / `Move` without the
+  clip restarting every frame;
+- fire: an actual weapon shot selects the non-looping `Fire` clip;
+- keep moving after the shot: completion returns to `Move`;
+- stop moving after the shot: completion returns to `Idle`.
 
 The fixed public API accepts only:
 
@@ -98,8 +111,8 @@ pkg-config --modversion sdl2
 
 cd /opt/wirrwar
 git fetch origin
-git switch codex/stw-8a-t4a
-git pull --ff-only origin codex/stw-8a-t4a
+git switch codex/stw-8a-t4b
+git pull --ff-only origin codex/stw-8a-t4b
 
 id stw-playtest >/dev/null 2>&1 || sudo useradd --system \
   --home-dir /var/lib/stw-playtest --create-home \
@@ -108,7 +121,11 @@ sudo install -d -o stw-playtest -g stw-playtest /var/lib/stw-playtest/build
 sudo -u stw-playtest cmake -S /opt/wirrwar/stw-engine \
   -B /var/lib/stw-playtest/build -DCMAKE_BUILD_TYPE=Release
 sudo -u stw-playtest cmake --build /var/lib/stw-playtest/build \
-  --target stw cache_builder -j2
+  --target stw cache_builder stw_runtime_model_tests \
+  stw_gameplay_animation_tests -j2
+
+sudo -u stw-playtest ctest --test-dir /var/lib/stw-playtest/build \
+  --output-on-failure
 
 node --test stw-engine/playtest/bridge/bridge.test.mjs
 ```

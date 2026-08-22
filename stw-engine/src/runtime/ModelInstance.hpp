@@ -83,6 +83,8 @@ class RuntimeModelInstance {
   std::optional<std::size_t> selectedAnimationIndex() const noexcept;
   std::string animationName() const;
   float animationTime() const noexcept;
+  float animationDuration() const noexcept;
+  bool looping() const noexcept;
   ModelPlaybackState playbackState() const noexcept;
   const Skeleton* skeleton() const noexcept;
   const Animator* animator() const noexcept;
