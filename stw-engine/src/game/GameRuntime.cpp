@@ -12,6 +12,8 @@
 #include "game/CombatLoop.hpp"
 #include "game/GameAudio.hpp"
 #include "game/GameplayPresentation.hpp"
+#include "game/PlayerCamera.hpp"
+#include "game/RemoteInputProtocol.hpp"
 #include "gltf.h"
 #include "renderer.h"
 #include "runtime/ModelInstance.hpp"
@@ -62,15 +64,10 @@ struct RemoteGameInput {
   float lookY = 0.0f;
   bool fire = false;
   bool sprint = false;
-  unsigned long long lastInputSequence = 0;
+  RemoteInputCursor cursor;
   unsigned long long lastCommandSequence = 0;
   std::chrono::steady_clock::time_point lastInputAt{};
 };
-
-// Browser look is transported as a bounded relative delta and consumed once.
-// Convert one normalized packet back to mouse-count scale before the existing
-// FpsController sensitivity and pitch clamp are applied.
-constexpr float kRemoteLookMouseCountsPerUnit = 48.0f;
 
 struct RenderObject {
   std::uint32_t mesh = 0;
@@ -337,11 +334,6 @@ bool WriteTextAtomic(const std::filesystem::path& path,
   return true;
 }
 
-bool IsFiniteUnit(float value) {
-  return std::isfinite(static_cast<double>(value)) && value >= -1.0f &&
-         value <= 1.0f;
-}
-
 bool PollRemoteInput(const std::filesystem::path& directory,
                      RemoteGameInput& input,
                      std::string& lastError) {
@@ -358,32 +350,19 @@ bool PollRemoteInput(const std::filesystem::path& directory,
   if (!file) return Fail(&lastError, "failed to read remote input file");
   const std::string payload((std::istreambuf_iterator<char>(file)),
                             std::istreambuf_iterator<char>());
-  std::istringstream stream(payload);
-  unsigned long long sequence = 0;
-  std::string kind;
-  float strafe = 0.0f;
-  float forward = 0.0f;
-  float lookX = 0.0f;
-  float lookY = 0.0f;
-  int fire = 0;
-  int sprint = 0;
-  std::string trailing;
-  if (!(stream >> sequence >> kind >> strafe >> forward >> lookX >> lookY >>
-        fire >> sprint) ||
-      (stream >> trailing) || kind != "input" ||
-      !IsFiniteUnit(strafe) || !IsFiniteUnit(forward) ||
-      !IsFiniteUnit(lookX) || !IsFiniteUnit(lookY) ||
-      (fire != 0 && fire != 1) || (sprint != 0 && sprint != 1)) {
-    return Fail(&lastError, "remote input contains invalid values");
+  RemoteInputSample sample;
+  bool updated = false;
+  if (!DecodeRemoteInputPayload(payload, input.cursor, sample, updated,
+                                &lastError)) {
+    return false;
   }
-  if (sequence <= input.lastInputSequence) return true;
-  input.lastInputSequence = sequence;
-  input.strafe = strafe;
-  input.forward = forward;
-  input.lookX = lookX;
-  input.lookY = lookY;
-  input.fire = fire != 0;
-  input.sprint = sprint != 0;
+  if (!updated) return true;
+  input.strafe = sample.strafe;
+  input.forward = sample.forward;
+  input.lookX = sample.lookX;
+  input.lookY = sample.lookY;
+  input.fire = sample.fire;
+  input.sprint = sample.sprint;
   input.lastInputAt = std::chrono::steady_clock::now();
   lastError.clear();
   return true;
@@ -1117,9 +1096,7 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
       renderer->SetClearColor(hq ? 0.16f : 0.035f,
                               hq ? 0.30f : 0.055f,
                               hq ? 0.48f : 0.075f);
-      camera.pos = controller.eye();
-      camera.yaw = controller.yaw;
-      camera.pitch = controller.pitch;
+      SyncCameraFromFpsController(controller, camera);
       // The HQ mannequin's visible faces point toward +Z. Keep the proven
       // negative-Z light direction in both quality modes so Standard cannot
       // regress to a near-black skinned draw; HQ retains its daylight balance

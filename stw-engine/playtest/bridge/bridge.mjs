@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { spawn as spawnChild } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
 import {
@@ -250,6 +250,8 @@ export class PlaytestSupervisor {
     this.inputOperation = Promise.resolve();
     this.commandSequence = 0;
     this.inputSequence = 0;
+    this.lookTotalX = 0;
+    this.lookTotalY = 0;
     this.error = "";
     this.exitCode = null;
     this.expectedStop = false;
@@ -302,6 +304,8 @@ export class PlaytestSupervisor {
     this.sessionDirectory = await mkdtemp(path.join(tmpdir(), "stw-playtest-v2-"));
     this.commandSequence = 0;
     this.inputSequence = 0;
+    this.lookTotalX = 0;
+    this.lookTotalY = 0;
     this.error = "";
     this.exitCode = null;
     this.expectedStop = false;
@@ -433,10 +437,24 @@ export class PlaytestSupervisor {
   _queueInput(input) {
     const directory = this.sessionDirectory;
     const sequence = ++this.inputSequence;
-    const values = [input.strafe, input.forward, input.lookX, input.lookY,
+    // The public API accepts bounded relative deltas. The private file uses
+    // cumulative totals so a slow native render frame can skip intermediate
+    // files without dropping camera movement.
+    const nextLookTotalX = this.lookTotalX + input.lookX;
+    const nextLookTotalY = this.lookTotalY + input.lookY;
+    if (!Number.isFinite(nextLookTotalX) || !Number.isFinite(nextLookTotalY) ||
+        Math.abs(nextLookTotalX) > 1e12 || Math.abs(nextLookTotalY) > 1e12) {
+      throw new HttpError(503, "remote look accumulator exceeded its safety bound");
+    }
+    this.lookTotalX = nextLookTotalX;
+    this.lookTotalY = nextLookTotalY;
+    const values = [input.strafe, input.forward,
+      this.lookTotalX, this.lookTotalY,
       input.fire ? 1 : 0, input.sprint ? 1 : 0].join(" ");
     const next = this.inputOperation.then(
-      () => this._writeSequenced("input.txt", sequence, `input ${values}`, directory),
+      () => this._writeSequenced(
+        "input.txt", sequence, `input_v2 ${values}`, directory,
+      ),
     );
     this.inputOperation = next.catch(() => {});
     return next;
@@ -487,9 +505,17 @@ export class PlaytestSupervisor {
       if (metadata.size > 32n * 1024n * 1024n) {
         throw new Error("native frame exceeds 32 MiB");
       }
-      const etag = `\"${metadata.mtimeNs.toString(16)}-${metadata.size.toString(16)}\"`;
+      const frame = await readFile(framePath);
+      if (frame.byteLength > 32 * 1024 * 1024) {
+        throw new Error("native frame exceeds 32 MiB");
+      }
+      // A renamed capture can legitimately retain the previous mtime and byte
+      // length on some filesystems. Only content identity may produce 304;
+      // otherwise Safari can remain pinned to an older native framebuffer.
+      const digest = createHash("sha256").update(frame).digest("base64url");
+      const etag = `\"${digest}\"`;
       if (ifNoneMatch === etag) return { etag, notModified: true };
-      return { etag, frame: await readFile(framePath), notModified: false };
+      return { etag, frame, notModified: false };
     } catch (error) {
       if (error.code === "ENOENT") throw new HttpError(404, "no frame is available yet");
       throw new HttpError(503, sanitizeDiagnostic(error.message));

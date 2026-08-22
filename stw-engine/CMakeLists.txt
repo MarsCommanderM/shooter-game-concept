@@ -16,6 +16,7 @@ add_executable(stw
   src/game/GameRuntime.cpp
   src/game/GameAudio.cpp
   src/game/GameplayPresentation.cpp
+  src/game/RemoteInputProtocol.cpp
   src/game/CharacterAnimationController.cpp
   src/game/CombatLoop.cpp
   src/game/CombatBotAnimationRuntime.cpp
@@ -119,6 +120,16 @@ target_compile_options(stw_gameplay_presentation_tests PRIVATE -Wall)
 add_test(NAME stw_gameplay_presentation_tests
          COMMAND stw_gameplay_presentation_tests)
 
+add_executable(stw_player_input_tests
+  tests/PlayerInputRuntimeTests.cpp
+  src/game/RemoteInputProtocol.cpp
+)
+target_include_directories(stw_player_input_tests PRIVATE
+  src engine engine/core engine/platform game game/player game/weapons
+)
+target_compile_options(stw_player_input_tests PRIVATE -Wall)
+add_test(NAME stw_player_input_tests COMMAND stw_player_input_tests)
+
 add_executable(stw_combat_loop_tests
   tests/CombatLoopTests.cpp
   src/game/CombatLoop.cpp
@@ -167,6 +178,12 @@ if(STW_ENABLE_TEST_SANITIZERS AND
     -fsanitize=address,undefined -fno-omit-frame-pointer
   )
   target_link_options(stw_gameplay_presentation_tests PRIVATE
+    -fsanitize=address,undefined
+  )
+  target_compile_options(stw_player_input_tests PRIVATE
+    -fsanitize=address,undefined -fno-omit-frame-pointer
+  )
+  target_link_options(stw_player_input_tests PRIVATE
     -fsanitize=address,undefined
   )
   target_compile_options(stw_combat_loop_tests PRIVATE

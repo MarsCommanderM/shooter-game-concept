@@ -9,6 +9,8 @@ namespace {
 
 constexpr float kPi = 3.14159265358979323846f;
 constexpr float kDirectionEpsilon = 1.0e-5f;
+constexpr float kAvoidanceCommitSeconds = 0.8f;
+constexpr float kBotTurnRadiansPerSecond = 5.5f;
 
 bool Fail(std::string* error, const std::string& message) {
   if (error) *error = message;
@@ -33,6 +35,22 @@ glm::vec3 HorizontalDirection(const glm::vec3& value,
   const float length = glm::length(horizontal);
   if (!IsFinite(length) || length <= kDirectionEpsilon) return fallback;
   return horizontal / length;
+}
+
+glm::vec3 TurnHorizontalToward(const glm::vec3& current,
+                               const glm::vec3& target,
+                               float maximumRadians) {
+  const glm::vec3 from = HorizontalDirection(
+      current, glm::vec3(0.0f, 0.0f, 1.0f));
+  const glm::vec3 to = HorizontalDirection(target, from);
+  const float fromYaw = std::atan2(from.x, from.z);
+  const float toYaw = std::atan2(to.x, to.z);
+  const float difference = std::atan2(std::sin(toYaw - fromYaw),
+                                      std::cos(toYaw - fromYaw));
+  const float yaw = fromYaw + std::clamp(
+      difference, -std::max(0.0f, maximumRadians),
+      std::max(0.0f, maximumRadians));
+  return glm::vec3(std::sin(yaw), 0.0f, std::cos(yaw));
 }
 
 std::optional<float> RaySphereDistance(const glm::vec3& origin,
@@ -182,6 +200,7 @@ void CombatSandbox::Reset() noexcept {
     bot.weaponCooldown = 0.18f + static_cast<float>(index) * 0.16f;
     bot.randomState = 0x9e3779b9u ^
         (static_cast<std::uint32_t>(index) + 1u) * 0x85ebca6bu;
+    bot.avoidanceSign = index % 2u == 0u ? 1 : -1;
     bot.lastKnownPlayerPosition = layout_.playerSpawn;
   }
   events_.Clear();
@@ -305,6 +324,7 @@ void CombatSandbox::RespawnBot(std::size_t index) noexcept {
   bot.weaponCooldown = 0.25f + static_cast<float>(index) * 0.12f;
   bot.randomState = randomState == 0u ? static_cast<std::uint32_t>(index + 1u)
                                      : randomState;
+  bot.avoidanceSign = index % 2u == 0u ? 1 : -1;
   bot.lastKnownPlayerPosition = layout_.playerSpawn;
   bot.respawnedThisFrame = true;
   events_.botRespawned[index] = true;
@@ -376,9 +396,17 @@ void CombatSandbox::UpdateBot(std::size_t index,
     if (visible && playerDistance <= tuning_.attackRange) {
       bot.state = BotAiState::Attack;
       bot.velocity = glm::vec3(0.0f);
-      bot.forward = horizontalPlayerDirection;
+      bot.avoidanceTimer = 0.0f;
+      bot.avoidanceDirection = glm::vec3(0.0f);
+      bot.forward = TurnHorizontalToward(
+          bot.forward, horizontalPlayerDirection,
+          kBotTurnRadiansPerSecond * deltaSeconds);
       if (bot.weaponCooldown <= 0.0f) FireBot(index, playerPosition);
       return;
+    }
+    if (bot.state != BotAiState::Chase) {
+      bot.avoidanceTimer = 0.0f;
+      bot.avoidanceDirection = glm::vec3(0.0f);
     }
     bot.state = BotAiState::Chase;
     MoveBot(bot, bot.lastKnownPlayerPosition, deltaSeconds);
@@ -392,8 +420,16 @@ void CombatSandbox::UpdateBot(std::size_t index,
                                                      patrolDelta.z));
   if (patrolDistance <= tuning_.patrolArrivalRadius) {
     bot.patrolPoint = (bot.patrolPoint + 1u) % kBotPatrolPointCount;
+    bot.avoidanceTimer = 0.0f;
+    bot.avoidanceDirection = glm::vec3(0.0f);
   }
-  bot.state = deltaSeconds <= 0.0f ? BotAiState::Idle : BotAiState::Patrol;
+  const BotAiState movementState =
+      deltaSeconds <= 0.0f ? BotAiState::Idle : BotAiState::Patrol;
+  if (bot.state != movementState) {
+    bot.avoidanceTimer = 0.0f;
+    bot.avoidanceDirection = glm::vec3(0.0f);
+  }
+  bot.state = movementState;
   MoveBot(bot, layout_.botSpawns[index].patrolPoints[bot.patrolPoint],
           deltaSeconds);
 }
@@ -405,28 +441,73 @@ void CombatSandbox::MoveBot(BotCombatState& bot,
                                                  glm::vec3(0.0f));
   if (glm::length(desired) <= kDirectionEpsilon || deltaSeconds <= 0.0f) {
     bot.velocity = glm::vec3(0.0f);
+    if (glm::length(desired) <= kDirectionEpsilon) {
+      bot.avoidanceTimer = 0.0f;
+      bot.avoidanceDirection = glm::vec3(0.0f);
+    }
     return;
   }
+  bot.avoidanceTimer = std::max(0.0f, bot.avoidanceTimer - deltaSeconds);
   const float step = tuning_.botWalkSpeed * deltaSeconds;
-  const glm::vec3 candidates[3] = {
-      desired,
-      glm::vec3(-desired.z, 0.0f, desired.x),
-      glm::vec3(desired.z, 0.0f, -desired.x),
+  const float directLookAhead = std::max(step * 4.0f,
+                                         tuning_.botRadius * 2.0f);
+  const bool directCorridorClear = CanTraverse(
+      bot.position, bot.position + desired * directLookAhead);
+  bool avoiding = glm::length(bot.avoidanceDirection) > kDirectionEpsilon;
+  if (avoiding && bot.avoidanceTimer <= 0.0f && directCorridorClear) {
+    bot.avoidanceDirection = glm::vec3(0.0f);
+    avoiding = false;
+  }
+  if (!avoiding && !directCorridorClear) {
+    const float sideSign = bot.avoidanceSign >= 0 ? 1.0f : -1.0f;
+    bot.avoidanceDirection = glm::vec3(
+        -desired.z * sideSign, 0.0f, desired.x * sideSign);
+    bot.avoidanceTimer = kAvoidanceCommitSeconds;
+    avoiding = true;
+  }
+
+  const glm::vec3 preferredSide = HorizontalDirection(
+      bot.avoidanceDirection, glm::vec3(-desired.z, 0.0f, desired.x));
+  const glm::vec3 otherSide = -preferredSide;
+  const glm::vec3 preferredBlend = HorizontalDirection(
+      preferredSide * 0.92f + desired * 0.38f, preferredSide);
+  const glm::vec3 otherBlend = HorizontalDirection(
+      otherSide * 0.92f + desired * 0.38f, otherSide);
+
+  struct CandidateDirection {
+    glm::vec3 direction;
+    int side;
+    bool direct;
   };
-  const int sideFirst = bot.id % 2 == 0 ? 1 : 2;
-  const int sideSecond = bot.id % 2 == 0 ? 2 : 1;
-  const int order[3] = {0, sideFirst, sideSecond};
-  for (const int candidateIndex : order) {
-    glm::vec3 candidate = bot.position + candidates[candidateIndex] * step;
-    candidate.x = std::clamp(candidate.x, layout_.minimum.x,
-                             layout_.maximum.x);
-    candidate.z = std::clamp(candidate.z, layout_.minimum.y,
-                             layout_.maximum.y);
+  std::array<CandidateDirection, 4u> candidates{};
+  std::size_t candidateCount = 0u;
+  if (avoiding) {
+    candidates[0] = {preferredSide, bot.avoidanceSign, false};
+    candidates[1] = {preferredBlend, bot.avoidanceSign, false};
+    candidates[2] = {otherSide, -bot.avoidanceSign, false};
+    candidates[3] = {otherBlend, -bot.avoidanceSign, false};
+    candidateCount = candidates.size();
+  } else {
+    candidates[0] = {desired, 0, true};
+    candidateCount = 1u;
+  }
+
+  for (std::size_t index = 0; index < candidateCount; ++index) {
+    const CandidateDirection& movement = candidates[index];
+    glm::vec3 candidate = bot.position + movement.direction * step;
     candidate.y = bot.position.y;
-    if (!CanOccupy(candidate)) continue;
+    if (!CanTraverse(bot.position, candidate)) continue;
     bot.velocity = (candidate - bot.position) / deltaSeconds;
     bot.position = candidate;
-    bot.forward = HorizontalDirection(bot.velocity, bot.forward);
+    if (!movement.direct) {
+      if (movement.side != bot.avoidanceSign) {
+        bot.avoidanceSign = movement.side;
+        bot.avoidanceDirection = movement.direction;
+        bot.avoidanceTimer = kAvoidanceCommitSeconds;
+      }
+    }
+    bot.forward = TurnHorizontalToward(
+        bot.forward, bot.velocity, kBotTurnRadiansPerSecond * deltaSeconds);
     return;
   }
   bot.velocity = glm::vec3(0.0f);
@@ -473,8 +554,10 @@ void CombatSandbox::FireBot(std::size_t index,
 }
 
 bool CombatSandbox::CanOccupy(const glm::vec3& position) const noexcept {
-  if (position.x < layout_.minimum.x || position.x > layout_.maximum.x ||
-      position.z < layout_.minimum.y || position.z > layout_.maximum.y) {
+  if (position.x < layout_.minimum.x + tuning_.botRadius ||
+      position.x > layout_.maximum.x - tuning_.botRadius ||
+      position.z < layout_.minimum.y + tuning_.botRadius ||
+      position.z > layout_.maximum.y - tuning_.botRadius) {
     return false;
   }
   for (std::size_t index = 0; index < layout_.obstacleCount; ++index) {
@@ -483,6 +566,31 @@ bool CombatSandbox::CanOccupy(const glm::vec3& position) const noexcept {
         CircleOverlapsBox(position, tuning_.botRadius, obstacle)) {
       return false;
     }
+  }
+  return true;
+}
+
+bool CombatSandbox::CanTraverse(const glm::vec3& from,
+                                const glm::vec3& to) const noexcept {
+  if (!IsFinite(from) || !IsFinite(to)) return false;
+  const glm::vec3 delta(to.x - from.x, 0.0f, to.z - from.z);
+  const float distance = glm::length(delta);
+  if (!IsFinite(distance)) return false;
+  if (distance <= kDirectionEpsilon) return CanOccupy(to);
+
+  // Sample at less than half a bot radius so a large update cannot tunnel
+  // through a wall or expanded cover volume. GameRuntime already bounds dt;
+  // this additionally protects deterministic tests and transient stalls.
+  const float sampleDistance = std::max(tuning_.botRadius * 0.4f, 0.05f);
+  const float sampleCount = std::ceil(distance / sampleDistance);
+  if (!IsFinite(sampleCount) || sampleCount > 4096.0f) return false;
+  const int samples = std::max(1, static_cast<int>(sampleCount));
+  for (int sample = 1; sample <= samples; ++sample) {
+    const float amount = static_cast<float>(sample) /
+                         static_cast<float>(samples);
+    glm::vec3 position = from + delta * amount;
+    position.y = from.y;
+    if (!CanOccupy(position)) return false;
   }
   return true;
 }

@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { access, chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  access, chmod, mkdtemp, readFile, rm, stat, utimes, writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, test } from "node:test";
@@ -178,7 +180,15 @@ test("public game input and action accept only fixed typed messages", async () =
   })).status, 202);
   const engine = await waitForEngine((value) => value.lastInput !== "");
   assert.equal(engine.state, "PLAYING");
-  assert.match(engine.lastInput, /^input -0.5 1 0.25 -0.25 1 0$/);
+  assert.match(engine.lastInput, /^input_v2 -0.5 1 0.25 -0.25 1 0$/);
+  assert.equal((await post("/input", {
+    strafe: 0.5, forward: 0.25, lookX: 0.5, lookY: 0.25,
+    fire: false, sprint: true,
+  })).status, 202);
+  const accumulated = await waitForEngine(
+    (value) => /^input_v2 0.5 0.25 /.test(value.lastInput),
+  );
+  assert.match(accumulated.lastInput, /^input_v2 0.5 0.25 0.75 0 0 1$/);
   assert.equal((await post("/action", { action: "reload" })).status, 202);
   const reloaded = await waitForEngine(
     (value) => value.lastCommand === "game_reload",
@@ -223,13 +233,15 @@ test("technical debug mutation stays bearer-token protected", async () => {
   assert.equal(response.status, 404);
 });
 
-test("frame endpoint serves only newest native frame and supports ETags", async () => {
+test("frame ETag follows native content even when mtime and size repeat", async () => {
   assert.equal((await post("/connect", {})).status, 202);
   const framePath = path.join(bridge.supervisor.sessionDirectory, "frame.png");
   for (let attempt = 0; attempt < 100; ++attempt) {
     try { await access(framePath); break; }
     catch { await new Promise((resolve) => setTimeout(resolve, 10)); }
   }
+  const fixedTimestamp = new Date("2024-01-02T03:04:05.000Z");
+  await utimes(framePath, fixedTimestamp, fixedTimestamp);
   let response = await fetch(`${baseUrl}/api/frame`);
   assert.equal(response.status, 200);
   assert.equal(await response.text(), "FRAME-1");
@@ -237,11 +249,13 @@ test("frame endpoint serves only newest native frame and supports ETags", async 
   response = await fetch(`${baseUrl}/api/frame`, { headers: { "If-None-Match": firstEtag } });
   assert.equal(response.status, 304);
 
-  await new Promise((resolve) => setTimeout(resolve, 5));
-  await writeFile(framePath, "FRAME-2-newest");
+  const firstMetadata = await stat(framePath);
+  await writeFile(framePath, "FRAME-2");
+  await utimes(framePath, firstMetadata.atime, firstMetadata.mtime);
   response = await fetch(`${baseUrl}/api/frame`, { headers: { "If-None-Match": firstEtag } });
   assert.equal(response.status, 200);
-  assert.equal(await response.text(), "FRAME-2-newest");
+  assert.equal(await response.text(), "FRAME-2");
+  assert.notEqual(response.headers.get("etag"), firstEtag);
 });
 
 test("crashed child is visible and public reconnect starts a clean game", async () => {

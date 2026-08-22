@@ -166,13 +166,26 @@ async function pollFrame() {
     const headers = frameEtag ? { "If-None-Match": frameEtag } : {};
     const response = await fetch(`${apiRoot}/frame`, { cache: "no-store", headers });
     if (response.ok) {
-      frameEtag = response.headers.get("etag") ?? "";
+      const nextEtag = response.headers.get("etag") ?? "";
       const nextUrl = URL.createObjectURL(await response.blob());
-      frame.src = nextUrl;
+      const previousUrl = currentFrameUrl;
+      try {
+        frame.src = nextUrl;
+        // Keep frame polling serialized through image decode. Otherwise a
+        // slower iPhone can have every pending PNG replaced before any one of
+        // them becomes the visible framebuffer.
+        if (typeof frame.decode === "function") await frame.decode();
+      } catch (error) {
+        URL.revokeObjectURL(nextUrl);
+        if (previousUrl) frame.src = previousUrl;
+        else frame.removeAttribute("src");
+        throw error;
+      }
+      frameEtag = nextEtag;
+      currentFrameUrl = nextUrl;
       frame.classList.add("ready");
       connecting.classList.add("hidden");
-      if (currentFrameUrl) URL.revokeObjectURL(currentFrameUrl);
-      currentFrameUrl = nextUrl;
+      if (previousUrl) URL.revokeObjectURL(previousUrl);
       recordFrame();
     } else if (response.status !== 304 && response.status !== 404) {
       const payload = await response.json().catch(() => ({}));

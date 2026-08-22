@@ -95,6 +95,11 @@ struct BotCombatState {
   glm::vec3 lastKnownPlayerPosition{0.0f};
   std::size_t patrolPoint = 0u;
   std::uint32_t randomState = 1u;
+  // A chosen cover side is retained until the direct corridor is clear. This
+  // prevents direct/perpendicular steering from alternating every frame.
+  int avoidanceSign = 1;
+  float avoidanceTimer = 0.0f;
+  glm::vec3 avoidanceDirection{0.0f};
   bool firedThisFrame = false;
   bool respawnedThisFrame = false;
 
@@ -180,6 +185,8 @@ class CombatSandbox {
   void FireBot(std::size_t index,
                const glm::vec3& playerPosition) noexcept;
   bool CanOccupy(const glm::vec3& position) const noexcept;
+  bool CanTraverse(const glm::vec3& from,
+                   const glm::vec3& to) const noexcept;
   float NextSigned(BotCombatState& bot) noexcept;
 
   CombatArenaLayout layout_;
