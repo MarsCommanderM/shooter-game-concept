@@ -1,40 +1,20 @@
-# STW Playtest V2 — real game boot
+# STW HQ native game acceptance
 
-`/stw-playtest/` is the primary manual acceptance experience. It displays PNG
-readbacks from the real native STW OpenGL backbuffer and sends a fixed set of
-typed inputs to that same process. The browser contains no renderer, gameplay,
-map, weapon logic, or animation substitute.
+The only browser-facing manual acceptance experience is `/stw-hq/`. It shows
+PNG readbacks from the real native STW OpenGL backbuffer and forwards a fixed,
+typed input schema to the same process. The browser has no renderer, weapon
+simulation, damage rules, bot AI, map logic, or animation state machine.
 
 Both normal native startup and `--playtest game` enter `RunGameRuntime`. The
-runtime owns the menu state, training map, `FpsController`, `WeaponSystem`,
-`TargetWorld`, glTF loading, and `GLRenderer`. The bridge starts the runtime at
-its native menu and reconnects to it after browser refresh.
+runtime owns the menu, HQ training arena, player controller, five-weapon
+system, combat sandbox, bots, imported animation, skinning palettes, and native
+renderer. Browser refresh reconnects to the healthy owned native process.
 
-Gameplay Presentation Baseline V1 makes `HQ` the default game quality mode.
-It uses the existing PBR/IBL/shadow renderer with a daylight environment,
-readable arena materials, native procedural first-person weapon, authoritative
-ammo/reload, valid-shot muzzle/recoil/tracer feedback, and a repo-owned skinned
-training mannequin. The crosshair is part of the native framebuffer rather
-than an HTML substitute. Use `--quality standard` only as a lower-presentation
-diagnostic fallback. See `GAMEPLAY_PRESENTATION.md` for the factual inventory
-and explicit limitations.
-
-The training map also exercises the T4-B production model path. It contains a
-static imported model plus four instances of the same imported skinned model:
-one bind pose, one normally animated instance, and two animated instances with
-independent starting times. All five go through `RuntimeModelInstance` and the
-normal `Draw`/`DrawWithSkinning` submission; no playtest-only animation path is
-used. The player input and real `WeaponSystem::tryFire` event drive the second
-skinned instance through `Idle`, `Move`, and non-looping `Fire`; Fire returns to
-the current locomotion state when its imported clip completes. The optional HUD
-shows the authoritative animation state and selected clip.
-
-## Native modes
+## Native commands
 
 ```sh
 ./stw
 ./stw --playtest list
-./stw --playtest game
 ./stw --playtest game --quality hq
 ./stw --playtest game --quality standard
 ./stw --playtest game --frames 120 --no-input --auto-start
@@ -42,257 +22,150 @@ shows the authoritative animation state and selected clip.
   --capture /tmp/stw-game.png
 ```
 
-Desktop game controls:
+`--playtest list` intentionally exposes only `game`. The former procedural
+ribbon/bending scenes are not alternate production runtimes. Their auditable
+glTF data remains available to the registered C++ regression tests.
 
-- `Enter`, `Space`, or click: enter the map from the menu
+Desktop controls:
+
+- `Enter`, `Space`, or click: enter the map
 - `WASD`: move
 - mouse: look
 - left mouse: fire
 - `Shift`: sprint
 - `Q`: cycle weapon
 - `E`: reload
-- `R`: reset player, weapon, and targets
+- `R`: reset
 - `P`: pause/resume
 - `Esc`: quit
 
-The existing technical regression scenes remain available:
+Mobile controls retain independent pointer ownership for move, look, fire, and
+sprint. Weapon, reload, pause, and reset are fixed actions. Lost focus clears
+held input to prevent stuck movement or firing.
 
-```sh
-./stw --playtest skinning --frames 120 --no-input
-./stw --playtest animation --frames 120 --no-input
-```
+## Public transport contract
 
-They continue to exercise T3-A GPU skinning and the T3-B path:
-
-```text
-glTF -> StwAnimation -> AnimationClip -> Animator
-     -> SkinningPalette -> GLRenderer
-```
-
-## Browser behavior
-
-The default page is a full-viewport remote display for `--playtest game`.
-There is no in-page token field. It supports touch move/look, held fire and
-sprint, weapon, pause, reset, portrait/landscape safe areas, and desktop
-keyboard/mouse input. A compact optional HUD reports connection, native scene,
-native/received FPS, weapon, authoritative magazine/reserve ammo, reload state,
-animation state/clip, and the last native or bridge error.
-
-T4-B manual acceptance in the training map:
-
-- at spawn, the generated skinned mannequin on the center platform is the
-  gameplay-driven instance; the side instances retain bind/independent-time
-  regression coverage;
-- release movement: the HUD and controlled character report `Idle` / `Idle`;
-- move with WASD or the touch stick: they report `Move` / `Move` without the
-  clip restarting every frame;
-- fire: an actual weapon shot selects the non-looping `Fire` clip;
-- keep moving after the shot: completion returns to `Move`;
-- stop moving after the shot: completion returns to `Idle`.
-
-The fixed public API accepts only:
+The browser uses only these endpoints:
 
 ```text
-POST /stw-playtest/api/connect   {}
-POST /stw-playtest/api/input     {strafe,forward,lookX,lookY,fire,sprint}
-POST /stw-playtest/api/action    {action:start|pause|reset|weapon|reload}
-GET  /stw-playtest/api/status
-GET  /stw-playtest/api/frame
+POST /stw-hq/api/connect   {}
+POST /stw-hq/api/input     {strafe,forward,lookX,lookY,fire,sprint}
+POST /stw-hq/api/action    {action:start|pause|reset|weapon|reload}
+GET  /stw-hq/api/status
+GET  /stw-hq/api/frame
 ```
 
-All numeric input must be finite and within `[-1, 1]`; booleans must be real
-JSON booleans. There is no executable, path, argument, shell, or general
-command field. The native process is spawned with `shell: false`. Frames use a
-single atomically replaced `frame.png`, so delivery is newest-frame-wins with
-no unbounded queue.
+Numeric input must be finite and within `[-1, 1]`. Booleans must be JSON
+booleans. Unexpected keys, paths, executable names, arguments, and arbitrary
+commands are rejected. The bridge starts the fixed native binary with
+`shell: false`. A single atomically replaced `frame.png` provides bounded,
+newest-frame-wins delivery.
 
-The secondary `/stw-playtest/debug/` page can switch `game`, `skinning`, and
-`animation`. Its mutation/status endpoints require the optional
-`STW_PLAYTEST_DEBUG_TOKEN` (16+ bytes). That token is never passed to STW and
-is not needed by the default game page.
+The public page never asks for or stores a token. Optional server-side
+technical mutation endpoints under `/stw-hq/api/debug/` are disabled unless
+`STW_PLAYTEST_DEBUG_TOKEN` is configured with at least 16 bytes. They retain a
+strict command allowlist and have no browser token-entry page. The obsolete
+`STW_PLAYTEST_TOKEN` fallback is intentionally unsupported.
 
-## One-time VPS deployment
+## Build and repository checks
 
-The following commands assume the verified checkout is `/opt/wirrwar` and a
-Debian/Ubuntu-style host. Inspect commands before running them. Package
-installation is only needed if the corresponding check fails; the previously
-verified STW VPS already has these dependencies.
-
-### 1. Verify prerequisites and build
+On a prepared host:
 
 ```sh
-command -v cmake c++ node xvfb-run glxinfo
-pkg-config --modversion sdl2
-
 cd /opt/wirrwar
-git fetch origin
-git switch codex/stw-8a-t4b
-git pull --ff-only origin codex/stw-8a-t4b
+git switch brauny/stw-game-production
+git pull --ff-only origin brauny/stw-game-production
 
-id stw-playtest >/dev/null 2>&1 || sudo useradd --system \
-  --home-dir /var/lib/stw-playtest --create-home \
-  --shell /usr/sbin/nologin stw-playtest
-sudo install -d -o stw-playtest -g stw-playtest /var/lib/stw-playtest/build
-sudo -u stw-playtest cmake -S /opt/wirrwar/stw-engine \
-  -B /var/lib/stw-playtest/build -DCMAKE_BUILD_TYPE=Release
-sudo -u stw-playtest cmake --build /var/lib/stw-playtest/build \
-  --target stw cache_builder stw_runtime_model_tests \
-  stw_gameplay_animation_tests stw_gameplay_presentation_tests -j2
+cmake -S stw-engine -B /tmp/stw-game-production-build \
+  -DCMAKE_BUILD_TYPE=Release
+cmake --build /tmp/stw-game-production-build --target \
+  stw cache_builder stw_runtime_model_tests \
+  stw_gameplay_animation_tests stw_gameplay_presentation_tests \
+  stw_combat_loop_tests -j2
+ctest --test-dir /tmp/stw-game-production-build --output-on-failure
 
-sudo -u stw-playtest ctest --test-dir /var/lib/stw-playtest/build \
-  --output-on-failure
-
-node --test stw-engine/playtest/bridge/bridge.test.mjs
+node --check stw-engine/playtest/bridge/bridge.mjs
+node --check stw-engine/playtest/bridge/server.mjs
+node --check stw-engine/playtest/web/app.js
+node --test stw-engine/playtest/bridge/bridge.test.mjs \
+  stw-engine/playtest/web/mobile-input.test.mjs
 ```
 
-Only on an otherwise unprepared Debian/Ubuntu host, the corresponding package
-set is typically:
+No package installation is implied by these commands. The authoritative VPS
+must already provide the native build and OpenGL runtime dependencies.
 
-```sh
-sudo apt-get update
-sudo apt-get install cmake g++ libsdl2-dev libglm-dev libgl1-mesa-dev \
-  mesa-utils xvfb nodejs
+## Persistent bridge
+
+The reviewed example files remain at:
+
+- `playtest/deploy/stw-playtest-v2.env.example`
+- `playtest/deploy/stw-playtest-v2.service`
+
+Their historical filenames are retained to avoid an unnecessary service-file
+migration. The process they start is the canonical native game bridge.
+
+The minimum environment is:
+
+```text
+STW_PLAYTEST_BINARY=/absolute/path/to/stw
+STW_PLAYTEST_HOST=127.0.0.1
+STW_PLAYTEST_PORT=8791
+STW_PLAYTEST_STREAM_FPS=10
 ```
 
-Do not run package commands merely because they are listed here.
+An OpenGL display must be supplied through `STW_PLAYTEST_DISPLAY`, `DISPLAY`,
+or the existing `xvfb-run` service wrapper. The bridge fails clearly when the
+binary or display is missing.
 
-### 2. Verify the real runtime before service setup
+## Local verification
 
-```sh
-cd /opt/wirrwar/stw-engine
-xvfb-run -a -s "-screen 0 1280x720x24 +extension GLX +render -noreset" \
-  /var/lib/stw-playtest/build/stw --playtest game \
-  --frames 120 --no-input --auto-start --capture /tmp/stw-game.png
-file /tmp/stw-game.png
-
-xvfb-run -a -s "-screen 0 1280x720x24 +extension GLX +render -noreset" \
-  /var/lib/stw-playtest/build/stw --playtest skinning --frames 120 --no-input
-xvfb-run -a -s "-screen 0 1280x720x24 +extension GLX +render -noreset" \
-  /var/lib/stw-playtest/build/stw --playtest animation --frames 120 --no-input
-```
-
-The capture must be a real PNG produced by `IRenderer::RequestFrameCapture`.
-
-### 3. Install the persistent bridge service
-
-The repository provides a reviewed example unit at
-`playtest/deploy/stw-playtest-v2.service`. It runs loopback-only and uses
-`xvfb-run`; it does not deploy or reload a reverse proxy.
+With the bridge already running on loopback:
 
 ```sh
-sudo install -m 0600 \
-  /opt/wirrwar/stw-engine/playtest/deploy/stw-playtest-v2.env.example \
-  /etc/stw-playtest-v2.env
-sudo install -m 0644 \
-  /opt/wirrwar/stw-engine/playtest/deploy/stw-playtest-v2.service \
-  /etc/systemd/system/stw-playtest-v2.service
-
-sudo systemctl daemon-reload
-sudo systemctl enable --now stw-playtest-v2.service
-sudo systemctl status --no-pager stw-playtest-v2.service
-```
-
-To enable the secondary technical debug page, add a secret generated outside
-the repository to `/etc/stw-playtest-v2.env`, then restart only this service:
-
-```sh
-read -rsp "STW debug token (16+ bytes): " STW_DEBUG_TOKEN; printf '\n'
-printf 'STW_PLAYTEST_DEBUG_TOKEN=%s\n' "$STW_DEBUG_TOKEN" \
-  | sudo tee -a /etc/stw-playtest-v2.env >/dev/null
-unset STW_DEBUG_TOKEN
-sudo systemctl restart stw-playtest-v2.service
-```
-
-The default game page does not request or expose this token.
-
-### 4. Verify locally with curl
-
-```sh
-curl -fsS http://127.0.0.1:8791/stw-playtest/ >/dev/null
+curl -fsS http://127.0.0.1:8791/stw-hq/ >/dev/null
 curl -fsS -X POST -H 'Content-Type: application/json' -d '{}' \
-  http://127.0.0.1:8791/stw-playtest/api/connect
-curl -fsS http://127.0.0.1:8791/stw-playtest/api/status \
+  http://127.0.0.1:8791/stw-hq/api/connect
+curl -fsS http://127.0.0.1:8791/stw-hq/api/status \
   | python3 -m json.tool
 curl -fsS -o /tmp/stw-live-frame.png \
-  http://127.0.0.1:8791/stw-playtest/api/frame
+  http://127.0.0.1:8791/stw-hq/api/frame
 file /tmp/stw-live-frame.png
-
-curl -fsS -X POST -H 'Content-Type: application/json' \
-  -d '{"action":"start"}' \
-  http://127.0.0.1:8791/stw-playtest/api/action
 ```
 
-Status must report `test: game`, runtime `STW native OpenGL`, and scene
-`main-menu` or `training-map`.
+Status must identify `test: game`; gameplay fields are read-only data emitted
+by the native runtime. The frame must be a real PNG produced by the native
+capture path.
 
-### 5. Reverse-proxy contract
+## Reverse-proxy contract
 
-This repository does not prove whether nginx, Apache, Caddy, or another proxy
-owns the public site, so it deliberately does not edit or restart one. Inspect
-the actual VPS configuration first. The proxy must:
+The repository does not assume nginx, Apache, Caddy, systemd, or a particular
+public hostname. Inspect the real VPS configuration before changing it. The
+proxy must:
 
-1. forward public HTTPS `/stw-playtest/` to `http://127.0.0.1:8791`;
-2. retain the complete `/stw-playtest/` prefix;
-3. forward GET and POST;
-4. disable response buffering/caching for `/api/frame` and `/api/status`;
-5. keep port `8791` loopback-only;
-6. apply the site's existing authenticated session, VPN, or IP allowlist if
-   the route must not be generally reachable; this must not require an in-page
-   STW token field;
-7. pass its native configuration check before any reload.
+1. forward public HTTPS `/stw-hq/` to the loopback bridge;
+2. retain the complete `/stw-hq/` prefix and forward GET and POST;
+3. disable buffering/caching for `/api/frame` and `/api/status`;
+4. keep the bridge port loopback-only;
+5. preserve the existing server-side access policy without adding an in-page
+   token flow;
+6. pass the proxy's own configuration validation before reload.
 
-No WebSocket configuration is required. Once the real proxy is configured and
-the service is enabled, normal playtesting requires no terminal command.
-
-### 6. Open and stop
-
-Open on iPhone or desktop:
+The public acceptance URL is:
 
 ```text
-https://<actual-server-host>/stw-playtest/
+https://<actual-server-host>/stw-hq/
 ```
 
-The page connects automatically. Press `DEPLOY` to leave the native menu.
-Refreshing reuses a healthy game child; after a crash, the next connect starts
-a clean game child.
+## Milestone contract
 
-Stop only the dedicated service when intentionally taking this harness down:
+Every future visual/runtime change must retain:
 
-```sh
-sudo systemctl stop stw-playtest-v2.service
-```
+1. automated tests;
+2. a real native build;
+3. the normal `--playtest game --quality hq` scenario;
+4. documented expected behavior and controls;
+5. mobile and desktop acceptance through `/stw-hq/` where relevant;
+6. regression coverage for previously accepted behavior.
 
-Do not kill unrelated `stw`, `Xvfb`, NOVA, or production service processes.
-
-## Troubleshooting
-
-```sh
-sudo systemctl status --no-pager stw-playtest-v2.service
-sudo journalctl -u stw-playtest-v2.service -n 100 --no-pager
-curl -i http://127.0.0.1:8791/stw-playtest/api/status
-xvfb-run -a glxinfo -B
-```
-
-- `DISCONNECTED`: inspect the dedicated unit and public proxy route.
-- HTTP 404 frame while starting: wait for the first native readback.
-- bridge `error`: inspect its redacted error/status and unit journal.
-- local curl succeeds but HTTPS fails: fix the real proxy/TLS route; do not add
-  a browser renderer.
-- frozen controls: status should still update; input expires natively after
-  350 ms so a disconnected browser cannot leave movement/fire held forever.
-
-## Future milestone acceptance contract
-
-Every future visual/runtime milestone must leave this real-game URL working
-and provide:
-
-1. automated tests,
-2. a real build,
-3. a manual in-game scenario,
-4. documented expected behavior,
-5. desktop controls,
-6. mobile controls where relevant, and
-7. regression runs for `skinning`, `animation`, and the real game boot.
-
-A milestone is not manually accepted until the user has played it and reported
-how it looks and feels.
+Manual visual/game-feel acceptance belongs to the user and cannot be inferred
+from unit tests or status JSON.

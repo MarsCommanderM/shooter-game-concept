@@ -28,9 +28,6 @@ add_executable(stw
   src/animation/ModelAnimationBinding.cpp
   src/runtime/ModelInstance.cpp
   src/playtest/PlaytestRegistry.cpp
-  src/playtest/PlaytestRuntime.cpp
-  src/playtest/SkinningPlaytest.cpp
-  src/playtest/AnimationPlaytest.cpp
   engine/assets/json_mini.cpp
   engine/assets/gltf.cpp
   engine/assets/TangentGenerator.cpp
@@ -41,7 +38,6 @@ add_executable(stw
 )
 target_include_directories(stw PRIVATE src engine engine/render engine/assets engine/platform engine/core game game/player game/weapons game/world)
 target_compile_definitions(stw PRIVATE
-  STW_PLAYTEST_ASSET_DIR="${CMAKE_CURRENT_SOURCE_DIR}/playtest/assets"
   STW_RUNTIME_ACCEPTANCE_ASSET="${CMAKE_CURRENT_SOURCE_DIR}/playtest/assets/gameplay_animation_states.gltf"
 )
 target_link_libraries(stw PRIVATE SDL2::SDL2 OpenGL::GL)

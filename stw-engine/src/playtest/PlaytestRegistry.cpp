@@ -1,6 +1,5 @@
 #include "PlaytestRegistry.hpp"
 
-#include "Playtest.hpp"
 #include "game/GameRuntime.hpp"
 
 #include <cerrno>
@@ -9,39 +8,30 @@
 #include <cstdlib>
 #include <iostream>
 #include <limits>
-#include <memory>
 #include <string>
-#include <vector>
 
 namespace stw {
 namespace {
 
-using SceneFactory = std::unique_ptr<IPlaytestScene> (*)();
-
-struct PlaytestDescriptor {
-  const char* name;
-  const char* description;
-  SceneFactory factory;
+struct GameCommandOptions {
+  int frameLimit = 0;
+  float durationSeconds = 0.0f;
+  bool noInput = false;
+  bool hiddenWindow = false;
+  bool autoStart = false;
+  std::string capturePath;
+  std::string remoteDirectory;
+  int streamFramesPerSecond = 10;
+  bool hq = true;
 };
-
-const std::vector<PlaytestDescriptor>& Registry() {
-  static const std::vector<PlaytestDescriptor> registry{
-      {"game", "real STW menu, map, player, weapons, and renderer", nullptr},
-      {"skinning", "T3-A procedural two-joint GPU skinning",
-       &CreateSkinningPlaytest},
-      {"animation", "T3-B imported glTF animation runtime binding",
-       &CreateAnimationPlaytest},
-  };
-  return registry;
-}
 
 void PrintUsage(std::ostream& output) {
   output << "Usage:\n"
          << "  stw --playtest list\n"
-         << "  stw --playtest <name> [--frames N] [--duration SECONDS]\n"
+         << "  stw --playtest game [--frames N] [--duration SECONDS]\n"
          << "      [--no-input] [--capture PATH] [--hidden]\n"
          << "      [--remote-dir PATH] [--stream-fps 1..30] [--auto-start]\n"
-         << "      [--quality hq|standard] (game only)\n";
+         << "      [--quality hq|standard]\n";
 }
 
 bool ParsePositiveInt(const char* text, int& value) {
@@ -70,13 +60,6 @@ bool ParsePositiveFloat(const char* text, float& value) {
   return true;
 }
 
-const PlaytestDescriptor* FindPlaytest(const std::string& name) {
-  for (const PlaytestDescriptor& descriptor : Registry()) {
-    if (name == descriptor.name) return &descriptor;
-  }
-  return nullptr;
-}
-
 }  // namespace
 
 bool IsPlaytestCommand(int argc, char** argv) noexcept {
@@ -94,23 +77,17 @@ int RunPlaytestCommand(int argc, char** argv) {
   const std::string requestedName = argv[2];
   if (requestedName == "list") {
     std::cout << "Available STW playtests:\n";
-    for (const PlaytestDescriptor& descriptor : Registry()) {
-      std::cout << "  " << descriptor.name << " - "
-                << descriptor.description << '\n';
-    }
+    std::cout << "  game - canonical native STW GameRuntime\n";
     return 0;
   }
 
-  const PlaytestDescriptor* descriptor = FindPlaytest(requestedName);
-  if (!descriptor) {
+  if (requestedName != "game") {
     std::cerr << "Unknown STW playtest: " << requestedName << "\n";
     PrintUsage(std::cerr);
     return 64;
   }
 
-  PlaytestOptions options;
-  options.name = descriptor->name;
-  bool qualitySpecified = false;
+  GameCommandOptions options;
   for (int argument = 3; argument < argc; ++argument) {
     const std::string flag = argv[argument] ? argv[argument] : "";
     auto requireValue = [&](const char* option) -> const char* {
@@ -158,7 +135,6 @@ int RunPlaytestCommand(int argc, char** argv) {
     } else if (flag == "--auto-start") {
       options.autoStart = true;
     } else if (flag == "--quality") {
-      qualitySpecified = true;
       const char* value = requireValue("--quality");
       if (!value) return 64;
       if (std::strcmp(value, "hq") == 0) {
@@ -176,26 +152,18 @@ int RunPlaytestCommand(int argc, char** argv) {
     }
   }
 
-  if (qualitySpecified && requestedName != "game") {
-    std::cerr << "--quality is supported only by --playtest game\n";
-    return 64;
-  }
-
-  if (requestedName == "game") {
-    GameRuntimeOptions gameOptions;
-    gameOptions.frameLimit = options.frameLimit;
-    gameOptions.durationSeconds = options.durationSeconds;
-    gameOptions.noInput = options.noInput;
-    gameOptions.hiddenWindow = options.hiddenWindow;
-    gameOptions.autoStart = options.autoStart;
-    gameOptions.capturePath = options.capturePath;
-    gameOptions.remoteDirectory = options.remoteDirectory;
-    gameOptions.streamFramesPerSecond = options.streamFramesPerSecond;
-    gameOptions.visualQuality = options.hq ? GameVisualQuality::HQ
-                                           : GameVisualQuality::Standard;
-    return RunGameRuntime(gameOptions);
-  }
-  return RunPlaytestRuntime(options, descriptor->factory());
+  GameRuntimeOptions gameOptions;
+  gameOptions.frameLimit = options.frameLimit;
+  gameOptions.durationSeconds = options.durationSeconds;
+  gameOptions.noInput = options.noInput;
+  gameOptions.hiddenWindow = options.hiddenWindow;
+  gameOptions.autoStart = options.autoStart;
+  gameOptions.capturePath = options.capturePath;
+  gameOptions.remoteDirectory = options.remoteDirectory;
+  gameOptions.streamFramesPerSecond = options.streamFramesPerSecond;
+  gameOptions.visualQuality = options.hq ? GameVisualQuality::HQ
+                                         : GameVisualQuality::Standard;
+  return RunGameRuntime(gameOptions);
 }
 
 }  // namespace stw

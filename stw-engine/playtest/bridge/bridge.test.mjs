@@ -24,7 +24,8 @@ async function makeFakeStw(directory) {
     "if (remoteIndex < 0 || !args[remoteIndex + 1]) process.exit(64);",
     "const directory = args[remoteIndex + 1];",
     "const testName = args[args.indexOf('--playtest') + 1];",
-    "let state = testName === 'game' ? 'MENU' : 'PLAYING';",
+    "if (testName !== 'game') process.exit(64);",
+    "let state = 'MENU';",
     "let commandSequence = 0; let inputSequence = 0;",
     "let lastCommand = ''; let lastInput = '';",
     "async function publish() {",
@@ -32,7 +33,7 @@ async function makeFakeStw(directory) {
     "    playtest: testName, runtime: 'fake-test-only', state, scene: state === 'MENU' ? 'main-menu' : 'training-map',",
     "    fps: 60, frameTimeMs: 16.7, weapon: 'M16', lastCommand, lastInput,",
     "    player: { health: 100, maxHealth: 100, alive: true, deaths: 0 }, botsAlive: 3, botsTotal: 3,",
-    "    tokenVisible: Boolean(process.env.STW_PLAYTEST_DEBUG_TOKEN || process.env.STW_PLAYTEST_TOKEN)",
+    "    tokenVisible: Boolean(process.env.STW_PLAYTEST_DEBUG_TOKEN)",
     "  }));",
     "}",
     "await publish(); await writeFile(path.join(directory, 'frame.png'), 'FRAME-1');",
@@ -83,7 +84,7 @@ async function startBridge() {
     webDirectory: path.resolve(bridgeDirectory, "../web"),
   });
   const address = await bridge.listen();
-  baseUrl = `http://127.0.0.1:${address.port}/stw-playtest`;
+  baseUrl = `http://127.0.0.1:${address.port}${ROUTE_PREFIX}`;
 }
 
 async function post(pathname, body, headers = {}) {
@@ -126,6 +127,17 @@ test("configuration defaults to game and fails clearly without binary or display
     STW_PLAYTEST_DISPLAY: ":123",
     STW_PLAYTEST_DEBUG_TOKEN: "short",
   }), /at least 16 bytes/);
+  assert.throws(() => loadBridgeConfig({
+    STW_PLAYTEST_BINARY: "/tmp/stw",
+    STW_PLAYTEST_DISPLAY: ":123",
+    STW_PLAYTEST_SCENE: "animation",
+  }), /must be game/);
+  const legacyTokenConfig = loadBridgeConfig({
+    STW_PLAYTEST_BINARY: "/tmp/stw",
+    STW_PLAYTEST_DISPLAY: ":123",
+    STW_PLAYTEST_TOKEN: "legacy-token-must-not-enable-debug",
+  });
+  assert.equal(legacyTokenConfig.debugToken, "");
 });
 
 test("default page and real-game connect require no token", async () => {
@@ -136,6 +148,11 @@ test("default page and real-game connect require no token", async () => {
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type"), /^text\/javascript/);
   assert.match(await response.text(), /class MobilePointerInput/);
+  response = await fetch(`${baseUrl}/app.js`);
+  assert.equal(response.status, 200);
+  const applicationSource = await response.text();
+  assert.match(applicationSource, /\/stw-hq\/api/);
+  assert.doesNotMatch(applicationSource, /\/stw-playtest\/api/);
   response = await post("/connect", {});
   assert.equal(response.status, 202);
   const engine = await waitForEngine();
@@ -181,22 +198,29 @@ test("public game input and action accept only fixed typed messages", async () =
 });
 
 test("technical debug mutation stays bearer-token protected", async () => {
-  let response = await post("/debug/restart", { test: "animation" });
+  let response = await post("/debug/restart", {});
   assert.equal(response.status, 401);
-  response = await post("/debug/restart", { test: "animation" }, {
+  response = await post("/debug/restart", {}, {
     Authorization: "Bearer wrong-token-value",
   });
   assert.equal(response.status, 401);
   response = await post("/debug/restart", { test: "animation" }, {
     Authorization: `Bearer ${debugToken}`,
   });
+  assert.equal(response.status, 400);
+  response = await post("/debug/restart", {}, {
+    Authorization: `Bearer ${debugToken}`,
+  });
   assert.equal(response.status, 202);
-  assert.equal(bridge.supervisor.test, "animation");
+  assert.equal(bridge.supervisor.test, "game");
 
   response = await post("/debug/command", { command: "exec" }, {
     Authorization: `Bearer ${debugToken}`,
   });
   assert.equal(response.status, 400);
+
+  response = await fetch(`${baseUrl}/debug/`);
+  assert.equal(response.status, 404);
 });
 
 test("frame endpoint serves only newest native frame and supports ETags", async () => {

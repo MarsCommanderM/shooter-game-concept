@@ -4,7 +4,7 @@ import {
   REMOTE_LOOK_MOUSE_COUNTS_PER_UNIT,
 } from "./mobile-input.mjs";
 
-const apiRoot = "/stw-playtest/api";
+const apiRoot = "/stw-hq/api";
 const game = document.querySelector("#game");
 const frame = document.querySelector("#frame");
 const connecting = document.querySelector("#connecting");

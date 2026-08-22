@@ -13,16 +13,14 @@ const bridgeDirectory = path.dirname(fileURLToPath(import.meta.url));
 const defaultEngineDirectory = path.resolve(bridgeDirectory, "../..");
 const defaultWebDirectory = path.resolve(bridgeDirectory, "../web");
 
-export const ROUTE_PREFIX = "/stw-playtest";
-export const KNOWN_TESTS = Object.freeze(["game", "skinning", "animation"]);
+export const ROUTE_PREFIX = "/stw-hq";
 export const DEBUG_COMMANDS = Object.freeze([
-  "play", "pause", "reset", "bind", "slow", "stop",
+  "play", "pause", "reset", "stop",
 ]);
 export const GAME_ACTIONS = Object.freeze([
   "start", "pause", "reset", "weapon", "reload",
 ]);
 
-const knownTests = new Set(KNOWN_TESTS);
 const debugCommands = new Set(DEBUG_COMMANDS);
 const gameActions = new Set(GAME_ACTIONS);
 const childEnvironmentNames = Object.freeze([
@@ -65,11 +63,10 @@ export function loadBridgeConfig(environment = process.env) {
     throw new Error("STW_PLAYTEST_BINARY must be an absolute path");
   }
   const initialScene = environment.STW_PLAYTEST_SCENE ?? "game";
-  if (!knownTests.has(initialScene)) {
-    throw new Error("STW_PLAYTEST_SCENE must be game, skinning, or animation");
+  if (initialScene !== "game") {
+    throw new Error("STW_PLAYTEST_SCENE must be game");
   }
-  const debugToken = environment.STW_PLAYTEST_DEBUG_TOKEN ??
-    environment.STW_PLAYTEST_TOKEN ?? "";
+  const debugToken = environment.STW_PLAYTEST_DEBUG_TOKEN ?? "";
   if (debugToken && Buffer.byteLength(debugToken, "utf8") < 16) {
     throw new Error("STW_PLAYTEST_DEBUG_TOKEN must contain at least 16 bytes");
   }
@@ -162,15 +159,14 @@ function sendJson(response, status, payload) {
 }
 
 function authorizeDebug(request, response, config) {
-  if (!config.debugToken && !config.token) {
+  if (!config.debugToken) {
     sendJson(response, 404, { error: "technical debug API is disabled" });
     return false;
   }
-  const configuredToken = config.debugToken || config.token;
   const authorization = request.headers.authorization ?? "";
   const prefix = "Bearer ";
   if (!authorization.startsWith(prefix) ||
-      !tokenMatches(configuredToken, authorization.slice(prefix.length))) {
+      !tokenMatches(config.debugToken, authorization.slice(prefix.length))) {
     response.setHeader("WWW-Authenticate", "Bearer realm=\"stw-playtest-debug\"");
     sendJson(response, 401, { error: "invalid debug token" });
     return false;
@@ -213,23 +209,9 @@ function hasOnlyKeys(object, expectedKeys) {
     actual.every((key, index) => key === expected[index]);
 }
 
-function validateTestBody(body) {
-  if (!hasOnlyKeys(body, ["test"]) || typeof body.test !== "string" ||
-      !knownTests.has(body.test)) {
-    throw new HttpError(400, "body must contain only a known test name");
-  }
-  return body.test;
-}
-
 function validateDebugControl(body) {
   if (hasOnlyKeys(body, ["command"]) && debugCommands.has(body.command)) {
     return body.command;
-  }
-  if (hasOnlyKeys(body, ["command", "values"]) && body.command === "camera" &&
-      Array.isArray(body.values) && body.values.length === 4 &&
-      body.values.every((value) => typeof value === "number" &&
-        Number.isFinite(value) && value >= -1 && value <= 1)) {
-    return `camera ${body.values.join(" ")}`;
   }
   throw new HttpError(400, "debug command is not allowlisted or has invalid fields");
 }
@@ -292,11 +274,11 @@ export class PlaytestSupervisor {
     return next;
   }
 
-  start(test) { return this._exclusive(() => this._start(test)); }
-  restart(test) {
+  start() { return this._exclusive(() => this._start()); }
+  restart() {
     return this._exclusive(async () => {
       await this._stop({ cleanupSession: true });
-      return this._start(test);
+      return this._start();
     });
   }
   connectGame() {
@@ -305,14 +287,13 @@ export class PlaytestSupervisor {
         return { reused: true, ...this.snapshot() };
       }
       if (this.child) await this._stop({ cleanupSession: true });
-      return { reused: false, ...await this._start("game") };
+      return { reused: false, ...await this._start() };
     });
   }
   stop(options = {}) { return this._exclusive(() => this._stop(options)); }
   shutdown() { return this._exclusive(() => this._stop({ cleanupSession: true })); }
 
-  async _start(test) {
-    if (!knownTests.has(test)) throw new HttpError(400, "unknown playtest");
+  async _start() {
     if (this.child && this.child.exitCode === null && this.child.signalCode === null) {
       throw new HttpError(409, "a playtest process is already active");
     }
@@ -325,10 +306,10 @@ export class PlaytestSupervisor {
     this.exitCode = null;
     this.expectedStop = false;
     this.state = "starting";
-    this.test = test;
+    this.test = "game";
 
     const argumentsList = [
-      "--playtest", test,
+      "--playtest", "game",
       "--remote-dir", this.sessionDirectory,
       "--hidden",
       "--stream-fps", String(this.config.streamFramesPerSecond),
@@ -523,10 +504,6 @@ async function serveStatic(response, pathname, config) {
     [`${config.routePrefix}/app.js`, ["app.js", "text/javascript; charset=utf-8"]],
     [`${config.routePrefix}/mobile-input.mjs`, ["mobile-input.mjs", "text/javascript; charset=utf-8"]],
     [`${config.routePrefix}/style.css`, ["style.css", "text/css; charset=utf-8"]],
-    [`${config.routePrefix}/debug/`, ["debug.html", "text/html; charset=utf-8"]],
-    [`${config.routePrefix}/debug/index.html`, ["debug.html", "text/html; charset=utf-8"]],
-    [`${config.routePrefix}/debug/debug.js`, ["debug.js", "text/javascript; charset=utf-8"]],
-    [`${config.routePrefix}/debug/debug.css`, ["debug.css", "text/css; charset=utf-8"]],
   ]);
   const entry = files.get(pathname);
   if (!entry) return false;
@@ -559,20 +536,24 @@ function createRequestHandler(config, supervisor) {
         if (!authorizeDebug(request, response, config)) return;
         if (request.method === "POST" &&
             url.pathname === `${config.routePrefix}/api/debug/start`) {
-          const test = validateTestBody(await readJsonBody(request));
-          if (supervisor.isRunning() && supervisor.test === test) {
+          const body = await readJsonBody(request);
+          if (!hasOnlyKeys(body, [])) {
+            throw new HttpError(400, "debug start body must be empty");
+          }
+          if (supervisor.isRunning()) {
             sendJson(response, 200, { reused: true, ...supervisor.snapshot() });
-          } else if (supervisor.isRunning()) {
-            sendJson(response, 409, { error: "another runtime is active; use restart" });
           } else {
-            sendJson(response, 202, await supervisor.start(test));
+            sendJson(response, 202, await supervisor.start());
           }
           return;
         }
         if (request.method === "POST" &&
             url.pathname === `${config.routePrefix}/api/debug/restart`) {
-          const test = validateTestBody(await readJsonBody(request));
-          sendJson(response, 202, await supervisor.restart(test));
+          const body = await readJsonBody(request);
+          if (!hasOnlyKeys(body, [])) {
+            throw new HttpError(400, "debug restart body must be empty");
+          }
+          sendJson(response, 202, await supervisor.restart());
           return;
         }
         if (request.method === "POST" &&
