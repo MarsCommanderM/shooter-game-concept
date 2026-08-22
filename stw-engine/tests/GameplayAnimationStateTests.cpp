@@ -13,6 +13,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -40,6 +41,28 @@ bool MatrixNear(const glm::mat4& left,
     }
   }
   return true;
+}
+
+glm::vec3 SkinVertex(const StwMesh& mesh,
+                     std::size_t vertexIndex,
+                     const SkinningPalette& palette) {
+  const glm::vec4 source(mesh.pos[vertexIndex * 3u],
+                         mesh.pos[vertexIndex * 3u + 1u],
+                         mesh.pos[vertexIndex * 3u + 2u], 1.0f);
+  const SkinInfluence4& influence = mesh.skinInfluences[vertexIndex];
+  const float weights[4] = {
+      influence.weights.x,
+      influence.weights.y,
+      influence.weights.z,
+      influence.weights.w,
+  };
+  glm::vec4 result(0.0f);
+  for (std::size_t component = 0; component < 4u; ++component) {
+    if (weights[component] <= 0.0f) continue;
+    result += weights[component] *
+              (palette.matrix(influence.joints[component]) * source);
+  }
+  return glm::vec3(result);
 }
 
 StwMesh MakeTriangle(bool skinned) {
@@ -337,6 +360,47 @@ void TestImportedGameplayFixture() {
           "imported fixture did not drive the production controller");
 }
 
+void TestImportedGameplayFixtureDeformsGeometry() {
+  auto asset = std::make_shared<StwModel>();
+  std::string error;
+  Require(LoadGLTF(STW_TEST_GAMEPLAY_ASSET, *asset, &error), error);
+  RuntimeModelInstance instance = MakeInstance(asset);
+  CharacterAnimationController controller = MakeController(instance);
+  Require(controller.Update({true, false}, instance, &error), error);
+  Require(instance.SetAnimationTime(1.0f, &error), error);
+
+  const StwMesh& mesh = asset->meshes[instance.meshIndex()];
+  Require(!mesh.skinInfluences.empty() &&
+              mesh.skinInfluences.size() == mesh.pos.size() / 3u &&
+              instance.palette(),
+          "gameplay fixture has no renderable skin influence data");
+  std::vector<glm::vec3> moveVertices;
+  moveVertices.reserve(mesh.skinInfluences.size());
+  bool moveDeformsMesh = false;
+  for (std::size_t vertex = 0; vertex < mesh.skinInfluences.size(); ++vertex) {
+    const glm::vec3 source(mesh.pos[vertex * 3u], mesh.pos[vertex * 3u + 1u],
+                           mesh.pos[vertex * 3u + 2u]);
+    const glm::vec3 deformed = SkinVertex(mesh, vertex, *instance.palette());
+    moveVertices.push_back(deformed);
+    if (glm::length(deformed - source) > 0.05f) moveDeformsMesh = true;
+  }
+  Require(moveDeformsMesh,
+          "imported Move palette does not visibly deform fixture geometry");
+
+  Require(controller.Update({true, true}, instance, &error), error);
+  Require(instance.SetAnimationTime(0.12f, &error), error);
+  bool fireDiffersFromMove = false;
+  for (std::size_t vertex = 0; vertex < mesh.skinInfluences.size(); ++vertex) {
+    const glm::vec3 deformed = SkinVertex(mesh, vertex, *instance.palette());
+    if (glm::length(deformed - moveVertices[vertex]) > 0.05f) {
+      fireDiffersFromMove = true;
+      break;
+    }
+  }
+  Require(fireDiffersFromMove,
+          "imported Fire palette is not visually distinct from Move");
+}
+
 }  // namespace
 }  // namespace stw
 
@@ -349,6 +413,7 @@ int main() {
     stw::TestTransactionalTransitionFailure();
     stw::TestStaticRegression();
     stw::TestImportedGameplayFixture();
+    stw::TestImportedGameplayFixtureDeformsGeometry();
   } catch (const std::exception& exception) {
     std::cerr << "GameplayAnimationStateTests FAILED: " << exception.what()
               << '\n';

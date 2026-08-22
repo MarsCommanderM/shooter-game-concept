@@ -152,12 +152,26 @@ bool ConfigureRuntimeAcceptanceInstances(
     return false;
   }
 
-  const std::array<float, 4> positions{-6.0f, -2.0f, 2.0f, 6.0f};
+  struct AcceptancePlacement {
+    glm::vec3 position;
+    float uniformScale;
+  };
+  // Keep the gameplay-driven instance centered in the initial FPS view. The
+  // other instances remain in the same world and continue to exercise bind
+  // pose and independent playback, but no longer compete for the small mobile
+  // viewport. Uniform model scale preserves the current skin direction-matrix
+  // contract in the renderer.
+  const std::array<AcceptancePlacement, 4> placements{{
+      {glm::vec3(-6.5f, 0.0f, -12.0f), 1.6f},
+      {glm::vec3(0.0f, 0.3f, -8.0f), 2.0f},
+      {glm::vec3(5.5f, 0.0f, -12.0f), 1.6f},
+      {glm::vec3(9.0f, 0.0f, -16.0f), 1.6f},
+  }};
   for (std::size_t index = 0; index < candidate.size(); ++index) {
     const glm::mat4 transform =
-        glm::translate(glm::mat4(1.0f),
-                       glm::vec3(positions[index], 0.0f, -10.0f)) *
-        glm::scale(glm::mat4(1.0f), glm::vec3(1.45f));
+        glm::translate(glm::mat4(1.0f), placements[index].position) *
+        glm::scale(glm::mat4(1.0f),
+                   glm::vec3(placements[index].uniformScale));
     if (!candidate[index].SetTransform(transform, error)) return false;
   }
 
@@ -521,6 +535,21 @@ void ConfigureNormalMap(IRenderer& renderer) {
   renderer.SetNormalTexture(renderer.UploadTextureRGBA(pixels.data(), size, size));
 }
 
+RenderObject MakeTrainingObject(std::uint32_t mesh,
+                                const StwMaterial& material,
+                                const glm::vec3& position,
+                                const glm::vec3& scale) {
+  RenderObject object;
+  object.mesh = mesh;
+  object.material = material;
+  const glm::mat4 transform =
+      glm::translate(glm::mat4(1.0f), position) *
+      glm::scale(glm::mat4(1.0f), scale);
+  std::memcpy(object.transform.data(), glm::value_ptr(transform),
+              sizeof(float) * 16u);
+  return object;
+}
+
 }  // namespace
 
 int RunGameRuntime(const GameRuntimeOptions& options) {
@@ -643,10 +672,10 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
   testObjects.push_back(normalMapObject);
 
   StwMaterial groundMaterial;
-  groundMaterial.base[0] = 0.05f;
-  groundMaterial.base[1] = 0.09f;
-  groundMaterial.base[2] = 0.05f;
-  groundMaterial.roughness = 0.95f;
+  groundMaterial.base[0] = 0.16f;
+  groundMaterial.base[1] = 0.22f;
+  groundMaterial.base[2] = 0.28f;
+  groundMaterial.roughness = 0.88f;
   groundMaterial.metallic = 0.0f;
   StwMaterial fallbackMaterial;
   fallbackMaterial.base[0] = 0.1f;
@@ -672,6 +701,51 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
   menuActionMaterial.base[2] = 0.08f;
   menuActionMaterial.metallic = 0.15f;
   menuActionMaterial.roughness = 0.35f;
+
+  StwMaterial rangeWallMaterial;
+  rangeWallMaterial.base[0] = 0.12f;
+  rangeWallMaterial.base[1] = 0.20f;
+  rangeWallMaterial.base[2] = 0.30f;
+  rangeWallMaterial.metallic = 0.05f;
+  rangeWallMaterial.roughness = 0.78f;
+  StwMaterial rangeAccentMaterial;
+  rangeAccentMaterial.base[0] = 0.04f;
+  rangeAccentMaterial.base[1] = 0.58f;
+  rangeAccentMaterial.base[2] = 0.86f;
+  rangeAccentMaterial.metallic = 0.12f;
+  rangeAccentMaterial.roughness = 0.38f;
+  StwMaterial characterPlatformMaterial;
+  characterPlatformMaterial.base[0] = 0.30f;
+  characterPlatformMaterial.base[1] = 0.34f;
+  characterPlatformMaterial.base[2] = 0.40f;
+  characterPlatformMaterial.metallic = 0.2f;
+  characterPlatformMaterial.roughness = 0.55f;
+
+  // Minimal training-range enclosure: it gives the FPS camera readable depth
+  // and contrast while staying on the existing cube/material renderer path.
+  std::vector<RenderObject> trainingEnvironment;
+  trainingEnvironment.reserve(7u);
+  trainingEnvironment.push_back(MakeTrainingObject(
+      cubeHandle, rangeWallMaterial, glm::vec3(0.0f, 2.5f, -25.0f),
+      glm::vec3(24.0f, 5.0f, 0.5f)));
+  trainingEnvironment.push_back(MakeTrainingObject(
+      cubeHandle, rangeWallMaterial, glm::vec3(-12.0f, 2.0f, -12.5f),
+      glm::vec3(0.5f, 4.0f, 25.0f)));
+  trainingEnvironment.push_back(MakeTrainingObject(
+      cubeHandle, rangeWallMaterial, glm::vec3(12.0f, 2.0f, -12.5f),
+      glm::vec3(0.5f, 4.0f, 25.0f)));
+  trainingEnvironment.push_back(MakeTrainingObject(
+      cubeHandle, rangeAccentMaterial, glm::vec3(-4.0f, 0.02f, -12.0f),
+      glm::vec3(0.12f, 0.04f, 24.0f)));
+  trainingEnvironment.push_back(MakeTrainingObject(
+      cubeHandle, rangeAccentMaterial, glm::vec3(4.0f, 0.02f, -12.0f),
+      glm::vec3(0.12f, 0.04f, 24.0f)));
+  trainingEnvironment.push_back(MakeTrainingObject(
+      cubeHandle, rangeAccentMaterial, glm::vec3(0.0f, 0.02f, -8.0f),
+      glm::vec3(8.0f, 0.04f, 0.12f)));
+  trainingEnvironment.push_back(MakeTrainingObject(
+      cubeHandle, characterPlatformMaterial, glm::vec3(0.0f, 0.15f, -8.0f),
+      glm::vec3(3.0f, 0.3f, 1.8f)));
 
   Camera camera;
   FpsController controller;
@@ -910,11 +984,27 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
       camera.pos = controller.eye();
       camera.yaw = controller.yaw;
       camera.pitch = controller.pitch;
+      // The imported acceptance character's visible faces point toward +Z.
+      // The former default light lit only their culled back side, leaving the
+      // real skinned draw almost black once IBL replaced fallback ambient.
+      light.dir[0] = -0.35f;
+      light.dir[1] = -0.75f;
+      light.dir[2] = -0.55f;
+      light.color[0] = 1.0f;
+      light.color[1] = 0.95f;
+      light.color[2] = 0.86f;
+      light.ambient[0] = 0.10f;
+      light.ambient[1] = 0.12f;
+      light.ambient[2] = 0.16f;
+      light.strength = 4.5f;
       renderer->SetViewProj(glm::value_ptr(camera.viewProj()));
       renderer->SetCameraPos(camera.pos.x, camera.pos.y, camera.pos.z);
       renderer->SetLight(light);
       const glm::mat4 identity(1.0f);
       renderer->Draw(groundHandle, groundMaterial, glm::value_ptr(identity));
+      for (const RenderObject& object : trainingEnvironment) {
+        renderer->Draw(object.mesh, object.material, object.transform.data());
+      }
 
       if (haveModel && model.loaded()) {
         std::string drawError;
