@@ -9,6 +9,7 @@
 #include "camera.h"
 #include "gltf.h"
 #include "renderer.h"
+#include "runtime/ModelInstance.hpp"
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
@@ -32,6 +33,10 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
+#ifndef STW_RUNTIME_ACCEPTANCE_ASSET
+#define STW_RUNTIME_ACCEPTANCE_ASSET "playtest/assets/imported_animation.gltf"
+#endif
 
 namespace stw {
 namespace {
@@ -60,6 +65,16 @@ struct RenderObject {
   std::array<float, 16> transform{};
 };
 
+struct RuntimeModelSet {
+  std::shared_ptr<const StwModel> asset;
+  std::vector<std::uint32_t> meshHandles;
+  std::vector<RuntimeModelInstance> instances;
+
+  bool loaded() const noexcept {
+    return asset && !meshHandles.empty() && !instances.empty();
+  }
+};
+
 const char* PhaseName(GamePhase phase) {
   switch (phase) {
     case GamePhase::Menu:
@@ -75,6 +90,130 @@ const char* PhaseName(GamePhase phase) {
 bool Fail(std::string* error, const std::string& message) {
   if (error) *error = message;
   return false;
+}
+
+bool LoadRuntimeModelSet(const std::string& path,
+                         IRenderer& renderer,
+                         RuntimeModelSet& out,
+                         std::string* error) {
+  if (error) error->clear();
+  auto candidateAsset = std::make_shared<StwModel>();
+  if (!LoadGLTF(path, *candidateAsset, error)) return false;
+
+  std::vector<RuntimeModelInstance> candidateInstances;
+  if (!RuntimeModelInstance::CreateDefaultSet(candidateAsset,
+                                               candidateInstances, error)) {
+    return false;
+  }
+
+  std::vector<std::uint32_t> candidateHandles;
+  candidateHandles.reserve(candidateAsset->meshes.size());
+  for (const StwMesh& mesh : candidateAsset->meshes) {
+    std::uint32_t handle = kInvalidMeshHandle;
+    if (!renderer.UploadMeshChecked(mesh, handle, error)) return false;
+    candidateHandles.push_back(handle);
+  }
+
+  RuntimeModelSet candidate;
+  candidate.asset = std::move(candidateAsset);
+  candidate.meshHandles = std::move(candidateHandles);
+  candidate.instances = std::move(candidateInstances);
+  out = std::move(candidate);
+  return true;
+}
+
+bool ConfigureRuntimeAcceptanceInstances(RuntimeModelSet& model,
+                                         std::string* error) {
+  if (error) error->clear();
+  if (!model.asset || model.asset->skinnedMeshes.empty()) {
+    return Fail(error,
+                "runtime acceptance asset has no skinned mesh binding");
+  }
+
+  std::vector<RuntimeModelInstance> candidate;
+  candidate.reserve(4u);
+  for (std::size_t index = 0; index < 4u; ++index) {
+    RuntimeModelInstance instance;
+    if (!RuntimeModelInstance::CreateSkinned(model.asset, 0u, instance,
+                                             error)) {
+      return false;
+    }
+    candidate.push_back(std::move(instance));
+  }
+
+  if (!candidate[0].SelectBindPose(error) ||
+      !candidate[2].SetAnimationTime(0.3f, error) ||
+      !candidate[3].SetAnimationTime(1.7f, error)) {
+    return false;
+  }
+
+  const std::array<float, 4> positions{-6.0f, -2.0f, 2.0f, 6.0f};
+  for (std::size_t index = 0; index < candidate.size(); ++index) {
+    const glm::mat4 transform =
+        glm::translate(glm::mat4(1.0f),
+                       glm::vec3(positions[index], 0.0f, -10.0f)) *
+        glm::scale(glm::mat4(1.0f), glm::vec3(1.45f));
+    if (!candidate[index].SetTransform(transform, error)) return false;
+  }
+
+  model.instances = std::move(candidate);
+  return true;
+}
+
+bool UpdateRuntimeModels(RuntimeModelSet& model,
+                         float deltaSeconds,
+                         std::string* error) {
+  if (error) error->clear();
+  bool succeeded = true;
+  std::string firstError;
+  for (RuntimeModelInstance& instance : model.instances) {
+    std::string instanceError;
+    if (!instance.Update(deltaSeconds, &instanceError)) {
+      if (firstError.empty()) {
+        firstError = "model node " +
+            std::to_string(instance.sourceNodeIndex().value_or(0u)) +
+            ": " + instanceError;
+      }
+      succeeded = false;
+    }
+  }
+  if (!succeeded && error) *error = firstError;
+  return succeeded;
+}
+
+bool ResetRuntimeAnimations(RuntimeModelSet& model, std::string* error) {
+  if (error) error->clear();
+  for (RuntimeModelInstance& instance : model.instances) {
+    if (!instance.selectedAnimationIndex()) continue;
+    if (!instance.SetAnimationTime(0.0f, error) ||
+        !instance.SetPaused(false, error)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool SubmitRuntimeModels(const RuntimeModelSet& model,
+                         IRenderer& renderer,
+                         const StwMaterial& fallbackMaterial,
+                         std::string* error) {
+  if (error) error->clear();
+  bool succeeded = true;
+  std::string firstError;
+  for (const RuntimeModelInstance& instance : model.instances) {
+    std::string instanceError;
+    if (!instance.Submit(renderer, model.meshHandles, fallbackMaterial,
+                         &instanceError)) {
+      if (firstError.empty()) {
+        firstError = "model node " +
+            std::to_string(instance.sourceNodeIndex().value_or(0u)) +
+            ": " + instanceError;
+      }
+      succeeded = false;
+    }
+  }
+  if (!succeeded && error) *error = firstError;
+  return succeeded;
 }
 
 std::string JsonEscape(const std::string& input) {
@@ -400,8 +539,24 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
     return 1;
   }
 
-  StwModel model;
-  const bool haveModel = LoadGLTF(options.assetPath.c_str(), model);
+  RuntimeModelSet model;
+  std::string modelLoadError;
+  const bool haveModel =
+      LoadRuntimeModelSet(options.assetPath, *renderer, model, &modelLoadError);
+  if (!haveModel) {
+    std::cerr << "GAME MODEL WARNING: " << modelLoadError << '\n';
+  }
+
+  RuntimeModelSet animationAcceptanceModel;
+  std::string acceptanceLoadError;
+  const bool haveAnimationAcceptance =
+      LoadRuntimeModelSet(STW_RUNTIME_ACCEPTANCE_ASSET, *renderer,
+                          animationAcceptanceModel, &acceptanceLoadError) &&
+      ConfigureRuntimeAcceptanceInstances(animationAcceptanceModel,
+                                          &acceptanceLoadError);
+  if (!haveAnimationAcceptance) {
+    std::cerr << "GAME ANIMATION WARNING: " << acceptanceLoadError << '\n';
+  }
   ConfigureIbl(*renderer);
 
   StwMesh cube = MakeCubeMesh();
@@ -456,13 +611,6 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
               glm::value_ptr(normalMapTransform), sizeof(float) * 16u);
   testObjects.push_back(normalMapObject);
 
-  std::vector<std::uint32_t> modelHandles;
-  if (haveModel) {
-    for (const StwMesh& mesh : model.meshes) {
-      modelHandles.push_back(renderer->UploadMesh(mesh));
-    }
-  }
-
   StwMaterial groundMaterial;
   groundMaterial.base[0] = 0.05f;
   groundMaterial.base[1] = 0.09f;
@@ -506,7 +654,9 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
   bool running = true;
   bool failed = false;
   bool cliCaptureComplete = options.capturePath.empty();
-  std::string lastError;
+  std::string lastError = !modelLoadError.empty()
+      ? modelLoadError
+      : acceptanceLoadError;
   std::uint64_t frameNumber = 0;
   double simulatedSeconds = 0.0;
   double remoteCaptureAccumulator = 1.0;
@@ -597,6 +747,17 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
       controller = FpsController{};
       weapon = WeaponSystem{};
       targetWorld = TargetWorld(5);
+      std::string resetError;
+      if (haveModel && !ResetRuntimeAnimations(model, &resetError)) {
+        lastError = resetError;
+        if (options.noInput) failed = true;
+      }
+      resetError.clear();
+      if (haveAnimationAcceptance &&
+          !ResetRuntimeAnimations(animationAcceptanceModel, &resetError)) {
+        lastError = resetError;
+        if (options.noInput) failed = true;
+      }
     }
     if (cycleWeaponRequested) weapon.cycle();
 
@@ -630,6 +791,20 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
         }
       }
       targetWorld.update(deltaSeconds, events);
+
+      std::string animationError;
+      if (haveModel &&
+          !UpdateRuntimeModels(model, deltaSeconds, &animationError)) {
+        lastError = animationError;
+        if (options.noInput) failed = true;
+      }
+      animationError.clear();
+      if (haveAnimationAcceptance &&
+          !UpdateRuntimeModels(animationAcceptanceModel, deltaSeconds,
+                               &animationError)) {
+        lastError = animationError;
+        if (options.noInput) failed = true;
+      }
     }
     frameInput.lookDx = 0.0f;
     frameInput.lookDy = 0.0f;
@@ -667,22 +842,25 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
       const glm::mat4 identity(1.0f);
       renderer->Draw(groundHandle, groundMaterial, glm::value_ptr(identity));
 
-      if (haveModel && !modelHandles.empty()) {
-        for (std::size_t index = 0; index < modelHandles.size(); ++index) {
-          const int materialIndex = index < model.meshMat.size()
-              ? model.meshMat[index]
-              : -1;
-          const StwMaterial& material =
-              materialIndex >= 0 &&
-                      static_cast<std::size_t>(materialIndex) < model.mats.size()
-                  ? model.mats[static_cast<std::size_t>(materialIndex)]
-                  : fallbackMaterial;
-          renderer->Draw(modelHandles[index], material,
-                         glm::value_ptr(identity));
+      if (haveModel && model.loaded()) {
+        std::string drawError;
+        if (!SubmitRuntimeModels(model, *renderer, fallbackMaterial,
+                                 &drawError)) {
+          lastError = drawError;
+          if (options.noInput) failed = true;
         }
       } else {
         for (const RenderObject& object : testObjects) {
           renderer->Draw(object.mesh, object.material, object.transform.data());
+        }
+      }
+
+      if (haveAnimationAcceptance && animationAcceptanceModel.loaded()) {
+        std::string drawError;
+        if (!SubmitRuntimeModels(animationAcceptanceModel, *renderer,
+                                 fallbackMaterial, &drawError)) {
+          lastError = drawError;
+          if (options.noInput) failed = true;
         }
       }
 

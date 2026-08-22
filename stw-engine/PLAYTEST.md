@@ -10,6 +10,13 @@ runtime owns the menu state, training map, `FpsController`, `WeaponSystem`,
 `TargetWorld`, glTF loading, and `GLRenderer`. The bridge starts the runtime at
 its native menu and reconnects to it after browser refresh.
 
+The training map also exercises the T4-A production model path. It contains a
+static imported model plus four instances of the same imported skinned model:
+one bind pose, one normally animated instance, and two animated instances with
+independent starting times. All five go through `RuntimeModelInstance` and the
+normal `Draw`/`DrawWithSkinning` submission; no playtest-only animation path is
+used.
+
 ## Native modes
 
 ```sh
@@ -91,8 +98,8 @@ pkg-config --modversion sdl2
 
 cd /opt/wirrwar
 git fetch origin
-git switch codex/stw-playtest-v2-real-game-boot
-git pull --ff-only origin codex/stw-playtest-v2-real-game-boot
+git switch codex/stw-8a-t4a
+git pull --ff-only origin codex/stw-8a-t4a
 
 id stw-playtest >/dev/null 2>&1 || sudo useradd --system \
   --home-dir /var/lib/stw-playtest --create-home \
