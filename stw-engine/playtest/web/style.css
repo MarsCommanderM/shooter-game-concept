@@ -17,10 +17,11 @@ button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent
   overflow: hidden;
   touch-action: none;
   user-select: none;
+  -webkit-user-select: none;
   background: radial-gradient(circle at 50% 42%, #102532, #020609 70%);
 }
 
-#frame { width: 100%; height: 100%; display: block; object-fit: contain; opacity: 0; transition: opacity 180ms ease; }
+#frame { width: 100%; height: 100%; display: block; object-fit: contain; opacity: 0; transition: opacity 180ms ease; pointer-events: none; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; }
 #frame.ready { opacity: 1; }
 .connecting { position: absolute; inset: 0; display: grid; place-content: center; gap: 8px; text-align: center; color: #8eabb9; letter-spacing: .08em; pointer-events: none; }
 .connecting strong { color: var(--cyan); font-size: clamp(1.4rem, 7vw, 4rem); letter-spacing: .18em; }
@@ -65,7 +66,7 @@ button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent
 .move-pad { left: max(18px, env(safe-area-inset-left)); bottom: max(24px, env(safe-area-inset-bottom)); }
 .pad span { position: absolute; inset: 0; display: grid; place-items: center; color: rgba(220, 247, 255, .36); font-size: 9px; font-weight: 900; letter-spacing: .17em; pointer-events: none; }
 .pad i { position: absolute; left: 34%; top: 34%; width: 32%; aspect-ratio: 1; border-radius: 50%; background: rgba(82, 217, 255, .42); box-shadow: 0 0 20px rgba(82, 217, 255, .28); pointer-events: none; }
-.look-pad { position: absolute; z-index: 4; top: 0; right: 0; width: 52%; height: 100%; touch-action: none; }
+.look-pad { position: absolute; z-index: 4; top: 0; right: 0; width: 58%; height: 100%; touch-action: none; overscroll-behavior: contain; user-select: none; -webkit-user-select: none; }
 
 .actions { position: absolute; z-index: 11; right: max(16px, env(safe-area-inset-right)); bottom: max(20px, env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(2, minmax(58px, 76px)); gap: 8px; }
 .actions button { min-height: 43px; padding: 5px; border: 1px solid rgba(190, 225, 239, .3); border-radius: 999px; background: rgba(4, 17, 24, .52); backdrop-filter: blur(4px); font-size: 10px; font-weight: 900; letter-spacing: .08em; touch-action: none; }

@@ -1,3 +1,9 @@
+import {
+  MobilePointerInput,
+  POINTER_ROLE,
+  REMOTE_LOOK_MOUSE_COUNTS_PER_UNIT,
+} from "./mobile-input.mjs";
+
 const apiRoot = "/stw-playtest/api";
 const game = document.querySelector("#game");
 const frame = document.querySelector("#frame");
@@ -16,7 +22,9 @@ const input = {
   sprint: false,
 };
 const keyboard = new Set();
-const touchMovement = { strafe: 0, forward: 0 };
+const mobileInput = new MobilePointerInput();
+const capturedPointers = new Map();
+let mouseFire = false;
 let connected = false;
 let engineState = "";
 let frameEtag = "";
@@ -174,17 +182,22 @@ async function sendAction(action) {
 }
 
 function updateKeyboardInput() {
-  input.forward = Math.max(-1, Math.min(1, touchMovement.forward +
+  const movement = mobileInput.movement;
+  input.forward = Math.max(-1, Math.min(1, movement.forward +
     (keyboard.has("KeyW") ? 1 : 0) - (keyboard.has("KeyS") ? 1 : 0)));
-  input.strafe = Math.max(-1, Math.min(1, touchMovement.strafe +
+  input.strafe = Math.max(-1, Math.min(1, movement.strafe +
     (keyboard.has("KeyD") ? 1 : 0) - (keyboard.has("KeyA") ? 1 : 0)));
   input.sprint = keyboard.has("ShiftLeft") || keyboard.has("ShiftRight") ||
-    document.querySelector("#sprint").classList.contains("held");
+    mobileInput.isHeld("sprint");
+  input.fire = mouseFire || mobileInput.isHeld("fire");
 }
 
 async function sendInput() {
   if (!connected || inputInFlight) return;
   updateKeyboardInput();
+  const look = mobileInput.consumeLook();
+  input.lookX = look.x;
+  input.lookY = look.y;
   const payload = { ...input };
   input.lookX = 0;
   input.lookY = 0;
@@ -198,87 +211,132 @@ async function sendInput() {
   }
 }
 
-function bindStick(pad, knob) {
-  let pointerId = null;
-  const update = (event) => {
-    const bounds = pad.getBoundingClientRect();
-    const radius = bounds.width * 0.38;
-    let x = event.clientX - bounds.left - bounds.width / 2;
-    let y = event.clientY - bounds.top - bounds.height / 2;
-    const length = Math.hypot(x, y);
-    if (length > radius) {
-      x = x / length * radius;
-      y = y / length * radius;
+function viewportShortSide() {
+  const width = window.visualViewport?.width ?? window.innerWidth;
+  const height = window.visualViewport?.height ?? window.innerHeight;
+  return Math.min(width, height);
+}
+
+function capturePointer(element, pointerId) {
+  try {
+    element.setPointerCapture?.(pointerId);
+    capturedPointers.set(pointerId, element);
+  } catch {
+    // Pointer Events still work while the finger remains over the element.
+  }
+}
+
+function releaseCapture(pointerId) {
+  const element = capturedPointers.get(pointerId);
+  capturedPointers.delete(pointerId);
+  if (!element) return;
+  try {
+    if (!element.hasPointerCapture || element.hasPointerCapture(pointerId)) {
+      element.releasePointerCapture?.(pointerId);
     }
-    knob.style.transform = `translate(${x}px, ${y}px)`;
-    touchMovement.strafe = x / radius;
-    touchMovement.forward = -y / radius;
+  } catch {
+    // Pointer capture may already have been released by the browser.
+  }
+}
+
+function bindStick(pad, knob) {
+  const update = (event) => {
+    const movement = mobileInput.updateMove(
+      event.pointerId,
+      event.clientX,
+      event.clientY,
+      pad.getBoundingClientRect(),
+    );
+    if (!movement) return;
+    knob.style.transform = `translate(${movement.knobX}px, ${movement.knobY}px)`;
   };
   const release = (event) => {
-    if (event.pointerId !== pointerId) return;
-    pointerId = null;
+    if (mobileInput.roleOf(event.pointerId) !== POINTER_ROLE.Move) return;
+    mobileInput.releasePointer(event.pointerId, {
+      cancelled: event.type !== "pointerup",
+    });
+    releaseCapture(event.pointerId);
     knob.style.transform = "translate(0, 0)";
-    touchMovement.strafe = 0;
-    touchMovement.forward = 0;
   };
   pad.addEventListener("pointerdown", (event) => {
-    if (event.pointerType === "mouse") return;
+    if (event.pointerType === "mouse" ||
+        !mobileInput.beginMove(event.pointerId)) return;
     event.preventDefault();
-    pointerId = event.pointerId;
-    pad.setPointerCapture(pointerId);
+    event.stopPropagation();
+    capturePointer(pad, event.pointerId);
     update(event);
   });
   pad.addEventListener("pointermove", (event) => {
-    if (event.pointerId === pointerId) update(event);
+    if (mobileInput.roleOf(event.pointerId) !== POINTER_ROLE.Move) return;
+    event.preventDefault();
+    update(event);
   });
   pad.addEventListener("pointerup", release);
   pad.addEventListener("pointercancel", release);
+  pad.addEventListener("lostpointercapture", release);
 }
 
 function bindLook(pad) {
-  let pointerId = null;
-  let previousX = 0;
-  let previousY = 0;
+  const release = (event) => {
+    if (mobileInput.roleOf(event.pointerId) !== POINTER_ROLE.Look) return;
+    mobileInput.releasePointer(event.pointerId, {
+      cancelled: event.type !== "pointerup",
+    });
+    releaseCapture(event.pointerId);
+  };
   pad.addEventListener("pointerdown", (event) => {
-    if (event.pointerType === "mouse") return;
+    if (event.pointerType === "mouse" ||
+        !mobileInput.beginLook(event.pointerId, event.clientX, event.clientY)) {
+      return;
+    }
     event.preventDefault();
-    pointerId = event.pointerId;
-    previousX = event.clientX;
-    previousY = event.clientY;
-    pad.setPointerCapture(pointerId);
+    event.stopPropagation();
+    capturePointer(pad, event.pointerId);
   });
   pad.addEventListener("pointermove", (event) => {
-    if (event.pointerId !== pointerId) return;
-    input.lookX = Math.max(-1, Math.min(1, input.lookX + (event.clientX - previousX) / 45));
-    input.lookY = Math.max(-1, Math.min(1, input.lookY + (event.clientY - previousY) / 45));
-    previousX = event.clientX;
-    previousY = event.clientY;
+    if (mobileInput.roleOf(event.pointerId) !== POINTER_ROLE.Look) return;
+    event.preventDefault();
+    mobileInput.updateLook(
+      event.pointerId,
+      event.clientX,
+      event.clientY,
+      viewportShortSide(),
+    );
   });
-  const release = (event) => {
-    if (event.pointerId === pointerId) pointerId = null;
-  };
   pad.addEventListener("pointerup", release);
   pad.addEventListener("pointercancel", release);
+  pad.addEventListener("lostpointercapture", release);
 }
 
 function bindHeldButton(button, field) {
-  const set = (held) => {
-    input[field] = held;
-    button.classList.toggle("held", held);
+  const sync = () => button.classList.toggle("held", mobileInput.isHeld(field));
+  const release = (event) => {
+    if (mobileInput.roleOf(event.pointerId) !== `button:${field}`) return;
+    mobileInput.releasePointer(event.pointerId, {
+      cancelled: event.type !== "pointerup",
+    });
+    releaseCapture(event.pointerId);
+    sync();
   };
   button.addEventListener("pointerdown", (event) => {
+    if (!mobileInput.beginButton(event.pointerId, field)) return;
     event.preventDefault();
-    button.setPointerCapture(event.pointerId);
-    set(true);
+    event.stopPropagation();
+    capturePointer(button, event.pointerId);
+    sync();
   });
-  button.addEventListener("pointerup", () => set(false));
-  button.addEventListener("pointercancel", () => set(false));
+  button.addEventListener("pointerup", release);
+  button.addEventListener("pointercancel", release);
+  button.addEventListener("lostpointercapture", release);
 }
 
-bindStick(document.querySelector("#move-pad"), document.querySelector("#move-knob"));
+const moveKnob = document.querySelector("#move-knob");
+const fireButton = document.querySelector("#fire");
+const sprintButton = document.querySelector("#sprint");
+bindStick(document.querySelector("#move-pad"), moveKnob);
 bindLook(document.querySelector("#look-pad"));
-bindHeldButton(document.querySelector("#fire"), "fire");
-bindHeldButton(document.querySelector("#sprint"), "sprint");
+bindHeldButton(fireButton, "fire");
+bindHeldButton(sprintButton, "sprint");
 
 menuStart.addEventListener("click", () => void sendAction("start"));
 document.querySelector("#weapon-button").addEventListener("click", () => void sendAction("weapon"));
@@ -288,6 +346,22 @@ document.querySelector("#reset").addEventListener("click", () => void sendAction
 document.querySelector("#hud-toggle").addEventListener("click", () => {
   document.querySelector("#hud").classList.toggle("expanded");
 });
+
+function clearActiveInput() {
+  keyboard.clear();
+  mouseFire = false;
+  mobileInput.clearAll();
+  for (const pointerId of [...capturedPointers.keys()]) releaseCapture(pointerId);
+  moveKnob.style.transform = "translate(0, 0)";
+  fireButton.classList.remove("held");
+  sprintButton.classList.remove("held");
+  input.strafe = 0;
+  input.forward = 0;
+  input.lookX = 0;
+  input.lookY = 0;
+  input.fire = false;
+  input.sprint = false;
+}
 
 window.addEventListener("keydown", (event) => {
   keyboard.add(event.code);
@@ -299,31 +373,35 @@ window.addEventListener("keydown", (event) => {
   if (event.code === "KeyP" && !event.repeat) void sendAction("pause");
 });
 window.addEventListener("keyup", (event) => keyboard.delete(event.code));
-window.addEventListener("blur", () => {
-  keyboard.clear();
-  input.fire = false;
-  input.sprint = false;
+window.addEventListener("blur", clearActiveInput);
+window.addEventListener("pagehide", clearActiveInput);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") clearActiveInput();
 });
 
 game.addEventListener("mousedown", (event) => {
   if (event.button !== 0 || event.target.closest("button")) return;
   if (engineState === "MENU") void sendAction("start");
   else {
-    input.fire = true;
+    mouseFire = true;
     game.requestPointerLock?.();
   }
 });
 window.addEventListener("mouseup", (event) => {
-  if (event.button === 0) input.fire = false;
+  if (event.button === 0) mouseFire = false;
 });
 window.addEventListener("mousemove", (event) => {
   if (document.pointerLockElement !== game) return;
-  input.lookX = Math.max(-1, Math.min(1, input.lookX + event.movementX / 55));
-  input.lookY = Math.max(-1, Math.min(1, input.lookY + event.movementY / 55));
+  mobileInput.addLookPixels(
+    event.movementX,
+    event.movementY,
+    REMOTE_LOOK_MOUSE_COUNTS_PER_UNIT,
+  );
 });
 
 game.addEventListener("touchmove", (event) => event.preventDefault(), { passive: false });
 document.addEventListener("gesturestart", (event) => event.preventDefault());
+document.addEventListener("dragstart", (event) => event.preventDefault());
 document.addEventListener("contextmenu", (event) => event.preventDefault());
 
 setInterval(() => void pollStatus(), 500);

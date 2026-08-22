@@ -131,6 +131,10 @@ test("default page and real-game connect require no token", async () => {
   let response = await fetch(`${baseUrl}/`);
   assert.equal(response.status, 200);
   assert.doesNotMatch(await response.text(), /Session token|Playtest V1/);
+  response = await fetch(`${baseUrl}/mobile-input.mjs`);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type"), /^text\/javascript/);
+  assert.match(await response.text(), /class MobilePointerInput/);
   response = await post("/connect", {});
   assert.equal(response.status, 202);
   const engine = await waitForEngine();

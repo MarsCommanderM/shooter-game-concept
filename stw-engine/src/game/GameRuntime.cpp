@@ -64,6 +64,11 @@ struct RemoteGameInput {
   std::chrono::steady_clock::time_point lastInputAt{};
 };
 
+// Browser look is transported as a bounded relative delta and consumed once.
+// Convert one normalized packet back to mouse-count scale before the existing
+// FpsController sensitivity and pitch clamp are applied.
+constexpr float kRemoteLookMouseCountsPerUnit = 48.0f;
+
 struct RenderObject {
   std::uint32_t mesh = 0;
   StwMaterial material;
@@ -935,8 +940,8 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
     frameInput.strafe = std::clamp(localStrafe + remoteInput.strafe, -1.0f, 1.0f);
     frameInput.sprint = (!options.noInput && keys[SDL_SCANCODE_LSHIFT]) ||
                         remoteInput.sprint;
-    frameInput.lookDx += remoteInput.lookX * 12.0f;
-    frameInput.lookDy += remoteInput.lookY * 12.0f;
+    frameInput.lookDx += remoteInput.lookX * kRemoteLookMouseCountsPerUnit;
+    frameInput.lookDy += remoteInput.lookY * kRemoteLookMouseCountsPerUnit;
     remoteInput.lookX = 0.0f;
     remoteInput.lookY = 0.0f;
 

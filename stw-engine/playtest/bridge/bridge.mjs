@@ -521,6 +521,7 @@ async function serveStatic(response, pathname, config) {
     [`${config.routePrefix}/`, ["index.html", "text/html; charset=utf-8"]],
     [`${config.routePrefix}/index.html`, ["index.html", "text/html; charset=utf-8"]],
     [`${config.routePrefix}/app.js`, ["app.js", "text/javascript; charset=utf-8"]],
+    [`${config.routePrefix}/mobile-input.mjs`, ["mobile-input.mjs", "text/javascript; charset=utf-8"]],
     [`${config.routePrefix}/style.css`, ["style.css", "text/css; charset=utf-8"]],
     [`${config.routePrefix}/debug/`, ["debug.html", "text/html; charset=utf-8"]],
     [`${config.routePrefix}/debug/index.html`, ["debug.html", "text/html; charset=utf-8"]],
