@@ -17,6 +17,8 @@ add_executable(stw
   src/game/GameAudio.cpp
   src/game/GameplayPresentation.cpp
   src/game/CharacterAnimationController.cpp
+  src/game/CombatLoop.cpp
+  src/game/CombatBotAnimationRuntime.cpp
   src/animation/Skeleton.cpp
   src/animation/AnimationClip.cpp
   src/animation/Pose.cpp
@@ -121,6 +123,33 @@ target_compile_options(stw_gameplay_presentation_tests PRIVATE -Wall)
 add_test(NAME stw_gameplay_presentation_tests
          COMMAND stw_gameplay_presentation_tests)
 
+add_executable(stw_combat_loop_tests
+  tests/CombatLoopTests.cpp
+  src/game/CombatLoop.cpp
+  src/game/CombatBotAnimationRuntime.cpp
+  src/game/CharacterAnimationController.cpp
+  src/runtime/ModelInstance.cpp
+  src/animation/Skeleton.cpp
+  src/animation/AnimationClip.cpp
+  src/animation/Pose.cpp
+  src/animation/Animator.cpp
+  src/animation/SkinInfluence.cpp
+  src/animation/SkinningPalette.cpp
+  src/animation/ModelAnimationBinding.cpp
+  engine/assets/json_mini.cpp
+  engine/assets/gltf.cpp
+  engine/assets/TangentGenerator.cpp
+)
+target_include_directories(stw_combat_loop_tests PRIVATE
+  src engine engine/render engine/assets
+)
+target_compile_definitions(stw_combat_loop_tests PRIVATE
+  STW_TEST_GAMEPLAY_ASSET="${CMAKE_CURRENT_SOURCE_DIR}/playtest/assets/gameplay_animation_states.gltf"
+  STW_TEST_STATIC_ASSET="${CMAKE_CURRENT_SOURCE_DIR}/assets/test_scene.gltf"
+)
+target_compile_options(stw_combat_loop_tests PRIVATE -Wall)
+add_test(NAME stw_combat_loop_tests COMMAND stw_combat_loop_tests)
+
 option(STW_ENABLE_TEST_SANITIZERS
        "Enable AddressSanitizer and UndefinedBehaviorSanitizer for STW tests"
        OFF)
@@ -142,6 +171,12 @@ if(STW_ENABLE_TEST_SANITIZERS AND
     -fsanitize=address,undefined -fno-omit-frame-pointer
   )
   target_link_options(stw_gameplay_presentation_tests PRIVATE
+    -fsanitize=address,undefined
+  )
+  target_compile_options(stw_combat_loop_tests PRIVATE
+    -fsanitize=address,undefined -fno-omit-frame-pointer
+  )
+  target_link_options(stw_combat_loop_tests PRIVATE
     -fsanitize=address,undefined
   )
 endif()

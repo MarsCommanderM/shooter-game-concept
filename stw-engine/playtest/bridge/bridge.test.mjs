@@ -31,6 +31,7 @@ async function makeFakeStw(directory) {
     "  await writeFile(path.join(directory, 'status.json'), JSON.stringify({",
     "    playtest: testName, runtime: 'fake-test-only', state, scene: state === 'MENU' ? 'main-menu' : 'training-map',",
     "    fps: 60, frameTimeMs: 16.7, weapon: 'M16', lastCommand, lastInput,",
+    "    player: { health: 100, maxHealth: 100, alive: true, deaths: 0 }, botsAlive: 3, botsTotal: 3,",
     "    tokenVisible: Boolean(process.env.STW_PLAYTEST_DEBUG_TOKEN || process.env.STW_PLAYTEST_TOKEN)",
     "  }));",
     "}",
@@ -141,6 +142,11 @@ test("default page and real-game connect require no token", async () => {
   assert.equal(engine.playtest, "game");
   assert.equal(engine.state, "MENU");
   assert.equal(engine.tokenVisible, false);
+  assert.deepEqual(engine.player, {
+    health: 100, maxHealth: 100, alive: true, deaths: 0,
+  });
+  assert.equal(engine.botsAlive, 3);
+  assert.equal(engine.botsTotal, 3);
   const reconnect = await post("/connect", {});
   assert.equal(reconnect.status, 202);
   assert.equal((await reconnect.json()).reused, true);

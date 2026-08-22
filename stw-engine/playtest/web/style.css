@@ -60,6 +60,9 @@ button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent
 .combat-hud strong { color: #eafaff; font-size: 11px; letter-spacing: .14em; }
 .combat-hud span { color: #bdd3dc; font-size: 12px; }
 .combat-hud span b:first-child { color: #fff; font-size: 18px; }
+.combat-hud .combat-vitals { margin-top: 2px; color: #9fc1ce; font-size: 9px; letter-spacing: .08em; }
+.combat-hud .combat-vitals b { color: #9ee8ff; font-size: 11px; }
+.combat-hud .combat-vitals b.critical { color: #ff5c4d; }
 .combat-hud i { min-height: 10px; color: var(--orange); font-size: 8px; font-style: normal; font-weight: 900; letter-spacing: .12em; }
 
 .pad { position: absolute; z-index: 10; width: clamp(106px, 25vw, 164px); aspect-ratio: 1; border: 1px solid rgba(82, 217, 255, .32); border-radius: 50%; background: rgba(4, 20, 28, .24); touch-action: none; }

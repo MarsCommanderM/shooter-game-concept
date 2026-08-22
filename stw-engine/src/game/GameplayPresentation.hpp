@@ -6,6 +6,8 @@
 #include "Weapons.hpp"
 #include "renderer.h"
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 
@@ -22,6 +24,9 @@ class GameplayPresentation {
                      std::optional<glm::vec3> hitPoint) noexcept;
   void OnWeaponSwitched() noexcept;
   void OnReloadStarted() noexcept;
+  void OnBotWeaponFired(const glm::vec3& origin,
+                        const glm::vec3& end) noexcept;
+  void OnPlayerDamaged() noexcept;
 
   void SubmitFirstPersonWeapon(IRenderer& renderer,
                                std::uint32_t cubeMesh,
@@ -36,6 +41,12 @@ class GameplayPresentation {
   float muzzleIntensity() const noexcept;
 
  private:
+  struct BotShotVisual {
+    glm::vec3 start{0.0f};
+    glm::vec3 end{0.0f};
+    float remaining = 0.0f;
+  };
+
   float elapsed_ = 0.0f;
   float movementAmount_ = 0.0f;
   float recoil_ = 0.0f;
@@ -44,9 +55,12 @@ class GameplayPresentation {
   float hitRemaining_ = 0.0f;
   float switchKick_ = 0.0f;
   float reloadKick_ = 0.0f;
+  float damageRemaining_ = 0.0f;
   glm::vec3 tracerStart_{0.0f};
   glm::vec3 tracerEnd_{0.0f};
   glm::vec3 hitPoint_{0.0f};
+  std::array<BotShotVisual, 3u> botShots_{};
+  std::size_t nextBotShot_ = 0u;
 };
 
 void SubmitTrainingTarget(IRenderer& renderer,

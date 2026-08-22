@@ -8,6 +8,8 @@
 #include "Weapons.hpp"
 #include "camera.h"
 #include "game/CharacterAnimationController.hpp"
+#include "game/CombatBotAnimationRuntime.hpp"
+#include "game/CombatLoop.hpp"
 #include "game/GameAudio.hpp"
 #include "game/GameplayPresentation.hpp"
 #include "gltf.h"
@@ -32,6 +34,7 @@
 #include <iomanip>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -82,6 +85,17 @@ struct RuntimeModelSet {
 
   bool loaded() const noexcept {
     return asset && !meshHandles.empty() && !instances.empty();
+  }
+};
+
+struct CombatBotRuntimeSet {
+  std::shared_ptr<const StwModel> asset;
+  std::vector<std::uint32_t> meshHandles;
+  std::array<CombatBotAnimationRuntime, kCombatBotCount> bots;
+  bool configured = false;
+
+  bool loaded() const noexcept {
+    return configured && asset && !meshHandles.empty();
   }
 };
 
@@ -136,66 +150,96 @@ bool LoadRuntimeModelSet(const std::string& path,
   return true;
 }
 
-bool ConfigureRuntimeAcceptanceInstances(
-    RuntimeModelSet& model,
-    CharacterAnimationController& outController,
-    std::size_t& outControlledInstance,
-    std::string* error) {
+bool LoadCombatBotRuntimeSet(const std::string& path,
+                             IRenderer& renderer,
+                             const CombatSandbox& combat,
+                             CombatBotRuntimeSet& out,
+                             std::string* error) {
   if (error) error->clear();
-  if (!model.asset || model.asset->skinnedMeshes.empty()) {
-    return Fail(error,
-                "runtime acceptance asset has no skinned mesh binding");
+  auto candidateAsset = std::make_shared<StwModel>();
+  if (!LoadGLTF(path, *candidateAsset, error)) return false;
+  if (candidateAsset->skinnedMeshes.empty()) {
+    return Fail(error, "combat bot asset has no skinned mesh binding");
   }
 
-  std::vector<RuntimeModelInstance> candidate;
-  candidate.reserve(4u);
-  for (std::size_t index = 0; index < 4u; ++index) {
-    RuntimeModelInstance instance;
-    if (!RuntimeModelInstance::CreateSkinned(model.asset, 0u, instance,
-                                             error)) {
+  std::vector<std::uint32_t> candidateHandles;
+  candidateHandles.reserve(candidateAsset->meshes.size());
+  for (const StwMesh& mesh : candidateAsset->meshes) {
+    std::uint32_t handle = kInvalidMeshHandle;
+    if (!renderer.UploadMeshChecked(mesh, handle, error)) return false;
+    candidateHandles.push_back(handle);
+  }
+
+  CombatBotRuntimeSet candidate;
+  candidate.asset = candidateAsset;
+  candidate.meshHandles = std::move(candidateHandles);
+  for (std::size_t index = 0; index < candidate.bots.size(); ++index) {
+    if (!CombatBotAnimationRuntime::Create(
+            candidate.asset, 0u, 1.75f, combat.bots()[index],
+            candidate.bots[index], error)) {
       return false;
     }
-    candidate.push_back(std::move(instance));
   }
-
-  if (!candidate[0].SelectBindPose(error) ||
-      !candidate[2].SetAnimationTime(0.3f, error) ||
-      !candidate[3].SetAnimationTime(1.7f, error)) {
-    return false;
-  }
-
-  struct AcceptancePlacement {
-    glm::vec3 position;
-    float uniformScale;
-  };
-  // Keep the HQ mannequin driven by real gameplay centered in the initial FPS
-  // view. The side instances retain bind-pose and independent-time regression
-  // coverage without competing for the small mobile viewport. Uniform scale
-  // preserves the renderer's skin direction-matrix contract.
-  const std::array<AcceptancePlacement, 4> placements{{
-      {glm::vec3(-6.5f, 0.0f, -12.0f), 1.6f},
-      {glm::vec3(0.0f, 0.3f, -8.0f), 2.0f},
-      {glm::vec3(5.5f, 0.0f, -12.0f), 1.6f},
-      {glm::vec3(9.0f, 0.0f, -16.0f), 1.6f},
-  }};
-  for (std::size_t index = 0; index < candidate.size(); ++index) {
-    const glm::mat4 transform =
-        glm::translate(glm::mat4(1.0f), placements[index].position) *
-        glm::scale(glm::mat4(1.0f),
-                   glm::vec3(placements[index].uniformScale));
-    if (!candidate[index].SetTransform(transform, error)) return false;
-  }
-
-  CharacterAnimationController candidateController;
-  if (!CharacterAnimationController::Create(candidate[1],
-                                             candidateController, error)) {
-    return false;
-  }
-
-  model.instances = std::move(candidate);
-  outController = std::move(candidateController);
-  outControlledInstance = 1u;
+  candidate.configured = true;
+  out = std::move(candidate);
   return true;
+}
+
+bool UpdateCombatBotRuntimeSet(CombatBotRuntimeSet& runtime,
+                               const CombatSandbox& combat,
+                               float deltaSeconds,
+                               std::string* error) {
+  if (error) error->clear();
+  if (!runtime.loaded()) return Fail(error, "combat bot runtime is not loaded");
+  bool succeeded = true;
+  std::string firstError;
+  for (std::size_t index = 0; index < runtime.bots.size(); ++index) {
+    std::string botError;
+    if (!runtime.bots[index].Update(combat.bots()[index], deltaSeconds,
+                                    &botError)) {
+      if (firstError.empty()) {
+        firstError = "combat bot " + std::to_string(index) + ": " + botError;
+      }
+      succeeded = false;
+    }
+  }
+  if (!succeeded && error) *error = firstError;
+  return succeeded;
+}
+
+bool ResetCombatBotRuntimeSet(CombatBotRuntimeSet& runtime,
+                              const CombatSandbox& combat,
+                              std::string* error) {
+  if (error) error->clear();
+  if (!runtime.loaded()) return Fail(error, "combat bot runtime is not loaded");
+  for (std::size_t index = 0; index < runtime.bots.size(); ++index) {
+    if (!runtime.bots[index].Reset(combat.bots()[index], error)) return false;
+  }
+  return true;
+}
+
+bool SubmitCombatBotRuntimeSet(const CombatBotRuntimeSet& runtime,
+                               IRenderer& renderer,
+                               const StwMaterial& fallbackMaterial,
+                               std::string* error) {
+  if (error) error->clear();
+  if (!runtime.loaded()) return Fail(error, "combat bot runtime is not loaded");
+  bool succeeded = true;
+  std::string firstError;
+  for (std::size_t index = 0; index < runtime.bots.size(); ++index) {
+    const CombatBotAnimationRuntime& bot = runtime.bots[index];
+    if (!bot.visible()) continue;
+    std::string botError;
+    if (!bot.instance().Submit(renderer, runtime.meshHandles,
+                               fallbackMaterial, &botError)) {
+      if (firstError.empty()) {
+        firstError = "combat bot " + std::to_string(index) + ": " + botError;
+      }
+      succeeded = false;
+    }
+  }
+  if (!succeeded && error) *error = firstError;
+  return succeeded;
 }
 
 bool UpdateRuntimeModels(RuntimeModelSet& model,
@@ -400,6 +444,7 @@ bool WriteRemoteStatus(const std::filesystem::path& directory,
                        const FpsController& controller,
                        const WeaponSystem& weapon,
                        const TargetWorld& world,
+                       const CombatSandbox& combat,
                        bool haveModel,
                        const CharacterAnimationController* animationController,
                        const RuntimeModelInstance* animationInstance,
@@ -415,6 +460,12 @@ bool WriteRemoteStatus(const std::filesystem::path& directory,
   for (const Target& target : world.targets()) {
     if (target.alive) ++aliveTargets;
   }
+  std::array<std::size_t, 6u> botStateCounts{};
+  for (const BotCombatState& bot : combat.bots()) {
+    const std::size_t state = static_cast<std::size_t>(bot.state);
+    if (state < botStateCounts.size()) ++botStateCounts[state];
+  }
+  const PlayerCombatState& player = combat.player();
   std::ostringstream json;
   json << std::fixed << std::setprecision(3)
        << "{\n"
@@ -438,6 +489,21 @@ bool WriteRemoteStatus(const std::filesystem::path& directory,
        << "  \"audio\": \"" << (audioAvailable ? "native" : "unavailable")
        << "\",\n"
        << "  \"aliveTargets\": " << aliveTargets << ",\n"
+       << "  \"botsAlive\": " << combat.botsAlive() << ",\n"
+       << "  \"botsTotal\": " << combat.bots().size() << ",\n"
+       << "  \"botStates\": {\"Idle\": "
+       << botStateCounts[static_cast<std::size_t>(BotAiState::Idle)]
+       << ", \"Patrol\": "
+       << botStateCounts[static_cast<std::size_t>(BotAiState::Patrol)]
+       << ", \"Acquire\": "
+       << botStateCounts[static_cast<std::size_t>(BotAiState::Acquire)]
+       << ", \"Chase\": "
+       << botStateCounts[static_cast<std::size_t>(BotAiState::Chase)]
+       << ", \"Attack\": "
+       << botStateCounts[static_cast<std::size_t>(BotAiState::Attack)]
+       << ", \"Dead\": "
+       << botStateCounts[static_cast<std::size_t>(BotAiState::Dead)]
+       << "},\n"
        << "  \"modelLoaded\": " << (haveModel ? "true" : "false") << ",\n"
        << "  \"animatedModelLoaded\": "
        << (animatedModelLoaded ? "true" : "false") << ",\n"
@@ -455,7 +521,12 @@ bool WriteRemoteStatus(const std::filesystem::path& directory,
        << ",\n"
        << "  \"player\": {\"x\": " << controller.pos.x
        << ", \"y\": " << controller.pos.y
-       << ", \"z\": " << controller.pos.z << "},\n"
+       << ", \"z\": " << controller.pos.z
+       << ", \"health\": " << player.health
+       << ", \"maxHealth\": " << player.maxHealth
+       << ", \"alive\": " << (player.alive ? "true" : "false")
+       << ", \"deaths\": " << player.deathCount
+       << ", \"lastDamageTime\": " << player.lastDamageTime << "},\n"
        << "  \"lastError\": \"" << JsonEscape(lastError) << "\"\n"
        << "}\n";
   return WriteTextAtomic(directory / "status.json", json.str(), error);
@@ -682,6 +753,7 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
     return 1;
   }
 
+  CombatSandbox combat;
   RuntimeModelSet model;
   std::string modelLoadError;
   const bool haveModel =
@@ -703,19 +775,13 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
     }
   }
 
-  RuntimeModelSet animationAcceptanceModel;
-  CharacterAnimationController playerAnimationController;
-  std::size_t playerAnimationInstance = 0u;
+  CombatBotRuntimeSet combatBotRuntime;
   std::string acceptanceLoadError;
-  const bool haveAnimationAcceptance =
-      LoadRuntimeModelSet(STW_RUNTIME_ACCEPTANCE_ASSET, *renderer,
-                          animationAcceptanceModel, &acceptanceLoadError) &&
-      ConfigureRuntimeAcceptanceInstances(animationAcceptanceModel,
-                                          playerAnimationController,
-                                          playerAnimationInstance,
-                                          &acceptanceLoadError);
-  if (!haveAnimationAcceptance) {
-    std::cerr << "GAME ANIMATION WARNING: " << acceptanceLoadError << '\n';
+  const bool haveCombatBots = LoadCombatBotRuntimeSet(
+      STW_RUNTIME_ACCEPTANCE_ASSET, *renderer, combat, combatBotRuntime,
+      &acceptanceLoadError);
+  if (!haveCombatBots) {
+    std::cerr << "GAME COMBAT BOT WARNING: " << acceptanceLoadError << '\n';
   }
   const bool hq = options.visualQuality == GameVisualQuality::HQ;
   ConfigureIbl(*renderer, hq);
@@ -788,7 +854,9 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
   if (!audio.Initialize(&audioError)) {
     std::cerr << "GAME AUDIO WARNING: " << audioError << '\n';
   }
-  TargetWorld targetWorld(5);
+  // Two legacy range targets remain; the other three lanes are authoritative
+  // moving combat bots.
+  TargetWorld targetWorld(2);
   FrameEvents events;
   FpsInput frameInput;
   RemoteGameInput remoteInput;
@@ -893,29 +961,20 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
 
     if (resetRequested) {
       controller = FpsController{};
+      combat.Reset();
+      controller.pos = combat.layout().playerSpawn;
       weapon = WeaponSystem{};
       presentation.Reset();
-      targetWorld = TargetWorld(5);
+      targetWorld = TargetWorld(2);
       std::string resetError;
       if (haveModel && !ResetRuntimeAnimations(model, &resetError)) {
         lastError = resetError;
         if (options.noInput) failed = true;
       }
       resetError.clear();
-      if (haveAnimationAcceptance &&
-          !ResetRuntimeAnimations(animationAcceptanceModel, &resetError)) {
+      if (haveCombatBots &&
+          !ResetCombatBotRuntimeSet(combatBotRuntime, combat, &resetError)) {
         lastError = resetError;
-        if (options.noInput) failed = true;
-      }
-      resetError.clear();
-      if (haveAnimationAcceptance &&
-          (playerAnimationInstance >= animationAcceptanceModel.instances.size() ||
-           !playerAnimationController.Reset(
-               animationAcceptanceModel.instances[playerAnimationInstance],
-               &resetError))) {
-        lastError = resetError.empty()
-            ? "gameplay animation instance mapping is invalid"
-            : resetError;
         if (options.noInput) failed = true;
       }
     }
@@ -947,70 +1006,82 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
 
     events.clear();
     if (phase == GamePhase::Playing) {
-      bool firedThisFrame = false;
-      controller.update(frameInput, deltaSeconds);
+      if (combat.player().alive) controller.update(frameInput, deltaSeconds);
       weapon.update(deltaSeconds);
-      const float movementMagnitude = std::min(
-          1.0f, std::sqrt(frameInput.fwd * frameInput.fwd +
-                          frameInput.strafe * frameInput.strafe));
+      const float movementMagnitude = combat.player().alive
+          ? std::min(1.0f, std::sqrt(frameInput.fwd * frameInput.fwd +
+                                    frameInput.strafe * frameInput.strafe))
+          : 0.0f;
       presentation.Update(deltaSeconds, movementMagnitude);
-      if (const auto shot = weapon.tryFire(localFire || remoteInput.fire,
-                                           controller.eye(),
-                                           controller.forward(), events)) {
-        firedThisFrame = true;
-        std::optional<glm::vec3> shotHitPoint;
-        if (const auto hit = targetWorld.hitscan(
-                shot->origin, shot->dir, weapon.spec().range)) {
-          shotHitPoint = hit->second;
-          events.hits.push_back({hit->second, hit->first});
-          targetWorld.applyDamage(hit->first, weapon.spec().damage, events);
-          audio.PlayHit();
+
+      std::string combatError;
+      const bool combatUpdated = combat.Update(
+          deltaSeconds, controller.eye(), controller.forward(), &combatError);
+      if (!combatUpdated) {
+        lastError = combatError;
+        if (options.noInput) failed = true;
+      }
+      if (combatUpdated && combat.events().playerRespawned) {
+        controller.pos = combat.layout().playerSpawn;
+        presentation.Reset();
+      }
+      if (combatUpdated) {
+        for (std::size_t index = 0;
+             index < combat.events().botShotCount; ++index) {
+          const BotShotEvent& botShot = combat.events().botShots[index];
+          presentation.OnBotWeaponFired(botShot.origin, botShot.end);
+          audio.PlayFire(2);
         }
-        presentation.OnWeaponFired(*shot, weapon.spec().range, shotHitPoint);
-        audio.PlayFire(shot->weapon);
+        if (combat.events().playerDamaged) presentation.OnPlayerDamaged();
+      }
+
+      if (combatUpdated && combat.player().alive) {
+        const auto shot = weapon.tryFire(localFire || remoteInput.fire,
+                                         controller.eye(),
+                                         controller.forward(), events);
+        if (shot) {
+          std::optional<glm::vec3> shotHitPoint;
+          const std::optional<BotRayHit> botHit = combat.RaycastBots(
+              shot->origin, shot->dir, weapon.spec().range);
+          const auto targetHit = targetWorld.hitscan(
+              shot->origin, shot->dir, weapon.spec().range);
+          const float targetDistance = targetHit
+              ? glm::length(targetHit->second - shot->origin)
+              : std::numeric_limits<float>::infinity();
+          if (botHit && botHit->distance <= targetDistance) {
+            shotHitPoint = botHit->position;
+            events.hits.push_back(
+                {botHit->position, 1000 + static_cast<int>(botHit->botIndex)});
+            if (!combat.ApplyDamageToBot(botHit->botIndex,
+                                         weapon.spec().damage, &combatError)) {
+              lastError = combatError;
+              if (options.noInput) failed = true;
+            }
+            audio.PlayHit();
+          } else if (targetHit) {
+            shotHitPoint = targetHit->second;
+            events.hits.push_back({targetHit->second, targetHit->first});
+            targetWorld.applyDamage(targetHit->first, weapon.spec().damage,
+                                    events);
+            audio.PlayHit();
+          }
+          presentation.OnWeaponFired(*shot, weapon.spec().range,
+                                     shotHitPoint);
+          audio.PlayFire(shot->weapon);
+        }
       }
       targetWorld.update(deltaSeconds, events);
 
       std::string animationError;
-      bool gameplayAnimationFailed = false;
-      if (haveAnimationAcceptance) {
-        if (playerAnimationInstance >=
-            animationAcceptanceModel.instances.size()) {
-          animationError = "gameplay animation instance mapping is invalid";
-          gameplayAnimationFailed = true;
-        } else {
-          const float movementMagnitudeSquared =
-              frameInput.fwd * frameInput.fwd +
-              frameInput.strafe * frameInput.strafe;
-          const bool moving = movementMagnitudeSquared > 1.0e-6f;
-          CharacterAnimationInput animationInput;
-          animationInput.moving = moving;
-          animationInput.fireTriggered = firedThisFrame;
-          if (!playerAnimationController.Update(
-                  animationInput,
-                  animationAcceptanceModel.instances[playerAnimationInstance],
-                  &animationError)) {
-            // The instance keeps its previous valid Animator/Pose/palette.
-            gameplayAnimationFailed = true;
-          } else if (!playerAnimationController.lastDiagnostic().empty()) {
-            animationError = playerAnimationController.lastDiagnostic();
-          }
-        }
-        if (!animationError.empty()) {
-          lastError = animationError;
-          if (options.noInput && gameplayAnimationFailed) failed = true;
-        }
-      }
-      animationError.clear();
       if (haveModel &&
           !UpdateRuntimeModels(model, deltaSeconds, &animationError)) {
         lastError = animationError;
         if (options.noInput) failed = true;
       }
       animationError.clear();
-      if (haveAnimationAcceptance &&
-          !UpdateRuntimeModels(animationAcceptanceModel, deltaSeconds,
-                               &animationError)) {
+      if (haveCombatBots &&
+          !UpdateCombatBotRuntimeSet(combatBotRuntime, combat, deltaSeconds,
+                                     &animationError)) {
         lastError = animationError;
         if (options.noInput) failed = true;
       }
@@ -1084,10 +1155,10 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
         }
       }
 
-      if (haveAnimationAcceptance && animationAcceptanceModel.loaded()) {
+      if (haveCombatBots && combatBotRuntime.loaded()) {
         std::string drawError;
-        if (!SubmitRuntimeModels(animationAcceptanceModel, *renderer,
-                                 fallbackMaterial, &drawError)) {
+        if (!SubmitCombatBotRuntimeSet(combatBotRuntime, *renderer,
+                                       fallbackMaterial, &drawError)) {
           lastError = drawError;
           if (options.noInput) failed = true;
         }
@@ -1097,9 +1168,11 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
         SubmitTrainingTarget(*renderer, cubeHandle, target);
       }
       presentation.SubmitTransientEffects(*renderer, cubeHandle);
-      presentation.SubmitFirstPersonWeapon(*renderer, cubeHandle, controller,
-                                           weapon);
-      presentation.SubmitCrosshair(*renderer, cubeHandle, controller);
+      if (combat.player().alive) {
+        presentation.SubmitFirstPersonWeapon(*renderer, cubeHandle, controller,
+                                             weapon);
+        presentation.SubmitCrosshair(*renderer, cubeHandle, controller);
+      }
     }
 
     simulatedSeconds += deltaSeconds;
@@ -1159,19 +1232,22 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
     }
     if (!remoteDirectory.empty() && statusAccumulator >= 0.1) {
       std::string statusError;
-      const RuntimeModelInstance* gameplayAnimationInstance =
-          haveAnimationAcceptance &&
-                  playerAnimationInstance <
-                      animationAcceptanceModel.instances.size()
-              ? &animationAcceptanceModel.instances[playerAnimationInstance]
-              : nullptr;
+      const CombatBotAnimationRuntime* diagnosticBot = nullptr;
+      if (haveCombatBots) {
+        for (const CombatBotAnimationRuntime& bot : combatBotRuntime.bots) {
+          if (bot.visible()) {
+            diagnosticBot = &bot;
+            break;
+          }
+        }
+      }
       if (!WriteRemoteStatus(remoteDirectory, phase, controller, weapon,
-                             targetWorld, haveModel,
-                             haveAnimationAcceptance
-                                 ? &playerAnimationController
-                                 : nullptr,
-                             gameplayAnimationInstance,
-                             haveAnimationAcceptance, audio.available(),
+                             targetWorld, combat, haveModel,
+                             diagnosticBot ? &diagnosticBot->controller()
+                                           : nullptr,
+                             diagnosticBot ? &diagnosticBot->instance()
+                                           : nullptr,
+                             haveCombatBots, audio.available(),
                              options.visualQuality, displayedFps,
                              static_cast<double>(deltaSeconds) * 1000.0,
                              frameNumber, lastError, &statusError)) {
@@ -1187,17 +1263,20 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
 
   if (!remoteDirectory.empty()) {
     std::string statusError;
-    const RuntimeModelInstance* gameplayAnimationInstance =
-        haveAnimationAcceptance &&
-                playerAnimationInstance <
-                    animationAcceptanceModel.instances.size()
-            ? &animationAcceptanceModel.instances[playerAnimationInstance]
-            : nullptr;
+    const CombatBotAnimationRuntime* diagnosticBot = nullptr;
+    if (haveCombatBots) {
+      for (const CombatBotAnimationRuntime& bot : combatBotRuntime.bots) {
+        if (bot.visible()) {
+          diagnosticBot = &bot;
+          break;
+        }
+      }
+    }
     WriteRemoteStatus(remoteDirectory, phase, controller, weapon, targetWorld,
-                      haveModel,
-                      haveAnimationAcceptance ? &playerAnimationController
-                                              : nullptr,
-                      gameplayAnimationInstance, haveAnimationAcceptance,
+                      combat, haveModel,
+                      diagnosticBot ? &diagnosticBot->controller() : nullptr,
+                      diagnosticBot ? &diagnosticBot->instance() : nullptr,
+                      haveCombatBots,
                       audio.available(), options.visualQuality,
                       displayedFps, 0.0,
                       frameNumber, lastError,

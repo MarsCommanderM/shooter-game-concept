@@ -116,6 +116,18 @@ function renderStatus(payload) {
     Number.isInteger(engine?.ammoMagazine) ? engine.ammoMagazine : "—";
   document.querySelector("#combat-reserve").textContent =
     Number.isInteger(engine?.ammoReserve) ? engine.ammoReserve : "—";
+  const health = Number.isFinite(engine?.player?.health)
+    ? Math.max(0, Math.round(Number(engine.player.health))) : null;
+  const botsAlive = Number.isInteger(engine?.botsAlive) ? engine.botsAlive : null;
+  const botsTotal = Number.isInteger(engine?.botsTotal) ? engine.botsTotal : null;
+  document.querySelector("#player-health").textContent = health ?? "—";
+  document.querySelector("#bots-alive").textContent = botsAlive ?? "—";
+  document.querySelector("#bots-total").textContent = botsTotal ?? "—";
+  document.querySelector("#combat-health").textContent = health ?? "—";
+  document.querySelector("#combat-bots").textContent = botsAlive ?? "—";
+  document.querySelector("#combat-health").classList.toggle(
+    "critical", health !== null && health <= 25,
+  );
   document.querySelector("#combat-reload").textContent = engine?.reloading
     ? "RELOADING" : "";
   document.querySelector("#animation-state").textContent =

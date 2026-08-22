@@ -100,6 +100,10 @@ void GameplayPresentation::Update(float deltaSeconds,
   hitRemaining_ = std::max(0.0f, hitRemaining_ - deltaSeconds);
   switchKick_ = std::max(0.0f, switchKick_ - deltaSeconds * 4.5f);
   reloadKick_ = std::max(0.0f, reloadKick_ - deltaSeconds * 2.5f);
+  damageRemaining_ = std::max(0.0f, damageRemaining_ - deltaSeconds);
+  for (BotShotVisual& shot : botShots_) {
+    shot.remaining = std::max(0.0f, shot.remaining - deltaSeconds);
+  }
 }
 
 void GameplayPresentation::OnWeaponFired(
@@ -131,6 +135,22 @@ void GameplayPresentation::OnWeaponSwitched() noexcept {
 
 void GameplayPresentation::OnReloadStarted() noexcept {
   reloadKick_ = 1.0f;
+}
+
+void GameplayPresentation::OnBotWeaponFired(
+    const glm::vec3& origin,
+    const glm::vec3& end) noexcept {
+  const float length = glm::length(end - origin);
+  if (!std::isfinite(static_cast<double>(length)) || length < 1.0e-4f) return;
+  BotShotVisual& shot = botShots_[nextBotShot_ % botShots_.size()];
+  shot.start = origin;
+  shot.end = end;
+  shot.remaining = 0.085f;
+  nextBotShot_ = (nextBotShot_ + 1u) % botShots_.size();
+}
+
+void GameplayPresentation::OnPlayerDamaged() noexcept {
+  damageRemaining_ = 0.22f;
 }
 
 void GameplayPresentation::SubmitFirstPersonWeapon(
@@ -212,6 +232,16 @@ void GameplayPresentation::SubmitTransientEffects(
     DrawWorldBox(renderer, cubeMesh, hit, hitPoint_,
                  glm::vec3(0.055f, 0.32f, 0.055f));
   }
+  const StwMaterial botTracer =
+      Material(2.8f, 0.12f, 0.045f, 0.0f, 0.28f);
+  const StwMaterial botMuzzle =
+      Material(3.4f, 0.38f, 0.06f, 0.0f, 0.18f);
+  for (const BotShotVisual& shot : botShots_) {
+    if (shot.remaining <= 0.0f) continue;
+    DrawBeam(renderer, cubeMesh, botTracer, shot.start, shot.end, 0.018f);
+    DrawWorldBox(renderer, cubeMesh, botMuzzle, shot.start,
+                 glm::vec3(0.12f, 0.12f, 0.12f));
+  }
 }
 
 void GameplayPresentation::SubmitCrosshair(
@@ -223,8 +253,9 @@ void GameplayPresentation::SubmitCrosshair(
   if (glm::length(right) < 1.0e-4f) right = glm::vec3(1.0f, 0.0f, 0.0f);
   right = glm::normalize(right);
   const glm::vec3 up = glm::normalize(glm::cross(right, forward));
-  const StwMaterial crosshair =
-      Material(2.6f, 2.9f, 3.1f, 0.0f, 0.35f);
+  const StwMaterial crosshair = damageRemaining_ > 0.0f
+      ? Material(3.1f, 0.12f, 0.06f, 0.0f, 0.28f)
+      : Material(2.6f, 2.9f, 3.1f, 0.0f, 0.35f);
   const glm::vec3 center = controller.eye() + forward * 0.24f;
   DrawBox(renderer, cubeMesh, crosshair, center, right, up, -forward,
           glm::vec3(0.013f, 0.0016f, 0.0018f));
