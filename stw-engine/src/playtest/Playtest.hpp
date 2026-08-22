@@ -18,6 +18,7 @@ struct PlaytestOptions {
   std::string capturePath;
   std::string remoteDirectory;
   int streamFramesPerSecond = 10;
+  bool hq = true;
 };
 
 class IPlaytestScene {

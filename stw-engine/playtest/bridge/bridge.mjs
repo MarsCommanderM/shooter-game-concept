@@ -18,7 +18,9 @@ export const KNOWN_TESTS = Object.freeze(["game", "skinning", "animation"]);
 export const DEBUG_COMMANDS = Object.freeze([
   "play", "pause", "reset", "bind", "slow", "stop",
 ]);
-export const GAME_ACTIONS = Object.freeze(["start", "pause", "reset", "weapon"]);
+export const GAME_ACTIONS = Object.freeze([
+  "start", "pause", "reset", "weapon", "reload",
+]);
 
 const knownTests = new Set(KNOWN_TESTS);
 const debugCommands = new Set(DEBUG_COMMANDS);
@@ -469,7 +471,7 @@ export class PlaytestSupervisor {
       throw new HttpError(409, "the real game runtime is not connected");
     }
     const command = { start: "game_start", pause: "game_pause",
-      reset: "game_reset", weapon: "game_weapon" }[action];
+      reset: "game_reset", weapon: "game_weapon", reload: "game_reload" }[action];
     await this._queueCommand(command);
   }
 

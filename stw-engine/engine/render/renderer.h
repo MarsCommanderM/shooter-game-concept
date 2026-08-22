@@ -31,6 +31,11 @@ class IRenderer {
   virtual void SetViewProj(const float vp[16]) = 0;
   virtual void SetCameraPos(float x, float y, float z) = 0;
   virtual void SetLight(const Light& l) = 0;
+  virtual void SetClearColor(float red, float green, float blue) {
+    (void)red;
+    (void)green;
+    (void)blue;
+  }
   virtual uint32_t UploadMesh(const StwMesh& m) = 0;  // gibt Handle
   virtual bool UploadMeshChecked(const StwMesh& m, uint32_t& handle,
                                  std::string* error = nullptr) {

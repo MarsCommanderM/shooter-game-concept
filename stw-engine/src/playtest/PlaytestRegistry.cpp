@@ -40,7 +40,8 @@ void PrintUsage(std::ostream& output) {
          << "  stw --playtest list\n"
          << "  stw --playtest <name> [--frames N] [--duration SECONDS]\n"
          << "      [--no-input] [--capture PATH] [--hidden]\n"
-         << "      [--remote-dir PATH] [--stream-fps 1..30] [--auto-start]\n";
+         << "      [--remote-dir PATH] [--stream-fps 1..30] [--auto-start]\n"
+         << "      [--quality hq|standard] (game only)\n";
 }
 
 bool ParsePositiveInt(const char* text, int& value) {
@@ -109,6 +110,7 @@ int RunPlaytestCommand(int argc, char** argv) {
 
   PlaytestOptions options;
   options.name = descriptor->name;
+  bool qualitySpecified = false;
   for (int argument = 3; argument < argc; ++argument) {
     const std::string flag = argv[argument] ? argv[argument] : "";
     auto requireValue = [&](const char* option) -> const char* {
@@ -155,11 +157,28 @@ int RunPlaytestCommand(int argc, char** argv) {
       options.hiddenWindow = true;
     } else if (flag == "--auto-start") {
       options.autoStart = true;
+    } else if (flag == "--quality") {
+      qualitySpecified = true;
+      const char* value = requireValue("--quality");
+      if (!value) return 64;
+      if (std::strcmp(value, "hq") == 0) {
+        options.hq = true;
+      } else if (std::strcmp(value, "standard") == 0) {
+        options.hq = false;
+      } else {
+        std::cerr << "--quality must be hq or standard\n";
+        return 64;
+      }
     } else {
       std::cerr << "Unknown playtest option: " << flag << "\n";
       PrintUsage(std::cerr);
       return 64;
     }
+  }
+
+  if (qualitySpecified && requestedName != "game") {
+    std::cerr << "--quality is supported only by --playtest game\n";
+    return 64;
   }
 
   if (requestedName == "game") {
@@ -172,6 +191,8 @@ int RunPlaytestCommand(int argc, char** argv) {
     gameOptions.capturePath = options.capturePath;
     gameOptions.remoteDirectory = options.remoteDirectory;
     gameOptions.streamFramesPerSecond = options.streamFramesPerSecond;
+    gameOptions.visualQuality = options.hq ? GameVisualQuality::HQ
+                                           : GameVisualQuality::Standard;
     return RunGameRuntime(gameOptions);
   }
   return RunPlaytestRuntime(options, descriptor->factory());

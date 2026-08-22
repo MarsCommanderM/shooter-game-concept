@@ -14,6 +14,8 @@ find_package(ZLIB QUIET)
 add_executable(stw
   src/main.cpp
   src/game/GameRuntime.cpp
+  src/game/GameAudio.cpp
+  src/game/GameplayPresentation.cpp
   src/game/CharacterAnimationController.cpp
   src/animation/Skeleton.cpp
   src/animation/AnimationClip.cpp
@@ -109,6 +111,16 @@ target_compile_definitions(stw_gameplay_animation_tests PRIVATE
 target_compile_options(stw_gameplay_animation_tests PRIVATE -Wall)
 add_test(NAME stw_gameplay_animation_tests COMMAND stw_gameplay_animation_tests)
 
+add_executable(stw_gameplay_presentation_tests
+  tests/GameplayPresentationTests.cpp
+)
+target_include_directories(stw_gameplay_presentation_tests PRIVATE
+  engine/core game/weapons game/world
+)
+target_compile_options(stw_gameplay_presentation_tests PRIVATE -Wall)
+add_test(NAME stw_gameplay_presentation_tests
+         COMMAND stw_gameplay_presentation_tests)
+
 option(STW_ENABLE_TEST_SANITIZERS
        "Enable AddressSanitizer and UndefinedBehaviorSanitizer for STW tests"
        OFF)
@@ -124,6 +136,12 @@ if(STW_ENABLE_TEST_SANITIZERS AND
     -fsanitize=address,undefined -fno-omit-frame-pointer
   )
   target_link_options(stw_gameplay_animation_tests PRIVATE
+    -fsanitize=address,undefined
+  )
+  target_compile_options(stw_gameplay_presentation_tests PRIVATE
+    -fsanitize=address,undefined -fno-omit-frame-pointer
+  )
+  target_link_options(stw_gameplay_presentation_tests PRIVATE
     -fsanitize=address,undefined
   )
 endif()

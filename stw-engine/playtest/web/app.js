@@ -96,6 +96,20 @@ function renderStatus(payload) {
   document.querySelector("#native-fps").textContent = Number.isFinite(engine?.fps)
     ? Number(engine.fps).toFixed(1) : "0.0";
   document.querySelector("#weapon").textContent = engine?.weapon ?? "—";
+  document.querySelector("#ammo-magazine").textContent =
+    Number.isInteger(engine?.ammoMagazine) ? engine.ammoMagazine : "—";
+  document.querySelector("#ammo-reserve").textContent =
+    Number.isInteger(engine?.ammoReserve) ? engine.ammoReserve : "—";
+  document.querySelector("#reload-state").textContent = engine?.reloading
+    ? `RELOAD ${Math.round(Number(engine.reloadProgress ?? 0) * 100)}%`
+    : String(engine?.quality ?? "READY");
+  document.querySelector("#combat-weapon").textContent = engine?.weapon ?? "—";
+  document.querySelector("#combat-magazine").textContent =
+    Number.isInteger(engine?.ammoMagazine) ? engine.ammoMagazine : "—";
+  document.querySelector("#combat-reserve").textContent =
+    Number.isInteger(engine?.ammoReserve) ? engine.ammoReserve : "—";
+  document.querySelector("#combat-reload").textContent = engine?.reloading
+    ? "RELOADING" : "";
   document.querySelector("#animation-state").textContent =
     engine?.animationState ?? "Unavailable";
   document.querySelector("#animation-clip").textContent =
@@ -268,6 +282,7 @@ bindHeldButton(document.querySelector("#sprint"), "sprint");
 
 menuStart.addEventListener("click", () => void sendAction("start"));
 document.querySelector("#weapon-button").addEventListener("click", () => void sendAction("weapon"));
+document.querySelector("#reload").addEventListener("click", () => void sendAction("reload"));
 document.querySelector("#pause").addEventListener("click", () => void sendAction("pause"));
 document.querySelector("#reset").addEventListener("click", () => void sendAction("reset"));
 document.querySelector("#hud-toggle").addEventListener("click", () => {
@@ -279,6 +294,7 @@ window.addEventListener("keydown", (event) => {
   if (["KeyW", "KeyA", "KeyS", "KeyD", "Space"].includes(event.code)) event.preventDefault();
   if (event.code === "Enter" || event.code === "Space") void sendAction("start");
   if (event.code === "KeyQ" && !event.repeat) void sendAction("weapon");
+  if (event.code === "KeyE" && !event.repeat) void sendAction("reload");
   if (event.code === "KeyR" && !event.repeat) void sendAction("reset");
   if (event.code === "KeyP" && !event.repeat) void sendAction("pause");
 });

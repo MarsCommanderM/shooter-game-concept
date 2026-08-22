@@ -4,6 +4,11 @@
 
 namespace stw {
 
+enum class GameVisualQuality {
+  Standard,
+  HQ,
+};
+
 // Options around the real game runtime. Normal desktop startup and the
 // browser-backed playtest both enter RunGameRuntime; gameplay is never
 // reimplemented in the bridge or web client.
@@ -17,6 +22,7 @@ struct GameRuntimeOptions {
   std::string capturePath;
   std::string remoteDirectory;
   int streamFramesPerSecond = 10;
+  GameVisualQuality visualQuality = GameVisualQuality::HQ;
 };
 
 int RunGameRuntime(const GameRuntimeOptions& options);

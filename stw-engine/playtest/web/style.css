@@ -55,10 +55,11 @@ button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent
 #connection.online { color: #5cf0a6 !important; }
 #last-error.error { color: #ff6b6b; }
 
-.crosshair { position: absolute; z-index: 5; left: 50%; top: 50%; width: 14px; height: 14px; transform: translate(-50%, -50%); opacity: .68; pointer-events: none; }
-.crosshair::before, .crosshair::after { content: ""; position: absolute; background: #effcff; box-shadow: 0 0 4px #000; }
-.crosshair::before { left: 6px; top: 0; width: 2px; height: 14px; }
-.crosshair::after { left: 0; top: 6px; width: 14px; height: 2px; }
+.combat-hud { position: absolute; z-index: 7; top: max(10px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); display: grid; justify-items: end; padding: 7px 9px; border-right: 2px solid rgba(82, 217, 255, .75); background: linear-gradient(90deg, transparent, rgba(2, 9, 14, .64)); text-shadow: 0 1px 3px #000; pointer-events: none; }
+.combat-hud strong { color: #eafaff; font-size: 11px; letter-spacing: .14em; }
+.combat-hud span { color: #bdd3dc; font-size: 12px; }
+.combat-hud span b:first-child { color: #fff; font-size: 18px; }
+.combat-hud i { min-height: 10px; color: var(--orange); font-size: 8px; font-style: normal; font-weight: 900; letter-spacing: .12em; }
 
 .pad { position: absolute; z-index: 10; width: clamp(106px, 25vw, 164px); aspect-ratio: 1; border: 1px solid rgba(82, 217, 255, .32); border-radius: 50%; background: rgba(4, 20, 28, .24); touch-action: none; }
 .move-pad { left: max(18px, env(safe-area-inset-left)); bottom: max(24px, env(safe-area-inset-bottom)); }

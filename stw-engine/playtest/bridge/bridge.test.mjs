@@ -152,6 +152,11 @@ test("public game input and action accept only fixed typed messages", async () =
   const engine = await waitForEngine((value) => value.lastInput !== "");
   assert.equal(engine.state, "PLAYING");
   assert.match(engine.lastInput, /^input -0.5 1 0.25 -0.25 1 0$/);
+  assert.equal((await post("/action", { action: "reload" })).status, 202);
+  const reloaded = await waitForEngine(
+    (value) => value.lastCommand === "game_reload",
+  );
+  assert.equal(reloaded.lastCommand, "game_reload");
 
   let response = await post("/action", { action: "exec", command: "id" });
   assert.equal(response.status, 400);

@@ -506,6 +506,10 @@ class GLRenderer : public IRenderer {
   }
   void SetCameraPos(float x, float y, float z) override { cam_ = glm::vec3(x, y, z); }
   void SetLight(const Light& l) override { light_ = l; }
+  void SetClearColor(float red, float green, float blue) override {
+    clearColor_ = glm::clamp(glm::vec3(red, green, blue),
+                            glm::vec3(0.0f), glm::vec3(1.0f));
+  }
 
   uint32_t UploadMesh(const StwMesh& m) override {
     std::uint32_t handle = kInvalidMeshHandle;
@@ -692,7 +696,7 @@ class GLRenderer : public IRenderer {
     int w = 0, h = 0;
     SDL_GL_GetDrawableSize(win_, &w, &h);
     glViewport(0, 0, w, h);
-    glClearColor(0.012f, 0.02f, 0.012f, 1.f);
+    glClearColor(clearColor_.r, clearColor_.g, clearColor_.b, 1.f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glUseProgram_(prog_);
     glUniformMatrix4fv_(uVP_, 1, GL_FALSE, vp_);
@@ -871,6 +875,7 @@ class GLRenderer : public IRenderer {
   bool vpDirty_ = false;
   Plane planes_[6];
   glm::vec3 cam_{0, 1.7f, 4};
+  glm::vec3 clearColor_{0.012f, 0.02f, 0.012f};
   Light light_;
   std::vector<GLMesh> meshes_;
   std::vector<DrawCmd> cmds_;

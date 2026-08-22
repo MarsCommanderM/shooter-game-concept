@@ -10,6 +10,15 @@ runtime owns the menu state, training map, `FpsController`, `WeaponSystem`,
 `TargetWorld`, glTF loading, and `GLRenderer`. The bridge starts the runtime at
 its native menu and reconnects to it after browser refresh.
 
+Gameplay Presentation Baseline V1 makes `HQ` the default game quality mode.
+It uses the existing PBR/IBL/shadow renderer with a daylight environment,
+readable arena materials, native procedural first-person weapon, authoritative
+ammo/reload, valid-shot muzzle/recoil/tracer feedback, and a repo-owned skinned
+training mannequin. The crosshair is part of the native framebuffer rather
+than an HTML substitute. Use `--quality standard` only as a lower-presentation
+diagnostic fallback. See `GAMEPLAY_PRESENTATION.md` for the factual inventory
+and explicit limitations.
+
 The training map also exercises the T4-B production model path. It contains a
 static imported model plus four instances of the same imported skinned model:
 one bind pose, one normally animated instance, and two animated instances with
@@ -26,6 +35,8 @@ shows the authoritative animation state and selected clip.
 ./stw
 ./stw --playtest list
 ./stw --playtest game
+./stw --playtest game --quality hq
+./stw --playtest game --quality standard
 ./stw --playtest game --frames 120 --no-input --auto-start
 ./stw --playtest game --frames 120 --no-input --auto-start \
   --capture /tmp/stw-game.png
@@ -39,6 +50,7 @@ Desktop game controls:
 - left mouse: fire
 - `Shift`: sprint
 - `Q`: cycle weapon
+- `E`: reload
 - `R`: reset player, weapon, and targets
 - `P`: pause/resume
 - `Esc`: quit
@@ -63,8 +75,8 @@ The default page is a full-viewport remote display for `--playtest game`.
 There is no in-page token field. It supports touch move/look, held fire and
 sprint, weapon, pause, reset, portrait/landscape safe areas, and desktop
 keyboard/mouse input. A compact optional HUD reports connection, native scene,
-native/received FPS, weapon, animation state/clip, and the last native or bridge
-error.
+native/received FPS, weapon, authoritative magazine/reserve ammo, reload state,
+animation state/clip, and the last native or bridge error.
 
 T4-B manual acceptance in the training map:
 
@@ -80,7 +92,7 @@ The fixed public API accepts only:
 ```text
 POST /stw-playtest/api/connect   {}
 POST /stw-playtest/api/input     {strafe,forward,lookX,lookY,fire,sprint}
-POST /stw-playtest/api/action    {action:start|pause|reset|weapon}
+POST /stw-playtest/api/action    {action:start|pause|reset|weapon|reload}
 GET  /stw-playtest/api/status
 GET  /stw-playtest/api/frame
 ```
@@ -122,7 +134,7 @@ sudo -u stw-playtest cmake -S /opt/wirrwar/stw-engine \
   -B /var/lib/stw-playtest/build -DCMAKE_BUILD_TYPE=Release
 sudo -u stw-playtest cmake --build /var/lib/stw-playtest/build \
   --target stw cache_builder stw_runtime_model_tests \
-  stw_gameplay_animation_tests -j2
+  stw_gameplay_animation_tests stw_gameplay_presentation_tests -j2
 
 sudo -u stw-playtest ctest --test-dir /var/lib/stw-playtest/build \
   --output-on-failure

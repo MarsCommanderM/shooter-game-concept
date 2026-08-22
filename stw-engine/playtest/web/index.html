@@ -28,6 +28,8 @@
           <span><b id="rx-fps">0.0</b> rx fps</span>
           <span><b id="native-fps">0.0</b> native fps</span>
           <span id="weapon">M16</span>
+          <span><b id="ammo-magazine">30</b> / <b id="ammo-reserve">120</b></span>
+          <span id="reload-state">READY</span>
           <span><b id="animation-state">Idle</b> animation</span>
           <span id="animation-clip">clip —</span>
           <span><b id="animation-time">0.00</b> anim s</span>
@@ -35,7 +37,11 @@
         </div>
       </section>
 
-      <div class="crosshair" aria-hidden="true"></div>
+      <section class="combat-hud" aria-label="Weapon status">
+        <strong id="combat-weapon">M16</strong>
+        <span><b id="combat-magazine">30</b> / <b id="combat-reserve">120</b></span>
+        <i id="combat-reload"></i>
+      </section>
 
       <div id="move-pad" class="pad move-pad" aria-label="Move">
         <span>MOVE</span><i id="move-knob"></i>
@@ -46,11 +52,12 @@
         <button id="fire" class="fire" type="button">FIRE</button>
         <button id="sprint" type="button">SPRINT</button>
         <button id="weapon-button" type="button">WEAPON</button>
+        <button id="reload" type="button">RELOAD</button>
         <button id="pause" type="button">PAUSE</button>
         <button id="reset" type="button">RESET</button>
       </div>
 
-      <p class="desktop-help">WASD · mouse · click fire · Shift sprint · Q weapon · R reset</p>
+      <p class="desktop-help">WASD · mouse · click fire · Shift sprint · Q weapon · E reload · R reset</p>
     </main>
     <script src="./app.js" type="module"></script>
   </body>

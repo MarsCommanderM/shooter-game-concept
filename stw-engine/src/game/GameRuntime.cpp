@@ -8,6 +8,8 @@
 #include "Weapons.hpp"
 #include "camera.h"
 #include "game/CharacterAnimationController.hpp"
+#include "game/GameAudio.hpp"
+#include "game/GameplayPresentation.hpp"
 #include "gltf.h"
 #include "renderer.h"
 #include "runtime/ModelInstance.hpp"
@@ -31,6 +33,7 @@
 #include <iostream>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -87,6 +90,10 @@ const char* PhaseName(GamePhase phase) {
       return "PAUSED";
   }
   return "UNKNOWN";
+}
+
+const char* QualityName(GameVisualQuality quality) {
+  return quality == GameVisualQuality::HQ ? "HQ" : "STANDARD";
 }
 
 bool Fail(std::string* error, const std::string& message) {
@@ -152,12 +159,14 @@ bool ConfigureRuntimeAcceptanceInstances(
     return false;
   }
 
-  const std::array<float, 4> positions{-6.0f, -2.0f, 2.0f, 6.0f};
+  const std::array<float, 4> positions{-6.0f, 2.2f, 6.0f, 9.0f};
+  const std::array<float, 4> depths{-10.0f, -7.5f, -10.0f, -14.0f};
+  const std::array<float, 4> scales{1.55f, 2.05f, 1.55f, 1.45f};
   for (std::size_t index = 0; index < candidate.size(); ++index) {
     const glm::mat4 transform =
         glm::translate(glm::mat4(1.0f),
-                       glm::vec3(positions[index], 0.0f, -10.0f)) *
-        glm::scale(glm::mat4(1.0f), glm::vec3(1.45f));
+                       glm::vec3(positions[index], 0.08f, depths[index])) *
+        glm::scale(glm::mat4(1.0f), glm::vec3(scales[index]));
     if (!candidate[index].SetTransform(transform, error)) return false;
   }
 
@@ -326,6 +335,7 @@ bool PollRemoteCommand(const std::filesystem::path& directory,
                        bool& running,
                        bool& resetRequested,
                        bool& cycleWeaponRequested,
+                       bool& reloadRequested,
                        std::string& lastError) {
   const std::filesystem::path commandPath = directory / "command.txt";
   std::error_code fileError;
@@ -358,6 +368,8 @@ bool PollRemoteCommand(const std::filesystem::path& directory,
     phase = GamePhase::Playing;
   } else if (command == "game_weapon") {
     cycleWeaponRequested = true;
+  } else if (command == "game_reload") {
+    reloadRequested = true;
   } else if (command == "stop") {
     running = false;
   } else {
@@ -375,6 +387,9 @@ bool WriteRemoteStatus(const std::filesystem::path& directory,
                        bool haveModel,
                        const CharacterAnimationController* animationController,
                        const RuntimeModelInstance* animationInstance,
+                       bool animatedModelLoaded,
+                       bool audioAvailable,
+                       GameVisualQuality quality,
                        double fps,
                        double frameMilliseconds,
                        std::uint64_t frameNumber,
@@ -398,8 +413,18 @@ bool WriteRemoteStatus(const std::filesystem::path& directory,
        << "  \"frameTimeMs\": " << frameMilliseconds << ",\n"
        << "  \"frameNumber\": " << frameNumber << ",\n"
        << "  \"weapon\": \"" << JsonEscape(weapon.spec().name) << "\",\n"
+       << "  \"ammoMagazine\": " << weapon.magazineAmmo() << ",\n"
+       << "  \"ammoReserve\": " << weapon.reserveAmmo() << ",\n"
+       << "  \"reloading\": " << (weapon.isReloading() ? "true" : "false")
+       << ",\n"
+       << "  \"reloadProgress\": " << weapon.reloadProgress() << ",\n"
+       << "  \"quality\": \"" << QualityName(quality) << "\",\n"
+       << "  \"audio\": \"" << (audioAvailable ? "native" : "unavailable")
+       << "\",\n"
        << "  \"aliveTargets\": " << aliveTargets << ",\n"
        << "  \"modelLoaded\": " << (haveModel ? "true" : "false") << ",\n"
+       << "  \"animatedModelLoaded\": "
+       << (animatedModelLoaded ? "true" : "false") << ",\n"
        << "  \"animationState\": \""
        << (animationController
                ? CharacterAnimationStateName(animationController->state())
@@ -464,7 +489,77 @@ void DrawPixelText(IRenderer& renderer,
   }
 }
 
-void ConfigureIbl(IRenderer& renderer) {
+StwMaterial MakeMaterial(float red,
+                         float green,
+                         float blue,
+                         float metallic,
+                         float roughness) {
+  StwMaterial material;
+  material.base[0] = red;
+  material.base[1] = green;
+  material.base[2] = blue;
+  material.metallic = metallic;
+  material.roughness = roughness;
+  return material;
+}
+
+void DrawWorldBox(IRenderer& renderer,
+                  std::uint32_t cube,
+                  const StwMaterial& material,
+                  const glm::vec3& center,
+                  const glm::vec3& size) {
+  const glm::mat4 transform =
+      glm::translate(glm::mat4(1.0f), center) *
+      glm::scale(glm::mat4(1.0f), size);
+  renderer.Draw(cube, material, glm::value_ptr(transform));
+}
+
+void SubmitTrainingArena(IRenderer& renderer,
+                         std::uint32_t cube,
+                         bool hq) {
+  const StwMaterial wall = hq
+      ? MakeMaterial(0.28f, 0.34f, 0.39f, 0.18f, 0.72f)
+      : MakeMaterial(0.14f, 0.17f, 0.18f, 0.08f, 0.82f);
+  const StwMaterial structure =
+      MakeMaterial(0.11f, 0.15f, 0.18f, 0.64f, 0.36f);
+  const StwMaterial accent =
+      MakeMaterial(0.03f, 0.64f, 0.82f, 0.20f, 0.34f);
+  const StwMaterial lane =
+      MakeMaterial(0.66f, 0.72f, 0.68f, 0.06f, 0.78f);
+
+  DrawWorldBox(renderer, cube, wall, glm::vec3(-12.0f, 1.55f, -10.0f),
+               glm::vec3(0.35f, 3.1f, 32.0f));
+  DrawWorldBox(renderer, cube, wall, glm::vec3(12.0f, 1.55f, -10.0f),
+               glm::vec3(0.35f, 3.1f, 32.0f));
+  DrawWorldBox(renderer, cube, wall, glm::vec3(0.0f, 2.0f, -26.0f),
+               glm::vec3(24.0f, 4.0f, 0.45f));
+
+  for (int laneIndex = -2; laneIndex <= 2; ++laneIndex) {
+    const float x = static_cast<float>(laneIndex) * 3.2f;
+    DrawWorldBox(renderer, cube, lane, glm::vec3(x, 0.018f, -14.0f),
+                 glm::vec3(0.055f, 0.025f, 23.0f));
+  }
+  DrawWorldBox(renderer, cube, accent, glm::vec3(0.0f, 0.025f, -5.0f),
+               glm::vec3(10.5f, 0.035f, 0.10f));
+  DrawWorldBox(renderer, cube, accent, glm::vec3(0.0f, 0.025f, -23.8f),
+               glm::vec3(10.5f, 0.035f, 0.10f));
+
+  DrawWorldBox(renderer, cube, structure, glm::vec3(-9.0f, 0.72f, -8.0f),
+               glm::vec3(2.0f, 1.44f, 2.0f));
+  DrawWorldBox(renderer, cube, structure, glm::vec3(9.0f, 0.72f, -8.0f),
+               glm::vec3(2.0f, 1.44f, 2.0f));
+  DrawWorldBox(renderer, cube, structure, glm::vec3(-9.5f, 1.25f, -18.0f),
+               glm::vec3(1.0f, 2.5f, 3.0f));
+  DrawWorldBox(renderer, cube, structure, glm::vec3(9.5f, 1.25f, -18.0f),
+               glm::vec3(1.0f, 2.5f, 3.0f));
+
+  const StwMaterial platform =
+      MakeMaterial(0.18f, 0.22f, 0.25f, 0.45f, 0.48f);
+  DrawWorldBox(renderer, cube, platform, glm::vec3(2.2f, 0.08f, -7.5f),
+               glm::vec3(2.2f, 0.16f, 1.4f));
+}
+
+void ConfigureIbl(IRenderer& renderer, bool hq) {
   constexpr int width = 256;
   constexpr int height = 128;
   std::vector<float> pixels(width * height * 3);
@@ -478,14 +573,19 @@ void ConfigureIbl(IRenderer& renderer) {
                                 std::cos(theta),
                                 std::sin(phi) * std::sin(theta));
       const float horizon = glm::clamp(direction.y, -1.0f, 1.0f);
+      const glm::vec3 low = hq ? glm::vec3(0.18f, 0.22f, 0.25f)
+                               : glm::vec3(0.10f, 0.08f, 0.06f);
+      const glm::vec3 high = hq ? glm::vec3(0.38f, 0.62f, 0.92f)
+                                : glm::vec3(0.08f, 0.12f, 0.20f);
       glm::vec3 color = glm::mix(
-          glm::vec3(0.55f, 0.22f, 0.08f), glm::vec3(0.02f, 0.05f, 0.14f),
-          std::pow(glm::clamp(horizon * 1.4f + 0.2f, 0.0f, 1.0f), 0.6f));
-      const glm::vec3 sun = glm::normalize(glm::vec3(-0.55f, 0.22f, -0.35f));
+          low, high,
+          std::pow(glm::clamp(horizon * 1.25f + 0.35f, 0.0f, 1.0f), 0.7f));
+      const glm::vec3 sun = glm::normalize(glm::vec3(-0.50f, 0.55f, 0.42f));
       const float sunDot = std::max(glm::dot(direction, sun), 0.0f);
-      color += glm::vec3(1.0f, 0.45f, 0.15f) *
-               (std::pow(sunDot, 600.0f) * 30.0f +
-                std::pow(sunDot, 6.0f) * 0.5f);
+      color += (hq ? glm::vec3(1.0f, 0.84f, 0.62f)
+                   : glm::vec3(1.0f, 0.55f, 0.22f)) *
+               (std::pow(sunDot, 500.0f) * (hq ? 18.0f : 12.0f) +
+                std::pow(sunDot, 7.0f) * (hq ? 0.75f : 0.35f));
       const std::size_t offset =
           static_cast<std::size_t>((y * width + x) * 3);
       pixels[offset] = color.r;
@@ -572,6 +672,19 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
       LoadRuntimeModelSet(options.assetPath, *renderer, model, &modelLoadError);
   if (!haveModel) {
     std::cerr << "GAME MODEL WARNING: " << modelLoadError << '\n';
+  } else {
+    for (std::size_t index = 0; index < model.instances.size(); ++index) {
+      const glm::mat4 transform =
+          glm::translate(glm::mat4(1.0f),
+                         glm::vec3(-8.0f + static_cast<float>(index) * 1.6f,
+                                   0.8f, -13.0f)) *
+          glm::scale(glm::mat4(1.0f), glm::vec3(1.6f));
+      std::string transformError;
+      if (!model.instances[index].SetTransform(transform, &transformError)) {
+        modelLoadError = transformError;
+        std::cerr << "GAME MODEL WARNING: " << transformError << '\n';
+      }
+    }
   }
 
   RuntimeModelSet animationAcceptanceModel;
@@ -588,14 +701,18 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
   if (!haveAnimationAcceptance) {
     std::cerr << "GAME ANIMATION WARNING: " << acceptanceLoadError << '\n';
   }
-  ConfigureIbl(*renderer);
+  const bool hq = options.visualQuality == GameVisualQuality::HQ;
+  ConfigureIbl(*renderer, hq);
+  renderer->SetClearColor(hq ? 0.16f : 0.035f,
+                          hq ? 0.30f : 0.055f,
+                          hq ? 0.48f : 0.075f);
 
   StwMesh cube = MakeCubeMesh();
   cube.tan.resize(cube.pos.size() / 3u * 4u);
   GenerateTangentsArrays(cube.pos.data(), cube.nrm.data(), cube.uv.data(),
                          cube.idx.data(), cube.idx.size(), cube.pos.size() / 3u,
                          cube.tan.data());
-  StwMesh ground = MakeGroundMesh(24.0f);
+  StwMesh ground = MakeGroundMesh(30.0f);
   ground.tan.resize(ground.pos.size() / 3u * 4u);
   GenerateTangentsArrays(ground.pos.data(), ground.nrm.data(), ground.uv.data(),
                          ground.idx.data(), ground.idx.size(),
@@ -604,62 +721,35 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
   const std::uint32_t cubeHandle = renderer->UploadMesh(cube);
   ConfigureNormalMap(*renderer);
 
-  std::vector<RenderObject> testObjects;
-  const float roughnessValues[6] = {0.05f, 0.2f, 0.4f, 0.6f, 0.8f, 1.0f};
-  const float metallicValues[4] = {0.0f, 0.33f, 0.66f, 1.0f};
-  for (int row = 0; row < 4; ++row) {
-    for (int column = 0; column < 6; ++column) {
-      RenderObject object;
-      object.mesh = cubeHandle;
-      object.material.base[0] = 0.85f;
-      object.material.base[1] = 0.85f;
-      object.material.base[2] = 0.9f;
-      object.material.metallic = metallicValues[row];
-      object.material.roughness = roughnessValues[column];
-      const glm::mat4 transform =
-          glm::translate(glm::mat4(1.0f),
-                         glm::vec3(-20.0f + column * 4.0f, 0.7f,
-                                   -30.0f + row * 3.0f)) *
-          glm::scale(glm::mat4(1.0f), glm::vec3(1.4f));
-      std::memcpy(object.transform.data(), glm::value_ptr(transform),
-                  sizeof(float) * 16u);
-      testObjects.push_back(object);
-    }
+  std::vector<RenderObject> fallbackCrates;
+  for (int index = 0; index < 3; ++index) {
+    RenderObject object;
+    object.mesh = cubeHandle;
+    object.material = MakeMaterial(0.14f, 0.22f, 0.26f, 0.52f, 0.42f);
+    const glm::mat4 transform =
+        glm::translate(glm::mat4(1.0f),
+                       glm::vec3(-8.0f + static_cast<float>(index) * 1.25f,
+                                 0.65f, -13.0f)) *
+        glm::scale(glm::mat4(1.0f), glm::vec3(1.2f));
+    std::memcpy(object.transform.data(), glm::value_ptr(transform),
+                sizeof(float) * 16u);
+    fallbackCrates.push_back(object);
   }
-  RenderObject normalMapObject;
-  normalMapObject.mesh = cubeHandle;
-  normalMapObject.material.base[0] = 0.7f;
-  normalMapObject.material.base[1] = 0.7f;
-  normalMapObject.material.base[2] = 0.75f;
-  normalMapObject.material.metallic = 0.2f;
-  normalMapObject.material.roughness = 0.5f;
-  normalMapObject.material.hasNormal = true;
-  normalMapObject.material.normalScale = 1.0f;
-  const glm::mat4 normalMapTransform =
-      glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.2f, -24.0f)) *
-      glm::scale(glm::mat4(1.0f), glm::vec3(2.5f));
-  std::memcpy(normalMapObject.transform.data(),
-              glm::value_ptr(normalMapTransform), sizeof(float) * 16u);
-  testObjects.push_back(normalMapObject);
 
   StwMaterial groundMaterial;
-  groundMaterial.base[0] = 0.05f;
-  groundMaterial.base[1] = 0.09f;
-  groundMaterial.base[2] = 0.05f;
-  groundMaterial.roughness = 0.95f;
-  groundMaterial.metallic = 0.0f;
+  groundMaterial.base[0] = hq ? 0.22f : 0.10f;
+  groundMaterial.base[1] = hq ? 0.26f : 0.13f;
+  groundMaterial.base[2] = hq ? 0.27f : 0.14f;
+  groundMaterial.roughness = 0.82f;
+  groundMaterial.metallic = 0.05f;
+  groundMaterial.hasNormal = true;
+  groundMaterial.normalScale = 0.38f;
   StwMaterial fallbackMaterial;
   fallbackMaterial.base[0] = 0.1f;
   fallbackMaterial.base[1] = 0.55f;
   fallbackMaterial.base[2] = 0.16f;
   fallbackMaterial.roughness = 0.45f;
   fallbackMaterial.metallic = 0.6f;
-  StwMaterial targetMaterial;
-  targetMaterial.base[0] = 0.8f;
-  targetMaterial.base[1] = 0.15f;
-  targetMaterial.base[2] = 0.12f;
-  targetMaterial.roughness = 0.5f;
-  targetMaterial.metallic = 0.2f;
   StwMaterial menuTitleMaterial;
   menuTitleMaterial.base[0] = 0.05f;
   menuTitleMaterial.base[1] = 0.75f;
@@ -676,6 +766,12 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
   Camera camera;
   FpsController controller;
   WeaponSystem weapon;
+  GameplayPresentation presentation;
+  GameAudio audio;
+  std::string audioError;
+  if (!audio.Initialize(&audioError)) {
+    std::cerr << "GAME AUDIO WARNING: " << audioError << '\n';
+  }
   TargetWorld targetWorld(5);
   FrameEvents events;
   FpsInput frameInput;
@@ -698,13 +794,15 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
   const Uint64 performanceFrequency = SDL_GetPerformanceFrequency();
   Uint64 previousCounter = SDL_GetPerformanceCounter();
 
-  std::cout << "STW GAME RUNTIME: real menu and training map\n"
+  std::cout << "STW GAME RUNTIME: real menu and training map ["
+            << QualityName(options.visualQuality) << "]\n"
             << "Controls: Enter/click start, WASD/mouse move/look, left fire, "
-               "Q weapon, R reset, Esc quit\n";
+               "Q weapon, E reload, R reset, Esc quit\n";
 
   while (running) {
     bool resetRequested = false;
     bool cycleWeaponRequested = false;
+    bool reloadRequested = false;
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
       if (event.type == SDL_QUIT) {
@@ -720,6 +818,8 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
           SDL_SetRelativeMouseMode(SDL_TRUE);
         } else if (event.key.keysym.sym == SDLK_q) {
           cycleWeaponRequested = true;
+        } else if (event.key.keysym.sym == SDLK_e) {
+          reloadRequested = true;
         } else if (event.key.keysym.sym == SDLK_r) {
           resetRequested = true;
           phase = GamePhase::Playing;
@@ -760,7 +860,8 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
     if (!remoteDirectory.empty()) {
       PollRemoteInput(remoteDirectory, remoteInput, lastError);
       PollRemoteCommand(remoteDirectory, remoteInput, phase, running,
-                        resetRequested, cycleWeaponRequested, lastError);
+                        resetRequested, cycleWeaponRequested, reloadRequested,
+                        lastError);
     }
     if (!running) break;
     if (remoteInput.lastInputAt.time_since_epoch().count() != 0 &&
@@ -777,6 +878,7 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
     if (resetRequested) {
       controller = FpsController{};
       weapon = WeaponSystem{};
+      presentation.Reset();
       targetWorld = TargetWorld(5);
       std::string resetError;
       if (haveModel && !ResetRuntimeAnimations(model, &resetError)) {
@@ -801,7 +903,15 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
         if (options.noInput) failed = true;
       }
     }
-    if (cycleWeaponRequested) weapon.cycle();
+    if (cycleWeaponRequested) {
+      weapon.cycle();
+      presentation.OnWeaponSwitched();
+      audio.PlayWeaponSwitch();
+    }
+    if (reloadRequested && weapon.startReload()) {
+      presentation.OnReloadStarted();
+      audio.PlayReload();
+    }
 
     const Uint8* keys = SDL_GetKeyboardState(nullptr);
     const float localForward = options.noInput ? 0.0f :
@@ -824,15 +934,24 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
       bool firedThisFrame = false;
       controller.update(frameInput, deltaSeconds);
       weapon.update(deltaSeconds);
+      const float movementMagnitude = std::min(
+          1.0f, std::sqrt(frameInput.fwd * frameInput.fwd +
+                          frameInput.strafe * frameInput.strafe));
+      presentation.Update(deltaSeconds, movementMagnitude);
       if (const auto shot = weapon.tryFire(localFire || remoteInput.fire,
                                            controller.eye(),
                                            controller.forward(), events)) {
         firedThisFrame = true;
+        std::optional<glm::vec3> shotHitPoint;
         if (const auto hit = targetWorld.hitscan(
                 shot->origin, shot->dir, weapon.spec().range)) {
+          shotHitPoint = hit->second;
           events.hits.push_back({hit->second, hit->first});
           targetWorld.applyDamage(hit->first, weapon.spec().damage, events);
+          audio.PlayHit();
         }
+        presentation.OnWeaponFired(*shot, weapon.spec().range, shotHitPoint);
+        audio.PlayFire(shot->weapon);
       }
       targetWorld.update(deltaSeconds, events);
 
@@ -892,6 +1011,7 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
         : 1.0f;
     Light light;
     if (phase == GamePhase::Menu) {
+      renderer->SetClearColor(0.008f, 0.018f, 0.028f);
       camera.pos = glm::vec3(0.0f, 1.4f, 14.0f);
       camera.yaw = 0.0f;
       camera.pitch = 0.0f;
@@ -907,14 +1027,33 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
       DrawPixelText(*renderer, cubeHandle, menuActionMaterial, "PLAY", -3.2f,
                     -8.0f, 0.32f);
     } else {
+      renderer->SetClearColor(hq ? 0.16f : 0.035f,
+                              hq ? 0.30f : 0.055f,
+                              hq ? 0.48f : 0.075f);
       camera.pos = controller.eye();
       camera.yaw = controller.yaw;
       camera.pitch = controller.pitch;
+      if (hq) {
+        // The visible face of the imported animation mannequin points +Z;
+        // this sun vector lights it and the arena instead of relying on a
+        // debug ambient override.
+        light.dir[0] = -0.38f;
+        light.dir[1] = -0.78f;
+        light.dir[2] = -0.55f;
+        light.color[0] = 1.0f;
+        light.color[1] = 0.94f;
+        light.color[2] = 0.84f;
+        light.ambient[0] = 0.20f;
+        light.ambient[1] = 0.24f;
+        light.ambient[2] = 0.28f;
+        light.strength = 4.35f + presentation.muzzleIntensity() * 1.25f;
+      }
       renderer->SetViewProj(glm::value_ptr(camera.viewProj()));
       renderer->SetCameraPos(camera.pos.x, camera.pos.y, camera.pos.z);
       renderer->SetLight(light);
       const glm::mat4 identity(1.0f);
       renderer->Draw(groundHandle, groundMaterial, glm::value_ptr(identity));
+      SubmitTrainingArena(*renderer, cubeHandle, hq);
 
       if (haveModel && model.loaded()) {
         std::string drawError;
@@ -924,7 +1063,7 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
           if (options.noInput) failed = true;
         }
       } else {
-        for (const RenderObject& object : testObjects) {
+        for (const RenderObject& object : fallbackCrates) {
           renderer->Draw(object.mesh, object.material, object.transform.data());
         }
       }
@@ -939,25 +1078,12 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
       }
 
       for (const Target& target : targetWorld.targets()) {
-        if (!target.alive) continue;
-        const glm::mat4 transform =
-            glm::translate(identity, target.pos) *
-            glm::scale(identity, glm::vec3(0.8f, 1.0f, 0.8f));
-        renderer->Draw(cubeHandle, targetMaterial,
-                       glm::value_ptr(transform));
+        SubmitTrainingTarget(*renderer, cubeHandle, target);
       }
-      for (const HitEvent& hit : events.hits) {
-        const glm::mat4 transform =
-            glm::translate(identity, hit.pos) *
-            glm::scale(identity, glm::vec3(0.12f));
-        StwMaterial spark;
-        spark.base[0] = 1.0f;
-        spark.base[1] = 0.8f;
-        spark.base[2] = 0.3f;
-        spark.metallic = 0.0f;
-        spark.roughness = 0.4f;
-        renderer->Draw(cubeHandle, spark, glm::value_ptr(transform));
-      }
+      presentation.SubmitTransientEffects(*renderer, cubeHandle);
+      presentation.SubmitFirstPersonWeapon(*renderer, cubeHandle, controller,
+                                           weapon);
+      presentation.SubmitCrosshair(*renderer, cubeHandle, controller);
     }
 
     simulatedSeconds += deltaSeconds;
@@ -1028,7 +1154,9 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
                              haveAnimationAcceptance
                                  ? &playerAnimationController
                                  : nullptr,
-                             gameplayAnimationInstance, displayedFps,
+                             gameplayAnimationInstance,
+                             haveAnimationAcceptance, audio.available(),
+                             options.visualQuality, displayedFps,
                              static_cast<double>(deltaSeconds) * 1000.0,
                              frameNumber, lastError, &statusError)) {
         lastError = statusError;
@@ -1053,10 +1181,13 @@ int RunGameRuntime(const GameRuntimeOptions& options) {
                       haveModel,
                       haveAnimationAcceptance ? &playerAnimationController
                                               : nullptr,
-                      gameplayAnimationInstance, displayedFps, 0.0,
+                      gameplayAnimationInstance, haveAnimationAcceptance,
+                      audio.available(), options.visualQuality,
+                      displayedFps, 0.0,
                       frameNumber, lastError,
                       &statusError);
   }
+  audio.Shutdown();
   renderer->Shutdown();
   SDL_DestroyWindow(window);
   SDL_Quit();
