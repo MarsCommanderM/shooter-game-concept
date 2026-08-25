@@ -17,6 +17,7 @@ readonly REPORT_FILE="${STATE_ROOT}/host-qualification.txt"
 readonly STW_ROOT="${PERSISTENT_ROOT}/stw-production"
 readonly USER_BIN="${PERSISTENT_ROOT}/.local/bin"
 readonly GIT_ASKPASS_HELPER="${STATE_ROOT}/git-askpass.sh"
+readonly NVIDIA_ICD_FILE="${STATE_ROOT}/nvidia_icd.json"
 
 mkdir -p "${LOG_ROOT}"
 : >"${REPORT_FILE}"
@@ -278,6 +279,22 @@ fi
 
 git lfs install --skip-repo >"${LOG_ROOT}/git-lfs-install.log" 2>&1 ||
   fail "Git LFS setup failed."
+
+nvidia_vulkan_library="$(ldconfig -p 2>/dev/null | awk '$1 == "libGLX_nvidia.so.0" {print $NF; exit}')"
+[[ -n "${nvidia_vulkan_library}" && -r "${nvidia_vulkan_library}" ]] ||
+  fail "The Lightning container does not expose the NVIDIA Vulkan ICD library."
+cat >"${NVIDIA_ICD_FILE}" <<'EOF'
+{
+  "file_format_version": "1.0.0",
+  "ICD": {
+    "library_path": "libGLX_nvidia.so.0",
+    "api_version": "1.3.280"
+  }
+}
+EOF
+chmod 600 "${NVIDIA_ICD_FILE}"
+export VK_DRIVER_FILES="${NVIDIA_ICD_FILE}"
+report "Lightning NVIDIA ICD manifest: ${NVIDIA_ICD_FILE} -> ${nvidia_vulkan_library}"
 
 report "cmake after setup: $(cmake --version | head -n 1)"
 report "clang after setup: $(clang++ --version | head -n 1)"
