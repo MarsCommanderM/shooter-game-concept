@@ -16,6 +16,7 @@ readonly LOG_ROOT="${STATE_ROOT}/logs"
 readonly REPORT_FILE="${STATE_ROOT}/host-qualification.txt"
 readonly STW_ROOT="${PERSISTENT_ROOT}/stw-production"
 readonly USER_BIN="${PERSISTENT_ROOT}/.local/bin"
+readonly TOOLS_BIN="${STATE_ROOT}/bin"
 readonly GIT_ASKPASS_HELPER="${STATE_ROOT}/git-askpass.sh"
 readonly NVIDIA_ICD_FILE="${STATE_ROOT}/nvidia_icd.json"
 readonly O3DE_ROOT="${PERSISTENT_ROOT}/o3de-2605"
@@ -285,7 +286,7 @@ run_logged apt-install sudo -n env DEBIAN_FRONTEND=noninteractive apt-get instal
   xauth \
   xvfb || fail "Required O3DE host packages failed to install."
 
-export PATH="${USER_BIN}:${PATH}"
+export PATH="${TOOLS_BIN}:${USER_BIN}:${PATH}"
 cmake_ready=false
 if command -v cmake >/dev/null 2>&1; then
   cmake_version="$(cmake --version | awk 'NR == 1 {print $3}')"
@@ -298,6 +299,18 @@ if [[ "${cmake_ready}" != true ]]; then
     --upgrade "cmake==3.30.5" ||
     fail "Unable to install pinned CMake into Lightning's existing default environment."
 fi
+
+cmake_native_dir="$(python3 -c 'import cmake, pathlib; print(pathlib.Path(cmake.__file__).parent / "data" / "bin")')"
+for cmake_tool in cmake ctest cpack; do
+  [[ -x "${cmake_native_dir}/${cmake_tool}" ]] ||
+    fail "Pinned CMake package is missing native ${cmake_tool}."
+  if [[ -e "${TOOLS_BIN}/${cmake_tool}" && ! -L "${TOOLS_BIN}/${cmake_tool}" ]]; then
+    fail "Refusing to replace non-symlink tool ${TOOLS_BIN}/${cmake_tool}."
+  fi
+  mkdir -p "${TOOLS_BIN}"
+  ln -sfn "${cmake_native_dir}/${cmake_tool}" "${TOOLS_BIN}/${cmake_tool}"
+done
+export PATH="${TOOLS_BIN}:${USER_BIN}:${PATH}"
 
 git lfs install --skip-repo >"${LOG_ROOT}/git-lfs-install.log" 2>&1 ||
   fail "Git LFS setup failed."
@@ -369,7 +382,7 @@ grep -Eiq 'llvmpipe|lavapipe|deviceType[[:space:]]*=[[:space:]]*PHYSICAL_DEVICE_
   fail "Software Vulkan was detected; the visual gate refuses fallback rendering."
 
 set +e
-(cd "${STW_ROOT}" && PATH="${USER_BIN}:${PATH}" bash stw-o3de/Scripts/verify-host.sh) \
+(cd "${STW_ROOT}" && PATH="${TOOLS_BIN}:${USER_BIN}:${PATH}" bash stw-o3de/Scripts/verify-host.sh) \
   >"${LOG_ROOT}/verify-host-after.log" 2>&1
 verify_after_rc=$?
 set -e
@@ -417,10 +430,10 @@ report "O3DE version: ${O3DE_VERSION}"
 report "O3DE tag: ${O3DE_TAG}"
 report "O3DE commit: ${actual_o3de_commit}"
 
-run_logged o3de-get-python env PATH="${USER_BIN}:${PATH}" \
+run_logged o3de-get-python env PATH="${TOOLS_BIN}:${USER_BIN}:${PATH}" \
   bash "${O3DE_ROOT}/python/get_python.sh" ||
   fail "Official O3DE Python bootstrap failed."
-run_logged o3de-register-engine env PATH="${USER_BIN}:${PATH}" \
+run_logged o3de-register-engine env PATH="${TOOLS_BIN}:${USER_BIN}:${PATH}" \
   "${O3DE_ROOT}/scripts/o3de.sh" register --this-engine ||
   fail "Official O3DE engine registration failed."
 
@@ -469,7 +482,7 @@ run_logged enable-stw-gameplay "${O3DE_ROOT}/scripts/o3de.sh" enable-gem \
 
 mkdir -p "${O3DE_PACKAGES}" "${BUILD_ROOT}"
 run_logged configure-stw env \
-  PATH="${USER_BIN}:${PATH}" \
+  PATH="${TOOLS_BIN}:${USER_BIN}:${PATH}" \
   CC=clang \
   CXX=clang++ \
   VK_DRIVER_FILES="${NVIDIA_ICD_FILE}" \
