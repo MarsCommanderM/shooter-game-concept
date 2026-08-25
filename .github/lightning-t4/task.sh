@@ -15,7 +15,7 @@ readonly STATE_ROOT="${PERSISTENT_ROOT}/stw-o3de-gate"
 readonly LOG_ROOT="${STATE_ROOT}/logs"
 readonly REPORT_FILE="${STATE_ROOT}/host-qualification.txt"
 readonly STW_ROOT="${PERSISTENT_ROOT}/stw-production"
-readonly TOOLS_VENV="${PERSISTENT_ROOT}/.stw-o3de-tools"
+readonly USER_BIN="${PERSISTENT_ROOT}/.local/bin"
 readonly GIT_ASKPASS_HELPER="${STATE_ROOT}/git-askpass.sh"
 
 mkdir -p "${LOG_ROOT}"
@@ -238,7 +238,6 @@ run_logged apt-install sudo -n env DEBIAN_FRONTEND=noninteractive apt-get instal
   lld \
   ninja-build \
   git-lfs \
-  python3-venv \
   python3-pip \
   libvulkan-dev \
   vulkan-tools \
@@ -263,12 +262,10 @@ run_logged apt-install sudo -n env DEBIAN_FRONTEND=noninteractive apt-get instal
   xauth \
   xvfb || fail "Required O3DE host packages failed to install."
 
-if [[ ! -x "${TOOLS_VENV}/bin/cmake" ]]; then
-  run_logged create-tools-venv python3 -m venv "${TOOLS_VENV}" || fail "Unable to create the persistent O3DE tools environment."
-  run_logged install-cmake "${TOOLS_VENV}/bin/python" -m pip install --disable-pip-version-check \
-    "cmake==3.30.5" || fail "Unable to install the pinned free CMake tool package."
-fi
-export PATH="${TOOLS_VENV}/bin:${PATH}"
+run_logged install-cmake python3 -m pip install --user --disable-pip-version-check \
+  --upgrade "cmake==3.30.5" ||
+  fail "Unable to install pinned CMake into Lightning's existing default environment."
+export PATH="${USER_BIN}:${PATH}"
 
 git lfs install --skip-repo >"${LOG_ROOT}/git-lfs-install.log" 2>&1 ||
   fail "Git LFS setup failed."
@@ -293,7 +290,7 @@ grep -Eiq 'llvmpipe|lavapipe|deviceType[[:space:]]*=[[:space:]]*PHYSICAL_DEVICE_
   fail "Software Vulkan was detected; the visual gate refuses fallback rendering."
 
 set +e
-(cd "${STW_ROOT}" && PATH="${TOOLS_VENV}/bin:${PATH}" bash stw-o3de/Scripts/verify-host.sh) \
+(cd "${STW_ROOT}" && PATH="${USER_BIN}:${PATH}" bash stw-o3de/Scripts/verify-host.sh) \
   >"${LOG_ROOT}/verify-host-after.log" 2>&1
 verify_after_rc=$?
 set -e
