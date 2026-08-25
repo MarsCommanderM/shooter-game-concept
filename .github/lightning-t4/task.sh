@@ -333,9 +333,13 @@ chmod 600 "${NVIDIA_ICD_FILE}"
 export VK_DRIVER_FILES="${NVIDIA_ICD_FILE}"
 report "Lightning NVIDIA ICD manifest: ${NVIDIA_ICD_FILE} -> ${nvidia_vulkan_library}"
 
+clang_scan_deps="$(command -v clang-scan-deps-18 2>/dev/null || command -v clang-scan-deps 2>/dev/null || true)"
+[[ -n "${clang_scan_deps}" && -x "${clang_scan_deps}" ]] ||
+  fail "Clang dependency scanner is unavailable after installing clang-tools-18."
+
 report "cmake after setup: $(cmake --version | head -n 1)"
 report "clang after setup: $(clang++ --version | head -n 1)"
-report "clang scan deps: $(command -v clang-scan-deps-18 2>/dev/null || command -v clang-scan-deps 2>/dev/null || printf 'NOT FOUND')"
+report "clang scan deps: ${clang_scan_deps}"
 report "ninja after setup: $(ninja --version)"
 report "git lfs after setup: $(git lfs version)"
 
@@ -491,6 +495,7 @@ run_logged configure-stw env \
   VK_DRIVER_FILES="${NVIDIA_ICD_FILE}" \
   cmake -S "${PROJECT_ROOT}" -B "${BUILD_ROOT}" \
     -G "Ninja Multi-Config" \
+    -DCMAKE_CXX_COMPILER_CLANG_SCAN_DEPS:FILEPATH="${clang_scan_deps}" \
     -DLY_3RDPARTY_PATH="${O3DE_PACKAGES}" ||
   fail "STW O3DE CMake configure failed."
 
