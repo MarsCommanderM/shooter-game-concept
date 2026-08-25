@@ -36,7 +36,6 @@ artifact() {
   report "${label} SIZE: $(stat -c '%s bytes' "${path}")"
   report "${label} TIMESTAMP: $(stat -c '%y' "${path}")"
   report "${label} EXECUTABLE: YES"
-  file "${path}" | tee -a "${REPORT}"
   dependency_log="${LOGS}/$(printf '%s' "${label}" | tr '[:upper:] ' '[:lower:]-')-ldd.log"
   ldd "${path}" >"${dependency_log}" 2>&1 || fail "ldd failed for ${label}."
   if grep -Fq 'not found' "${dependency_log}"; then
