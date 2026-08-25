@@ -27,9 +27,9 @@ report "BUILD TREE PRESERVED=YES"
 report "NO BUILD OR ASSET PROCESSOR INVOCATION PERFORMED=YES"
 
 section "CMAKE ENGINE PROVENANCE"
-grep -E '^(CMAKE_HOME_DIRECTORY|LY_ROOT_FOLDER|LY_3RDPARTY_PATH|O3DE|.*ENGINE.*|.*PROJECT.*):' +  "${BUILD}/CMakeCache.txt" 2>/dev/null | sed -n '1,160p' | tee -a "${REPORT}" || true
+grep -E '^(CMAKE_HOME_DIRECTORY|LY_ROOT_FOLDER|LY_3RDPARTY_PATH|O3DE|.*ENGINE.*|.*PROJECT.*):' "${BUILD}/CMakeCache.txt" 2>/dev/null | sed -n '1,160p' | tee -a "${REPORT}" || true
 report "CMAKE CACHE SOURCE PATH REFERENCES:"
-grep -oE '/[^ ;"]+(o3de-2605|stw-o3de-worktree)[^ ;"]*' "${BUILD}/CMakeCache.txt" +  | sort -u | sed -n '1,120p' | tee -a "${REPORT}" || true
+grep -oE '/[^ ;"]+(o3de-2605|stw-o3de-worktree)[^ ;"]*' "${BUILD}/CMakeCache.txt" | sort -u | sed -n '1,120p' | tee -a "${REPORT}" || true
 
 section "ENGINE"
 engine_root="${O3DE_EXPECTED}"
@@ -95,10 +95,11 @@ for key in ("engines","projects","external_subdirectories"):
 PY
 
 section "REGISTRY INVENTORY"
-for dir in +  "${engine_root}/Registry" +  "${PROJECT}/Registry" +  "${PROJECT}/user/Registry" +  "${ROOT}/.o3de/Registry" +  "${BIN}/Registry" +  "${BUILD}/runtime_dependencies/profile"; do
+registry_dirs=("${engine_root}/Registry" "${PROJECT}/Registry" "${PROJECT}/user/Registry" "${ROOT}/.o3de/Registry" "${BIN}/Registry" "${BUILD}/runtime_dependencies/profile")
+for dir in "${registry_dirs[@]}"; do
   report "DIRECTORY: $dir"
   if [[ -d "$dir" ]]; then
-    find "$dir" -maxdepth 3 -type f \( -name '*.setreg' -o -name '*.json' -o -name '*.cmake' \) +      -printf '  %p | %s bytes | %TY-%Tm-%Td %TH:%TM:%TS\n' 2>/dev/null +      | sort | sed -n '1,240p' | tee -a "${REPORT}"
+    find "$dir" -maxdepth 3 -type f \( -name '*.setreg' -o -name '*.json' -o -name '*.cmake' \) -printf '  %p | %s bytes | %TY-%Tm-%Td %TH:%TM:%TS\n' 2>/dev/null | sort | sed -n '1,240p' | tee -a "${REPORT}"
   else
     report "  MISSING"
   fi
@@ -109,19 +110,19 @@ platform_cfg="${engine_root}/Registry/AssetProcessorPlatformConfig.setreg"
 if [[ -r "${platform_cfg}" ]]; then
   report "PLATFORM KEY MATCHES=$(grep -c 'Platform ' "${platform_cfg}" || true)"
   report "SCAN FOLDER KEY MATCHES=$(grep -c 'ScanFolder' "${platform_cfg}" || true)"
-  grep -nE 'AssetProcessor|Platform |ScanFolder' "${platform_cfg}" +    | sed -n '1,220p' | tee -a "${REPORT}" || true
+  grep -nE 'AssetProcessor|Platform |ScanFolder' "${platform_cfg}" | sed -n '1,220p' | tee -a "${REPORT}" || true
 fi
 
 section "GENERATED REGISTRY AND GEM PATHS"
-find "${BUILD}" "${BIN}" -type f +  \( -name 'cmake_dependencies*.setreg' -o -name '*gem*.setreg' -o -name '*Gem*.setreg' +     -o -name 'bootstrap*.setreg' -o -name '*AssetProcessor*.setreg' \) +  -printf '%p | %s bytes | %TY-%Tm-%Td %TH:%TM:%TS\n' 2>/dev/null +  | sort | sed -n '1,320p' | tee -a "${REPORT}"
+find "${BUILD}" "${BIN}" -type f \( -name 'cmake_dependencies*.setreg' -o -name '*gem*.setreg' -o -name '*Gem*.setreg' -o -name 'bootstrap*.setreg' -o -name '*AssetProcessor*.setreg' \) -printf '%p | %s bytes | %TY-%Tm-%Td %TH:%TM:%TS\n' 2>/dev/null | sort | sed -n '1,320p' | tee -a "${REPORT}"
 report "GENERATED PATH REFERENCES:"
-find "${BUILD}" "${BIN}" -type f -name '*.setreg' -print0 2>/dev/null +  | xargs -0 grep -hE 'o3de-2605|stw-o3de-worktree|/Gems/' 2>/dev/null +  | sed -n '1,240p' | tee -a "${REPORT}" || true
+find "${BUILD}" "${BIN}" -type f -name '*.setreg' -print0 2>/dev/null | xargs -0 grep -hE 'o3de-2605|stw-o3de-worktree|/Gems/' 2>/dev/null | sed -n '1,240p' | tee -a "${REPORT}" || true
 
 section "ACTUAL PREVIOUS INVOCATION"
 prior="${LOGS}/assetprocessorbatch.stdout-stderr.log"
 report "PRIOR LOG=${prior}"
 if [[ -f "${STATE}/asset-and-launch-gate.txt" ]]; then
-  grep -F 'ASSET PROCESSOR COMMAND:' "${STATE}/asset-and-launch-gate.txt" +    | tail -n1 | tee -a "${REPORT}" || true
+  grep -F 'ASSET PROCESSOR COMMAND:' "${STATE}/asset-and-launch-gate.txt" | tail -n1 | tee -a "${REPORT}" || true
 fi
 report "ASCII OPTION EXPECTED=--project-path="
 
