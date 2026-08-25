@@ -245,6 +245,7 @@ run_logged apt-update sudo -n apt-get update || fail "apt package metadata updat
 run_logged apt-install sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   build-essential \
   clang \
+  clang-tools-18 \
   lld \
   libstdc++-12-dev \
   ninja-build \
@@ -334,6 +335,7 @@ report "Lightning NVIDIA ICD manifest: ${NVIDIA_ICD_FILE} -> ${nvidia_vulkan_lib
 
 report "cmake after setup: $(cmake --version | head -n 1)"
 report "clang after setup: $(clang++ --version | head -n 1)"
+report "clang scan deps: $(command -v clang-scan-deps-18 2>/dev/null || command -v clang-scan-deps 2>/dev/null || printf 'NOT FOUND')"
 report "ninja after setup: $(ninja --version)"
 report "git lfs after setup: $(git lfs version)"
 
