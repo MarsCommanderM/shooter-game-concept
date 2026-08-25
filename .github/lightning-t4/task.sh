@@ -262,10 +262,19 @@ run_logged apt-install sudo -n env DEBIAN_FRONTEND=noninteractive apt-get instal
   xauth \
   xvfb || fail "Required O3DE host packages failed to install."
 
-run_logged install-cmake python3 -m pip install --user --disable-pip-version-check \
-  --upgrade "cmake==3.30.5" ||
-  fail "Unable to install pinned CMake into Lightning's existing default environment."
 export PATH="${USER_BIN}:${PATH}"
+cmake_ready=false
+if command -v cmake >/dev/null 2>&1; then
+  cmake_version="$(cmake --version | awk 'NR == 1 {print $3}')"
+  if [[ "$(printf '%s\n%s\n' '3.30.0' "${cmake_version}" | sort -V | head -n 1)" == '3.30.0' ]]; then
+    cmake_ready=true
+  fi
+fi
+if [[ "${cmake_ready}" != true ]]; then
+  run_logged install-cmake python3 -m pip install --user --disable-pip-version-check \
+    --upgrade "cmake==3.30.5" ||
+    fail "Unable to install pinned CMake into Lightning's existing default environment."
+fi
 
 git lfs install --skip-repo >"${LOG_ROOT}/git-lfs-install.log" 2>&1 ||
   fail "Git LFS setup failed."
@@ -281,7 +290,38 @@ vulkan_rc=$?
 set -e
 report "vulkaninfo exit: ${vulkan_rc}"
 tail -n 100 "${LOG_ROOT}/vulkaninfo-summary.log" | tee -a "${REPORT_FILE}"
-((vulkan_rc == 0)) || fail "vulkaninfo could not enumerate a physical Vulkan device."
+if ((vulkan_rc != 0)); then
+  report "vulkan diagnostics:"
+  for variable_name in \
+    VK_DRIVER_FILES \
+    VK_ICD_FILENAMES \
+    NVIDIA_VISIBLE_DEVICES \
+    NVIDIA_DRIVER_CAPABILITIES \
+    LD_LIBRARY_PATH \
+    DISPLAY; do
+    report "${variable_name}=${!variable_name:-unset}"
+  done
+  report "vulkan icd directories:"
+  for icd_directory in /etc/vulkan/icd.d /usr/share/vulkan/icd.d "${HOME}/.local/share/vulkan/icd.d"; do
+    if [[ -d "${icd_directory}" ]]; then
+      find "${icd_directory}" -maxdepth 1 -type f -printf '%p\n' 2>/dev/null | sort | tee -a "${REPORT_FILE}"
+    else
+      report "MISSING: ${icd_directory}"
+    fi
+  done
+  report "NVIDIA/Vulkan dynamic libraries:"
+  { ldconfig -p 2>/dev/null | grep -Ei 'nvidia|vulkan' || true; } | tee -a "${REPORT_FILE}"
+  report "NVIDIA package candidates:"
+  apt-cache policy libnvidia-gl-580 nvidia-driver-580 nvidia-utils-580 2>/dev/null | tee -a "${REPORT_FILE}"
+  report "installed NVIDIA/Vulkan packages:"
+  { dpkg-query -W -f='${binary:Package} ${Version}\n' 2>/dev/null | grep -Ei 'nvidia|vulkan' || true; } |
+    sort | tee -a "${REPORT_FILE}"
+  report "NVIDIA graphics library files:"
+  { find /usr /lib /system -xdev -type f \
+    \( -name 'libGLX_nvidia.so*' -o -name 'libnvidia-glvkspirv.so*' -o -name 'libnvidia-vulkan-producer.so*' \) \
+    -print 2>/dev/null || true; } | sort | tee -a "${REPORT_FILE}"
+  fail "vulkaninfo could not enumerate a physical Vulkan device. O3DE was not downloaded."
+fi
 grep -Eiq 'deviceName[[:space:]]*=[[:space:]]*(Tesla[[:space:]]+)?T4|deviceName.*NVIDIA.*T4' \
   "${LOG_ROOT}/vulkaninfo-summary.log" ||
   fail "Vulkan did not identify the physical NVIDIA T4."
