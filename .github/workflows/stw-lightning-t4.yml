@@ -24,7 +24,7 @@ jobs:
       - linux
       - x64
       - stw-lightning-t4
-    timeout-minutes: 60
+    timeout-minutes: 180
 
     steps:
       - name: Check out the canonical production commit

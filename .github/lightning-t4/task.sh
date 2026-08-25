@@ -18,6 +18,13 @@ readonly STW_ROOT="${PERSISTENT_ROOT}/stw-production"
 readonly USER_BIN="${PERSISTENT_ROOT}/.local/bin"
 readonly GIT_ASKPASS_HELPER="${STATE_ROOT}/git-askpass.sh"
 readonly NVIDIA_ICD_FILE="${STATE_ROOT}/nvidia_icd.json"
+readonly O3DE_ROOT="${PERSISTENT_ROOT}/o3de-2605"
+readonly O3DE_PACKAGES="${PERSISTENT_ROOT}/o3de-packages"
+readonly STW_GATE_ROOT="${PERSISTENT_ROOT}/stw-o3de-worktree"
+readonly PROJECT_ROOT="${STW_GATE_ROOT}/stw-o3de/Project"
+readonly STW_CORE_GEM="${STW_GATE_ROOT}/stw-o3de/Gems/STWCore"
+readonly STW_GAMEPLAY_GEM="${STW_GATE_ROOT}/stw-o3de/Gems/STWGameplay"
+readonly BUILD_ROOT="${PERSISTENT_ROOT}/stw-o3de-build/linux"
 
 mkdir -p "${LOG_ROOT}"
 : >"${REPORT_FILE}"
@@ -237,6 +244,7 @@ run_logged apt-install sudo -n env DEBIAN_FRONTEND=noninteractive apt-get instal
   build-essential \
   clang \
   lld \
+  libstdc++-12-dev \
   ninja-build \
   git-lfs \
   python3-pip \
@@ -251,15 +259,29 @@ run_logged apt-install sudo -n env DEBIAN_FRONTEND=noninteractive apt-get instal
   libxi-dev \
   libxcursor-dev \
   libxinerama-dev \
+  libglu1-mesa-dev \
+  mesa-common-dev \
+  libxcb-randr0-dev \
+  libxcb-xinerama0 \
+  libxcb-xinput0 \
+  libxcb-xinput-dev \
+  libxcb-xfixes0-dev \
+  libxcb-xkb-dev \
+  libxcb-image0-dev \
+  libxcb-keysyms1-dev \
   libfontconfig1-dev \
   libfreetype6-dev \
+  libcurl4-openssl-dev \
+  libpcre2-16-0 \
   libudev-dev \
   libdbus-1-dev \
   libpulse-dev \
   libasound2-dev \
   libssl-dev \
   libunwind-dev \
+  libzstd-dev \
   zlib1g-dev \
+  xxd \
   xauth \
   xvfb || fail "Required O3DE host packages failed to install."
 
@@ -359,7 +381,111 @@ if ((verify_after_rc != 0)); then
 fi
 
 report "HOST QUALIFICATION: PASS"
-report "O3DE DOWNLOAD: NOT STARTED IN QUALIFICATION PHASE"
-report "FILES CHANGED IN STW REPOSITORY: NONE"
+
+free_kib="$(df -Pk "${PERSISTENT_ROOT}" | awk 'NR == 2 {print $4}')"
+free_gib="$(awk -v kib="${free_kib}" 'BEGIN {printf "%.2f", kib / 1024 / 1024}')"
+report "persistent free disk before O3DE clone: ${free_gib} GiB"
+((free_kib >= REQUIRED_FREE_GIB * 1024 * 1024)) ||
+  fail "Storage dropped below the 180 GiB O3DE download gate."
+
+if [[ -e "${O3DE_ROOT}" && ! -d "${O3DE_ROOT}/.git" ]]; then
+  fail "${O3DE_ROOT} exists but is not an official O3DE Git checkout."
+fi
+if [[ ! -d "${O3DE_ROOT}/.git" ]]; then
+  run_logged clone-o3de git clone \
+    --branch "${O3DE_TAG}" \
+    --single-branch \
+    --depth 1 \
+    https://github.com/o3de/o3de.git \
+    "${O3DE_ROOT}" || fail "Official O3DE clone failed."
+fi
+
+o3de_origin="$(git -C "${O3DE_ROOT}" remote get-url origin)"
+case "${o3de_origin}" in
+  https://github.com/o3de/o3de | https://github.com/o3de/o3de.git | git@github.com:o3de/o3de.git) ;;
+  *) fail "O3DE checkout origin is not the official upstream repository." ;;
+esac
+[[ -z "$(git -C "${O3DE_ROOT}" status --porcelain=v1 --untracked-files=all)" ]] ||
+  fail "Official O3DE source checkout contains uncommitted changes."
+actual_o3de_commit="$(git -C "${O3DE_ROOT}" rev-parse HEAD)"
+[[ "${actual_o3de_commit}" == "${O3DE_COMMIT}" ]] ||
+  fail "O3DE tag resolved to ${actual_o3de_commit}, not pinned ${O3DE_COMMIT}."
+git -C "${O3DE_ROOT}" cat-file -e "${O3DE_COMMIT}^{commit}" ||
+  fail "Pinned O3DE object is unavailable after clone."
+report "O3DE source: ${O3DE_ROOT}"
+report "O3DE version: ${O3DE_VERSION}"
+report "O3DE tag: ${O3DE_TAG}"
+report "O3DE commit: ${actual_o3de_commit}"
+
+run_logged o3de-get-python env PATH="${USER_BIN}:${PATH}" \
+  bash "${O3DE_ROOT}/python/get_python.sh" ||
+  fail "Official O3DE Python bootstrap failed."
+run_logged o3de-register-engine env PATH="${USER_BIN}:${PATH}" \
+  "${O3DE_ROOT}/scripts/o3de.sh" register --this-engine ||
+  fail "Official O3DE engine registration failed."
+
+if [[ -e "${STW_GATE_ROOT}" && ! -e "${STW_GATE_ROOT}/.git" ]]; then
+  fail "${STW_GATE_ROOT} exists but is not the isolated STW Git worktree."
+fi
+if [[ ! -e "${STW_GATE_ROOT}/.git" ]]; then
+  run_logged create-stw-gate-worktree git -C "${STW_ROOT}" worktree add \
+    --detach "${STW_GATE_ROOT}" "${remote_head}" ||
+    fail "Unable to create the isolated STW O3DE worktree."
+fi
+[[ "$(git -C "${STW_GATE_ROOT}" rev-parse --show-toplevel)" == "${STW_GATE_ROOT}" ]] ||
+  fail "The isolated STW gate worktree identity is invalid."
+
+mkdir -p "${STW_GATE_ROOT}/stw-o3de/Gems"
+if [[ ! -f "${PROJECT_ROOT}/project.json" ]]; then
+  run_logged create-stw-project "${O3DE_ROOT}/scripts/o3de.sh" create-project \
+    --project-path "${PROJECT_ROOT}" \
+    --project-name STW || fail "Official O3DE STW project generation failed."
+fi
+if [[ ! -f "${STW_CORE_GEM}/gem.json" ]]; then
+  run_logged create-stw-core-gem "${O3DE_ROOT}/scripts/o3de.sh" create-gem \
+    --gem-path "${STW_CORE_GEM}" \
+    --gem-name STWCore || fail "Official STWCore Gem generation failed."
+fi
+if [[ ! -f "${STW_GAMEPLAY_GEM}/gem.json" ]]; then
+  run_logged create-stw-gameplay-gem "${O3DE_ROOT}/scripts/o3de.sh" create-gem \
+    --gem-path "${STW_GAMEPLAY_GEM}" \
+    --gem-name STWGameplay || fail "Official STWGameplay Gem generation failed."
+fi
+
+run_logged register-stw-core "${O3DE_ROOT}/scripts/o3de.sh" register \
+  --external-subdirectory "${STW_CORE_GEM}" \
+  --external-subdirectory-project-path "${PROJECT_ROOT}" ||
+  fail "STWCore project registration failed."
+run_logged register-stw-gameplay "${O3DE_ROOT}/scripts/o3de.sh" register \
+  --external-subdirectory "${STW_GAMEPLAY_GEM}" \
+  --external-subdirectory-project-path "${PROJECT_ROOT}" ||
+  fail "STWGameplay project registration failed."
+run_logged enable-stw-core "${O3DE_ROOT}/scripts/o3de.sh" enable-gem \
+  --gem-path "${STW_CORE_GEM}" \
+  --project-path "${PROJECT_ROOT}" || fail "STWCore enablement failed."
+run_logged enable-stw-gameplay "${O3DE_ROOT}/scripts/o3de.sh" enable-gem \
+  --gem-path "${STW_GAMEPLAY_GEM}" \
+  --project-path "${PROJECT_ROOT}" || fail "STWGameplay enablement failed."
+
+mkdir -p "${O3DE_PACKAGES}" "${BUILD_ROOT}"
+run_logged configure-stw env \
+  PATH="${USER_BIN}:${PATH}" \
+  CC=clang \
+  CXX=clang++ \
+  VK_DRIVER_FILES="${NVIDIA_ICD_FILE}" \
+  cmake -S "${PROJECT_ROOT}" -B "${BUILD_ROOT}" \
+    -G "Ninja Multi-Config" \
+    -DLY_3RDPARTY_PATH="${O3DE_PACKAGES}" ||
+  fail "STW O3DE CMake configure failed."
+
+free_after_kib="$(df -Pk "${PERSISTENT_ROOT}" | awk 'NR == 2 {print $4}')"
+free_after_gib="$(awk -v kib="${free_after_kib}" 'BEGIN {printf "%.2f", kib / 1024 / 1024}')"
+report "persistent free disk after configure: ${free_after_gib} GiB"
+report "O3DE BOOTSTRAP: PASS"
+report "STW PROJECT: PASS (${PROJECT_ROOT})"
+report "STW GEMS: PASS (STWCore, STWGameplay)"
+report "CONFIGURE: PASS (${BUILD_ROOT})"
+report "BUILD: NOT STARTED IN SETUP PHASE"
+report "CANONICAL STW CHECKOUT MODIFIED: NO"
 report "COST INCURRED: \$0.00"
-report "NEXT PHASE: official O3DE ${O3DE_TAG} clone and bootstrap"
+report "NEXT PHASE: build STW.GameLauncher and required Atom tools"
