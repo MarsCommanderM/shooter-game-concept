@@ -1,0 +1,38 @@
+name: STW Lightning T4
+
+on:
+  push:
+    branches:
+      - brauny/stw-game-production
+    paths:
+      - .github/lightning-t4/**
+      - .github/workflows/stw-lightning-t4.yml
+      - runner.sh
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stw-lightning-t4-production
+  cancel-in-progress: false
+
+jobs:
+  controlled-task:
+    name: Controlled Lightning task
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - stw-lightning-t4
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out the canonical production commit
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Run the fixed STW Lightning task
+        shell: bash
+        run: bash .github/lightning-t4/task.sh
