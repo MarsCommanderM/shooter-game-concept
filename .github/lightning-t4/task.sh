@@ -26,6 +26,7 @@ readonly PROJECT_ROOT="${STW_GATE_ROOT}/stw-o3de/Project"
 readonly STW_CORE_GEM="${STW_GATE_ROOT}/stw-o3de/Gems/STWCore"
 readonly STW_GAMEPLAY_GEM="${STW_GATE_ROOT}/stw-o3de/Gems/STWGameplay"
 readonly BUILD_ROOT="${PERSISTENT_ROOT}/stw-o3de-build/linux"
+readonly BUILD_JOBS=2
 
 mkdir -p "${LOG_ROOT}"
 : >"${REPORT_FILE}"
@@ -498,7 +499,39 @@ report "O3DE BOOTSTRAP: PASS"
 report "STW PROJECT: PASS (${PROJECT_ROOT})"
 report "STW GEMS: PASS (STWCore, STWGameplay)"
 report "CONFIGURE: PASS (${BUILD_ROOT})"
-report "BUILD: NOT STARTED IN SETUP PHASE"
+
+free_build_kib="$(df -Pk "${PERSISTENT_ROOT}" | awk 'NR == 2 {print $4}')"
+free_build_gib="$(awk -v kib="${free_build_kib}" 'BEGIN {printf "%.2f", kib / 1024 / 1024}')"
+report "persistent free disk before build: ${free_build_gib} GiB"
+((free_build_kib >= 160 * 1024 * 1024)) ||
+  fail "Less than 160 GiB remains before the source build."
+
+run_logged build-stw env \
+  PATH="${TOOLS_BIN}:${USER_BIN}:${PATH}" \
+  VK_DRIVER_FILES="${NVIDIA_ICD_FILE}" \
+  cmake --build "${BUILD_ROOT}" \
+    --target STW.GameLauncher Editor \
+    --config profile \
+    --parallel "${BUILD_JOBS}" ||
+  fail "STW.GameLauncher/Editor source build failed."
+
+launcher_path="${BUILD_ROOT}/bin/profile/STW.GameLauncher"
+editor_path="${BUILD_ROOT}/bin/profile/Editor"
+asset_processor_path="${BUILD_ROOT}/bin/profile/AssetProcessorBatch"
+[[ -x "${launcher_path}" ]] || fail "Built STW.GameLauncher executable is missing."
+[[ -x "${editor_path}" ]] || fail "Built Editor executable is missing."
+[[ -x "${asset_processor_path}" ]] || fail "Built AssetProcessorBatch executable is missing."
+report "game launcher: ${launcher_path}"
+report "editor: ${editor_path}"
+report "asset processor: ${asset_processor_path}"
+
+run_logged list-stw-tests ctest --test-dir "${BUILD_ROOT}" -C profile -N ||
+  fail "CTest discovery failed."
+
+free_post_build_kib="$(df -Pk "${PERSISTENT_ROOT}" | awk 'NR == 2 {print $4}')"
+free_post_build_gib="$(awk -v kib="${free_post_build_kib}" 'BEGIN {printf "%.2f", kib / 1024 / 1024}')"
+report "persistent free disk after build: ${free_post_build_gib} GiB"
+report "BUILD: PASS (STW.GameLauncher, Editor, AssetProcessorBatch; parallel=${BUILD_JOBS})"
 report "CANONICAL STW CHECKOUT MODIFIED: NO"
 report "COST INCURRED: \$0.00"
-report "NEXT PHASE: build STW.GameLauncher and required Atom tools"
+report "NEXT PHASE: asset processing and real Atom GameLauncher runtime"
