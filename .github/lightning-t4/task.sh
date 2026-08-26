@@ -17,6 +17,7 @@ BUILD_LOG="${RUN_DIR}/incremental-build.log"
 TEST_LOG="${RUN_DIR}/tests.log"
 LAUNCH_LOG="${RUN_DIR}/launcher.log"
 FRAME="${RUN_DIR}/stw-player-slice.png"
+THUMB="${RUN_DIR}/stw-player-slice-thumb.jpg"
 xvfb_pid=""; launcher_pid=""
 cleanup(){
   if [[ -n "${launcher_pid}" ]] && kill -0 "${launcher_pid}" 2>/dev/null; then kill -TERM -- "-${launcher_pid}" 2>/dev/null || true; fi
@@ -76,7 +77,7 @@ VK_ICD_FILENAMES="${ICD}" vulkaninfo --summary 2>&1 | grep -q 'Tesla T4'
 display_number=""
 for number in $(seq 90 120); do [[ ! -S "/tmp/.X11-unix/X${number}" ]] && { display_number="${number}"; break; }; done
 [[ -n "${display_number}" ]]; display=":${display_number}"
-Xvfb "${display}" -screen 0 1280x720x24 -nolisten tcp -noreset >"${RUN_DIR}/xvfb.log" 2>&1 & xvfb_pid=$!
+Xvfb "${display}" -screen 0 1920x1080x24 -nolisten tcp -noreset >"${RUN_DIR}/xvfb.log" 2>&1 & xvfb_pid=$!
 for _ in {1..40}; do [[ -S "/tmp/.X11-unix/X${display_number}" ]] && break; kill -0 "${xvfb_pid}"; sleep .25; done
 cat >"${ALSA}" <<'EOF'
 pcm.!default { type null hint { show on description "STW headless null output" } }
@@ -145,6 +146,18 @@ pixels=list(img.getdata()); unique=len(set(pixels)); lums=[.2126*r+.7152*g+.0722
 print(f"TARGET_WINDOW={target}\nFRAME={sys.argv[1]}\nRESOLUTION={w}x{h}\nSIZE={os.path.getsize(sys.argv[1])}\nUNIQUE_COLORS={unique}\nPIXEL_VARIANCE={var:.4f}\nMEAN_LUMINANCE={mean:.4f}")
 if unique <= 16 or var <= 4.0: raise SystemExit("native frame is empty")
 PY
+python3 - "${FRAME}" "${THUMB}" <<'PY'
+import sys
+from PIL import Image
+with Image.open(sys.argv[1]) as image:
+    thumbnail = image.convert("RGB")
+    thumbnail.thumbnail((640, 360))
+    thumbnail.save(sys.argv[2], "JPEG", quality=82, optimize=True)
+PY
+echo "FRAME_BASE64_BEGIN"
+base64 -w0 "${THUMB}"
+echo
+echo "FRAME_BASE64_END"
 echo "ATOM_RHI_EVIDENCE:"
 grep -Ein 'Atom|RHI|Vulkan|Tesla T4|NVIDIA|defaultlevel|Native Player Vertical Slice' "${LAUNCH_LOG}" | tail -120
 echo "TEST_LOG=${TEST_LOG}"
