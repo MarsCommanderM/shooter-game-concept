@@ -2,6 +2,7 @@
 
 #include <AzCore/Component/Component.h>
 #include <AzCore/Component/TickBus.h>
+#include <AzCore/std/string/string.h>
 #include <AzFramework/Input/Events/InputChannelEventListener.h>
 #include <STWGameplay/PlayerSliceModel.h>
 
@@ -32,5 +33,8 @@ namespace STWGameplay
 
         PlayerSliceModel m_model;
         PlayerInput m_input;
+        AZStd::string m_nativeCapturePath;
+        float m_nativeCaptureDelay = 0.0f;
+        bool m_nativeCaptureAttempted = false;
     };
 }

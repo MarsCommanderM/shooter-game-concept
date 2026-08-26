@@ -8,7 +8,10 @@
 #include <AzFramework/Entity/EntityDebugDisplayBus.h>
 #include <AzFramework/Input/Devices/Keyboard/InputDeviceKeyboard.h>
 #include <AzFramework/Input/Devices/Mouse/InputDeviceMouse.h>
+#include <Atom/Feature/Utils/FrameCaptureBus.h>
 #include <STWGameplay/STWGameplayTypeIds.h>
+
+#include <cstdlib>
 
 namespace STWGameplay
 {
@@ -37,6 +40,10 @@ namespace STWGameplay
 
     void STWGameplaySystemComponent::Activate()
     {
+        if (const char* capturePath = std::getenv("STW_NATIVE_CAPTURE_PATH"); capturePath && capturePath[0] != '\0')
+        {
+            m_nativeCapturePath = capturePath;
+        }
         AzFramework::InputChannelEventListener::Connect();
         AZ::TickBus::Handler::BusConnect();
         AZ_Printf("STWGameplay", "Native Player Vertical Slice V1 active\n");
@@ -56,6 +63,49 @@ namespace STWGameplay
         m_input.m_reload = false;
         UpdateCamera();
         DrawPresentation();
+
+        // Production runs do not set STW_NATIVE_CAPTURE_PATH. The controlled
+        // native verification job uses it to request one genuine Atom/RHI
+        // readback after the scene and presentation have had time to render.
+        if (!m_nativeCapturePath.empty() && !m_nativeCaptureAttempted)
+        {
+            m_nativeCaptureDelay += deltaTime;
+            if (m_nativeCaptureDelay >= 8.0f)
+            {
+                m_nativeCaptureAttempted = true;
+                bool canCapture = false;
+                AZ::Render::FrameCaptureRequestBus::BroadcastResult(
+                    canCapture, &AZ::Render::FrameCaptureRequestBus::Events::CanCapture);
+                if (!canCapture)
+                {
+                    AZ_Error("STWGameplay", false, "Native Atom frame capture is unavailable");
+                    return;
+                }
+
+                AZ::Render::FrameCaptureOutcome outcome = AZ::Failure(
+                    AZ::Render::FrameCaptureError{ "FrameCapture request was not handled" });
+                AZ::Render::FrameCaptureRequestBus::BroadcastResult(
+                    outcome,
+                    &AZ::Render::FrameCaptureRequestBus::Events::CaptureScreenshot,
+                    m_nativeCapturePath);
+                if (outcome.IsSuccess())
+                {
+                    AZ_Printf(
+                        "STWGameplay",
+                        "Native Atom frame capture submitted: %u -> %s\n",
+                        outcome.GetValue(),
+                        m_nativeCapturePath.c_str());
+                }
+                else
+                {
+                    AZ_Error(
+                        "STWGameplay",
+                        false,
+                        "Native Atom frame capture failed: %s",
+                        outcome.GetError().m_errorMessage.c_str());
+                }
+            }
+        }
     }
 
     bool STWGameplaySystemComponent::OnInputChannelEventFiltered(const AzFramework::InputChannel& channel)
