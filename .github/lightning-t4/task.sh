@@ -2,63 +2,49 @@
 set -Eeuo pipefail
 
 readonly ROOT="${HOME}"
-readonly STATE="${ROOT}/stw-o3de-gate"
-readonly LOGS="${STATE}/logs"
-readonly WORKTREE="${ROOT}/stw-o3de-worktree"
-readonly PROJECT="${WORKTREE}/stw-o3de/Project"
+readonly PROJECT="${ROOT}/stw-o3de-worktree/stw-o3de/Project"
 readonly CACHE="${PROJECT}/Cache/linux"
-readonly STDIO="${LOGS}/game-launcher-native.stdout-stderr.log"
+readonly LOG="${PROJECT}/user/log/Game.log"
+readonly PREFAB="${PROJECT}/Levels/DefaultLevel/DefaultLevel.prefab"
+readonly BOOTSTRAP="${CACHE}/bootstrap.client.profile.setreg"
+readonly STDIO="${ROOT}/stw-o3de-gate/logs/game-launcher-native.stdout-stderr.log"
 
-echo "STW O3DE BLACK-FRAME LEVEL/CAMERA READ-ONLY AUDIT"
+echo "STW O3DE LEVEL-LOAD READ-ONLY ROOT-CAUSE AUDIT"
 echo "NO BUILD / NO LAUNCH / NO ASSET PROCESSING / NO INSTALL / NO SOURCE CHANGE"
 
-echo "AUTHORITATIVE SOURCE:"
-git -C "${WORKTREE}" rev-parse HEAD
-git -C "${WORKTREE}" status --short
+echo "GAME LOG:"
+stat -c '%n | %s bytes | %y' "${LOG}"
+nl -ba "${LOG}" | sed -n '1,500p'
 
-echo "LAUNCHER LOG TAIL:"
+echo "LAUNCH STDIO END:"
 stat -c '%n | %s bytes | %y' "${STDIO}"
-tail -n 160 "${STDIO}"
+nl -ba "${STDIO}" | tail -n 220
 
-echo "PROJECT MANIFEST:"
-sed -n '1,260p' "${PROJECT}/project.json"
+echo "CLIENT PROFILE BOOTSTRAP:"
+stat -c '%n | %s bytes | %y' "${BOOTSTRAP}"
+grep -nEi -C 6 'LoadLevel|defaultlevel|project_path|project_name|asset|cache|bootstrap' "${BOOTSTRAP}" | sed -n '1,500p' || true
 
-echo "PROJECT REGISTRY FILES:"
-find "${PROJECT}/Registry" "${PROJECT}/user/Registry" -maxdepth 4 -type f -printf '%p | %s bytes | %TY-%Tm-%Td %TH:%TM:%TS\n' 2>/dev/null | sort
-while IFS= read -r file; do
-  echo "===== ${file} ====="
-  sed -n '1,260p' "${file}" 2>/dev/null || true
-done < <(find "${PROJECT}/Registry" "${PROJECT}/user/Registry" -maxdepth 4 -type f \( -name '*.setreg' -o -name '*.json' \) -print 2>/dev/null | sort)
+echo "LOAD LEVEL PRODUCT:"
+find "${CACHE}" -maxdepth 3 -type f -iname '*load_level*' -o -iname 'load_level.setreg' 2>/dev/null | while IFS= read -r file; do
+  stat -c '%n | %s bytes | %y' "${file}"
+  sed -n '1,160p' "${file}" 2>/dev/null || true
+done
 
-echo "CACHED REGISTRY/BOOTSTRAP INPUTS:"
-find "${CACHE}" -type f \( -iname '*.setreg' -o -iname '*bootstrap*' -o -iname '*defaultlevel*' \) -printf '%p | %s bytes | %TY-%Tm-%Td %TH:%TM:%TS\n' 2>/dev/null | sort | sed -n '1,600p'
-grep -RInE 'LoadLevel|defaultlevel|Camera|Viewport' "${CACHE}/registry" "${CACHE}/config" 2>/dev/null | sed -n '1,600p' || true
+echo "DEFAULTLEVEL PREFAB:"
+stat -c '%n | %s bytes | %y' "${PREFAB}"
+nl -ba "${PREFAB}" | sed -n '1,520p'
 
-echo "DEFAULTLEVEL SOURCE:"
-if [[ -d "${PROJECT}/Levels/defaultlevel" ]]; then
-  find "${PROJECT}/Levels/defaultlevel" -maxdepth 5 -type f -printf '%p | %s bytes | %TY-%Tm-%Td %TH:%TM:%TS\n' | sort
-  while IFS= read -r file; do
-    case "${file}" in
-      *.prefab|*.json|*.setreg|*.xml|*.txt)
-        echo "===== ${file} ====="
-        sed -n '1,500p' "${file}" ;;
-    esac
-  done < <(find "${PROJECT}/Levels/defaultlevel" -maxdepth 5 -type f -print | sort)
+echo "DEFAULTLEVEL COMPONENT SUMMARY:"
+grep -nE '"Name"|\$type|Active|Fov|Near|Far|Position|Translation|Rotation|ModelAsset|Material|Intensity|Color|Camera' "${PREFAB}" | sed -n '1,800p' || true
+
+echo "CACHED LEVEL:"
+stat -c '%n | %s bytes | %y' "${CACHE}/levels/defaultlevel/defaultlevel.spawnable"
+
+echo "PAK MISSING ASSETS:"
+if [[ -s "${PROJECT}/user/log/PakMissingAssets.log" ]]; then
+  nl -ba "${PROJECT}/user/log/PakMissingAssets.log" | sed -n '1,300p'
 else
-  echo "DEFAULTLEVEL SOURCE DIRECTORY: MISSING"
+  echo "none"
 fi
-
-echo "DEFAULTLEVEL CACHE:"
-find "${CACHE}/levels/defaultlevel" -maxdepth 5 -type f -printf '%p | %s bytes | %TY-%Tm-%Td %TH:%TM:%TS\n' 2>/dev/null | sort
-file "${CACHE}/levels/defaultlevel/"* 2>/dev/null || true
-
-echo "MIGRATION GATE DOCUMENT:"
-sed -n '1,420p' "${WORKTREE}/stw-o3de/MIGRATION.md" 2>/dev/null || echo "MIGRATION.md missing"
-
-echo "PROJECT/GEM VISUAL BOOT REFERENCES:"
-grep -RInE 'LoadLevel|defaultlevel|Camera|Viewport|RenderPipeline|MeshComponent|DirectionalLight|SkyBox|CreateEntity|TransformBus'   "${WORKTREE}/stw-o3de/Project" "${WORKTREE}/stw-o3de/Gems"   --exclude-dir=Cache --exclude-dir=user --exclude='*.png' --exclude='*.jpg' --exclude='*.dds'   2>/dev/null | sed -n '1,1000p' || true
-
-echo "RECENT GAME-SPECIFIC LOG FILES:"
-find "${PROJECT}/user/log" -maxdepth 2 -type f -printf '%p | %s bytes | %TY-%Tm-%Td %TH:%TM:%TS\n' 2>/dev/null | sort | tail -n 120
 
 echo "COST INCURRED: \$0.00"
