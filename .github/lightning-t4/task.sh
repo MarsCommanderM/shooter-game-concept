@@ -7,7 +7,12 @@ PROJECT="${ROOT}/stw-o3de-worktree/stw-o3de/Project"
 
 echo "O3DE 26.05 NATIVE FRAME-CAPTURE API READ-ONLY DISCOVERY"
 echo "NO BUILD / NO LAUNCH / NO ASSET PROCESSING / NO INSTALL / NO SOURCE CHANGE"
-git -C "${O3DE}" rev-parse HEAD
+if git -C "${O3DE}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  git -C "${O3DE}" rev-parse HEAD
+else
+  echo "O3DE GIT METADATA: unavailable; continuing read-only source inspection"
+  test -r "${O3DE}/engine.json"
+fi
 echo "FRAME CAPTURE SOURCE FILES:"
 find "${O3DE}" -type f \( -iname '*FrameCapture*' -o -iname '*ScreenShot*' -o -iname '*Screenshot*' \) -print | sort | sed -n '1,500p'
 echo "FRAME CAPTURE SYMBOLS / CONSOLE COMMANDS:"
