@@ -1,0 +1,6 @@
+set(FILES
+    Source/PlayerSliceModel.cpp
+    Source/STWGameplayModuleInterface.cpp
+    Source/STWGameplayModuleInterface.h
+    Source/Clients/STWGameplaySystemComponent.cpp
+    Source/Clients/STWGameplaySystemComponent.h)

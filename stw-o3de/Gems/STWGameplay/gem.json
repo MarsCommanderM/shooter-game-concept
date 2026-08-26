@@ -1,0 +1,12 @@
+{
+    "gem_name": "STWGameplay",
+    "version": "1.0.0",
+    "display_name": "STW Gameplay",
+    "license": "Apache-2.0 OR MIT",
+    "type": "Code",
+    "summary": "Authoritative native gameplay for STW",
+    "canonical_tags": ["Gem"],
+    "user_tags": ["Gameplay"],
+    "platforms": ["Linux", "Windows"],
+    "dependencies": []
+}
