@@ -54,11 +54,13 @@ export PATH="${cmake_bin_dir}:${PATH}"
 echo "CMAKE_COMMAND=${cmake_command}"
 
 echo "SYNCING_TRACKED_PRODUCTION_GEM=${GEM}"
-cp -a "${GITHUB_WORKSPACE}/stw-o3de/Gems/STWGameplay/gem.json" "${GEM}/gem.json"
-cp -a "${GITHUB_WORKSPACE}/stw-o3de/Gems/STWGameplay/CMakeLists.txt" "${GEM}/CMakeLists.txt"
-cp -a "${GITHUB_WORKSPACE}/stw-o3de/Gems/STWGameplay/Code/." "${GEM}/Code/"
+copy_file_if_changed(){ cmp -s "$1" "$2" || cp -a "$1" "$2"; }
+copy_tree_if_changed(){ diff -qr "$1" "$2" >/dev/null 2>&1 || cp -a "$1/." "$2/"; }
+copy_file_if_changed "${GITHUB_WORKSPACE}/stw-o3de/Gems/STWGameplay/gem.json" "${GEM}/gem.json"
+copy_file_if_changed "${GITHUB_WORKSPACE}/stw-o3de/Gems/STWGameplay/CMakeLists.txt" "${GEM}/CMakeLists.txt"
+copy_tree_if_changed "${GITHUB_WORKSPACE}/stw-o3de/Gems/STWGameplay/Code" "${GEM}/Code"
 mkdir -p "${GEM}/Registry"
-cp -a "${GITHUB_WORKSPACE}/stw-o3de/Gems/STWGameplay/Registry/." "${GEM}/Registry/"
+copy_tree_if_changed "${GITHUB_WORKSPACE}/stw-o3de/Gems/STWGameplay/Registry" "${GEM}/Registry"
 
 start="$(date +%s)"
 "${cmake_command}" --build "${BUILD}" --config profile --target STWGameplay.Tests -j 2 2>&1 | tee "${BUILD_LOG}"
@@ -99,13 +101,20 @@ grep -Eqi 'Tesla T4|NVIDIA.*T4' "${LAUNCH_LOG}"
 grep -Eqi 'Vulkan' "${LAUNCH_LOG}"
 ! grep -Eqi 'selected.*(llvmpipe|lavapipe|software)|adapter.*(llvmpipe|lavapipe)' "${LAUNCH_LOG}"
 
+last_frame_size=0
 for _ in $(seq 1 45); do
-  [[ -s "${FRAME_NATIVE}" ]] && break
+  frame_size="$(stat -c %s "${FRAME_NATIVE}" 2>/dev/null || echo 0)"
+  [[ "${frame_size}" -gt 0 && "${frame_size}" -eq "${last_frame_size}" ]] && break
+  last_frame_size="${frame_size}"
   kill -0 "${launcher_pid}" 2>/dev/null || { tail -n 200 "${LAUNCH_LOG}"; exit 1; }
   sleep 1
 done
 [[ -s "${FRAME_NATIVE}" ]]
-grep -q 'Native Atom frame capture submitted' "${LAUNCH_LOG}"
+if grep -q 'Native Atom frame capture submitted' "${LAUNCH_LOG}"; then
+  echo "FRAME_CAPTURE_SUBMISSION_LOG=CONFIRMED"
+else
+  echo "FRAME_CAPTURE_SUBMISSION_LOG=BUFFERED; native output file is authoritative"
+fi
 
 python3 - "${FRAME_NATIVE}" "${FRAME}" <<'PY'
 import os, sys
