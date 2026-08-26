@@ -153,7 +153,7 @@ namespace STWGameplay
         {
             if (model.GetWeapon().m_cooldownRemaining > 0.0f)
             {
-                Advance(model, PlayerSliceModel::FireInterval);
+                Advance(model, PlayerSliceModel::FireInterval + 0.001f);
             }
             ASSERT_TRUE(model.TryFire());
         }
