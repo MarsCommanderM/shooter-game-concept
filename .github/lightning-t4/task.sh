@@ -84,11 +84,15 @@ report "VULKAN RECHECK: PASS — NVIDIA Tesla T4 enumerated"
 
 selected_display="${DISPLAY:-}"
 display_strategy=""
-if [[ -n "${selected_display}" ]] && command -v xdpyinfo >/dev/null && timeout 5s xdpyinfo -display "${selected_display}" >/dev/null 2>&1; then
+display_socket_ready() {
+  local display_number="${1#:}"
+  display_number="${display_number%%.*}"
+  [[ "${display_number}" =~ ^[0-9]+$ ]] && [[ -S "/tmp/.X11-unix/X${display_number}" ]]
+}
+if [[ -n "${selected_display}" ]] && display_socket_ready "${selected_display}"; then
   display_strategy="existing X display ${selected_display}"
 else
   command -v Xvfb >/dev/null || fail "no usable X display and Xvfb unavailable"
-  command -v xdpyinfo >/dev/null || fail "xdpyinfo unavailable for Xvfb validation"
   for n in 97 98 99 100; do
     [[ -e "/tmp/.X11-unix/X${n}" ]] && continue
     selected_display=":${n}"
@@ -98,11 +102,11 @@ else
   Xvfb "${selected_display}" -screen 0 1280x720x24 -nolisten tcp -noreset >"${LOGS}/xvfb-native.log" 2>&1 &
   xvfb_pid=$!
   for _ in {1..40}; do
-    timeout 2s xdpyinfo -display "${selected_display}" >/dev/null 2>&1 && break
+    display_socket_ready "${selected_display}" && break
     kill -0 "${xvfb_pid}" 2>/dev/null || fail "Xvfb exited during startup"
     sleep 0.25
   done
-  timeout 5s xdpyinfo -display "${selected_display}" >/dev/null 2>&1 || fail "Xvfb display did not become usable"
+  display_socket_ready "${selected_display}" || fail "Xvfb display socket did not become usable"
   display_strategy="owned Xvfb ${selected_display}, 1280x720x24"
 fi
 export DISPLAY="${selected_display}"
