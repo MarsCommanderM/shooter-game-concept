@@ -100,6 +100,30 @@ namespace STWGameplay
         const TargetState& target = m_model.GetTarget();
         const WeaponState& weapon = m_model.GetWeapon();
         const PresentationState& presentation = m_model.GetPresentation();
+        const AZ::Vector3 aim = m_model.GetAimDirection();
+        const AZ::Vector3 up = AZ::Vector3::CreateAxisZ();
+        AZ::Vector3 right = aim.Cross(up);
+        if (right.GetLengthSq() < 0.01f)
+        {
+            right = AZ::Vector3::CreateAxisX();
+        }
+        else
+        {
+            right.Normalize();
+        }
+
+        // Camera-relative native placeholder presentation. It consumes weapon
+        // events only; authoritative fire and damage remain in PlayerSliceModel.
+        const AZ::Vector3 weaponCenter = m_model.GetEyePosition() + aim * 0.62f + right * 0.24f - up * 0.20f;
+        Bus::Event(displayId, &AzFramework::DebugDisplayRequests::SetColor, AZ::Color(0.08f, 0.11f, 0.14f, 1.0f));
+        Bus::Event(displayId, &AzFramework::DebugDisplayRequests::DrawSolidOBB,
+            weaponCenter, right, aim, up, AZ::Vector3(0.10f, 0.30f, 0.08f));
+        if (presentation.m_fireCueRemaining > 0.0f)
+        {
+            Bus::Event(displayId, &AzFramework::DebugDisplayRequests::SetColor, AZ::Color(1.0f, 0.72f, 0.12f, 1.0f));
+            Bus::Event(displayId, &AzFramework::DebugDisplayRequests::DrawBall,
+                weaponCenter + aim * 0.34f, 0.055f, true);
+        }
 
         Bus::Event(displayId, &AzFramework::DebugDisplayRequests::SetColor,
             target.m_alive ? AZ::Color(0.12f, 0.65f, 0.85f, 1.0f) : AZ::Color(0.22f, 0.22f, 0.22f, 1.0f));
