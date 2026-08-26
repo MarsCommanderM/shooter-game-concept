@@ -15,7 +15,7 @@ cleanup(){
   if [[ -n "${xvfb_pid}" ]] && kill -0 "${xvfb_pid}" 2>/dev/null; then kill -TERM "${xvfb_pid}" 2>/dev/null || true; fi
 }
 trap cleanup EXIT INT TERM
-echo "STW O3DE NATIVE WINDOW CAPTURE DIAGNOSTIC"
+echo "STW O3DE NATIVE 1920X1080 WINDOW CAPTURE"
 echo "NO BUILD / NO CMAKE / NO ASSET PROCESSING / NO INSTALL / NO SOURCE CHANGE"
 [[ -x "${LAUNCHER}" ]] || { echo "FIRST REAL ERROR: launcher missing"; exit 1; }
 [[ -s "${ICD}" ]] || { echo "FIRST REAL ERROR: NVIDIA ICD missing"; exit 1; }
@@ -30,7 +30,7 @@ chmod 600 "${ALSA}"
 nvidia-smi --query-gpu=name,driver_version --format=csv,noheader
 VK_ICD_FILENAMES="${ICD}" vulkaninfo --summary 2>&1 | grep -E 'deviceName|driverName|driverInfo' | head -n 20
 [[ ! -S /tmp/.X11-unix/X97 ]] || { echo "FIRST REAL ERROR: display 97 occupied"; exit 1; }
-Xvfb "${DISPLAY_NUM}" -screen 0 1280x720x24 -nolisten tcp -noreset >"${LOGS}/xvfb-window.log" 2>&1 &
+Xvfb "${DISPLAY_NUM}" -screen 0 1920x1080x24 -nolisten tcp -noreset >"${LOGS}/xvfb-window.log" 2>&1 &
 xvfb_pid=$!
 for _ in {1..40}; do [[ -S /tmp/.X11-unix/X97 ]] && break; sleep .25; done
 [[ -S /tmp/.X11-unix/X97 ]] || { echo "FIRST REAL ERROR: Xvfb unavailable"; exit 1; }
