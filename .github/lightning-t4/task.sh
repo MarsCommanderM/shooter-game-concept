@@ -17,6 +17,7 @@ readonly FRAME="${STATE}/stw-gamelauncher-native.png"
 readonly THUMB="${STATE}/stw-gamelauncher-native-thumb.jpg"
 readonly NVIDIA_ICD="${STATE}/nvidia_icd.json"
 readonly RUNTIME_DIR="${STATE}/xdg-runtime-visual-gate"
+readonly ALSA_CONFIG="${RUNTIME_DIR}/asound-null.conf"
 
 mkdir -p "${LOGS}"
 : >"${REPORT}"
@@ -56,9 +57,20 @@ mkdir -p "${RUNTIME_DIR}"
 chmod 700 "${RUNTIME_DIR}"
 [[ "$(stat -c '%u:%g:%a' "${RUNTIME_DIR}")" == "$(id -u):$(id -g):700" ]] || fail "private XDG runtime directory ownership or permissions invalid"
 export XDG_RUNTIME_DIR="${RUNTIME_DIR}"
+cat >"${ALSA_CONFIG}" <<'EOF'
+pcm.!default {
+    type null
+    hint {
+        show on
+        description "STW headless null output"
+    }
+}
+EOF
+chmod 600 "${ALSA_CONFIG}"
+export ALSA_CONFIG_PATH="${ALSA_CONFIG}"
 report "XDG RUNTIME AFTER: ${XDG_RUNTIME_DIR} ($(stat -c '%U:%G %a' "${XDG_RUNTIME_DIR}"))"
-report "AUDIO BACKEND: O3DE NullAudioSystem"
-report "AUDIO FIX: official process-local CVar -sys_audio_disable 1"
+report "AUDIO BACKEND: O3DE NullAudioSystem + ALSA null PCM for MiniAudio probing"
+report "AUDIO FIX: official process-local CVar -sys_audio_disable 1; process-local ALSA_CONFIG_PATH=${ALSA_CONFIG_PATH}"
 
 command -v nvidia-smi >/dev/null || fail "nvidia-smi unavailable"
 gpu_line="$(nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader | head -n1)"
@@ -107,9 +119,9 @@ report "CACHED LEVEL PRODUCTS:"
 find "${CACHE}" -type f \( -iname '*.spawnable' -o -iname '*.prefab' -o -iname '*.level' \) -printf '%p\n' 2>/dev/null | sed -n '1,80p' | tee -a "${REPORT}" || true
 
 command=("${LAUNCHER}" "--project-path=${PROJECT}" "--engine-path=${O3DE}" "-sys_audio_disable" "1")
-report "LAUNCH COMMAND: DISPLAY=${DISPLAY} XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR} VK_ICD_FILENAMES=${NVIDIA_ICD} LD_LIBRARY_PATH=${BIN}:<existing> ${command[*]}"
+report "LAUNCH COMMAND: DISPLAY=${DISPLAY} XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR} ALSA_CONFIG_PATH=${ALSA_CONFIG_PATH} VK_ICD_FILENAMES=${NVIDIA_ICD} LD_LIBRARY_PATH=${BIN}:<existing> ${command[*]}"
 : >"${STDIO}"
-setsid env DISPLAY="${DISPLAY}" XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR}" VK_ICD_FILENAMES="${NVIDIA_ICD}" LD_LIBRARY_PATH="${BIN}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" "${command[@]}" >"${STDIO}" 2>&1 &
+setsid env DISPLAY="${DISPLAY}" XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR}" ALSA_CONFIG_PATH="${ALSA_CONFIG_PATH}" VK_ICD_FILENAMES="${NVIDIA_ICD}" LD_LIBRARY_PATH="${BIN}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" "${command[@]}" >"${STDIO}" 2>&1 &
 launcher_pid=$!
 report "GAME LAUNCHER PID: ${launcher_pid}"
 
