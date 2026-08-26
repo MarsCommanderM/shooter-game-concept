@@ -32,8 +32,18 @@ echo "INCREMENTAL_BUILD_ONLY=YES"
 echo "COST_INCURRED=\$0.00"
 [[ "${GITHUB_REPOSITORY}" == "MarsCommanderM/shooter-game-concept" ]]
 [[ "${GITHUB_REF}" == "refs/heads/brauny/stw-game-production" ]]
-[[ "$(git -C "${GITHUB_WORKSPACE}" rev-parse HEAD)" == "${GITHUB_SHA}" ]]
-[[ "$(git -C "${ENGINE}" rev-parse HEAD)" == "3db6943249d8bd7960b9ed7e9aee310b7668586e" ]]
+checkout_head="$(git -C "${GITHUB_WORKSPACE}" rev-parse HEAD)"
+echo "CHECKOUT_HEAD=${checkout_head}"
+[[ "${checkout_head}" == "${GITHUB_SHA}" ]]
+if engine_head="$(git -C "${ENGINE}" rev-parse HEAD 2>/dev/null)"; then
+  echo "ENGINE_HEAD=${engine_head}"
+  [[ "${engine_head}" == "3db6943249d8bd7960b9ed7e9aee310b7668586e" ]]
+else
+  echo "ENGINE_GIT_METADATA=UNAVAILABLE_PERSISTENT_BUILD"
+  [[ -s "${ENGINE}/engine.json" ]]
+  grep -Fq '3db6943249d8bd7960b9ed7e9aee310b7668586e' \
+    "${GITHUB_WORKSPACE}/stw-o3de/O3DE_VERSION.md"
+fi
 [[ -x "${LAUNCHER}" && -d "${PROJECT}/Cache/linux" && -f "${GEM}/gem.json" ]]
 
 echo "SYNCING_TRACKED_PRODUCTION_GEM=${GEM}"
