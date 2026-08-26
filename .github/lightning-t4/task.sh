@@ -88,7 +88,7 @@ setsid env DISPLAY="${display}" XDG_RUNTIME_DIR="${RUNTIME}" ALSA_CONFIG_PATH="$
 launcher_pid=$!; echo "LAUNCHER_PID=${launcher_pid}"
 for _ in $(seq 1 75); do
   kill -0 "${launcher_pid}" 2>/dev/null || { tail -n 200 "${LAUNCH_LOG}"; exit 1; }
-  if grep -q 'Native Player Vertical Slice V1 active' "${LAUNCH_LOG}" && grep -Eqi 'Tesla T4|NVIDIA.*T4' "${LAUNCH_LOG}" && grep -Eqi 'Vulkan' "${LAUNCH_LOG}"; then sleep 8; break; fi
+  if grep -q 'Native Player Vertical Slice V1 active' "${LAUNCH_LOG}" && grep -Eqi 'Tesla T4|NVIDIA.*T4' "${LAUNCH_LOG}" && grep -Eqi 'Vulkan' "${LAUNCH_LOG}"; then sleep 20; break; fi
   sleep 1
 done
 grep -q 'Native Player Vertical Slice V1 active' "${LAUNCH_LOG}"
@@ -102,15 +102,47 @@ from ctypes import *
 from PIL import Image
 class XImage(Structure):
     _fields_=[("width",c_int),("height",c_int),("xoffset",c_int),("format",c_int),("data",c_void_p),("byte_order",c_int),("bitmap_unit",c_int),("bitmap_bit_order",c_int),("bitmap_pad",c_int),("depth",c_int),("bytes_per_line",c_int),("bits_per_pixel",c_int),("red_mask",c_ulong),("green_mask",c_ulong),("blue_mask",c_ulong)]
+class XWindowAttributes(Structure):
+    _fields_=[("x",c_int),("y",c_int),("width",c_int),("height",c_int),("border_width",c_int),("depth",c_int),("visual",c_void_p),("root",c_ulong),("class_",c_int),("bit_gravity",c_int),("win_gravity",c_int),("backing_store",c_int),("backing_planes",c_ulong),("backing_pixel",c_ulong),("save_under",c_int),("colormap",c_ulong),("map_installed",c_int),("map_state",c_int),("all_event_masks",c_long),("your_event_mask",c_long),("do_not_propagate_mask",c_long),("override_redirect",c_int),("screen",c_void_p)]
 x=CDLL("libX11.so.6"); x.XOpenDisplay.argtypes=[c_char_p]; x.XOpenDisplay.restype=c_void_p
-x.XDefaultScreen.argtypes=[c_void_p]; x.XDefaultScreen.restype=c_int; x.XRootWindow.argtypes=[c_void_p,c_int]; x.XRootWindow.restype=c_ulong
-x.XDisplayWidth.argtypes=[c_void_p,c_int]; x.XDisplayWidth.restype=c_int; x.XDisplayHeight.argtypes=[c_void_p,c_int]; x.XDisplayHeight.restype=c_int
+x.XDefaultRootWindow.argtypes=[c_void_p]; x.XDefaultRootWindow.restype=c_ulong
+x.XQueryTree.argtypes=[c_void_p,c_ulong,POINTER(c_ulong),POINTER(c_ulong),POINTER(POINTER(c_ulong)),POINTER(c_uint)]; x.XQueryTree.restype=c_int
+x.XGetWindowAttributes.argtypes=[c_void_p,c_ulong,POINTER(XWindowAttributes)]; x.XGetWindowAttributes.restype=c_int
+x.XFetchName.argtypes=[c_void_p,c_ulong,POINTER(c_char_p)]; x.XFetchName.restype=c_int
 x.XGetImage.argtypes=[c_void_p,c_ulong,c_int,c_int,c_uint,c_uint,c_ulong,c_int]; x.XGetImage.restype=POINTER(XImage)
-d=x.XOpenDisplay(os.environ["DISPLAY"].encode()); s=x.XDefaultScreen(d); root=x.XRootWindow(d,s); w=x.XDisplayWidth(d,s); h=x.XDisplayHeight(d,s)
-p=x.XGetImage(d,root,0,0,w,h,c_ulong(-1).value,2); xi=p.contents; raw=string_at(xi.data,xi.bytes_per_line*h)
-img=Image.frombytes("RGB",(w,h),raw,"raw","BGRX" if xi.bits_per_pixel==32 else "BGR",xi.bytes_per_line,1); img.save(sys.argv[1],"PNG")
+x.XFree.argtypes=[c_void_p]
+d=x.XOpenDisplay(os.environ["DISPLAY"].encode())
+if not d: raise SystemExit("XOpenDisplay failed")
+root=x.XDefaultRootWindow(d); seen=set(); windows=[]
+def walk(window, depth=0):
+    if window in seen or depth > 8: return
+    seen.add(window); attr=XWindowAttributes()
+    if not x.XGetWindowAttributes(d,window,byref(attr)): return
+    namep=c_char_p(); name=""
+    if x.XFetchName(d,window,byref(namep)) and namep.value:
+        name=namep.value.decode(errors="replace"); x.XFree(namep)
+    windows.append((window,depth,attr.width,attr.height,attr.depth,attr.map_state,name))
+    rr=c_ulong(); parent=c_ulong(); children=POINTER(c_ulong)(); count=c_uint()
+    if x.XQueryTree(d,window,byref(rr),byref(parent),byref(children),byref(count)):
+        for index in range(count.value): walk(children[index],depth+1)
+        if children: x.XFree(children)
+walk(root)
+for row in windows: print("WINDOW",*row,sep="|")
+candidates=[row for row in windows if row[0] != root and row[5] == 2 and row[2] >= 320 and row[3] >= 200]
+if not candidates: raise SystemExit("no mapped launcher-sized X11 window")
+target=max(candidates,key=lambda row:row[2]*row[3]); window,w,h=target[0],target[2],target[3]
+p=x.XGetImage(d,window,0,0,w,h,c_ulong(-1).value,2)
+if not p: raise SystemExit("XGetImage launcher window failed")
+xi=p.contents; raw=string_at(xi.data,xi.bytes_per_line*h)
+if xi.bits_per_pixel == 32 and xi.byte_order == 0:
+    img=Image.frombytes("RGB",(w,h),raw,"raw","BGRX",xi.bytes_per_line,1)
+elif xi.bits_per_pixel == 24 and xi.byte_order == 0:
+    img=Image.frombytes("RGB",(w,h),raw,"raw","BGR",xi.bytes_per_line,1)
+else:
+    raise SystemExit(f"unsupported image format {xi.bits_per_pixel}/{xi.byte_order}")
+img.save(sys.argv[1],"PNG")
 pixels=list(img.getdata()); unique=len(set(pixels)); lums=[.2126*r+.7152*g+.0722*b for r,g,b in pixels]; mean=sum(lums)/len(lums); var=sum((v-mean)**2 for v in lums)/len(lums)
-print(f"FRAME={sys.argv[1]}\nRESOLUTION={w}x{h}\nSIZE={os.path.getsize(sys.argv[1])}\nUNIQUE_COLORS={unique}\nPIXEL_VARIANCE={var:.4f}")
+print(f"TARGET_WINDOW={target}\nFRAME={sys.argv[1]}\nRESOLUTION={w}x{h}\nSIZE={os.path.getsize(sys.argv[1])}\nUNIQUE_COLORS={unique}\nPIXEL_VARIANCE={var:.4f}\nMEAN_LUMINANCE={mean:.4f}")
 if unique <= 16 or var <= 4.0: raise SystemExit("native frame is empty")
 PY
 echo "ATOM_RHI_EVIDENCE:"
