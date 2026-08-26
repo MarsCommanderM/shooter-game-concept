@@ -4,25 +4,35 @@ ROOT="${HOME}"
 O3DE="${ROOT}/o3de-2605"
 BUILD="${ROOT}/stw-o3de-build/linux"
 PROJECT="${ROOT}/stw-o3de-worktree/stw-o3de/Project"
+BIN="${BUILD}/bin/profile"
 
-echo "O3DE 26.05 NATIVE FRAME-CAPTURE API READ-ONLY DISCOVERY"
+echo "O3DE 26.05 SCRIPTAUTOMATION FRAME-CAPTURE READ-ONLY CHECK"
 echo "NO BUILD / NO LAUNCH / NO ASSET PROCESSING / NO INSTALL / NO SOURCE CHANGE"
-if git -C "${O3DE}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  git -C "${O3DE}" rev-parse HEAD
+echo "PROJECT JSON:"
+if [[ -r "${PROJECT}/project.json" ]]; then
+  sed -n '1,260p' "${PROJECT}/project.json"
 else
-  echo "O3DE GIT METADATA: unavailable; continuing read-only source inspection"
-  test -r "${O3DE}/engine.json"
+  echo "MISSING: ${PROJECT}/project.json"
 fi
-echo "FRAME CAPTURE SOURCE FILES:"
-find "${O3DE}" -type f \( -iname '*FrameCapture*' -o -iname '*ScreenShot*' -o -iname '*Screenshot*' \) -print | sort | sed -n '1,500p'
-echo "FRAME CAPTURE SYMBOLS / CONSOLE COMMANDS:"
-grep -RInE 'AZ_CVAR|AZ_CONSOLEFUNC|FrameCaptureRequestBus|CaptureScreenshot|CapturePassAttachment|Screen[Ss]hot|screen[Ss]hot|captureFrame|capture_frame|r_capture'   "${O3DE}/Gems/Atom" "${O3DE}/Code"   --include='*.cpp' --include='*.h' --include='*.hpp' --include='*.inl'   2>/dev/null | sed -n '1,1600p' || true
-echo "BUILT FRAME CAPTURE STRINGS:"
-for binary in "${BUILD}/bin/profile/libAtom_Feature_Common.so" "${BUILD}/bin/profile/libAtom_RPI.Private.so" "${BUILD}/bin/profile/STW.GameLauncher"; do
-  echo "===== ${binary} ====="
-  strings "${binary}" 2>/dev/null | grep -Ei 'screenshot|frame.?capture|capture.?frame|capturepass|capture.?attachment' | sort -u | sed -n '1,500p' || true
+echo "SCRIPTAUTOMATION BUILT ARTIFACTS:"
+find "${BIN}" -maxdepth 2 -type f -iname '*ScriptAutomation*' -printf '%p %s bytes\n' 2>/dev/null | sort || true
+echo "SCRIPTAUTOMATION PROJECT/CACHE REGISTRY:"
+find "${PROJECT}/Registry" "${PROJECT}/Cache/linux" -maxdepth 4 -type f \( -name '*.setreg' -o -name '*.json' \) -print0 2>/dev/null |
+  xargs -0 grep -HnEi 'ScriptAutomation|AutomationScripts|\.sa\.lua|run.?script' 2>/dev/null | sed -n '1,800p' || true
+echo "OFFICIAL AUTOMATION SCRIPT ENTRY POINTS:"
+grep -RInE 'AZ_CVAR|AZ_CONSOLEFUNC|CommandLine|GetSwitchValue|run.?script|script.?run|\.sa\.lua|FrameCaptureRequestBus|CaptureScreenshot' \
+  "${O3DE}/Gems/ScriptAutomation" "${O3DE}/AutomatedTesting/Assets/AutomatedTestScripts" \
+  --include='*.cpp' --include='*.h' --include='*.hpp' --include='*.lua' --include='*.setreg' --include='*.json' \
+  2>/dev/null | sed -n '1,1200p' || true
+echo "OFFICIAL SCREENSHOT SCRIPTS:"
+for script in \
+  "${O3DE}/AutomatedTesting/Assets/AutomatedTestScripts/screenshot.sa.lua" \
+  "${O3DE}/Gems/ScriptAutomation/Assets/AutomationScripts/GenericRenderScreenshotTest.lua"; do
+  echo "===== ${script} ====="
+  if [[ -r "${script}" ]]; then sed -n '1,320p' "${script}"; else echo "MISSING"; fi
 done
-echo "PROJECT AUTOEXEC:"
-find "${PROJECT}" "${PROJECT}/Cache/linux" -maxdepth 3 -type f \( -name '*.cfg' -o -name '*.setreg' \) -print0 2>/dev/null |
-  xargs -0 grep -HnEi 'screenshot|frame.?capture|capture.?frame|LoadLevel' 2>/dev/null | sed -n '1,500p' || true
+echo "LAUNCHER SCRIPT/CAPTURE STRINGS:"
+strings "${BIN}/STW.GameLauncher" 2>/dev/null |
+  grep -Ei 'ScriptAutomation|AutomationScripts|\.sa\.lua|run.?script|CaptureScreenshot|FrameCaptureRequestBus' |
+  sort -u | sed -n '1,800p' || true
 echo "COST INCURRED: \$0.00"
