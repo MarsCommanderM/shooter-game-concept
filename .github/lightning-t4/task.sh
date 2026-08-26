@@ -129,7 +129,7 @@ for second in {1..90}; do
 done
 report "LAUNCHER ALIVE AFTER: ${render_wait:-90}s"
 grep -Fq 'Null AudioSystem created!' "${STDIO}" || fail "O3DE did not activate NullAudioSystem"
-if grep -Eqi 'Failed to create secure directory|ALSA lib|Unknown PCM|AudioSystem created!' "${STDIO}"; then
+if grep -Eqi 'Failed to create secure directory|ALSA lib|Unknown PCM' "${STDIO}"; then
   fail "headless audio hardware path was still activated"
 fi
 report "ATOM/RHI/GPU EVIDENCE:"
