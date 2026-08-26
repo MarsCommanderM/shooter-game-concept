@@ -45,6 +45,11 @@ else
     "${GITHUB_WORKSPACE}/stw-o3de/O3DE_VERSION.md"
 fi
 [[ -x "${LAUNCHER}" && -d "${PROJECT}/Cache/linux" && -f "${GEM}/gem.json" ]]
+cmake_command="$(sed -n 's/^CMAKE_COMMAND:INTERNAL=//p' "${BUILD}/CMakeCache.txt" | head -1)"
+[[ -x "${cmake_command}" ]]
+cmake_bin_dir="$(dirname "${cmake_command}")"
+export PATH="${cmake_bin_dir}:${PATH}"
+echo "CMAKE_COMMAND=${cmake_command}"
 
 echo "SYNCING_TRACKED_PRODUCTION_GEM=${GEM}"
 cp -a "${GITHUB_WORKSPACE}/stw-o3de/Gems/STWGameplay/gem.json" "${GEM}/gem.json"
@@ -54,13 +59,13 @@ mkdir -p "${GEM}/Registry"
 cp -a "${GITHUB_WORKSPACE}/stw-o3de/Gems/STWGameplay/Registry/." "${GEM}/Registry/"
 
 start="$(date +%s)"
-cmake --build "${BUILD}" --config profile --target STWGameplay.Tests -j 2 2>&1 | tee "${BUILD_LOG}"
+"${cmake_command}" --build "${BUILD}" --config profile --target STWGameplay.Tests -j 2 2>&1 | tee "${BUILD_LOG}"
 echo "TEST_TARGET_BUILD_SECONDS=$(($(date +%s)-start))"
-ctest --test-dir "${BUILD}" -C profile --output-on-failure -R 'STWGameplay' 2>&1 | tee "${TEST_LOG}"
+"${cmake_bin_dir}/ctest" --test-dir "${BUILD}" -C profile --output-on-failure -R 'STWGameplay' 2>&1 | tee "${TEST_LOG}"
 grep -Eq '100% tests passed|The following tests passed' "${TEST_LOG}"
 
 start="$(date +%s)"
-cmake --build "${BUILD}" --config profile --target STW.GameLauncher -j 2 2>&1 | tee -a "${BUILD_LOG}"
+"${cmake_command}" --build "${BUILD}" --config profile --target STW.GameLauncher -j 2 2>&1 | tee -a "${BUILD_LOG}"
 echo "LAUNCHER_INCREMENTAL_BUILD_SECONDS=$(($(date +%s)-start))"
 echo "FULL_ENGINE_REBUILD=NO"
 echo "ASSET_PROCESSING=NOT_REQUIRED_SOURCE_ONLY"
