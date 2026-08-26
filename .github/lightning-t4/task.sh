@@ -32,7 +32,7 @@ echo "INCREMENTAL_BUILD_ONLY=YES"
 echo "COST_INCURRED=\$0.00"
 [[ "${GITHUB_REPOSITORY}" == "MarsCommanderM/shooter-game-concept" ]]
 [[ "${GITHUB_REF}" == "refs/heads/brauny/stw-game-production" ]]
-[[ "$(git rev-parse HEAD)" == "${GITHUB_SHA}" ]]
+[[ "$(git -C "${GITHUB_WORKSPACE}" rev-parse HEAD)" == "${GITHUB_SHA}" ]]
 [[ "$(git -C "${ENGINE}" rev-parse HEAD)" == "3db6943249d8bd7960b9ed7e9aee310b7668586e" ]]
 [[ -x "${LAUNCHER}" && -d "${PROJECT}/Cache/linux" && -f "${GEM}/gem.json" ]]
 
