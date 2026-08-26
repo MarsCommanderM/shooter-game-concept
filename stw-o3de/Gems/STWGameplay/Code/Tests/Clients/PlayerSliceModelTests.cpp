@@ -2,6 +2,8 @@
 #include <STWGameplay/PlayerSliceModel.h>
 #include <cmath>
 
+AZ_UNIT_TEST_HOOK(DEFAULT_UNIT_TEST_ENV);
+
 namespace STWGameplay
 {
     namespace
