@@ -7,12 +7,12 @@ namespace STWGameplay
 {
     namespace
     {
-        bool IsFinite(float value) { return std::isfinite(value); }
+        bool IsFiniteViewmodel(float value) { return std::isfinite(value); }
     }
 
     bool ViewmodelPresentation::Update(float deltaTime, const PresentationInput& input)
     {
-        if (!IsFinite(deltaTime) || deltaTime < 0.0f)
+        if (!IsFiniteViewmodel(deltaTime) || deltaTime < 0.0f)
         {
             return false;
         }
