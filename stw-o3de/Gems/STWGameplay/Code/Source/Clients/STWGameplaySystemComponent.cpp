@@ -113,6 +113,17 @@ namespace STWGameplay
         {
             m_model.SynchronizePhysicalState(physicalPosition, grounded);
         }
+
+        // Presentation reacts to authoritative events/state only (read-only). It never writes
+        // ammo, damage, reload completion, target health or player movement back.
+        PresentationInput vpInput;
+        vpInput.m_shotFired = m_model.GetPresentation().m_shotFired;
+        vpInput.m_hit = m_model.GetPresentation().m_hit;
+        vpInput.m_reloading = m_model.GetWeapon().m_reloading;
+        vpInput.m_moving = (std::abs(m_input.m_forward) > 0.01f) || (std::abs(m_input.m_strafe) > 0.01f);
+        vpInput.m_sprinting = m_input.m_sprint && vpInput.m_moving;
+        m_viewmodel.Update(deltaTime, vpInput);
+
         m_input.m_lookX = 0.0f;
         m_input.m_lookY = 0.0f;
         m_input.m_reload = false;
@@ -197,7 +208,7 @@ namespace STWGameplay
 
     void STWGameplaySystemComponent::UpdateAutomatedAcceptance(float deltaTime)
     {
-        if (!m_automatedAcceptance || m_acceptanceReported || !std::isfinite(deltaTime) || deltaTime < 0.0f)
+        if (!m_automatedAcceptance || m_viewmodelAcceptanceReported || !std::isfinite(deltaTime) || deltaTime < 0.0f)
         {
             return;
         }
@@ -205,6 +216,7 @@ namespace STWGameplay
         m_input.m_forward = 0.0f;
         m_input.m_strafe = 0.0f;
         m_input.m_sprint = false;
+        m_input.m_fire = false;
 
         if (m_acceptanceTime >= 2.0f && m_acceptanceTime < 3.0f)
         {
@@ -236,6 +248,37 @@ namespace STWGameplay
                 travelled,
                 player.m_position.IsFinite() ? "true" : "false");
             m_acceptanceReported = true;
+        }
+        // Presentation acceptance (test-only, gated by STW_PHYSX_ACCEPTANCE), driven entirely
+        // through the SAME authoritative input path: fire a rate-limited burst, then reload,
+        // then report the viewmodel's reaction. No second gameplay path is introduced.
+        else if (m_acceptanceTime >= 4.5f && m_acceptanceTime < 5.2f)
+        {
+            m_input.m_fire = true; // authoritative TryFire; the weapon rate-limits it
+        }
+        else if (m_acceptanceTime >= 5.2f && m_acceptanceTime < 5.6f)
+        {
+            const WeaponState& weapon = m_model.GetWeapon();
+            if (weapon.m_magazine < 30 && !weapon.m_reloading && weapon.m_reserve > 0)
+            {
+                m_input.m_reload = true; // authoritative StartReload; self-limiting once reloading
+            }
+        }
+        else if (m_acceptanceTime >= 7.5f)
+        {
+            const bool vmPass = m_viewmodel.GetFireEventCount() > 0u
+                && m_viewmodel.GetReloadStartCount() > 0u
+                && m_viewmodel.GetRecoilOffset().IsFinite()
+                && m_viewmodel.GetSwayOffset().IsFinite();
+            AZ_Printf(
+                "STWGameplay",
+                "VIEWMODEL_ACCEPTANCE result=%s fire_events=%u reload_starts=%u recoil=%.3f state=%d\n",
+                vmPass ? "PASS" : "FAIL",
+                m_viewmodel.GetFireEventCount(),
+                m_viewmodel.GetReloadStartCount(),
+                m_viewmodel.GetRecoilOffset().GetLength(),
+                static_cast<int>(m_viewmodel.GetState()));
+            m_viewmodelAcceptanceReported = true;
         }
     }
 
@@ -293,13 +336,25 @@ namespace STWGameplay
             right.Normalize();
         }
 
-        // Camera-relative native placeholder presentation. It consumes weapon
-        // events only; authoritative fire and damage remain in PlayerSliceModel.
-        const AZ::Vector3 weaponCenter = m_model.GetEyePosition() + aim * 0.62f + right * 0.24f - up * 0.20f;
-        Bus::Event(displayId, &AzFramework::DebugDisplayRequests::SetColor, AZ::Color(0.08f, 0.11f, 0.14f, 1.0f));
+        // Camera-relative native viewmodel. TEMPORARY procedural geometry: no arms/weapon art
+        // exists in the project yet (see ViewmodelPresentation). Recoil/sway/reload pose come
+        // from the presentation model, which consumes authoritative events only; fire, damage
+        // and reload authority remain in PlayerSliceModel.
+        const AZ::Vector3 recoil = m_viewmodel.GetRecoilOffset();
+        const AZ::Vector3 sway = m_viewmodel.GetSwayOffset();
+        const AZ::Vector3 vmOffset =
+            right * (recoil.GetX() + sway.GetX()) +
+            aim * (recoil.GetY() + sway.GetY()) +
+            up * (recoil.GetZ() + sway.GetZ());
+        const bool reloadPose = (m_viewmodel.GetState() == ViewmodelState::Reload);
+        const AZ::Vector3 reloadDip = reloadPose ? (-up * 0.12f - aim * 0.10f) : AZ::Vector3::CreateZero();
+        const AZ::Vector3 weaponCenter =
+            m_model.GetEyePosition() + aim * 0.62f + right * 0.24f - up * 0.20f + vmOffset + reloadDip;
+        Bus::Event(displayId, &AzFramework::DebugDisplayRequests::SetColor,
+            reloadPose ? AZ::Color(0.10f, 0.14f, 0.18f, 1.0f) : AZ::Color(0.08f, 0.11f, 0.14f, 1.0f));
         Bus::Event(displayId, &AzFramework::DebugDisplayRequests::DrawSolidOBB,
             weaponCenter, right, aim, up, AZ::Vector3(0.10f, 0.30f, 0.08f));
-        if (presentation.m_fireCueRemaining > 0.0f)
+        if (m_viewmodel.IsMuzzleFlashActive())
         {
             Bus::Event(displayId, &AzFramework::DebugDisplayRequests::SetColor, AZ::Color(1.0f, 0.72f, 0.12f, 1.0f));
             Bus::Event(displayId, &AzFramework::DebugDisplayRequests::DrawBall,
@@ -320,7 +375,7 @@ namespace STWGameplay
         azsnprintf(hud, AZ_ARRAY_SIZE(hud), "STW  HP 100/100   MP5 %02d / %03d   %s",
             weapon.m_magazine, weapon.m_reserve, weapon.m_reloading ? "RELOADING" : "READY");
         Bus::Event(displayId, &AzFramework::DebugDisplayRequests::Draw2dTextLabel, 24.0f, 36.0f, 1.4f, hud, false);
-        if (presentation.m_hitCueRemaining > 0.0f)
+        if (presentation.m_hitCueRemaining > 0.0f || m_viewmodel.IsHitFeedbackActive())
         {
             Bus::Event(displayId, &AzFramework::DebugDisplayRequests::SetColor, AZ::Color(1.0f, 0.25f, 0.2f, 1.0f));
             Bus::Event(displayId, &AzFramework::DebugDisplayRequests::DrawWireCircle2d, AZ::Vector2(0.5f, 0.5f), 0.018f, 0.0f);

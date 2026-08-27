@@ -6,6 +6,7 @@
 #include <AzCore/std/string/string.h>
 #include <AzFramework/Input/Events/InputChannelEventListener.h>
 #include <STWGameplay/PlayerSliceModel.h>
+#include <STWGameplay/ViewmodelPresentation.h>
 #include "PhysXPlayerRuntime.h"
 
 namespace STWGameplay
@@ -48,6 +49,7 @@ namespace STWGameplay
         PhysicsStartup m_physicsStartup = PhysicsStartup::Waiting;
 
         PlayerSliceModel m_model;
+        ViewmodelPresentation m_viewmodel;
         PhysXPlayerRuntime m_physicsPlayer;
         PlayerInput m_input;
         AZStd::string m_nativeCapturePath;
@@ -59,6 +61,7 @@ namespace STWGameplay
         bool m_performanceReported = false;
         bool m_automatedAcceptance = false;
         bool m_acceptanceReported = false;
+        bool m_viewmodelAcceptanceReported = false;
         float m_acceptanceTime = 0.0f;
         AZ::Vector3 m_acceptanceStartPosition = AZ::Vector3::CreateZero();
     };

@@ -1,1 +1,3 @@
-set(FILES Tests/Clients/PlayerSliceModelTests.cpp)
+set(FILES
+    Tests/Clients/PlayerSliceModelTests.cpp
+    Tests/Clients/ViewmodelPresentationTests.cpp)
