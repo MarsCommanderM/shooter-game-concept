@@ -33,7 +33,7 @@ cleanup(){
 dump_diagnostics(){
   echo "===== STW DIAGNOSTIC DUMP BEGIN ====="
   echo "RUN_DIR=${RUN_DIR}"
-  for diag in "${LAUNCH_LOG}" "${RUN_DIR}/xvfb.log" "${BUILD_LOG}" "${TEST_LOG}"; do
+  for diag in "${LAUNCH_LOG}" "${GAME_LOG}" "${RUN_DIR}/xvfb.log" "${BUILD_LOG}" "${TEST_LOG}"; do
     if [[ -f "${diag}" ]]; then
       echo "----- ${diag} (tail -200) -----"
       tail -n 200 "${diag}" 2>/dev/null || true
@@ -211,11 +211,12 @@ for _ in $(seq 1 45); do
 done
 [[ -s "${FRAME_NATIVE}" ]]
 for _ in $(seq 1 20); do
-  runtime_grep -q 'PERFORMANCE_BASELINE' && runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS' && break
+  runtime_grep -q 'PERFORMANCE_BASELINE' && runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS' && runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS' && break
   kill -0 "${launcher_pid}" 2>/dev/null || { tail -n 200 "${LAUNCH_LOG}"; exit 1; }
   sleep 1
 done
 runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS'
+runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS'
 runtime_grep -q 'PERFORMANCE_BASELINE'
 if runtime_grep -q 'Native Atom frame capture submitted'; then
   echo "FRAME_CAPTURE_SUBMISSION_LOG=CONFIRMED"
@@ -245,6 +246,8 @@ echo "FRAME_BASE64_BEGIN"
 base64 -w0 "${THUMB}"
 echo
 echo "FRAME_BASE64_END"
+echo "VIEWMODEL_EVIDENCE:"
+runtime_grep -n 'VIEWMODEL_ACCEPTANCE result=PASS'
 echo "ATOM_RHI_EVIDENCE:"
 { grep -Ein 'Atom|RHI|Vulkan|Tesla T4|NVIDIA|defaultlevel' "${LAUNCH_LOG}" 2>/dev/null; \
   grep -Ein 'Player Movement V2|PHYSX_ACCEPTANCE|PERFORMANCE_BASELINE|Native Atom frame capture' "${GAME_LOG}" 2>/dev/null; } | tail -160
