@@ -34,6 +34,18 @@ namespace STWGameplay
         void DrawPresentation();
         void RecordPerformance(float deltaTime);
         void UpdateAutomatedAcceptance(float deltaTime);
+        // Attempts to create the PhysX controller once the O3DE default physics scene exists.
+        void TryStartPhysics();
+
+        // The PhysX character controller cannot be created during Activate() because the
+        // default physics scene does not exist yet; creation is deferred to OnTick.
+        enum class PhysicsStartup
+        {
+            Waiting,
+            Ready,
+            Failed
+        };
+        PhysicsStartup m_physicsStartup = PhysicsStartup::Waiting;
 
         PlayerSliceModel m_model;
         PhysXPlayerRuntime m_physicsPlayer;

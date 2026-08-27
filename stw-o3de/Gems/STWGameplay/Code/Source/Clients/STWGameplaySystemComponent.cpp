@@ -6,6 +6,8 @@
 #include <AzCore/Serialization/SerializeContext.h>
 #include <AzFramework/Components/CameraBus.h>
 #include <AzFramework/Physics/CharacterBus.h>
+#include <AzFramework/Physics/SystemBus.h>
+#include <AzFramework/Physics/Common/PhysicsTypes.h>
 #include <AzFramework/Entity/EntityDebugDisplayBus.h>
 #include <AzFramework/Input/Devices/Keyboard/InputDeviceKeyboard.h>
 #include <AzFramework/Input/Devices/Mouse/InputDeviceMouse.h>
@@ -51,18 +53,11 @@ namespace STWGameplay
             m_nativeCapturePath = capturePath;
         }
         m_automatedAcceptance = std::getenv("STW_PHYSX_ACCEPTANCE") != nullptr;
-        if (!m_physicsPlayer.Initialize())
-        {
-            AZ_Error("STWGameplay", false, "Player Movement V2 could not create its PhysX controller");
-            return;
-        }
-        AZ::Vector3 physicalPosition = AZ::Vector3::CreateZero();
-        bool grounded = false;
-        m_physicsPlayer.Synchronize(physicalPosition, grounded);
-        m_model.SynchronizePhysicalState(physicalPosition, grounded);
+        // The PhysX character controller requires the O3DE default physics scene, which does
+        // not exist yet during system activation. Defer its creation to OnTick (TryStartPhysics)
+        // and only start input/tick handling here. A missing scene now is not an error.
         AzFramework::InputChannelEventListener::Connect();
         AZ::TickBus::Handler::BusConnect();
-        AZ_Printf("STWGameplay", "Native Player Movement V2 PhysX active\n");
     }
 
     void STWGameplaySystemComponent::Deactivate()
@@ -72,8 +67,43 @@ namespace STWGameplay
         m_physicsPlayer.Shutdown();
     }
 
+    void STWGameplaySystemComponent::TryStartPhysics()
+    {
+        // Same default-scene retrieval PhysX's own CharacterGameplayComponent uses; the
+        // controller can only be created once the O3DE-owned default scene is present.
+        AzPhysics::SceneHandle defaultScene = AzPhysics::InvalidSceneHandle;
+        Physics::DefaultWorldBus::BroadcastResult(defaultScene, &Physics::DefaultWorldRequests::GetDefaultSceneHandle);
+        if (defaultScene == AzPhysics::InvalidSceneHandle)
+        {
+            return; // default scene not created yet — keep waiting, this is not an error
+        }
+
+        if (!m_physicsPlayer.Initialize())
+        {
+            AZ_Error("STWGameplay", false, "Player Movement V2 could not create its PhysX controller");
+            m_physicsStartup = PhysicsStartup::Failed;
+            return;
+        }
+
+        AZ::Vector3 physicalPosition = AZ::Vector3::CreateZero();
+        bool grounded = false;
+        m_physicsPlayer.Synchronize(physicalPosition, grounded);
+        m_model.SynchronizePhysicalState(physicalPosition, grounded);
+        m_physicsStartup = PhysicsStartup::Ready;
+        AZ_Printf("STWGameplay", "Native Player Movement V2 PhysX active\n");
+    }
+
     void STWGameplaySystemComponent::OnTick(float deltaTime, AZ::ScriptTimePoint)
     {
+        if (m_physicsStartup != PhysicsStartup::Ready)
+        {
+            if (m_physicsStartup == PhysicsStartup::Waiting)
+            {
+                TryStartPhysics();
+            }
+            return; // no gameplay/camera/acceptance until the controller is live
+        }
+
         UpdateAutomatedAcceptance(deltaTime);
         m_model.Update(deltaTime, m_input);
         m_physicsPlayer.QueueVelocity(m_model.GetDesiredVelocity(m_input));
