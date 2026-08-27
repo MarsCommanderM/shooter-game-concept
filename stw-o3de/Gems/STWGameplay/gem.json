@@ -8,5 +8,5 @@
     "canonical_tags": ["Gem"],
     "user_tags": ["Gameplay"],
     "platforms": ["Linux", "Windows"],
-    "dependencies": []
+    "dependencies": ["PhysX5"]
 }

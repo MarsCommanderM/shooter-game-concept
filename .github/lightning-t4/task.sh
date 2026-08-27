@@ -28,7 +28,7 @@ trap cleanup EXIT INT TERM
 mkdir -p "${RUN_DIR}" "${RUNTIME}"; chmod 700 "${RUNTIME}"
 exec > >(tee "${RUN_DIR}/report.log") 2>&1
 
-echo "STW O3DE PLAYER VERTICAL SLICE V1"
+echo "STW O3DE PRODUCTION PLAYER MOVEMENT V2"
 echo "SOURCE_COMMIT=${GITHUB_SHA}"
 echo "INCREMENTAL_BUILD_ONLY=YES"
 echo "COST_INCURRED=\$0.00"
@@ -88,15 +88,16 @@ EOF
 chmod 600 "${ALSA}"
 setsid env DISPLAY="${display}" XDG_RUNTIME_DIR="${RUNTIME}" ALSA_CONFIG_PATH="${ALSA}" \
   STW_NATIVE_CAPTURE_PATH="${FRAME_NATIVE}" \
+  STW_PHYSX_ACCEPTANCE=1 \
   VK_ICD_FILENAMES="${ICD}" LD_LIBRARY_PATH="${BIN}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
   "${LAUNCHER}" "--project-path=${PROJECT}" "--engine-path=${ENGINE}" -sys_audio_disable 1 >"${LAUNCH_LOG}" 2>&1 &
 launcher_pid=$!; echo "LAUNCHER_PID=${launcher_pid}"
 for _ in $(seq 1 75); do
   kill -0 "${launcher_pid}" 2>/dev/null || { tail -n 200 "${LAUNCH_LOG}"; exit 1; }
-  if grep -q 'Native Player Vertical Slice V1 active' "${LAUNCH_LOG}" && grep -Eqi 'Tesla T4|NVIDIA.*T4' "${LAUNCH_LOG}" && grep -Eqi 'Vulkan' "${LAUNCH_LOG}"; then break; fi
+  if grep -q 'Native Player Movement V2 PhysX active' "${LAUNCH_LOG}" && grep -Eqi 'Tesla T4|NVIDIA.*T4' "${LAUNCH_LOG}" && grep -Eqi 'Vulkan' "${LAUNCH_LOG}"; then break; fi
   sleep 1
 done
-grep -q 'Native Player Vertical Slice V1 active' "${LAUNCH_LOG}"
+grep -q 'Native Player Movement V2 PhysX active' "${LAUNCH_LOG}"
 grep -Eqi 'Tesla T4|NVIDIA.*T4' "${LAUNCH_LOG}"
 grep -Eqi 'Vulkan' "${LAUNCH_LOG}"
 ! grep -Eqi 'selected.*(llvmpipe|lavapipe|software)|adapter.*(llvmpipe|lavapipe)' "${LAUNCH_LOG}"
@@ -110,6 +111,13 @@ for _ in $(seq 1 45); do
   sleep 1
 done
 [[ -s "${FRAME_NATIVE}" ]]
+for _ in $(seq 1 20); do
+  grep -q 'PERFORMANCE_BASELINE' "${LAUNCH_LOG}" && grep -q 'PHYSX_ACCEPTANCE result=PASS' "${LAUNCH_LOG}" && break
+  kill -0 "${launcher_pid}" 2>/dev/null || { tail -n 200 "${LAUNCH_LOG}"; exit 1; }
+  sleep 1
+done
+grep -q 'PHYSX_ACCEPTANCE result=PASS' "${LAUNCH_LOG}"
+grep -q 'PERFORMANCE_BASELINE' "${LAUNCH_LOG}"
 if grep -q 'Native Atom frame capture submitted' "${LAUNCH_LOG}"; then
   echo "FRAME_CAPTURE_SUBMISSION_LOG=CONFIRMED"
 else
@@ -139,7 +147,7 @@ base64 -w0 "${THUMB}"
 echo
 echo "FRAME_BASE64_END"
 echo "ATOM_RHI_EVIDENCE:"
-grep -Ein 'Atom|RHI|Vulkan|Tesla T4|NVIDIA|defaultlevel|Native Player Vertical Slice' "${LAUNCH_LOG}" | tail -120
+grep -Ein 'Atom|RHI|Vulkan|Tesla T4|NVIDIA|defaultlevel|Player Movement V2|PHYSX_ACCEPTANCE|PERFORMANCE_BASELINE' "${LAUNCH_LOG}" | tail -160
 echo "TEST_LOG=${TEST_LOG}"
 echo "BUILD_LOG=${BUILD_LOG}"
 echo "LAUNCH_LOG=${LAUNCH_LOG}"

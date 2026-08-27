@@ -2,9 +2,11 @@
 
 #include <AzCore/Component/Component.h>
 #include <AzCore/Component/TickBus.h>
+#include <AzCore/std/containers/array.h>
 #include <AzCore/std/string/string.h>
 #include <AzFramework/Input/Events/InputChannelEventListener.h>
 #include <STWGameplay/PlayerSliceModel.h>
+#include "PhysXPlayerRuntime.h"
 
 namespace STWGameplay
 {
@@ -30,11 +32,22 @@ namespace STWGameplay
         bool OnInputChannelEventFiltered(const AzFramework::InputChannel& inputChannel) override;
         void UpdateCamera();
         void DrawPresentation();
+        void RecordPerformance(float deltaTime);
+        void UpdateAutomatedAcceptance(float deltaTime);
 
         PlayerSliceModel m_model;
+        PhysXPlayerRuntime m_physicsPlayer;
         PlayerInput m_input;
         AZStd::string m_nativeCapturePath;
         float m_nativeCaptureDelay = 0.0f;
         bool m_nativeCaptureAttempted = false;
+        AZStd::array<float, 2048> m_frameSamples{};
+        size_t m_frameSampleCount = 0;
+        float m_performanceDuration = 0.0f;
+        bool m_performanceReported = false;
+        bool m_automatedAcceptance = false;
+        bool m_acceptanceReported = false;
+        float m_acceptanceTime = 0.0f;
+        AZ::Vector3 m_acceptanceStartPosition = AZ::Vector3::CreateZero();
     };
 }

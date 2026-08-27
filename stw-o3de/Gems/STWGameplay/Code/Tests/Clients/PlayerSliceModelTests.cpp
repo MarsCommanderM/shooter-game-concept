@@ -1,4 +1,5 @@
 #include <AzTest/AzTest.h>
+#include <AzCore/Math/MathUtils.h>
 #include <STWGameplay/PlayerSliceModel.h>
 #include <cmath>
 
@@ -18,22 +19,23 @@ namespace STWGameplay
         }
     }
 
-    TEST(PlayerSliceModelTests, PlayerStartsHealthyAliveAndGrounded)
+    TEST(PlayerSliceModelTests, PlayerStartsHealthyAliveAwaitingPhysicalGroundState)
     {
         PlayerSliceModel model;
         EXPECT_FLOAT_EQ(model.GetPlayer().m_health, 100.0f);
         EXPECT_FLOAT_EQ(model.GetPlayer().m_maxHealth, 100.0f);
         EXPECT_TRUE(model.GetPlayer().m_alive);
-        EXPECT_TRUE(model.GetPlayer().m_grounded);
+        EXPECT_FALSE(model.GetPlayer().m_grounded);
     }
 
-    TEST(PlayerSliceModelTests, ForwardMovementChangesAuthoritativePosition)
+    TEST(PlayerSliceModelTests, ForwardInputProducesCameraRelativeVelocity)
     {
         PlayerSliceModel model;
-        const AZ::Vector3 before = model.GetPlayer().m_position;
         PlayerInput input; input.m_forward = 1.0f;
-        Advance(model, 0.5f, input);
-        EXPECT_GT(model.GetPlayer().m_position.GetY(), before.GetY());
+        const AZ::Vector3 velocity = model.GetDesiredVelocity(input);
+        EXPECT_NEAR(velocity.GetX(), 0.0f, 0.001f);
+        EXPECT_NEAR(velocity.GetY(), PlayerSliceModel::WalkSpeed, 0.001f);
+        EXPECT_NEAR(velocity.GetZ(), 0.0f, 0.001f);
     }
 
     TEST(PlayerSliceModelTests, LookChangesAuthoritativeOrientation)
@@ -49,35 +51,57 @@ namespace STWGameplay
     TEST(PlayerSliceModelTests, MovementAndLookShareOneUpdate)
     {
         PlayerSliceModel model;
-        const AZ::Vector3 before = model.GetPlayer().m_position;
         PlayerInput input; input.m_forward = 1.0f; input.m_lookX = 25.0f;
         ASSERT_TRUE(model.Update(0.25f, input));
-        EXPECT_FALSE(model.GetPlayer().m_position.IsClose(before));
+        EXPECT_GT(model.GetDesiredVelocity(input).GetX(), 0.0f);
         EXPECT_NE(model.GetPlayer().m_yaw, 0.0f);
     }
 
     TEST(PlayerSliceModelTests, SprintIsFasterButBounded)
     {
-        PlayerSliceModel walking;
-        PlayerSliceModel sprinting;
         PlayerInput walk; walk.m_forward = 1.0f;
         PlayerInput sprint = walk; sprint.m_sprint = true;
-        Advance(walking, 0.5f, walk);
-        Advance(sprinting, 0.5f, sprint);
-        const float walkDistance = (walking.GetPlayer().m_position - AZ::Vector3(0.0f, -6.0f, 0.0f)).GetLength();
-        const float sprintDistance = (sprinting.GetPlayer().m_position - AZ::Vector3(0.0f, -6.0f, 0.0f)).GetLength();
-        EXPECT_GT(sprintDistance, walkDistance);
-        EXPECT_LE(sprintDistance, PlayerSliceModel::SprintSpeed * 0.51f);
+        PlayerSliceModel model;
+        const float walkSpeed = model.GetDesiredVelocity(walk).GetLength();
+        const float sprintSpeed = model.GetDesiredVelocity(sprint).GetLength();
+        EXPECT_GT(sprintSpeed, walkSpeed);
+        EXPECT_NEAR(sprintSpeed, PlayerSliceModel::SprintSpeed, 0.001f);
     }
 
-    TEST(PlayerSliceModelTests, CollisionPreventsCoverPenetration)
+    TEST(PlayerSliceModelTests, DiagonalVelocityIsNormalized)
     {
         PlayerSliceModel model;
-        model.SetPlayerPosition(AZ::Vector3(-2.0f, -1.5f, 0.0f));
-        PlayerInput input; input.m_forward = 1.0f;
-        Advance(model, 1.0f, input);
-        EXPECT_LE(model.GetPlayer().m_position.GetY(), -1.34f);
-        EXPECT_FLOAT_EQ(model.GetPlayer().m_position.GetZ(), 0.0f);
+        PlayerInput input; input.m_forward = 1.0f; input.m_strafe = 1.0f;
+        EXPECT_NEAR(model.GetDesiredVelocity(input).GetLength(), PlayerSliceModel::WalkSpeed, 0.001f);
+    }
+
+    TEST(PlayerSliceModelTests, PhysicalSynchronizationOwnsPositionGroundingAndHeight)
+    {
+        PlayerSliceModel model;
+        const AZ::Vector3 physicalPosition(3.0f, 4.0f, 0.27f);
+        model.SynchronizePhysicalState(physicalPosition, true);
+        EXPECT_TRUE(model.GetPlayer().m_position.IsClose(physicalPosition));
+        EXPECT_TRUE(model.GetPlayer().m_grounded);
+        EXPECT_FLOAT_EQ(model.GetPlayer().m_position.GetZ(), 0.27f);
+    }
+
+    TEST(PlayerSliceModelTests, CameraYawRotatesMovementDirection)
+    {
+        PlayerSliceModel model;
+        PlayerInput look; look.m_lookX = (AZ::Constants::HalfPi / PlayerSliceModel::LookSensitivity);
+        ASSERT_TRUE(model.Update(0.016f, look));
+        PlayerInput move; move.m_forward = 1.0f;
+        const AZ::Vector3 velocity = model.GetDesiredVelocity(move);
+        EXPECT_GT(velocity.GetX(), PlayerSliceModel::WalkSpeed - 0.01f);
+        EXPECT_NEAR(velocity.GetY(), 0.0f, 0.01f);
+    }
+
+    TEST(PlayerSliceModelTests, CameraPitchIsBoundedForExtremeInput)
+    {
+        PlayerSliceModel model;
+        PlayerInput input; input.m_lookY = 100000.0f;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FLOAT_EQ(model.GetPlayer().m_pitch, -PlayerSliceModel::PitchLimit);
     }
 
     TEST(PlayerSliceModelTests, ValidShotConsumesExactlyOneRound)
@@ -181,5 +205,14 @@ namespace STWGameplay
         EXPECT_FALSE(model.Update(-0.1f, input));
         EXPECT_TRUE(model.GetPlayer().m_position.IsClose(before.m_position));
         EXPECT_FLOAT_EQ(model.GetPlayer().m_yaw, before.m_yaw);
+    }
+
+    TEST(PlayerSliceModelTests, InvalidPhysicalSynchronizationIsTransactional)
+    {
+        PlayerSliceModel model;
+        const PlayerState before = model.GetPlayer();
+        model.SynchronizePhysicalState(AZ::Vector3(NAN, 0.0f, 0.0f), true);
+        EXPECT_TRUE(model.GetPlayer().m_position.IsClose(before.m_position));
+        EXPECT_EQ(model.GetPlayer().m_grounded, before.m_grounded);
     }
 }

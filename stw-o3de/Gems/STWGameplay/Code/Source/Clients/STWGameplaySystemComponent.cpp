@@ -5,6 +5,7 @@
 #include <AzCore/Math/Quaternion.h>
 #include <AzCore/Serialization/SerializeContext.h>
 #include <AzFramework/Components/CameraBus.h>
+#include <AzFramework/Physics/CharacterBus.h>
 #include <AzFramework/Entity/EntityDebugDisplayBus.h>
 #include <AzFramework/Input/Devices/Keyboard/InputDeviceKeyboard.h>
 #include <AzFramework/Input/Devices/Mouse/InputDeviceMouse.h>
@@ -12,6 +13,8 @@
 #include <STWGameplay/STWGameplayTypeIds.h>
 
 #include <cstdlib>
+#include <algorithm>
+#include <cmath>
 
 namespace STWGameplay
 {
@@ -35,7 +38,10 @@ namespace STWGameplay
         incompatible.push_back(AZ_CRC_CE("STWGameplayService"));
     }
 
-    void STWGameplaySystemComponent::GetRequiredServices(AZ::ComponentDescriptor::DependencyArrayType&) {}
+    void STWGameplaySystemComponent::GetRequiredServices(AZ::ComponentDescriptor::DependencyArrayType& required)
+    {
+        required.push_back(AZ_CRC_CE("PhysicsService"));
+    }
     void STWGameplaySystemComponent::GetDependentServices(AZ::ComponentDescriptor::DependencyArrayType&) {}
 
     void STWGameplaySystemComponent::Activate()
@@ -44,25 +50,45 @@ namespace STWGameplay
         {
             m_nativeCapturePath = capturePath;
         }
+        m_automatedAcceptance = std::getenv("STW_PHYSX_ACCEPTANCE") != nullptr;
+        if (!m_physicsPlayer.Initialize())
+        {
+            AZ_Error("STWGameplay", false, "Player Movement V2 could not create its PhysX controller");
+            return;
+        }
+        AZ::Vector3 physicalPosition = AZ::Vector3::CreateZero();
+        bool grounded = false;
+        m_physicsPlayer.Synchronize(physicalPosition, grounded);
+        m_model.SynchronizePhysicalState(physicalPosition, grounded);
         AzFramework::InputChannelEventListener::Connect();
         AZ::TickBus::Handler::BusConnect();
-        AZ_Printf("STWGameplay", "Native Player Vertical Slice V1 active\n");
+        AZ_Printf("STWGameplay", "Native Player Movement V2 PhysX active\n");
     }
 
     void STWGameplaySystemComponent::Deactivate()
     {
         AZ::TickBus::Handler::BusDisconnect();
         AzFramework::InputChannelEventListener::Disconnect();
+        m_physicsPlayer.Shutdown();
     }
 
     void STWGameplaySystemComponent::OnTick(float deltaTime, AZ::ScriptTimePoint)
     {
+        UpdateAutomatedAcceptance(deltaTime);
         m_model.Update(deltaTime, m_input);
+        m_physicsPlayer.QueueVelocity(m_model.GetDesiredVelocity(m_input));
+        AZ::Vector3 physicalPosition = AZ::Vector3::CreateZero();
+        bool grounded = false;
+        if (m_physicsPlayer.Synchronize(physicalPosition, grounded))
+        {
+            m_model.SynchronizePhysicalState(physicalPosition, grounded);
+        }
         m_input.m_lookX = 0.0f;
         m_input.m_lookY = 0.0f;
         m_input.m_reload = false;
         UpdateCamera();
         DrawPresentation();
+        RecordPerformance(deltaTime);
 
         // Production runs do not set STW_NATIVE_CAPTURE_PATH. The controlled
         // native verification job uses it to request one genuine Atom/RHI
@@ -105,6 +131,81 @@ namespace STWGameplay
                         outcome.GetError().m_errorMessage.c_str());
                 }
             }
+        }
+    }
+
+    void STWGameplaySystemComponent::RecordPerformance(float deltaTime)
+    {
+        if (!std::isfinite(deltaTime) || deltaTime <= 0.0f || m_performanceReported)
+        {
+            return;
+        }
+        m_performanceDuration += deltaTime;
+        if (m_frameSampleCount < m_frameSamples.size())
+        {
+            m_frameSamples[m_frameSampleCount++] = deltaTime;
+        }
+        if (m_performanceDuration < 10.0f || m_frameSampleCount == 0)
+        {
+            return;
+        }
+
+        AZStd::array<float, 2048> sorted = m_frameSamples;
+        std::sort(sorted.begin(), sorted.begin() + m_frameSampleCount);
+        const float medianMilliseconds = sorted[m_frameSampleCount / 2] * 1000.0f;
+        const float averageFps = static_cast<float>(m_frameSampleCount) / m_performanceDuration;
+        AZ_Printf(
+            "STWGameplay",
+            "PERFORMANCE_BASELINE average_fps=%.3f median_frame_ms=%.3f sample_seconds=%.3f samples=%zu "
+            "cpu_frame_ms=UNAVAILABLE gpu_frame_ms=UNAVAILABLE resolution=1920x1080\n",
+            averageFps,
+            medianMilliseconds,
+            m_performanceDuration,
+            m_frameSampleCount);
+        m_performanceReported = true;
+    }
+
+    void STWGameplaySystemComponent::UpdateAutomatedAcceptance(float deltaTime)
+    {
+        if (!m_automatedAcceptance || m_acceptanceReported || !std::isfinite(deltaTime) || deltaTime < 0.0f)
+        {
+            return;
+        }
+        m_acceptanceTime += deltaTime;
+        m_input.m_forward = 0.0f;
+        m_input.m_strafe = 0.0f;
+        m_input.m_sprint = false;
+
+        if (m_acceptanceTime >= 2.0f && m_acceptanceTime < 3.0f)
+        {
+            if (m_acceptanceStartPosition.IsZero())
+            {
+                m_acceptanceStartPosition = m_model.GetPlayer().m_position;
+            }
+            m_input.m_forward = 1.0f;
+        }
+        else if (m_acceptanceTime >= 3.0f && m_acceptanceTime < 4.0f)
+        {
+            m_input.m_forward = 1.0f;
+            m_input.m_strafe = 1.0f;
+            m_input.m_sprint = true;
+        }
+        else if (m_acceptanceTime >= 4.0f && !m_acceptanceReported)
+        {
+            const PlayerState& player = m_model.GetPlayer();
+            const float travelled = (player.m_position - m_acceptanceStartPosition).GetLength();
+            const bool passed = m_physicsPlayer.IsValid() && player.m_position.IsFinite() && player.m_grounded
+                && travelled > 1.0f && travelled < 14.0f
+                && std::abs(m_model.GetDesiredVelocity(PlayerInput{ 1.0f, 1.0f }).GetLength() - PlayerSliceModel::WalkSpeed) < 0.01f;
+            AZ_Printf(
+                "STWGameplay",
+                "PHYSX_ACCEPTANCE result=%s initialized=%s grounded=%s travelled=%.3f finite=%s\n",
+                passed ? "PASS" : "FAIL",
+                m_physicsPlayer.IsValid() ? "true" : "false",
+                player.m_grounded ? "true" : "false",
+                travelled,
+                player.m_position.IsFinite() ? "true" : "false");
+            m_acceptanceReported = true;
         }
     }
 

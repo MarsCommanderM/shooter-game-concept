@@ -3,4 +3,6 @@ set(FILES
     Source/STWGameplayModuleInterface.cpp
     Source/STWGameplayModuleInterface.h
     Source/Clients/STWGameplaySystemComponent.cpp
-    Source/Clients/STWGameplaySystemComponent.h)
+    Source/Clients/STWGameplaySystemComponent.h
+    Source/Clients/PhysXPlayerRuntime.cpp
+    Source/Clients/PhysXPlayerRuntime.h)

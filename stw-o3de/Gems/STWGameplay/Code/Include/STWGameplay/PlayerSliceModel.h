@@ -1,8 +1,6 @@
 #pragma once
 
-#include <AzCore/Math/Aabb.h>
 #include <AzCore/Math/Vector3.h>
-#include <AzCore/std/containers/array.h>
 
 namespace STWGameplay
 {
@@ -19,13 +17,13 @@ namespace STWGameplay
 
     struct PlayerState
     {
-        AZ::Vector3 m_position = AZ::Vector3(0.0f, -6.0f, 0.0f);
+        AZ::Vector3 m_position = AZ::Vector3(0.0f, -6.0f, 0.15f);
         float m_yaw = 0.0f;
         float m_pitch = 0.0f;
         float m_maxHealth = 100.0f;
         float m_health = 100.0f;
         bool m_alive = true;
-        bool m_grounded = true;
+        bool m_grounded = false;
     };
 
     struct WeaponState
@@ -78,12 +76,13 @@ namespace STWGameplay
         const PresentationState& GetPresentation() const { return m_presentation; }
         AZ::Vector3 GetEyePosition() const;
         AZ::Vector3 GetAimDirection() const;
+        AZ::Vector3 GetDesiredVelocity(const PlayerInput& input) const;
 
         void SetTargetPosition(const AZ::Vector3& position) { m_target.m_position = position; }
         void SetPlayerPosition(const AZ::Vector3& position);
+        void SynchronizePhysicalState(const AZ::Vector3& position, bool grounded);
 
     private:
-        AZ::Vector3 ResolveMovement(const AZ::Vector3& from, const AZ::Vector3& displacement) const;
         bool RayHitsTarget(const AZ::Vector3& origin, const AZ::Vector3& direction) const;
         void FinishReload();
 
@@ -91,9 +90,5 @@ namespace STWGameplay
         WeaponState m_weapon;
         TargetState m_target;
         PresentationState m_presentation;
-        AZStd::array<AZ::Aabb, 3> m_cover = {
-            AZ::Aabb::CreateFromMinMax(AZ::Vector3(-3.0f, -1.0f, 0.0f), AZ::Vector3(-1.5f, 1.0f, 2.5f)),
-            AZ::Aabb::CreateFromMinMax(AZ::Vector3(1.5f, -1.0f, 0.0f), AZ::Vector3(3.0f, 1.0f, 2.5f)),
-            AZ::Aabb::CreateFromMinMax(AZ::Vector3(-1.0f, 2.5f, 0.0f), AZ::Vector3(1.0f, 3.3f, 1.4f)) };
     };
 }

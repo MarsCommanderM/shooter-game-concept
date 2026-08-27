@@ -18,7 +18,11 @@ ly_add_target(
     FILES_CMAKE stwgameplay_private_files.cmake
     TARGET_PROPERTIES O3DE_PRIVATE_TARGET TRUE
     INCLUDE_DIRECTORIES PRIVATE Include Source
-    BUILD_DEPENDENCIES PUBLIC AZ::AzCore AZ::AzFramework Gem::Atom_Feature_Common.Public)
+    BUILD_DEPENDENCIES PUBLIC
+        AZ::AzCore
+        AZ::AzFramework
+        Gem::Atom_Feature_Common.Public
+        Gem::PhysX5.Static)
 
 ly_add_target(
     NAME STWGameplay ${PAL_TRAIT_MONOLITHIC_DRIVEN_MODULE_TYPE}

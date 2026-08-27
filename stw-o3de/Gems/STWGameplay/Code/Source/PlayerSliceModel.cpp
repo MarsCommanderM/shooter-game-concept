@@ -8,21 +8,7 @@ namespace STWGameplay
 {
     namespace
     {
-        constexpr float PlayerRadius = 0.35f;
-        constexpr float ArenaExtent = 11.5f;
-
         bool IsFinite(float value) { return std::isfinite(value); }
-
-        bool CircleOverlapsAabb2d(const AZ::Vector3& point, const AZ::Aabb& box)
-        {
-            const AZ::Vector3 minimum = box.GetMin();
-            const AZ::Vector3 maximum = box.GetMax();
-            const float closestX = AZStd::clamp(point.GetX(), minimum.GetX(), maximum.GetX());
-            const float closestY = AZStd::clamp(point.GetY(), minimum.GetY(), maximum.GetY());
-            const float dx = point.GetX() - closestX;
-            const float dy = point.GetY() - closestY;
-            return dx * dx + dy * dy < PlayerRadius * PlayerRadius;
-        }
     }
 
     bool PlayerSliceModel::Update(float deltaTime, const PlayerInput& input)
@@ -50,21 +36,6 @@ namespace STWGameplay
 
         m_player.m_yaw += input.m_lookX * LookSensitivity;
         m_player.m_pitch = AZStd::clamp(m_player.m_pitch - input.m_lookY * LookSensitivity, -PitchLimit, PitchLimit);
-
-        const float forwardAmount = AZStd::clamp(input.m_forward, -1.0f, 1.0f);
-        const float strafeAmount = AZStd::clamp(input.m_strafe, -1.0f, 1.0f);
-        AZ::Vector3 movement(
-            std::sin(m_player.m_yaw) * forwardAmount + std::cos(m_player.m_yaw) * strafeAmount,
-            std::cos(m_player.m_yaw) * forwardAmount - std::sin(m_player.m_yaw) * strafeAmount,
-            0.0f);
-        if (movement.GetLengthSq() > 1.0f)
-        {
-            movement.Normalize();
-        }
-        const float speed = input.m_sprint ? SprintSpeed : WalkSpeed;
-        m_player.m_position = ResolveMovement(m_player.m_position, movement * speed * deltaTime);
-        m_player.m_position.SetZ(0.0f);
-        m_player.m_grounded = true;
 
         if (input.m_reload)
         {
@@ -126,42 +97,36 @@ namespace STWGameplay
             std::sin(m_player.m_pitch)).GetNormalized();
     }
 
+    AZ::Vector3 PlayerSliceModel::GetDesiredVelocity(const PlayerInput& input) const
+    {
+        const float forwardAmount = AZStd::clamp(input.m_forward, -1.0f, 1.0f);
+        const float strafeAmount = AZStd::clamp(input.m_strafe, -1.0f, 1.0f);
+        AZ::Vector3 movement(
+            std::sin(m_player.m_yaw) * forwardAmount + std::cos(m_player.m_yaw) * strafeAmount,
+            std::cos(m_player.m_yaw) * forwardAmount - std::sin(m_player.m_yaw) * strafeAmount,
+            0.0f);
+        if (movement.GetLengthSq() > 1.0f)
+        {
+            movement.Normalize();
+        }
+        return movement * (input.m_sprint ? SprintSpeed : WalkSpeed);
+    }
+
     void PlayerSliceModel::SetPlayerPosition(const AZ::Vector3& position)
     {
         if (position.IsFinite())
         {
             m_player.m_position = position;
-            m_player.m_position.SetZ(0.0f);
         }
     }
 
-    AZ::Vector3 PlayerSliceModel::ResolveMovement(const AZ::Vector3& from, const AZ::Vector3& displacement) const
+    void PlayerSliceModel::SynchronizePhysicalState(const AZ::Vector3& position, bool grounded)
     {
-        AZ::Vector3 result = from;
-        AZ::Vector3 candidate = result;
-        candidate.SetX(AZStd::clamp(result.GetX() + displacement.GetX(), -ArenaExtent, ArenaExtent));
-        bool blocked = false;
-        for (const AZ::Aabb& cover : m_cover)
+        if (position.IsFinite())
         {
-            blocked = blocked || CircleOverlapsAabb2d(candidate, cover);
+            m_player.m_position = position;
+            m_player.m_grounded = grounded;
         }
-        if (!blocked)
-        {
-            result.SetX(candidate.GetX());
-        }
-
-        candidate = result;
-        candidate.SetY(AZStd::clamp(result.GetY() + displacement.GetY(), -ArenaExtent, ArenaExtent));
-        blocked = false;
-        for (const AZ::Aabb& cover : m_cover)
-        {
-            blocked = blocked || CircleOverlapsAabb2d(candidate, cover);
-        }
-        if (!blocked)
-        {
-            result.SetY(candidate.GetY());
-        }
-        return result;
     }
 
     bool PlayerSliceModel::RayHitsTarget(const AZ::Vector3& origin, const AZ::Vector3& direction) const
