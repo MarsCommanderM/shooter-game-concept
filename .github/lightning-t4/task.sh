@@ -39,6 +39,56 @@ dump_diagnostics(){
   done
   echo "===== STW DIAGNOSTIC DUMP END ====="
 }
+# Live capture taken while the launcher is STILL RUNNING (before timeout cleanup),
+# so a hung/quiet launcher is observable: process liveness/state/CPU, mapped
+# modules, and every fresh O3DE log file discovered from the project/user roots.
+timeout_diagnostics(){
+  echo "===== STW TIMEOUT DIAGNOSTICS BEGIN ====="
+  echo "MARKER_SOUGHT=Native Player Movement V2 PhysX active"
+  if kill -0 "${launcher_pid}" 2>/dev/null; then
+    echo "LAUNCHER_ALIVE=YES pid=${launcher_pid}"
+  else
+    echo "LAUNCHER_ALIVE=NO pid=${launcher_pid}"
+  fi
+  echo "--- ps (launcher) ---"
+  ps -o pid,ppid,stat,etimes,cputime,pcpu,rss,wchan:32,comm -p "${launcher_pid}" 2>/dev/null || true
+  echo "--- ps (children) ---"
+  ps --ppid "${launcher_pid}" -o pid,ppid,stat,etimes,cputime,pcpu,comm 2>/dev/null || true
+  echo "--- /proc/${launcher_pid}/status (selected) ---"
+  grep -E '^(State|Threads|VmRSS|voluntary_ctxt_switches|nonvoluntary_ctxt_switches):' "/proc/${launcher_pid}/status" 2>/dev/null || true
+  echo "--- /proc/${launcher_pid}/wchan ---"
+  { cat "/proc/${launcher_pid}/wchan" 2>/dev/null; echo; } || true
+  echo "--- mapped .so count ---"
+  grep -Eo '/[^[:space:]]+\.so[^[:space:]]*' "/proc/${launcher_pid}/maps" 2>/dev/null | sort -u | wc -l || true
+  echo "--- mapped STW/PhysX/Atom/Physics modules ---"
+  grep -Eo '/[^[:space:]]+\.so[^[:space:]]*' "/proc/${launcher_pid}/maps" 2>/dev/null | sort -u | grep -Ei 'STW|PhysX|Atom|Physics' || true
+  echo "--- launcher.log size/mtime ---"
+  stat -c 'size=%s mtime=%y' "${LAUNCH_LOG}" 2>/dev/null || true
+  echo "--- discover fresh O3DE logs (*.log modified < 6 min) ---"
+  local found=""
+  local root f
+  for root in "${PROJECT}" "${PROJECT}/user" "${PROJECT}/Cache/linux" "${HOME}/.o3de" "${RUNTIME}"; do
+    [[ -d "${root}" ]] || continue
+    while IFS= read -r f; do
+      [[ -n "${f}" ]] && found+="${f}"$'\n'
+    done < <(find "${root}" -maxdepth 6 -type f -name '*.log' -newermt '-6 minutes' 2>/dev/null || true)
+  done
+  found="$(printf '%s' "${found}" | sort -u | grep -v -F "${RUN_DIR}" || true)"
+  if [[ -z "${found}" ]]; then
+    echo "O3DE_LOG_FILES_FOUND=NONE (outside RUN_DIR)"
+  else
+    echo "O3DE_LOG_FILES_FOUND:"
+    printf '%s\n' "${found}"
+    while IFS= read -r f; do
+      [[ -n "${f}" && -f "${f}" ]] || continue
+      echo "----- ${f} (size $(stat -c %s "${f}" 2>/dev/null), tail -160) -----"
+      tail -n 160 "${f}" 2>/dev/null || true
+      echo "----- ${f} : factual markers -----"
+      grep -Eina 'default scene|PhysX|Character Controller|STWGameplay|spawnable|level|Asset Processor|CriticalAssets|Atom|RHI|Vulkan|Tesla T4|error|warning|assert|fatal' "${f}" 2>/dev/null | tail -80 || true
+    done <<< "${found}"
+  fi
+  echo "===== STW TIMEOUT DIAGNOSTICS END ====="
+}
 on_exit(){
   local status=$?
   if [[ "${status}" -ne 0 ]]; then dump_diagnostics; fi
@@ -107,17 +157,33 @@ cat >"${ALSA}" <<'EOF'
 pcm.!default { type null hint { show on description "STW headless null output" } }
 EOF
 chmod 600 "${ALSA}"
+# Force line-buffered stdout/stderr for the launcher so its native trace output is
+# flushed to launcher.log continuously instead of sitting in libc block buffers until
+# exit. stdbuf only changes stdio buffering via libstdbuf; it does not alter launcher
+# behavior. Fall back to default buffering if stdbuf is unavailable.
+STDBUF_PREFIX=""
+if command -v stdbuf >/dev/null 2>&1; then
+  STDBUF_PREFIX="stdbuf -oL -eL"
+  echo "LAUNCHER_STDOUT_BUFFERING=line (stdbuf -oL -eL)"
+else
+  echo "LAUNCHER_STDOUT_BUFFERING=default (stdbuf unavailable)"
+fi
 setsid env DISPLAY="${display}" XDG_RUNTIME_DIR="${RUNTIME}" ALSA_CONFIG_PATH="${ALSA}" \
   STW_NATIVE_CAPTURE_PATH="${FRAME_NATIVE}" \
   STW_PHYSX_ACCEPTANCE=1 \
   VK_ICD_FILENAMES="${ICD}" LD_LIBRARY_PATH="${BIN}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
-  "${LAUNCHER}" "--project-path=${PROJECT}" "--engine-path=${ENGINE}" -sys_audio_disable 1 >"${LAUNCH_LOG}" 2>&1 &
+  ${STDBUF_PREFIX} "${LAUNCHER}" "--project-path=${PROJECT}" "--engine-path=${ENGINE}" -sys_audio_disable 1 >"${LAUNCH_LOG}" 2>&1 &
 launcher_pid=$!; echo "LAUNCHER_PID=${launcher_pid}"
 for _ in $(seq 1 75); do
   kill -0 "${launcher_pid}" 2>/dev/null || { tail -n 200 "${LAUNCH_LOG}"; exit 1; }
   if grep -q 'Native Player Movement V2 PhysX active' "${LAUNCH_LOG}" && grep -Eqi 'Tesla T4|NVIDIA.*T4' "${LAUNCH_LOG}" && grep -Eqi 'Vulkan' "${LAUNCH_LOG}"; then break; fi
   sleep 1
 done
+# Diagnosis: if the activation marker is still absent after the wait window, capture
+# live launcher/process/log state BEFORE the exit trap kills the launcher.
+if ! grep -q 'Native Player Movement V2 PhysX active' "${LAUNCH_LOG}"; then
+  timeout_diagnostics
+fi
 grep -q 'Native Player Movement V2 PhysX active' "${LAUNCH_LOG}"
 grep -Eqi 'Tesla T4|NVIDIA.*T4' "${LAUNCH_LOG}"
 grep -Eqi 'Vulkan' "${LAUNCH_LOG}"
