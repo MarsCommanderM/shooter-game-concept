@@ -16,6 +16,10 @@ ALSA="${RUNTIME}/asound-null.conf"
 BUILD_LOG="${RUN_DIR}/incremental-build.log"
 TEST_LOG="${RUN_DIR}/tests.log"
 LAUNCH_LOG="${RUN_DIR}/launcher.log"
+# O3DE routes AZ_Printf runtime output to the project runtime log once CrySystem's
+# logger is active, so the STWGameplay acceptance markers land here, not in launcher
+# stdout. Resolved from the known project path (not a historical run directory).
+GAME_LOG="${PROJECT}/user/log/Game.log"
 FRAME_NATIVE="${RUN_DIR}/stw-player-slice.ppm"
 FRAME="${RUN_DIR}/stw-player-slice.png"
 THUMB="${RUN_DIR}/stw-player-slice-thumb.jpg"
@@ -88,6 +92,12 @@ timeout_diagnostics(){
     done <<< "${found}"
   fi
   echo "===== STW TIMEOUT DIAGNOSTICS END ====="
+}
+# Runtime gameplay markers (AZ_Printf) may be written to launcher stdout OR, once
+# CrySystem's logger is active, to the project runtime log (Game.log). Search both so
+# a real success is detected wherever O3DE wrote it. Non-zero if found in neither.
+runtime_grep(){
+  grep "$@" "${LAUNCH_LOG}" 2>/dev/null || grep "$@" "${GAME_LOG}" 2>/dev/null
 }
 on_exit(){
   local status=$?
@@ -176,15 +186,17 @@ setsid env DISPLAY="${display}" XDG_RUNTIME_DIR="${RUNTIME}" ALSA_CONFIG_PATH="$
 launcher_pid=$!; echo "LAUNCHER_PID=${launcher_pid}"
 for _ in $(seq 1 75); do
   kill -0 "${launcher_pid}" 2>/dev/null || { tail -n 200 "${LAUNCH_LOG}"; exit 1; }
-  if grep -q 'Native Player Movement V2 PhysX active' "${LAUNCH_LOG}" && grep -Eqi 'Tesla T4|NVIDIA.*T4' "${LAUNCH_LOG}" && grep -Eqi 'Vulkan' "${LAUNCH_LOG}"; then break; fi
+  if runtime_grep -q 'Native Player Movement V2 PhysX active' && grep -Eqi 'Tesla T4|NVIDIA.*T4' "${LAUNCH_LOG}" && grep -Eqi 'Vulkan' "${LAUNCH_LOG}"; then break; fi
   sleep 1
 done
 # Diagnosis: if the activation marker is still absent after the wait window, capture
 # live launcher/process/log state BEFORE the exit trap kills the launcher.
-if ! grep -q 'Native Player Movement V2 PhysX active' "${LAUNCH_LOG}"; then
+if ! runtime_grep -q 'Native Player Movement V2 PhysX active'; then
   timeout_diagnostics
 fi
-grep -q 'Native Player Movement V2 PhysX active' "${LAUNCH_LOG}"
+# Runtime acceptance marker: launcher.log OR Game.log. Hardware/RHI evidence stays on
+# launcher stdout, where O3DE's early-boot RHI selection is written.
+runtime_grep -q 'Native Player Movement V2 PhysX active'
 grep -Eqi 'Tesla T4|NVIDIA.*T4' "${LAUNCH_LOG}"
 grep -Eqi 'Vulkan' "${LAUNCH_LOG}"
 ! grep -Eqi 'selected.*(llvmpipe|lavapipe|software)|adapter.*(llvmpipe|lavapipe)' "${LAUNCH_LOG}"
@@ -199,13 +211,13 @@ for _ in $(seq 1 45); do
 done
 [[ -s "${FRAME_NATIVE}" ]]
 for _ in $(seq 1 20); do
-  grep -q 'PERFORMANCE_BASELINE' "${LAUNCH_LOG}" && grep -q 'PHYSX_ACCEPTANCE result=PASS' "${LAUNCH_LOG}" && break
+  runtime_grep -q 'PERFORMANCE_BASELINE' && runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS' && break
   kill -0 "${launcher_pid}" 2>/dev/null || { tail -n 200 "${LAUNCH_LOG}"; exit 1; }
   sleep 1
 done
-grep -q 'PHYSX_ACCEPTANCE result=PASS' "${LAUNCH_LOG}"
-grep -q 'PERFORMANCE_BASELINE' "${LAUNCH_LOG}"
-if grep -q 'Native Atom frame capture submitted' "${LAUNCH_LOG}"; then
+runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS'
+runtime_grep -q 'PERFORMANCE_BASELINE'
+if runtime_grep -q 'Native Atom frame capture submitted'; then
   echo "FRAME_CAPTURE_SUBMISSION_LOG=CONFIRMED"
 else
   echo "FRAME_CAPTURE_SUBMISSION_LOG=BUFFERED; native output file is authoritative"
@@ -234,9 +246,11 @@ base64 -w0 "${THUMB}"
 echo
 echo "FRAME_BASE64_END"
 echo "ATOM_RHI_EVIDENCE:"
-grep -Ein 'Atom|RHI|Vulkan|Tesla T4|NVIDIA|defaultlevel|Player Movement V2|PHYSX_ACCEPTANCE|PERFORMANCE_BASELINE' "${LAUNCH_LOG}" | tail -160
+{ grep -Ein 'Atom|RHI|Vulkan|Tesla T4|NVIDIA|defaultlevel' "${LAUNCH_LOG}" 2>/dev/null; \
+  grep -Ein 'Player Movement V2|PHYSX_ACCEPTANCE|PERFORMANCE_BASELINE|Native Atom frame capture' "${GAME_LOG}" 2>/dev/null; } | tail -160
 echo "TEST_LOG=${TEST_LOG}"
 echo "BUILD_LOG=${BUILD_LOG}"
 echo "LAUNCH_LOG=${LAUNCH_LOG}"
+echo "GAME_LOG=${GAME_LOG}"
 echo "FRAME=${FRAME}"
 echo "RESULT=PASS"
