@@ -24,7 +24,28 @@ cleanup(){
   if [[ -n "${launcher_pid}" ]] && kill -0 "${launcher_pid}" 2>/dev/null; then kill -TERM -- "-${launcher_pid}" 2>/dev/null || true; fi
   if [[ -n "${xvfb_pid}" ]] && kill -0 "${xvfb_pid}" 2>/dev/null; then kill -TERM "${xvfb_pid}" 2>/dev/null || true; fi
 }
-trap cleanup EXIT INT TERM
+# On failure, surface the host-local diagnostic logs into the job output so the
+# native launcher's PhysX/Atom errors are visible without Studio shell access.
+dump_diagnostics(){
+  echo "===== STW DIAGNOSTIC DUMP BEGIN ====="
+  echo "RUN_DIR=${RUN_DIR}"
+  for diag in "${LAUNCH_LOG}" "${RUN_DIR}/xvfb.log" "${BUILD_LOG}" "${TEST_LOG}"; do
+    if [[ -f "${diag}" ]]; then
+      echo "----- ${diag} (tail -200) -----"
+      tail -n 200 "${diag}" 2>/dev/null || true
+    else
+      echo "----- ${diag} : MISSING -----"
+    fi
+  done
+  echo "===== STW DIAGNOSTIC DUMP END ====="
+}
+on_exit(){
+  local status=$?
+  if [[ "${status}" -ne 0 ]]; then dump_diagnostics; fi
+  cleanup
+}
+trap on_exit EXIT
+trap cleanup INT TERM
 mkdir -p "${RUN_DIR}" "${RUNTIME}"; chmod 700 "${RUNTIME}"
 exec > >(tee "${RUN_DIR}/report.log") 2>&1
 
