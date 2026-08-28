@@ -155,6 +155,44 @@ echo "LAUNCHER_INCREMENTAL_BUILD_SECONDS=$(($(date +%s)-start))"
 echo "FULL_ENGINE_REBUILD=NO"
 echo "ASSET_PROCESSING=NOT_REQUIRED_SOURCE_ONLY"
 
+# Deterministic headless asset processing. O3DE's own Linux automation
+# (scripts/build/Platform/Linux/asset_linux.sh) drives AssetProcessorBatch with an
+# absolute --project-path and an explicit --platforms; that is the variant this gate
+# uses. The GUI AssetProcessor is deliberately NOT started: it is the only variant
+# that serves port 45643 (BatchApplicationServer increments the port on purpose) and
+# it is a Qt GUI application with no proven headless startup on this host.
+echo "=================================================="
+echo "STW_HEADLESS_ASSET_PIPELINE_BEGIN"
+echo "=================================================="
+ap_batch="${BIN}/AssetProcessorBatch"
+[[ -x "${ap_batch}" ]]
+AP_LOG="${RUN_DIR}/assetprocessorbatch.log"
+ap_start="$(date +%s)"
+ap_exit=0
+"${ap_batch}" --project-path="${PROJECT}" --platforms=linux >"${AP_LOG}" 2>&1 || ap_exit=$?
+ap_seconds="$(($(date +%s)-ap_start))"
+echo "ASSETPROCESSORBATCH_EXECUTABLE=${ap_batch}"
+echo "ASSETPROCESSORBATCH_PROJECT=${PROJECT}"
+echo "ASSETPROCESSORBATCH_PLATFORM=linux"
+echo "ASSETPROCESSORBATCH_EXIT=${ap_exit}"
+echo "ASSETPROCESSORBATCH_SECONDS=${ap_seconds}"
+if [[ "${ap_exit}" -ne 0 ]]; then
+  echo "----- ${AP_LOG} (tail -120) -----"
+  tail -n 120 "${AP_LOG}" 2>/dev/null || true
+  false
+fi
+# Read-only probe only: never starts, reuses or kills anything on the GUI AP port.
+# NO is the expected and accepted answer now that the launcher is AP-independent.
+gui_ap_listener="NO"
+if timeout 5 bash -c 'exec 3<>/dev/tcp/127.0.0.1/45643' 2>/dev/null; then
+  gui_ap_listener="YES"
+fi
+echo "GUI_AP_LISTENER_PRESENT_BEFORE_LAUNCHER=${gui_ap_listener}"
+echo "LAUNCHER_WAIT_FOR_CONNECT_OVERRIDE=linux_wait_for_connect=0"
+echo "=================================================="
+echo "STW_HEADLESS_ASSET_PIPELINE_END"
+echo "=================================================="
+
 nvidia-smi --query-gpu=name,driver_version --format=csv,noheader
 VK_ICD_FILENAMES="${ICD}" vulkaninfo --summary 2>&1 | grep -E 'deviceName|driverVersion' | head -20
 VK_ICD_FILENAMES="${ICD}" vulkaninfo --summary 2>&1 | grep -q 'Tesla T4'
@@ -182,7 +220,7 @@ setsid env DISPLAY="${display}" XDG_RUNTIME_DIR="${RUNTIME}" ALSA_CONFIG_PATH="$
   STW_NATIVE_CAPTURE_PATH="${FRAME_NATIVE}" \
   STW_PHYSX_ACCEPTANCE=1 \
   VK_ICD_FILENAMES="${ICD}" LD_LIBRARY_PATH="${BIN}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
-  ${STDBUF_PREFIX} "${LAUNCHER}" "--project-path=${PROJECT}" "--engine-path=${ENGINE}" -sys_audio_disable 1 >"${LAUNCH_LOG}" 2>&1 &
+  ${STDBUF_PREFIX} "${LAUNCHER}" "--project-path=${PROJECT}" "--engine-path=${ENGINE}" "--regset=/Amazon/AzCore/Bootstrap/linux_wait_for_connect=0" -sys_audio_disable 1 >"${LAUNCH_LOG}" 2>&1 &
 launcher_pid=$!; echo "LAUNCHER_PID=${launcher_pid}"
 for _ in $(seq 1 75); do
   kill -0 "${launcher_pid}" 2>/dev/null || { tail -n 200 "${LAUNCH_LOG}"; exit 1; }
