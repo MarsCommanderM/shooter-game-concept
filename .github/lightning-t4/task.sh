@@ -211,12 +211,15 @@ for _ in $(seq 1 45); do
 done
 [[ -s "${FRAME_NATIVE}" ]]
 for _ in $(seq 1 20); do
-  runtime_grep -q 'PERFORMANCE_BASELINE' && runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS' && runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS' && break
+  runtime_grep -q 'PERFORMANCE_BASELINE' && runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS' && runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS' && runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS' && break
   kill -0 "${launcher_pid}" 2>/dev/null || { tail -n 200 "${LAUNCH_LOG}"; exit 1; }
   sleep 1
 done
 runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS'
 runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS'
+# The first-person weapon body is now a real Atom mesh; the runtime only prints PASS once the
+# model instance actually exists, so this proves the asset resolved and the mesh is renderable.
+runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS'
 runtime_grep -q 'PERFORMANCE_BASELINE'
 if runtime_grep -q 'Native Atom frame capture submitted'; then
   echo "FRAME_CAPTURE_SUBMISSION_LOG=CONFIRMED"
@@ -248,6 +251,8 @@ echo
 echo "FRAME_BASE64_END"
 echo "VIEWMODEL_EVIDENCE:"
 runtime_grep -n 'VIEWMODEL_ACCEPTANCE result=PASS'
+echo "ATOM_VIEWMODEL_MESH_EVIDENCE:"
+runtime_grep -n 'ATOM_VIEWMODEL_MESH result=PASS'
 echo "ATOM_RHI_EVIDENCE:"
 { grep -Ein 'Atom|RHI|Vulkan|Tesla T4|NVIDIA|defaultlevel' "${LAUNCH_LOG}" 2>/dev/null; \
   grep -Ein 'Player Movement V2|PHYSX_ACCEPTANCE|PERFORMANCE_BASELINE|Native Atom frame capture' "${GAME_LOG}" 2>/dev/null; } | tail -160
