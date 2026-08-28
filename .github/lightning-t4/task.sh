@@ -540,4 +540,190 @@ echo "ASSETS_CREATED=NONE"
 echo "=================================================="
 echo "STW_ASSET_AUTHORING_CAPABILITY_END"
 echo "=================================================="
+
+# BLOCK 6A2: prove the exact project-aware AssetProcessorBatch invocation from
+# the installed O3DE source, its shipped Linux automation, actual help output,
+# and current registration metadata. No processing pass is launched here.
+echo "=================================================="
+echo "STW_ASSETPROCESSOR_COMMAND_PROOF_BEGIN"
+echo "=================================================="
+
+command_proof_cache_before="$(find "${CACHE}" -type f -printf '%p\t%s\t%T@\n' 2>/dev/null | sort | sha256sum | awk '{print $1}')"
+ap_entry="${ENGINE}/Code/Tools/AssetProcessor/native/main_batch.cpp"
+ap_utils_header="${ENGINE}/Code/Tools/AssetProcessor/native/utilities/assetUtils.h"
+ap_utils_source="${ENGINE}/Code/Tools/AssetProcessor/native/utilities/assetUtils.cpp"
+ap_application_manager="${ENGINE}/Code/Tools/AssetProcessor/native/utilities/ApplicationManager.cpp"
+ap_application_manager_base="${ENGINE}/Code/Tools/AssetProcessor/native/utilities/ApplicationManagerBase.cpp"
+settings_registry_merge="${ENGINE}/Code/Framework/AzCore/AzCore/Settings/SettingsRegistryMergeUtils.cpp"
+application_options="${ENGINE}/Registry/application_options.setreg"
+linux_invocation_example="${ENGINE}/scripts/build/Platform/Linux/asset_linux.sh"
+
+entry_point_proven="NO"
+if [[ -s "${ap_entry}" ]] \
+    && grep -Fq 'BatchApplicationManager' "${ap_entry}" \
+    && grep -Fq 'BeforeRun' "${ap_entry}" \
+    && grep -Fq 'Run()' "${ap_entry}"; then
+  entry_point_proven="YES"
+fi
+
+project_option_proven="NO"
+absolute_project_path_required="NO"
+if [[ -s "${ap_utils_header}" && -s "${ap_utils_source}" ]] \
+    && grep -Fq 'ProjectPathOverrideParameter' "${ap_utils_header}" \
+    && grep -Fq '"project-path"' "${ap_utils_header}" \
+    && grep -Fq 'ComputeProjectPath' "${ap_utils_source}" \
+    && grep -Fq 'ProjectPathOverrideParameter' "${ap_utils_source}"; then
+  project_option_proven="YES"
+fi
+if [[ -s "${ap_utils_source}" ]] \
+    && grep -Fq 'isAbsolute' "${ap_utils_source}" \
+    && grep -Fq 'ProjectPathOverrideParameter' "${ap_utils_source}"; then
+  absolute_project_path_required="YES"
+fi
+
+settings_priority_proven="NO"
+if [[ -s "${settings_registry_merge}" ]] \
+    && grep -Fq 'FindProjectRoot' "${settings_registry_merge}" \
+    && grep -Fq 'ProjectPath' "${settings_registry_merge}" \
+    && grep -Fq 'Bootstrap' "${settings_registry_merge}"; then
+  settings_priority_proven="YES"
+fi
+
+project_validation_proven="NO"
+if [[ -s "${ap_application_manager}" ]] \
+    && grep -Fq 'ComputeProjectPath' "${ap_application_manager}" \
+    && grep -Fq 'project.json' "${ap_application_manager}"; then
+  project_validation_proven="YES"
+fi
+
+platform_option_proven="NO"
+if [[ -s "${ap_utils_source}" ]] \
+    && grep -Fq 'ReadPlatformsFromCommandLine' "${ap_utils_source}" \
+    && grep -Fq 'platforms' "${ap_utils_source}"; then
+  platform_option_proven="YES"
+fi
+
+application_option_registered="NO"
+if [[ -s "${application_options}" ]] \
+    && grep -Fq '"project-path"' "${application_options}"; then
+  application_option_registered="YES"
+fi
+
+installed_example_proven="NO"
+if [[ -s "${linux_invocation_example}" ]] \
+    && grep -Fq 'AssetProcessorBatch' "${linux_invocation_example}" \
+    && grep -Fq -- '--project-path=$SOURCE_DIRECTORY/$project' "${linux_invocation_example}" \
+    && grep -Fq -- '--platforms=$ASSET_PROCESSOR_PLATFORMS' "${linux_invocation_example}"; then
+  installed_example_proven="YES"
+fi
+
+help_project_option="$(grep -Fqi 'project-path' <<< "${ap_help}" && echo YES || echo NO)"
+help_platform_option="$(grep -Fqi 'platforms' <<< "${ap_help}" && echo YES || echo NO)"
+help_zero_analysis_option="$(grep -Fqi 'zeroAnalysisMode' <<< "${ap_help}" && echo YES || echo NO)"
+help_reprocess_option="$(grep -Fqi 'reprocessFileList' <<< "${ap_help}" && echo YES || echo NO)"
+help_dependency_pattern_option="$(grep -Fqi 'dependencyScanPattern' <<< "${ap_help}" && echo YES || echo NO)"
+help_additional_scan_option="$(grep -Fqi 'additionalScanFolders' <<< "${ap_help}" && echo YES || echo NO)"
+
+reprocess_list_source="NO"
+dependency_pattern_source="NO"
+additional_scan_source="NO"
+if [[ -s "${ap_application_manager_base}" ]]; then
+  grep -Fq 'reprocessFileList' "${ap_application_manager_base}" && reprocess_list_source="YES"
+  grep -Fq 'dependencyScanPattern' "${ap_application_manager_base}" && dependency_pattern_source="YES"
+  grep -Fq 'additionalScanFolders' "${ap_application_manager_base}" && additional_scan_source="YES"
+fi
+
+registration_manifest="${HOME:-}/.o3de/o3de_manifest.json"
+project_registered="UNVERIFIED"
+engine_registered="UNVERIFIED"
+registration_evidence="MANIFEST_UNAVAILABLE"
+if [[ -n "${python_path}" && -x "${python_path}" && -s "${registration_manifest}" ]]; then
+  registration_result="$("${python_path}" - "${registration_manifest}" "${PROJECT}" "${ENGINE}" <<'PY'
+import json
+import os
+import sys
+
+manifest_path, project_path, engine_path = sys.argv[1:]
+with open(manifest_path, encoding="utf-8") as manifest_file:
+    manifest = json.load(manifest_file)
+
+def normalize_entries(value):
+    if not isinstance(value, list):
+        return set()
+    return {os.path.realpath(item) for item in value if isinstance(item, str)}
+
+projects = normalize_entries(manifest.get("projects"))
+engines = normalize_entries(manifest.get("engines"))
+print("YES" if os.path.realpath(project_path) in projects else "NO")
+print("YES" if os.path.realpath(engine_path) in engines else "NO")
+PY
+)"
+  project_registered="$(sed -n '1p' <<< "${registration_result}")"
+  engine_registered="$(sed -n '2p' <<< "${registration_result}")"
+  registration_evidence="${registration_manifest}:projects,engines"
+fi
+
+project_selection_method="UNVERIFIED"
+required_cwd="UNVERIFIED"
+future_processing_command="UNVERIFIED"
+command_proven="NO"
+if [[ -x "${asset_processor_batch}" \
+    && -s "${PROJECT}/project.json" \
+    && "${entry_point_proven}" == "YES" \
+    && "${project_option_proven}" == "YES" \
+    && "${absolute_project_path_required}" == "YES" \
+    && "${settings_priority_proven}" == "YES" \
+    && "${project_validation_proven}" == "YES" \
+    && "${platform_option_proven}" == "YES" \
+    && "${application_option_registered}" == "YES" \
+    && "${installed_example_proven}" == "YES" ]]; then
+  project_selection_method="EXPLICIT_ABSOLUTE_--project-path"
+  required_cwd="ARBITRARY_WITH_EXPLICIT_ABSOLUTE_PROJECT_PATH"
+  future_processing_command="${asset_processor_batch} --project-path=${PROJECT} --platforms=linux"
+  command_proven="YES"
+fi
+
+echo "ASSET_PROCESSOR_BATCH=${asset_processor_batch:-UNAVAILABLE}"
+echo "HELP_INVOCATION=${asset_processor_batch:-UNAVAILABLE} --help --project-path=${PROJECT}"
+echo "HELP_AVAILABLE=${ap_help_available}"
+echo "HELP_PROJECT_PATH_OPTION=${help_project_option}"
+echo "HELP_PLATFORM_OPTION=${help_platform_option}"
+echo "HELP_ZERO_ANALYSIS_OPTION=${help_zero_analysis_option}"
+echo "HELP_REPROCESS_FILE_LIST_OPTION=${help_reprocess_option}"
+echo "HELP_DEPENDENCY_SCAN_PATTERN_OPTION=${help_dependency_pattern_option}"
+echo "HELP_ADDITIONAL_SCAN_FOLDERS_OPTION=${help_additional_scan_option}"
+echo "ENTRY_POINT_EVIDENCE=${ap_entry}:BatchApplicationManager::BeforeRun,Run proven=${entry_point_proven}"
+echo "PROJECT_OPTION_EVIDENCE=${ap_utils_header}:ProjectPathOverrideParameter=project-path;${ap_utils_source}:ComputeProjectPath,absolute-path-check proven=${project_option_proven} absolute_required=${absolute_project_path_required}"
+echo "SETTINGS_REGISTRY_EVIDENCE=${settings_registry_merge}:FindProjectRoot command-line/executable-scan/bootstrap resolution proven=${settings_priority_proven}"
+echo "PROJECT_VALIDATION_EVIDENCE=${ap_application_manager}:ComputeProjectPath,project.json proven=${project_validation_proven}"
+echo "APPLICATION_OPTION_EVIDENCE=${application_options}:project-path proven=${application_option_registered}"
+echo "PLATFORM_OPTION_EVIDENCE=${ap_utils_source}:ReadPlatformsFromCommandLine proven=${platform_option_proven}"
+echo "INSTALLED_INVOCATION_EXAMPLE=${linux_invocation_example}:AssetProcessorBatch --project-path=\$SOURCE_DIRECTORY/\$project --platforms=\$ASSET_PROCESSOR_PLATFORMS proven=${installed_example_proven}"
+echo "PROJECT_SELECTION_METHOD=${project_selection_method}"
+echo "PROJECT_PATH=${PROJECT}"
+echo "PROJECT_REGISTERED=${project_registered}"
+echo "ENGINE_REGISTERED=${engine_registered}"
+echo "REGISTRATION_EVIDENCE=${registration_evidence}"
+echo "REQUIRED_CWD=${required_cwd}"
+echo "PLATFORM_SELECTION=--platforms=linux"
+echo "NORMAL_FILE_OR_PATTERN_FILTER=NOT_PROVEN"
+echo "REPROCESS_FILE_LIST_SUPPORT=${reprocess_list_source} source=${ap_application_manager_base}:reprocessFileList purpose=force-listed-files-to-reprocess-not-limit-normal-pending-work"
+echo "DEPENDENCY_SCAN_PATTERN_SUPPORT=${dependency_pattern_source} source=${ap_application_manager_base}:dependencyScanPattern purpose=dependency-scan-only"
+echo "ADDITIONAL_SCAN_FOLDER_SUPPORT=${additional_scan_source} source=${ap_application_manager_base}:additionalScanFolders purpose=add-scan-root-not-one-file-filter"
+echo "INCREMENTAL_SCOPE=PROJECT_LEVEL_PENDING_CHANGES;NO_NORMAL_ONE_FILE_FILTER_PROVEN"
+echo "COMMAND=${future_processing_command}"
+echo "COMMAND_PROVEN=${command_proven}"
+echo "ASSET_PROCESSOR_RUN_THIS_BLOCK=NO"
+echo "ASSETS_CREATED=NONE"
+
+command_proof_cache_after="$(find "${CACHE}" -type f -printf '%p\t%s\t%T@\n' 2>/dev/null | sort | sha256sum | awk '{print $1}')"
+if [[ "${command_proof_cache_before}" == "${command_proof_cache_after}" ]]; then
+  echo "CACHE_MUTATED_BY_COMMAND_PROOF=NO"
+else
+  echo "CACHE_MUTATED_BY_COMMAND_PROOF=UNEXPECTED"
+  false
+fi
+echo "=================================================="
+echo "STW_ASSETPROCESSOR_COMMAND_PROOF_END"
+echo "=================================================="
 echo "RESULT=PASS"
