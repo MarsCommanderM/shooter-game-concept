@@ -394,4 +394,150 @@ done
 echo "=================================================="
 echo "STW_ASSET_PIPELINE_INVENTORY_END"
 echo "=================================================="
+
+# BLOCK 6A: compact, read-only proof of the installed Lightning asset-authoring
+# path. This runs after every production acceptance and inventory check above.
+# It does not create an asset, invoke Asset Processor, or write to Project/Cache.
+echo "=================================================="
+echo "STW_ASSET_AUTHORING_CAPABILITY_BEGIN"
+echo "=================================================="
+
+python_path="$(command -v python3 2>/dev/null || true)"
+python_version="UNAVAILABLE"
+python_stdlib_authoring="NO"
+if [[ -n "${python_path}" && -x "${python_path}" ]]; then
+  python_version="$("${python_path}" --version 2>&1 | head -1 | tr ' ' '_')"
+  if "${python_path}" -c 'import json, struct, pathlib' >/dev/null 2>&1; then
+    python_stdlib_authoring="YES"
+  fi
+fi
+echo "PYTHON_PATH=${python_path:-UNAVAILABLE}"
+echo "PYTHON_VERSION=${python_version}"
+echo "PYTHON_STDLIB_TEXT_AND_BINARY_AUTHORING=${python_stdlib_authoring}"
+
+scene_registry="${ENGINE}/Registry/sceneassetimporter.setreg"
+scene_handler="${ENGINE}/Code/Tools/SceneAPI/SceneBuilder/SceneImportRequestHandler.cpp"
+scene_builder="${ENGINE}/Gems/SceneProcessing/Code/Source/SceneBuilder/SceneBuilderComponent.cpp"
+scene_module="$(find "${BIN}" -maxdepth 2 -iname '*SceneProcessing*' -type f -print 2>/dev/null | head -1 || true)"
+scene_plumbing="NO"
+if [[ -s "${scene_registry}" && -s "${scene_handler}" && -s "${scene_builder}" && -n "${scene_module}" ]] \
+    && grep -Fq 'SupportedFileTypeExtensions' "${scene_registry}" \
+    && grep -Fq 'GetSupportedFileExtensions' "${scene_handler}" \
+    && grep -Fq 'GetSupportedFileExtensions' "${scene_builder}"; then
+  scene_plumbing="YES"
+fi
+echo "SCENE_IMPORT_REGISTRY=${scene_registry}"
+echo "SCENE_IMPORT_HANDLER=${scene_handler}"
+echo "SCENE_BUILDER_SOURCE=${scene_builder}"
+echo "SCENE_PROCESSING_MODULE=${scene_module:-UNAVAILABLE}"
+echo "SCENE_IMPORT_PLUMBING=${scene_plumbing}"
+
+format_support(){
+  local name="$1" extension="$2" state="UNVERIFIED"
+  if [[ "${scene_plumbing}" == "YES" ]]; then
+    if grep -Fq "\".${extension}\"" "${scene_registry}"; then state="YES"; else state="NO"; fi
+  fi
+  echo "FORMAT_${name}_SUPPORT=${state}"
+  echo "FORMAT_${name}_EVIDENCE=registry:${scene_registry} extension=.${extension};handler:SceneImportRequestHandler::GetSupportedFileExtensions;builder:BuilderPluginComponent::Activate;module:${scene_module:-UNAVAILABLE}"
+}
+format_support OBJ obj
+format_support GLTF gltf
+format_support GLB glb
+format_support FBX fbx
+
+scan_config="${ENGINE}/Registry/AssetProcessorPlatformConfig.setreg"
+project_scan="UNVERIFIED"
+if [[ -s "${scan_config}" ]] \
+    && grep -Fq 'ScanFolder Project/Assets' "${scan_config}" \
+    && grep -Fq '"watch": "@PROJECTROOT@"' "${scan_config}" \
+    && grep -Fq '"recursive": 1' "${scan_config}"; then
+  project_scan="YES"
+fi
+echo "TRACKED_REPO_SOURCE_LOCATION=stw-o3de/Project/Assets/Weapons/STW_SMG_01"
+echo "LIGHTNING_DESTINATION=${PROJECT}/Assets/Weapons/STW_SMG_01"
+echo "PROJECT_SCAN_CONFIG=${scan_config}"
+echo "PROJECT_SCAN_DISCOVERY=${project_scan}"
+echo "TASK_SH_SYNC_CHANGE_REQUIRED=YES"
+
+asset_processor=""
+asset_processor_batch=""
+for candidate in "${BIN}/AssetProcessor" "${BUILD}/bin/profile/AssetProcessor"; do
+  if [[ -x "${candidate}" ]]; then asset_processor="${candidate}"; break; fi
+done
+for candidate in "${BIN}/AssetProcessorBatch" "${BUILD}/bin/profile/AssetProcessorBatch"; do
+  if [[ -x "${candidate}" ]]; then asset_processor_batch="${candidate}"; break; fi
+done
+echo "ASSET_PROCESSOR_EXECUTABLE=${asset_processor:-UNAVAILABLE}"
+echo "ASSET_PROCESSOR_BATCH=${asset_processor_batch:-UNAVAILABLE}"
+ap_help=""
+ap_help_available="NO"
+asset_processor_command="UNVERIFIED"
+if [[ -n "${asset_processor_batch}" ]]; then
+  ap_help="$(timeout 20 "${asset_processor_batch}" --help --project-path="${PROJECT}" 2>&1 || true)"
+  if [[ -n "${ap_help}" ]]; then ap_help_available="YES"; fi
+  if grep -Fqi 'project-path' <<< "${ap_help}" && grep -Fqi 'platforms' <<< "${ap_help}"; then
+    asset_processor_command="${asset_processor_batch} --project-path=${PROJECT} --platforms=linux"
+  fi
+fi
+echo "ASSET_PROCESSOR_HELP_AVAILABLE=${ap_help_available}"
+echo "ASSET_PROCESSOR_HELP_PROJECT_PATH_OPTION=$(grep -Fqi 'project-path' <<< "${ap_help}" && echo YES || echo NO)"
+echo "ASSET_PROCESSOR_HELP_PLATFORMS_OPTION=$(grep -Fqi 'platforms' <<< "${ap_help}" && echo YES || echo NO)"
+echo "ASSET_PROCESSOR_COMMAND=${asset_processor_command}"
+echo "ASSET_PROCESSOR_RUN_THIS_BLOCK=NO"
+
+material_type="${ENGINE}/Gems/Atom/Feature/Common/Assets/Materials/Types/StandardPBR.materialtype"
+material_example="${ENGINE}/Gems/Atom/Feature/Common/Assets/Materials/Presets/PBR/metal_aluminum_matte.material"
+material_text_authorable="UNVERIFIED"
+if [[ -s "${material_type}" && -s "${material_example}" ]] \
+    && grep -Fq 'BaseColorPropertyGroup.json' "${material_type}" \
+    && grep -Fq 'MetallicPropertyGroup.json' "${material_type}" \
+    && grep -Fq 'RoughnessPropertyGroup.json' "${material_type}" \
+    && grep -Fq '"baseColor.color"' "${material_example}" \
+    && grep -Fq '"metallic.factor"' "${material_example}" \
+    && grep -Fq '"roughness.factor"' "${material_example}"; then
+  material_text_authorable="YES"
+fi
+echo "ATOM_MATERIAL_TEXT_AUTHORABLE=${material_text_authorable}"
+echo "MATERIAL_EXTENSION=.material"
+echo "MATERIAL_TYPE_EVIDENCE=${material_type}"
+echo "MATERIAL_SCHEMA_EVIDENCE=${material_example}:baseColor.color,metallic.factor,roughness.factor"
+
+mesh_api="${ENGINE}/Gems/Atom/Feature/Common/Code/Include/Atom/Feature/Mesh/MeshFeatureProcessorInterface.h"
+mesh_source="${GITHUB_WORKSPACE}/stw-o3de/Gems/STWGameplay/Code/Source/Clients/STWGameplaySystemComponent.cpp"
+runtime_override="UNVERIFIED"
+current_material_behavior="UNVERIFIED"
+if [[ -s "${mesh_api}" ]] && grep -Fq 'SetCustomMaterials' "${mesh_api}"; then
+  runtime_override="YES"
+fi
+if [[ -s "${mesh_source}" ]] \
+    && grep -Fq 'MeshHandleDescriptor descriptor(modelAsset)' "${mesh_source}" \
+    && grep -Fq 'AcquireMesh(descriptor)' "${mesh_source}" \
+    && ! grep -Fq 'SetCustomMaterials(' "${mesh_source}"; then
+  current_material_behavior="MODEL_ASSET_MATERIALS_NO_EXPLICIT_RUNTIME_OVERRIDE"
+fi
+echo "RUNTIME_MATERIAL_OVERRIDE_API=${runtime_override}"
+echo "RUNTIME_MATERIAL_OVERRIDE_EVIDENCE=${mesh_api}:MeshHandleDescriptor,SetCustomMaterials"
+echo "CURRENT_MESH_MATERIAL_BEHAVIOR=${current_material_behavior}"
+echo "CURRENT_MESH_MATERIAL_EVIDENCE=${mesh_source}:MeshHandleDescriptor(modelAsset),AcquireMesh"
+
+obj_support="$(grep -Fq '".obj"' "${scene_registry}" 2>/dev/null && [[ "${scene_plumbing}" == "YES" ]] && echo YES || echo NO)"
+gltf_support="$(grep -Fq '".gltf"' "${scene_registry}" 2>/dev/null && [[ "${scene_plumbing}" == "YES" ]] && echo YES || echo NO)"
+selected_format="NONE"
+if [[ "${python_stdlib_authoring}" == "YES" && "${obj_support}" == "YES" ]]; then
+  selected_format="OBJ"
+elif [[ "${python_stdlib_authoring}" == "YES" && "${gltf_support}" == "YES" ]]; then
+  selected_format="GLTF"
+fi
+scripted_path="NO"
+if [[ "${selected_format}" != "NONE" && "${project_scan}" == "YES" \
+    && "${asset_processor_command}" != "UNVERIFIED" && "${material_text_authorable}" == "YES" ]]; then
+  scripted_path="YES"
+fi
+echo "SELECTED_SCRIPTABLE_FORMAT=${selected_format}"
+echo "SCRIPTED_AUTHORING_PATH_AVAILABLE=${scripted_path}"
+echo "CACHE_MUTATED_BY_PROBE=NO"
+echo "ASSETS_CREATED=NONE"
+echo "=================================================="
+echo "STW_ASSET_AUTHORING_CAPABILITY_END"
+echo "=================================================="
 echo "RESULT=PASS"
