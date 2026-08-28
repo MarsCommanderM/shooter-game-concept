@@ -1,9 +1,13 @@
 #include "STWGameplaySystemComponent.h"
 
+#include <AzCore/Asset/AssetManagerBus.h>
 #include <AzCore/Component/TransformBus.h>
 #include <AzCore/Math/Color.h>
+#include <AzCore/Math/Matrix3x3.h>
 #include <AzCore/Math/Quaternion.h>
+#include <AzCore/Math/Transform.h>
 #include <AzCore/Serialization/SerializeContext.h>
+#include <AzCore/std/containers/vector.h>
 #include <AzFramework/Components/CameraBus.h>
 #include <AzFramework/Physics/CharacterBus.h>
 #include <AzFramework/Physics/SystemBus.h>
@@ -11,7 +15,10 @@
 #include <AzFramework/Entity/EntityDebugDisplayBus.h>
 #include <AzFramework/Input/Devices/Keyboard/InputDeviceKeyboard.h>
 #include <AzFramework/Input/Devices/Mouse/InputDeviceMouse.h>
+#include <AzFramework/Entity/GameEntityContextBus.h>
 #include <Atom/Feature/Utils/FrameCaptureBus.h>
+#include <Atom/RPI.Public/Scene.h>
+#include <Atom/RPI.Reflect/Model/ModelAsset.h>
 #include <STWGameplay/STWGameplayTypeIds.h>
 
 #include <cstdlib>
@@ -64,6 +71,7 @@ namespace STWGameplay
     {
         AZ::TickBus::Handler::BusDisconnect();
         AzFramework::InputChannelEventListener::Disconnect();
+        ShutdownViewmodelMesh();
         m_physicsPlayer.Shutdown();
     }
 
@@ -102,6 +110,11 @@ namespace STWGameplay
                 TryStartPhysics();
             }
             return; // no gameplay/camera/acceptance until the controller is live
+        }
+
+        if (m_viewmodelMeshStartup == ViewmodelMeshStartup::Waiting)
+        {
+            TryStartViewmodelMesh();
         }
 
         UpdateAutomatedAcceptance(deltaTime);
@@ -317,6 +330,127 @@ namespace STWGameplay
         AZ::TransformBus::Event(cameraId, &AZ::TransformInterface::SetWorldTM, transform);
     }
 
+    void STWGameplaySystemComponent::TryStartViewmodelMesh()
+    {
+        // The render scene and its feature processors do not exist during Activate(), so this
+        // runs from OnTick until the scene is up. A scene that is not ready yet is not an error.
+        AzFramework::EntityContextId contextId = AzFramework::EntityContextId::CreateNull();
+        AzFramework::GameEntityContextRequestBus::BroadcastResult(
+            contextId, &AzFramework::GameEntityContextRequests::GetGameEntityContextId);
+        if (contextId.IsNull())
+        {
+            return;
+        }
+
+        m_meshFeatureProcessor =
+            AZ::RPI::Scene::GetFeatureProcessorForEntityContextId<AZ::Render::MeshFeatureProcessorInterface>(contextId);
+        if (m_meshFeatureProcessor == nullptr)
+        {
+            return;
+        }
+
+        // The cache-relative product path is resolved from the live asset catalog rather than
+        // assumed. Candidates cover the observed O3DE scene-product naming for the enabled
+        // PrimitiveAssets gem (Apache-2.0 OR MIT, engine-owned).
+        static const char* const candidatePaths[] = {
+            "objects/_primitives/_box_1x1.fbx.azmodel",
+            "objects/_primitives/_box_1x1.azmodel",
+            "primitiveassets/objects/_primitives/_box_1x1.fbx.azmodel",
+        };
+        AZ::Data::AssetId modelAssetId;
+        for (const char* candidate : candidatePaths)
+        {
+            AZ::Data::AssetCatalogRequestBus::BroadcastResult(
+                modelAssetId, &AZ::Data::AssetCatalogRequests::GetAssetIdByPath,
+                candidate, AZ::Data::AssetType{}, false);
+            if (modelAssetId.IsValid())
+            {
+                m_viewmodelMeshAssetPath = candidate;
+                break;
+            }
+        }
+
+        if (!modelAssetId.IsValid())
+        {
+            // Log the model products the catalog actually holds so a miss is diagnosable
+            // from the gate output instead of guessed at.
+            AZStd::vector<AZStd::string> available;
+            AZ::Data::AssetCatalogRequestBus::Broadcast(
+                &AZ::Data::AssetCatalogRequests::EnumerateAssets,
+                []() {},
+                [&available](const AZ::Data::AssetId, const AZ::Data::AssetInfo& info)
+                {
+                    if (available.size() < 40 &&
+                        info.m_relativePath.find(".azmodel") != AZStd::string::npos)
+                    {
+                        available.push_back(info.m_relativePath);
+                    }
+                },
+                []() {});
+            for (const AZStd::string& product : available)
+            {
+                AZ_Printf("STWGameplay", "AVAILABLE_MODEL_PRODUCT=%s\n", product.c_str());
+            }
+            AZ_Error("STWGameplay", false,
+                "ATOM_VIEWMODEL_MESH result=FAIL reason=model_product_not_in_catalog first_candidate=%s",
+                candidatePaths[0]);
+            m_viewmodelMeshStartup = ViewmodelMeshStartup::Failed;
+            return;
+        }
+
+        AZ::Data::Asset<AZ::RPI::ModelAsset> modelAsset(
+            modelAssetId, azrtti_typeid<AZ::RPI::ModelAsset>(), m_viewmodelMeshAssetPath.c_str());
+        modelAsset.QueueLoad();
+
+        AZ::Render::MeshHandleDescriptor descriptor(modelAsset);
+        descriptor.m_isAlwaysDynamic = true; // the viewmodel follows the camera every frame
+        m_viewmodelMeshHandle = m_meshFeatureProcessor->AcquireMesh(descriptor);
+        if (!m_viewmodelMeshHandle.IsValid())
+        {
+            AZ_Error("STWGameplay", false,
+                "ATOM_VIEWMODEL_MESH result=FAIL reason=acquire_mesh_failed asset=%s",
+                m_viewmodelMeshAssetPath.c_str());
+            m_viewmodelMeshStartup = ViewmodelMeshStartup::Failed;
+            return;
+        }
+        m_viewmodelMeshStartup = ViewmodelMeshStartup::Acquired;
+    }
+
+    void STWGameplaySystemComponent::UpdateViewmodelMeshTransform(
+        const AZ::Vector3& center, const AZ::Vector3& right, const AZ::Vector3& aim, const AZ::Vector3& up)
+    {
+        if (m_viewmodelMeshStartup != ViewmodelMeshStartup::Acquired || !m_viewmodelMeshHandle.IsValid())
+        {
+            return;
+        }
+
+        const AZ::Transform transform = AZ::Transform::CreateFromQuaternionAndTranslation(
+            AZ::Quaternion::CreateFromMatrix3x3(AZ::Matrix3x3::CreateFromColumns(right, aim, up)), center);
+        m_meshFeatureProcessor->SetTransform(m_viewmodelMeshHandle, transform,
+            AZ::Vector3(ViewmodelMeshScaleX, ViewmodelMeshScaleY, ViewmodelMeshScaleZ));
+
+        // PASS is only reported once the model instance actually exists, i.e. the asset really
+        // loaded and the mesh is renderable - never merely because the handle was acquired.
+        if (!m_viewmodelMeshReported && m_meshFeatureProcessor->GetModel(m_viewmodelMeshHandle))
+        {
+            m_viewmodelMeshReported = true;
+            AZ_Printf("STWGameplay",
+                "ATOM_VIEWMODEL_MESH result=PASS asset=%s handle=valid mesh=ready\n",
+                m_viewmodelMeshAssetPath.c_str());
+        }
+    }
+
+    void STWGameplaySystemComponent::ShutdownViewmodelMesh()
+    {
+        if (m_meshFeatureProcessor != nullptr && m_viewmodelMeshHandle.IsValid())
+        {
+            m_meshFeatureProcessor->ReleaseMesh(m_viewmodelMeshHandle);
+        }
+        m_meshFeatureProcessor = nullptr;
+        m_viewmodelMeshStartup = ViewmodelMeshStartup::Waiting;
+        m_viewmodelMeshReported = false;
+    }
+
     void STWGameplaySystemComponent::DrawPresentation()
     {
         using Bus = AzFramework::DebugDisplayRequestBus;
@@ -336,10 +470,11 @@ namespace STWGameplay
             right.Normalize();
         }
 
-        // Camera-relative native viewmodel. TEMPORARY procedural geometry: no arms/weapon art
-        // exists in the project yet (see ViewmodelPresentation). Recoil/sway/reload pose come
-        // from the presentation model, which consumes authoritative events only; fire, damage
-        // and reload authority remain in PlayerSliceModel.
+        // Camera-relative native viewmodel. The weapon BODY is now a real Atom mesh; arms,
+        // hands and final weapon art still do not exist in the project (see ViewmodelPresentation),
+        // and the muzzle cue remains procedural. Recoil/sway/reload pose come from the presentation
+        // model, which consumes authoritative events only; fire, damage and reload authority
+        // remain in PlayerSliceModel.
         const AZ::Vector3 recoil = m_viewmodel.GetRecoilOffset();
         const AZ::Vector3 sway = m_viewmodel.GetSwayOffset();
         const AZ::Vector3 vmOffset =
@@ -350,10 +485,12 @@ namespace STWGameplay
         const AZ::Vector3 reloadDip = reloadPose ? (-up * 0.12f - aim * 0.10f) : AZ::Vector3::CreateZero();
         const AZ::Vector3 weaponCenter =
             m_model.GetEyePosition() + aim * 0.62f + right * 0.24f - up * 0.20f + vmOffset + reloadDip;
-        Bus::Event(displayId, &AzFramework::DebugDisplayRequests::SetColor,
-            reloadPose ? AZ::Color(0.10f, 0.14f, 0.18f, 1.0f) : AZ::Color(0.08f, 0.11f, 0.14f, 1.0f));
-        Bus::Event(displayId, &AzFramework::DebugDisplayRequests::DrawSolidOBB,
-            weaponCenter, right, aim, up, AZ::Vector3(0.10f, 0.30f, 0.08f));
+        // The weapon body is a REAL Atom mesh (O3DE PrimitiveAssets unit box product) driven
+        // through the Atom MeshFeatureProcessor. It is presentation only: it consumes the
+        // recoil/sway/reload pose computed above and never writes gameplay state. The former
+        // procedural DrawSolidOBB body is gone; if the mesh fails to initialize the runtime
+        // reports it instead of silently drawing a placeholder.
+        UpdateViewmodelMeshTransform(weaponCenter, right, aim, up);
         if (m_viewmodel.IsMuzzleFlashActive())
         {
             Bus::Event(displayId, &AzFramework::DebugDisplayRequests::SetColor, AZ::Color(1.0f, 0.72f, 0.12f, 1.0f));
