@@ -17,16 +17,62 @@
 #include <AzFramework/Input/Devices/Mouse/InputDeviceMouse.h>
 #include <AzFramework/Entity/GameEntityContextBus.h>
 #include <Atom/Feature/Utils/FrameCaptureBus.h>
+#include <Atom/RPI.Public/Material/Material.h>
 #include <Atom/RPI.Public/Scene.h>
+#include <Atom/RPI.Reflect/Material/MaterialAsset.h>
 #include <Atom/RPI.Reflect/Model/ModelAsset.h>
 #include <STWGameplay/STWGameplayTypeIds.h>
 
 #include <cstdlib>
 #include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <cstring>
 
 namespace STWGameplay
 {
+    namespace
+    {
+        struct ViewmodelAssetLoadState
+        {
+            bool m_enumerated = false;
+            AZ::Data::AssetId m_enumeratedModelAssetId;
+            AZ::Data::AssetId m_enumeratedMaterialAssetId;
+            AZ::Data::Asset<AZ::RPI::MaterialAsset> m_materialAsset;
+            AZ::Data::Instance<AZ::RPI::Material> m_material;
+        };
+
+        ViewmodelAssetLoadState s_viewmodelAssetLoadState;
+
+        struct ViewmodelAssetCandidate
+        {
+            AZ::Data::AssetId m_assetId;
+            AZStd::string m_relativePath;
+        };
+
+        AZStd::string LowercaseAssetPath(const AZStd::string& path)
+        {
+            AZStd::string lowercase = path;
+            for (char& character : lowercase)
+            {
+                character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+            }
+            return lowercase;
+        }
+
+        bool HasSuffix(const AZStd::string& value, const char* suffix)
+        {
+            const size_t suffixLength = std::strlen(suffix);
+            return value.size() >= suffixLength
+                && value.compare(value.size() - suffixLength, suffixLength, suffix) == 0;
+        }
+
+        void ResetViewmodelAssetLoadState()
+        {
+            s_viewmodelAssetLoadState = {};
+        }
+    }
+
     AZ_COMPONENT_IMPL(STWGameplaySystemComponent, "STWGameplaySystemComponent", STWGameplaySystemComponentTypeId);
 
     void STWGameplaySystemComponent::Reflect(AZ::ReflectContext* context)
@@ -55,6 +101,7 @@ namespace STWGameplay
 
     void STWGameplaySystemComponent::Activate()
     {
+        ResetViewmodelAssetLoadState();
         if (const char* capturePath = std::getenv("STW_NATIVE_CAPTURE_PATH"); capturePath && capturePath[0] != '\0')
         {
             m_nativeCapturePath = capturePath;
@@ -349,60 +396,105 @@ namespace STWGameplay
             return;
         }
 
-        // The cache-relative product path is resolved from the live asset catalog rather than
-        // assumed. Candidates cover the observed O3DE scene-product naming for the enabled
-        // PrimitiveAssets gem (Apache-2.0 OR MIT, engine-owned).
-        static const char* const candidatePaths[] = {
-            "objects/_primitives/_box_1x1.fbx.azmodel",
-            "objects/_primitives/_box_1x1.azmodel",
-            "primitiveassets/objects/_primitives/_box_1x1.fbx.azmodel",
-        };
-        AZ::Data::AssetId modelAssetId;
-        for (const char* candidate : candidatePaths)
+        if (!s_viewmodelAssetLoadState.m_enumerated)
         {
-            AZ::Data::AssetCatalogRequestBus::BroadcastResult(
-                modelAssetId, &AZ::Data::AssetCatalogRequests::GetAssetIdByPath,
-                candidate, AZ::Data::AssetType{}, false);
-            if (modelAssetId.IsValid())
-            {
-                m_viewmodelMeshAssetPath = candidate;
-                break;
-            }
-        }
-
-        if (!modelAssetId.IsValid())
-        {
-            // Log the model products the catalog actually holds so a miss is diagnosable
-            // from the gate output instead of guessed at.
-            AZStd::vector<AZStd::string> available;
+            s_viewmodelAssetLoadState.m_enumerated = true;
+            AZStd::vector<ViewmodelAssetCandidate> modelCandidates;
+            AZStd::vector<ViewmodelAssetCandidate> materialCandidates;
             AZ::Data::AssetCatalogRequestBus::Broadcast(
                 &AZ::Data::AssetCatalogRequests::EnumerateAssets,
                 []() {},
-                [&available](const AZ::Data::AssetId, const AZ::Data::AssetInfo& info)
+                [&modelCandidates, &materialCandidates](const AZ::Data::AssetId assetId, const AZ::Data::AssetInfo& info)
                 {
-                    if (available.size() < 40 &&
-                        info.m_relativePath.find(".azmodel") != AZStd::string::npos)
+                    const AZStd::string lowercasePath = LowercaseAssetPath(info.m_relativePath);
+                    if (lowercasePath.find("stw_smg_01") == AZStd::string::npos)
                     {
-                        available.push_back(info.m_relativePath);
+                        return;
+                    }
+                    if (HasSuffix(lowercasePath, ".azmodel"))
+                    {
+                        modelCandidates.push_back({ assetId, info.m_relativePath });
+                    }
+                    else if (HasSuffix(lowercasePath, ".azmaterial"))
+                    {
+                        materialCandidates.push_back({ assetId, info.m_relativePath });
                     }
                 },
                 []() {});
-            for (const AZStd::string& product : available)
+
+            if (modelCandidates.size() != 1 || materialCandidates.size() != 1)
             {
-                AZ_Printf("STWGameplay", "AVAILABLE_MODEL_PRODUCT=%s\n", product.c_str());
+                AZ_Error(
+                    "STWGameplay", false,
+                    "ATOM_VIEWMODEL_MESH result=FAIL reason=asset_candidate_count model=%zu material=%zu",
+                    modelCandidates.size(), materialCandidates.size());
+                m_viewmodelMeshStartup = ViewmodelMeshStartup::Failed;
+                return;
             }
+
+            s_viewmodelAssetLoadState.m_enumeratedModelAssetId = modelCandidates[0].m_assetId;
+            s_viewmodelAssetLoadState.m_enumeratedMaterialAssetId = materialCandidates[0].m_assetId;
+            m_viewmodelMeshAssetPath = modelCandidates[0].m_relativePath;
+
+            AZ::Data::AssetId resolvedModelAssetId;
+            AZ::Data::AssetCatalogRequestBus::BroadcastResult(
+                resolvedModelAssetId, &AZ::Data::AssetCatalogRequests::GetAssetIdByPath,
+                modelCandidates[0].m_relativePath.c_str(), AZ::Data::AssetType{}, false);
+            AZ::Data::AssetId resolvedMaterialAssetId;
+            AZ::Data::AssetCatalogRequestBus::BroadcastResult(
+                resolvedMaterialAssetId, &AZ::Data::AssetCatalogRequests::GetAssetIdByPath,
+                materialCandidates[0].m_relativePath.c_str(), AZ::Data::AssetType{}, false);
+
+            if (!resolvedModelAssetId.IsValid() || !resolvedMaterialAssetId.IsValid()
+                || resolvedModelAssetId != s_viewmodelAssetLoadState.m_enumeratedModelAssetId
+                || resolvedMaterialAssetId != s_viewmodelAssetLoadState.m_enumeratedMaterialAssetId)
+            {
+                AZ_Error(
+                    "STWGameplay", false,
+                    "ATOM_VIEWMODEL_MESH result=FAIL reason=catalog_resolution_mismatch model=%s material=%s",
+                    modelCandidates[0].m_relativePath.c_str(), materialCandidates[0].m_relativePath.c_str());
+                m_viewmodelMeshStartup = ViewmodelMeshStartup::Failed;
+                return;
+            }
+
+            s_viewmodelAssetLoadState.m_materialAsset = AZ::Data::Asset<AZ::RPI::MaterialAsset>(
+                resolvedMaterialAssetId,
+                azrtti_typeid<AZ::RPI::MaterialAsset>(),
+                materialCandidates[0].m_relativePath.c_str());
+            s_viewmodelAssetLoadState.m_materialAsset.QueueLoad();
+        }
+
+        if (s_viewmodelAssetLoadState.m_materialAsset.IsError())
+        {
             AZ_Error("STWGameplay", false,
-                "ATOM_VIEWMODEL_MESH result=FAIL reason=model_product_not_in_catalog first_candidate=%s",
-                candidatePaths[0]);
+                "ATOM_VIEWMODEL_MESH result=FAIL reason=material_load_failed asset=%s",
+                m_viewmodelMeshAssetPath.c_str());
+            m_viewmodelMeshStartup = ViewmodelMeshStartup::Failed;
+            return;
+        }
+        if (!s_viewmodelAssetLoadState.m_materialAsset.IsReady())
+        {
+            return;
+        }
+
+        s_viewmodelAssetLoadState.m_material =
+            AZ::RPI::Material::FindOrCreate(s_viewmodelAssetLoadState.m_materialAsset);
+        if (!s_viewmodelAssetLoadState.m_material)
+        {
+            AZ_Error("STWGameplay", false,
+                "ATOM_VIEWMODEL_MESH result=FAIL reason=material_instance_failed asset=%s",
+                m_viewmodelMeshAssetPath.c_str());
             m_viewmodelMeshStartup = ViewmodelMeshStartup::Failed;
             return;
         }
 
         AZ::Data::Asset<AZ::RPI::ModelAsset> modelAsset(
-            modelAssetId, azrtti_typeid<AZ::RPI::ModelAsset>(), m_viewmodelMeshAssetPath.c_str());
+            s_viewmodelAssetLoadState.m_enumeratedModelAssetId,
+            azrtti_typeid<AZ::RPI::ModelAsset>(),
+            m_viewmodelMeshAssetPath.c_str());
         modelAsset.QueueLoad();
 
-        AZ::Render::MeshHandleDescriptor descriptor(modelAsset);
+        AZ::Render::MeshHandleDescriptor descriptor(modelAsset, s_viewmodelAssetLoadState.m_material);
         descriptor.m_isAlwaysDynamic = true; // the viewmodel follows the camera every frame
         m_viewmodelMeshHandle = m_meshFeatureProcessor->AcquireMesh(descriptor);
         if (!m_viewmodelMeshHandle.IsValid())
@@ -427,7 +519,7 @@ namespace STWGameplay
         const AZ::Transform transform = AZ::Transform::CreateFromQuaternionAndTranslation(
             AZ::Quaternion::CreateFromMatrix3x3(AZ::Matrix3x3::CreateFromColumns(right, aim, up)), center);
         m_meshFeatureProcessor->SetTransform(m_viewmodelMeshHandle, transform,
-            AZ::Vector3(ViewmodelMeshScaleX, ViewmodelMeshScaleY, ViewmodelMeshScaleZ));
+            AZ::Vector3::CreateOne());
 
         // PASS is only reported once the model instance actually exists, i.e. the asset really
         // loaded and the mesh is renderable - never merely because the handle was acquired.
@@ -435,7 +527,7 @@ namespace STWGameplay
         {
             m_viewmodelMeshReported = true;
             AZ_Printf("STWGameplay",
-                "ATOM_VIEWMODEL_MESH result=PASS asset=%s handle=valid mesh=ready\n",
+                "ATOM_VIEWMODEL_MESH result=PASS asset=%s handle=valid mesh=ready material=bound\n",
                 m_viewmodelMeshAssetPath.c_str());
         }
     }
@@ -447,8 +539,11 @@ namespace STWGameplay
             m_meshFeatureProcessor->ReleaseMesh(m_viewmodelMeshHandle);
         }
         m_meshFeatureProcessor = nullptr;
+        m_viewmodelMeshHandle = {};
+        m_viewmodelMeshAssetPath.clear();
         m_viewmodelMeshStartup = ViewmodelMeshStartup::Waiting;
         m_viewmodelMeshReported = false;
+        ResetViewmodelAssetLoadState();
     }
 
     void STWGameplaySystemComponent::DrawPresentation()
@@ -470,9 +565,9 @@ namespace STWGameplay
             right.Normalize();
         }
 
-        // Camera-relative native viewmodel. The weapon BODY is now a real Atom mesh; arms,
-        // hands and final weapon art still do not exist in the project (see ViewmodelPresentation),
-        // and the muzzle cue remains procedural. Recoil/sway/reload pose come from the presentation
+        // Camera-relative native viewmodel. The weapon BODY is now the original STW Atom mesh;
+        // arms and hands do not exist yet, and the muzzle cue remains procedural.
+        // Recoil/sway/reload pose come from the presentation
         // model, which consumes authoritative events only; fire, damage and reload authority
         // remain in PlayerSliceModel.
         const AZ::Vector3 recoil = m_viewmodel.GetRecoilOffset();
@@ -485,7 +580,7 @@ namespace STWGameplay
         const AZ::Vector3 reloadDip = reloadPose ? (-up * 0.12f - aim * 0.10f) : AZ::Vector3::CreateZero();
         const AZ::Vector3 weaponCenter =
             m_model.GetEyePosition() + aim * 0.62f + right * 0.24f - up * 0.20f + vmOffset + reloadDip;
-        // The weapon body is a REAL Atom mesh (O3DE PrimitiveAssets unit box product) driven
+        // The weapon body is the original STW_SMG_01 Atom mesh driven
         // through the Atom MeshFeatureProcessor. It is presentation only: it consumes the
         // recoil/sway/reload pose computed above and never writes gameplay state. The former
         // procedural DrawSolidOBB body is gone; if the mesh fails to initialize the runtime

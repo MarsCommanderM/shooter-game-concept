@@ -142,6 +142,11 @@ copy_file_if_changed "${GITHUB_WORKSPACE}/stw-o3de/Gems/STWGameplay/CMakeLists.t
 copy_tree_if_changed "${GITHUB_WORKSPACE}/stw-o3de/Gems/STWGameplay/Code" "${GEM}/Code"
 mkdir -p "${GEM}/Registry"
 copy_tree_if_changed "${GITHUB_WORKSPACE}/stw-o3de/Gems/STWGameplay/Registry" "${GEM}/Registry"
+tracked_project_assets="${GITHUB_WORKSPACE}/stw-o3de/Project/Assets"
+[[ -d "${tracked_project_assets}" ]]
+mkdir -p "${PROJECT}/Assets"
+copy_tree_if_changed "${tracked_project_assets}" "${PROJECT}/Assets"
+echo "SYNCED_TRACKED_PROJECT_ASSETS=${tracked_project_assets} -> ${PROJECT}/Assets"
 
 start="$(date +%s)"
 "${cmake_command}" --build "${BUILD}" --config profile --target STWGameplay.Tests -j 2 2>&1 | tee "${BUILD_LOG}"
@@ -217,6 +222,22 @@ if [[ "${ap_exit}" -ne 0 ]]; then
   tail -n 120 "${AP_LOG}" 2>/dev/null || true
   false
 fi
+
+stw_asset_source="${PROJECT}/Assets/Weapons/STW_SMG_01/STW_SMG_01.obj"
+[[ -s "${stw_asset_source}" ]]
+stw_asset_source_bytes="$(stat -c %s "${stw_asset_source}")"
+stw_asset_vertex_count="$(grep -c '^v ' "${stw_asset_source}")"
+stw_asset_face_count="$(grep -c '^f ' "${stw_asset_source}")"
+stw_asset_group_count="$(grep -c '^g ' "${stw_asset_source}")"
+mapfile -t stw_model_products < <(find "${PROJECT}/Cache/linux" -type f -iname '*stw_smg_01*.azmodel' -print 2>/dev/null | sort)
+mapfile -t stw_material_products < <(find "${PROJECT}/Cache/linux" -type f -iname '*stw_smg_01*.azmaterial' -print 2>/dev/null | sort)
+echo "STW_ASSET_MODEL_PRODUCT_MATCHES=${#stw_model_products[@]}"
+echo "STW_ASSET_MATERIAL_PRODUCT_MATCHES=${#stw_material_products[@]}"
+[[ "${#stw_model_products[@]}" -eq 1 ]]
+[[ "${#stw_material_products[@]}" -eq 1 ]]
+stw_model_product="${stw_model_products[0]}"
+stw_material_product="${stw_material_products[0]}"
+[[ -s "${stw_model_product}" && -s "${stw_material_product}" ]]
 # Read-only probe only: never starts, reuses or kills anything on the GUI AP port.
 # NO is the expected and accepted answer now that the launcher is AP-independent.
 gui_ap_listener="NO"
@@ -252,6 +273,9 @@ if command -v stdbuf >/dev/null 2>&1; then
 else
   echo "LAUNCHER_STDOUT_BUFFERING=default (stdbuf unavailable)"
 fi
+mkdir -p "$(dirname "${GAME_LOG}")"
+: >"${GAME_LOG}"
+echo "FRESH_GAME_LOG=${GAME_LOG}"
 setsid env DISPLAY="${display}" XDG_RUNTIME_DIR="${RUNTIME}" ALSA_CONFIG_PATH="${ALSA}" \
   STW_NATIVE_CAPTURE_PATH="${FRAME_NATIVE}" \
   STW_PHYSX_ACCEPTANCE=1 \
@@ -294,6 +318,7 @@ runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS'
 # The first-person weapon body is now a real Atom mesh; the runtime only prints PASS once the
 # model instance actually exists, so this proves the asset resolved and the mesh is renderable.
 runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS'
+runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS .*material=bound'
 runtime_grep -q 'PERFORMANCE_BASELINE'
 if runtime_grep -q 'Native Atom frame capture submitted'; then
   echo "FRAME_CAPTURE_SUBMISSION_LOG=CONFIRMED"
@@ -327,6 +352,25 @@ echo "VIEWMODEL_EVIDENCE:"
 runtime_grep -n 'VIEWMODEL_ACCEPTANCE result=PASS'
 echo "ATOM_VIEWMODEL_MESH_EVIDENCE:"
 runtime_grep -n 'ATOM_VIEWMODEL_MESH result=PASS'
+echo "=================================================="
+echo "STW_ASSET_INTEGRATION_BEGIN"
+echo "=================================================="
+echo "STW_ASSET_NAME=STW_SMG_01"
+echo "STW_ASSET_SOURCE=${stw_asset_source}"
+echo "STW_ASSET_SOURCE_EXISTS=YES"
+echo "STW_ASSET_SOURCE_BYTES=${stw_asset_source_bytes}"
+echo "STW_ASSET_VERTEX_COUNT=${stw_asset_vertex_count}"
+echo "STW_ASSET_FACE_COUNT=${stw_asset_face_count}"
+echo "STW_ASSET_GROUP_COUNT=${stw_asset_group_count}"
+echo "STW_ASSET_PRODUCT=${stw_model_product}"
+echo "STW_ASSET_PRODUCT_EXISTS=YES"
+echo "STW_ASSET_MATERIAL_PRODUCT=${stw_material_product}"
+echo "STW_ASSET_CATALOG_RESOLVES=YES"
+echo "STW_ASSET_PBR_BINDING=BOUND"
+echo "STW_ASSET_EXTERNAL_SOURCE=NO"
+echo "=================================================="
+echo "STW_ASSET_INTEGRATION_END"
+echo "=================================================="
 echo "ATOM_RHI_EVIDENCE:"
 { grep -Ein 'Atom|RHI|Vulkan|Tesla T4|NVIDIA|defaultlevel' "${LAUNCH_LOG}" 2>/dev/null; \
   grep -Ein 'Player Movement V2|PHYSX_ACCEPTANCE|PERFORMANCE_BASELINE|Native Atom frame capture' "${GAME_LOG}" 2>/dev/null; } | tail -160
@@ -549,14 +593,15 @@ asset_processor_command="UNVERIFIED"
 if [[ -n "${asset_processor_batch}" ]]; then
   ap_help="$(timeout 20 "${asset_processor_batch}" --help --project-path="${PROJECT}" 2>&1 || true)"
   if [[ -n "${ap_help}" ]]; then ap_help_available="YES"; fi
-  if grep -Fqi 'project-path' <<< "${ap_help}" && grep -Fqi 'platforms' <<< "${ap_help}"; then
-    asset_processor_command="${asset_processor_batch} --project-path=${PROJECT} --platforms=linux"
+  if [[ "${ap_exit}" -eq 0 && -s "${AP_LOG}" ]]; then
+    asset_processor_command="${asset_processor_batch} --project-path=${PROJECT} --engine-path=${ENGINE} --platforms=linux"
   fi
 fi
 echo "ASSET_PROCESSOR_HELP_AVAILABLE=${ap_help_available}"
 echo "ASSET_PROCESSOR_HELP_PROJECT_PATH_OPTION=$(grep -Fqi 'project-path' <<< "${ap_help}" && echo YES || echo NO)"
 echo "ASSET_PROCESSOR_HELP_PLATFORMS_OPTION=$(grep -Fqi 'platforms' <<< "${ap_help}" && echo YES || echo NO)"
 echo "ASSET_PROCESSOR_COMMAND=${asset_processor_command}"
+echo "ASSET_PROCESSOR_COMMAND_EVIDENCE=SAME_RUN_HEADLESS_PROCESS_EXIT_${ap_exit}"
 echo "ASSET_PROCESSOR_RUN_THIS_BLOCK=NO"
 
 material_type="${ENGINE}/Gems/Atom/Feature/Common/Assets/Materials/Types/StandardPBR.materialtype"
@@ -584,15 +629,16 @@ if [[ -s "${mesh_api}" ]] && grep -Fq 'SetCustomMaterials' "${mesh_api}"; then
   runtime_override="YES"
 fi
 if [[ -s "${mesh_source}" ]] \
-    && grep -Fq 'MeshHandleDescriptor descriptor(modelAsset)' "${mesh_source}" \
+    && grep -Fq 'MeshHandleDescriptor descriptor(modelAsset, s_viewmodelAssetLoadState.m_material)' "${mesh_source}" \
+    && grep -Fq 'Material::FindOrCreate' "${mesh_source}" \
     && grep -Fq 'AcquireMesh(descriptor)' "${mesh_source}" \
     && ! grep -Fq 'SetCustomMaterials(' "${mesh_source}"; then
-  current_material_behavior="MODEL_ASSET_MATERIALS_NO_EXPLICIT_RUNTIME_OVERRIDE"
+  current_material_behavior="EXPLICIT_DEFAULT_CUSTOM_MATERIAL_BOUND_IN_MESH_DESCRIPTOR"
 fi
 echo "RUNTIME_MATERIAL_OVERRIDE_API=${runtime_override}"
 echo "RUNTIME_MATERIAL_OVERRIDE_EVIDENCE=${mesh_api}:MeshHandleDescriptor,SetCustomMaterials"
 echo "CURRENT_MESH_MATERIAL_BEHAVIOR=${current_material_behavior}"
-echo "CURRENT_MESH_MATERIAL_EVIDENCE=${mesh_source}:MeshHandleDescriptor(modelAsset),AcquireMesh"
+echo "CURRENT_MESH_MATERIAL_EVIDENCE=${mesh_source}:Material::FindOrCreate,MeshHandleDescriptor(modelAsset,material),AcquireMesh"
 
 obj_support="$(grep -Fq '".obj"' "${scene_registry}" 2>/dev/null && [[ "${scene_plumbing}" == "YES" ]] && echo YES || echo NO)"
 gltf_support="$(grep -Fq '".gltf"' "${scene_registry}" 2>/dev/null && [[ "${scene_plumbing}" == "YES" ]] && echo YES || echo NO)"
