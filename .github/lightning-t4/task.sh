@@ -256,4 +256,137 @@ echo "BUILD_LOG=${BUILD_LOG}"
 echo "LAUNCH_LOG=${LAUNCH_LOG}"
 echo "GAME_LOG=${GAME_LOG}"
 echo "FRAME=${FRAME}"
+# Supplemental read-only evidence about the persistent O3DE project and asset
+# pipeline (BLOCK 4). It runs only after every existing acceptance check above
+# has already passed, so it cannot weaken or substitute for the gameplay gate.
+# Nothing here writes to the Lightning host, enables a Gem, or runs Asset
+# Processor. Absence of a file is reported as a fact, not treated as an error.
+echo "=================================================="
+echo "STW_ASSET_PIPELINE_INVENTORY_BEGIN"
+echo "=================================================="
+CACHE="${PROJECT}/Cache/linux"
+echo "INVENTORY_PROJECT_PATH=${PROJECT}"
+echo "INVENTORY_ENGINE_PATH=${ENGINE}"
+echo "INVENTORY_GEM_PATH=${GEM}"
+echo "INVENTORY_CACHE_PATH=${CACHE}"
+
+# --- A/B. project identity and enabled Gems (only required fields parsed) ---
+project_json="${PROJECT}/project.json"
+if [[ -f "${project_json}" ]]; then
+  echo "PROJECT_JSON_PRESENT=true"
+  echo "PROJECT_JSON_PATH=${project_json}"
+  python3 - "${project_json}" <<'PY' || echo "PROJECT_JSON_PARSE=FAILED"
+import json, sys
+data = json.load(open(sys.argv[1]))
+print(f"PROJECT_NAME={data.get('project_name','UNVERIFIED')}")
+print(f"PROJECT_ENGINE_REFERENCE={data.get('engine','NOT_PRESENT')}")
+print(f"PROJECT_VERSION={data.get('version','NOT_PRESENT')}")
+names = []
+for gem in data.get('gem_names', []):
+    if isinstance(gem, dict):
+        names.append(str(gem.get('name', 'UNKNOWN')))
+    else:
+        names.append(str(gem))
+print(f"PROJECT_GEM_NAMES_COUNT={len(names)}")
+for name in sorted(names):
+    print(f"GEM_EVIDENCE name={name} enabled=true source=project.json:gem_names")
+watch = ["STWGameplay","PhysX5","PhysX","Atom","AtomLyIntegration","Atom_Feature_Common",
+         "SceneProcessing","EMotionFX","MiniAudio","AudioSystem","AudioEngineWwise",
+         "OpenParticleSystem","Camera","DebugDraw","PrimitiveAssets"]
+lower = {n.lower() for n in names}
+for target in watch:
+    state = "true" if target.lower() in lower else "false"
+    print(f"GEM_TARGET name={target} in_project_gem_names={state} source=project.json:gem_names")
+PY
+else
+  echo "PROJECT_JSON_PRESENT=false"
+fi
+for cmake_gems in "${PROJECT}/Gem/Code/enabled_gems.cmake" "${PROJECT}/enabled_gems.cmake"; do
+  if [[ -f "${cmake_gems}" ]]; then
+    echo "ENABLED_GEMS_CMAKE=${cmake_gems}"
+    grep -oE '[A-Za-z0-9_.]+' "${cmake_gems}" | sed 's/^/ENABLED_GEMS_CMAKE_ENTRY=/' | head -80 || true
+  fi
+done
+
+# --- C. project source directories and source asset candidates -------------
+echo "PROJECT_TOP_LEVEL_DIRECTORIES:"
+find "${PROJECT}" -mindepth 1 -maxdepth 1 -type d -printf 'PROJECT_DIR path=%p\n' 2>/dev/null | sort || true
+echo "PROJECT_SOURCE_ASSET_CANDIDATES (Cache/user/build excluded):"
+source_assets=0
+while IFS= read -r asset; do
+  printf 'SOURCE_ASSET path=%s extension=%s bytes=%s\n' \
+    "${asset}" "${asset##*.}" "$(stat -c %s "${asset}" 2>/dev/null || echo 0)"
+  source_assets=$((source_assets + 1))
+done < <(find "${PROJECT}" \
+    \( -path "${PROJECT}/Cache" -o -path "${PROJECT}/user" -o -path "${PROJECT}/build" \) -prune -o \
+    -type f \( -iname '*.fbx' -o -iname '*.gltf' -o -iname '*.glb' -o -iname '*.obj' -o -iname '*.dae' \
+    -o -iname '*.actor' -o -iname '*.motion' -o -iname '*.animgraph' -o -iname '*.motionset' \
+    -o -iname '*.material' -o -iname '*.materialtype' -o -iname '*.png' -o -iname '*.tga' -o -iname '*.dds' \
+    -o -iname '*.tif' -o -iname '*.tiff' -o -iname '*.jpg' -o -iname '*.exr' \
+    -o -iname '*.wav' -o -iname '*.ogg' -o -iname '*.bnk' \
+    -o -iname '*.prefab' -o -iname '*.spawnable' -o -iname '*.assetinfo' \) -print 2>/dev/null | sort | head -200 || true)
+echo "SOURCE_ASSET_COUNT_REPORTED=${source_assets}"
+
+# --- D. defaultlevel source vs generated product ---------------------------
+echo "DEFAULT_LEVEL_CANDIDATES:"
+level_sources=0
+while IFS= read -r lvl; do
+  case "${lvl}" in
+    "${PROJECT}/Cache"/*) scope=GENERATED_PRODUCT ;;
+    *) scope=SOURCE ; level_sources=$((level_sources + 1)) ;;
+  esac
+  printf 'DEFAULT_LEVEL_CANDIDATE path=%s extension=%s bytes=%s scope=%s\n' \
+    "${lvl}" "${lvl##*.}" "$(stat -c %s "${lvl}" 2>/dev/null || echo 0)" "${scope}"
+done < <(find "${PROJECT}" -iname '*defaultlevel*' -type f -print 2>/dev/null | sort | head -40 || true)
+echo "DEFAULT_LEVEL_SOURCE_COUNT=${level_sources}"
+while IFS= read -r lvl; do
+  echo "DEFAULT_LEVEL_SOURCE=${lvl}"
+  if file "${lvl}" 2>/dev/null | grep -qi 'text\|JSON'; then
+    echo "DEFAULT_LEVEL_SOURCE_FORM=TEXT_READABLE"
+    level_entities="$(grep -c '"Entity"' "${lvl}" 2>/dev/null || true)"
+    echo "DEFAULT_LEVEL_ENTITY_COUNT_LINES=${level_entities:-UNVERIFIED}"
+    for marker in Camera Light Mesh Actor AnimGraph SimpleMotion PhysX STWGameplay Atom; do
+      marker_lines="$(grep -ci "${marker}" "${lvl}" 2>/dev/null || true)"
+      echo "DEFAULT_LEVEL_MARKER name=${marker} matching_lines=${marker_lines:-0}"
+    done
+  else
+    echo "DEFAULT_LEVEL_SOURCE_FORM=BINARY_OR_UNKNOWN"
+  fi
+done < <(find "${PROJECT}" -path "${PROJECT}/Cache" -prune -o -iname '*defaultlevel*' -type f -print 2>/dev/null | sort | head -3 || true)
+
+# --- E. Asset Processor configuration actually present ---------------------
+echo "ASSET_PROCESSOR_CONFIG_FILES:"
+while IFS= read -r cfg; do
+  echo "ASSET_PROCESSOR_CONFIG path=${cfg}"
+  grep -nE 'ScanFolder|"watch"|recursive|order|Platform' "${cfg}" 2>/dev/null | head -25 \
+    | sed 's/^/ASSET_PROCESSOR_CONFIG_LINE /' || true
+done < <({ find "${PROJECT}/Registry" "${GEM}/Registry" -maxdepth 1 -type f -name '*.setreg' -print 2>/dev/null; \
+           find "${ENGINE}/Registry" -maxdepth 1 -type f -name 'AssetProcessorPlatformConfig.setreg' -print 2>/dev/null; \
+           find "${PROJECT}" -maxdepth 1 -type f -name 'AssetProcessorPlatformConfig.*' -print 2>/dev/null; } | sort -u | head -12 || true)
+
+# --- F. Cache products, never reported as source assets --------------------
+if [[ -d "${CACHE}" ]]; then
+  echo "CACHE_PRESENT=true"
+  echo "CACHE_TOTAL_PRODUCT_FILES=$(find "${CACHE}" -type f 2>/dev/null | wc -l || echo UNVERIFIED)"
+  find "${CACHE}" -type f 2>/dev/null | sed -n 's/.*\.\([A-Za-z0-9]\{1,16\}\)$/\1/p' | sort | uniq -c | sort -rn | head -25 \
+    | while read -r count ext; do echo "CACHE_PRODUCT_CATEGORY type=${ext} count=${count}"; done || true
+  for pattern in 'defaultlevel*' '*.azmodel' '*.azmaterial' '*.streamingimage' '*.actor' '*.motion' '*.wav' '*.ogg'; do
+    hit="$(find "${CACHE}" -iname "${pattern}" -type f -print 2>/dev/null | head -1 || true)"
+    echo "CACHE_PRODUCT_PROBE pattern=${pattern} count=$(find "${CACHE}" -iname "${pattern}" -type f 2>/dev/null | wc -l || echo 0) example=${hit:-NONE}"
+  done
+else
+  echo "CACHE_PRESENT=false"
+fi
+
+# --- G. builder modules present in the built profile output ----------------
+# Module presence proves the code was built. Builder registration is only
+# provable by running Asset Processor, which this gate deliberately does not do.
+for builder in SceneProcessing ImageProcessingAtom EMotionFX MiniAudio AudioSystem OpenParticleSystem Atom_Feature_Common; do
+  count="$(find "${BIN}" -maxdepth 2 -iname "*${builder}*" -type f 2>/dev/null | wc -l || echo 0)"
+  example="$(find "${BIN}" -maxdepth 2 -iname "*${builder}*" -type f -print 2>/dev/null | head -1 || true)"
+  echo "BUILDER_MODULE name=${builder} files=${count} example=${example:-NONE} registration=UNVERIFIED_WITHOUT_ASSET_PROCESSOR"
+done
+echo "=================================================="
+echo "STW_ASSET_PIPELINE_INVENTORY_END"
+echo "=================================================="
 echo "RESULT=PASS"
