@@ -153,7 +153,7 @@ start="$(date +%s)"
 "${cmake_command}" --build "${BUILD}" --config profile --target STW.GameLauncher -j 2 2>&1 | tee -a "${BUILD_LOG}"
 echo "LAUNCHER_INCREMENTAL_BUILD_SECONDS=$(($(date +%s)-start))"
 echo "FULL_ENGINE_REBUILD=NO"
-echo "ASSET_PROCESSING=NOT_REQUIRED_SOURCE_ONLY"
+echo "ASSET_PROCESSING=HEADLESS_INCREMENTAL_REQUIRED"
 
 # Deterministic headless asset processing. O3DE's own Linux automation
 # (scripts/build/Platform/Linux/asset_linux.sh) drives AssetProcessorBatch with an
@@ -169,7 +169,7 @@ ap_batch="${BIN}/AssetProcessorBatch"
 AP_LOG="${RUN_DIR}/assetprocessorbatch.log"
 ap_start="$(date +%s)"
 ap_exit=0
-"${ap_batch}" --project-path="${PROJECT}" --platforms=linux >"${AP_LOG}" 2>&1 || ap_exit=$?
+"${ap_batch}" --project-path="${PROJECT}" --engine-path="${ENGINE}" --platforms=linux >"${AP_LOG}" 2>&1 || ap_exit=$?
 ap_seconds="$(($(date +%s)-ap_start))"
 echo "ASSETPROCESSORBATCH_EXECUTABLE=${ap_batch}"
 echo "ASSETPROCESSORBATCH_PROJECT=${PROJECT}"
