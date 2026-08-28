@@ -149,6 +149,42 @@ echo "TEST_TARGET_BUILD_SECONDS=$(($(date +%s)-start))"
 "${cmake_bin_dir}/ctest" --test-dir "${BUILD}" -C profile --output-on-failure -R 'STWGameplay' 2>&1 | tee "${TEST_LOG}"
 grep -Eq '100% tests passed|The following tests passed' "${TEST_LOG}"
 
+# Test-count evidence. CTest registers one aggregate googletest target, so the underlying gtest
+# case count never appears in its output. List the cases from the already-built module using the
+# invocation O3DE itself generates (cmake/LYTestWrappers.cmake: ly_add_googletest ->
+# "<bin>/AzTestRunner <module> AzRunUnitTests"; AzTestRunner shifts off <lib> and <symbol> and
+# forwards the remaining google-test-args, per its own usage string). The same main-suite filter
+# CTest applies is reused, so the reported number is the count this gate actually runs.
+# --gtest_list_tests only lists: no test body executes, and no test registration is changed.
+ctest_registered_tests="$(sed -n 's/.*tests failed out of \([0-9][0-9]*\).*/\1/p' "${TEST_LOG}" | tail -1)"
+echo "CTEST_REGISTERED_TESTS=${ctest_registered_tests:-UNVERIFIED}"
+GTEST_SUITE_FILTER='-*SUITE_smoke*:*SUITE_periodic*:*SUITE_benchmark*:*SUITE_sandbox*:*SUITE_awsi*'
+test_runner="${BIN}/AzTestRunner"
+mapfile -t test_modules < <(find "${BIN}" -maxdepth 1 -type f -name 'libSTWGameplay.Tests.so' -print 2>/dev/null | sort)
+echo "GTEST_TEST_RUNNER=${test_runner}"
+echo "GTEST_TEST_MODULE_MATCHES=${#test_modules[@]}"
+[[ -x "${test_runner}" && "${#test_modules[@]}" -eq 1 ]]
+test_module="${test_modules[0]}"
+GTEST_LIST_LOG="${RUN_DIR}/gtest-list.log"
+gtest_list_exit=0
+( cd "${BUILD}" && LD_LIBRARY_PATH="${BIN}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
+    "${test_runner}" "${test_module}" AzRunUnitTests \
+    --gtest_list_tests "--gtest_filter=${GTEST_SUITE_FILTER}" ) >"${GTEST_LIST_LOG}" 2>&1 || gtest_list_exit=$?
+echo "GTEST_LISTING_EXIT=${gtest_list_exit}"
+if [[ "${gtest_list_exit}" -ne 0 ]]; then
+  echo "----- ${GTEST_LIST_LOG} (tail -60) -----"
+  tail -n 60 "${GTEST_LIST_LOG}" 2>/dev/null || true
+  false
+fi
+gtest_case_count="$(grep -cE '^  [A-Za-z0-9_]' "${GTEST_LIST_LOG}" || true)"
+echo "GTEST_TEST_MODULE=${test_module}"
+echo "GTEST_LISTING_METHOD=AzTestRunner <module> AzRunUnitTests --gtest_list_tests source=cmake/LYTestWrappers.cmake:ly_add_googletest;Code/Tools/AzTestRunner/src/main.cpp:usage"
+echo "GTEST_LISTING_FILTER=${GTEST_SUITE_FILTER}"
+echo "GTEST_LISTING_LOG=${GTEST_LIST_LOG}"
+echo "GTEST_SUITE_COUNT=$(grep -cE '^[A-Za-z0-9_]+\.$' "${GTEST_LIST_LOG}" || true)"
+echo "GTEST_CASE_COUNT=${gtest_case_count}"
+[[ "${gtest_case_count}" -gt 0 ]]
+
 start="$(date +%s)"
 "${cmake_command}" --build "${BUILD}" --config profile --target STW.GameLauncher -j 2 2>&1 | tee -a "${BUILD_LOG}"
 echo "LAUNCHER_INCREMENTAL_BUILD_SECONDS=$(($(date +%s)-start))"
@@ -655,6 +691,32 @@ if [[ -s "${linux_invocation_example}" ]] \
   installed_example_proven="YES"
 fi
 
+engine_path_source_proven="NO"
+if [[ -s "${settings_registry_merge}" && -s "${application_options}" ]] \
+    && grep -Fq 'CommandLineEngineOptionName' "${settings_registry_merge}" \
+    && grep -Fq '"engine-path"' "${settings_registry_merge}" \
+    && grep -Fq 'FindEngineRoot' "${settings_registry_merge}" \
+    && grep -Fq 'MergeSettingsToRegistry_EngineRegistry' "${settings_registry_merge}" \
+    && grep -Fq 'FilePathKey_EngineRootFolder' "${settings_registry_merge}" \
+    && grep -Fq '"engine-path"' "${application_options}"; then
+  engine_path_source_proven="YES"
+fi
+
+# Same-run execution evidence: the exact command this run's headless step executed, rebuilt from
+# the same variables, its exit code, and proof that run #70's configuration fatal is absent from
+# this run's own AssetProcessorBatch log.
+same_run_command="${ap_batch} --project-path=${PROJECT} --engine-path=${ENGINE} --platforms=linux"
+same_run_prior_failure_absent="UNVERIFIED"
+if [[ -f "${AP_LOG}" ]]; then
+  if grep -Fq 'Platform xxxxxx' "${AP_LOG}" \
+      || grep -Fq 'Unable to find any scan folders' "${AP_LOG}" \
+      || grep -Fq 'Failed to Initialize from AssetProcessorPlatformConfig' "${AP_LOG}"; then
+    same_run_prior_failure_absent="NO"
+  else
+    same_run_prior_failure_absent="YES"
+  fi
+fi
+
 help_project_option="$(grep -Fqi 'project-path' <<< "${ap_help}" && echo YES || echo NO)"
 help_platform_option="$(grep -Fqi 'platforms' <<< "${ap_help}" && echo YES || echo NO)"
 help_zero_analysis_option="$(grep -Fqi 'zeroAnalysisMode' <<< "${ap_help}" && echo YES || echo NO)"
@@ -701,6 +763,12 @@ PY
   registration_evidence="${registration_manifest}:projects,engines"
 fi
 
+# COMMAND_PROVEN reflects the strongest evidence actually available: installed-source semantics
+# for each of the three arguments, plus this same run's successful execution of the exact command.
+# The binary's --help text is still reported verbatim but is deliberately NOT required: it omits
+# project-path even though the option demonstrably works, so help text is the weakest of the three
+# evidence classes. The shipped Linux example script is informational only for the same reason
+# recorded in SHIPPED_EXAMPLE_LAYOUT_NOTE. Nothing here is hardcoded to YES.
 project_selection_method="UNVERIFIED"
 required_cwd="UNVERIFIED"
 future_processing_command="UNVERIFIED"
@@ -713,11 +781,13 @@ if [[ -x "${asset_processor_batch}" \
     && "${settings_priority_proven}" == "YES" \
     && "${project_validation_proven}" == "YES" \
     && "${platform_option_proven}" == "YES" \
+    && "${engine_path_source_proven}" == "YES" \
     && "${application_option_registered}" == "YES" \
-    && "${installed_example_proven}" == "YES" ]]; then
-  project_selection_method="EXPLICIT_ABSOLUTE_--project-path"
-  required_cwd="ARBITRARY_WITH_EXPLICIT_ABSOLUTE_PROJECT_PATH"
-  future_processing_command="${asset_processor_batch} --project-path=${PROJECT} --platforms=linux"
+    && "${same_run_prior_failure_absent}" == "YES" \
+    && "${ap_exit}" -eq 0 ]]; then
+  project_selection_method="EXPLICIT_ABSOLUTE_--project-path_AND_--engine-path"
+  required_cwd="ARBITRARY_WITH_EXPLICIT_ABSOLUTE_PROJECT_AND_ENGINE_PATHS"
+  future_processing_command="${same_run_command}"
   command_proven="YES"
 fi
 
@@ -737,6 +807,17 @@ echo "PROJECT_VALIDATION_EVIDENCE=${ap_application_manager}:ComputeProjectPath,p
 echo "APPLICATION_OPTION_EVIDENCE=${application_options}:project-path proven=${application_option_registered}"
 echo "PLATFORM_OPTION_EVIDENCE=${ap_utils_source}:ReadPlatformsFromCommandLine proven=${platform_option_proven}"
 echo "INSTALLED_INVOCATION_EXAMPLE=${linux_invocation_example}:AssetProcessorBatch --project-path=\$SOURCE_DIRECTORY/\$project --platforms=\$ASSET_PROCESSOR_PLATFORMS proven=${installed_example_proven}"
+echo "SHIPPED_EXAMPLE_REQUIRED=NO informational_only=YES"
+echo "SHIPPED_EXAMPLE_LAYOUT_NOTE=the shipped script assumes the engine source root is an ancestor of the project; STW uses an external-engine layout (engine, project worktree and build tree are siblings), which is why --engine-path must be explicit and why byte-identity with the shipped invocation is neither achievable nor required"
+echo "PROJECT_PATH_SOURCE_PROVEN=${project_option_proven}"
+echo "ENGINE_PATH_SOURCE_PROVEN=${engine_path_source_proven}"
+echo "ENGINE_PATH_SOURCE_EVIDENCE=${settings_registry_merge}:CommandLineEngineOptionName=engine-path,FindEngineRoot,MergeSettingsToRegistry_EngineRegistry,FilePathKey_EngineRootFolder;${application_options}:engine-path"
+echo "PLATFORM_SOURCE_PROVEN=${platform_option_proven}"
+echo "SAME_RUN_COMMAND_EXECUTED=${same_run_command}"
+echo "SAME_RUN_COMMAND_EXIT=${ap_exit}"
+echo "SAME_RUN_COMMAND_SECONDS=${ap_seconds}"
+echo "SAME_RUN_PRIOR_CONFIG_FAILURE_ABSENT=${same_run_prior_failure_absent}"
+echo "SAME_RUN_ASSETPROCESSOR_LOG=${AP_LOG}"
 echo "PROJECT_SELECTION_METHOD=${project_selection_method}"
 echo "PROJECT_PATH=${PROJECT}"
 echo "PROJECT_REGISTERED=${project_registered}"
