@@ -8,9 +8,11 @@ GEM="${O3DE_ROOT}/Gems/STWGameplay"
 BUILD="${ROOT}/stw-o3de-build/linux"
 BIN="${BUILD}/bin/profile"
 LAUNCHER="${BIN}/STW.GameLauncher"
-ICD="${ROOT}/stw-o3de-gate/nvidia_icd.json"
+PINNED_CMAKE="${ROOT}/tools/cmake-3.31.12-linux-x86_64/bin/cmake"
+O3DE_PACKAGES="${ROOT}/o3de-packages"
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 RUN_DIR="${ROOT}/stw-o3de-gate/player-slice-${RUN_ID}"
+ICD="${RUN_DIR}/nvidia_icd.json"
 RUNTIME="${RUN_DIR}/xdg-runtime"
 ALSA="${RUNTIME}/asound-null.conf"
 BUILD_LOG="${RUN_DIR}/incremental-build.log"
@@ -127,29 +129,143 @@ else
   grep -Fq '3db6943249d8bd7960b9ed7e9aee310b7668586e' \
     "${GITHUB_WORKSPACE}/stw-o3de/O3DE_VERSION.md"
 fi
-[[ -x "${LAUNCHER}" && -d "${PROJECT}/Cache/linux" && -f "${GEM}/gem.json" ]]
+
+[[ -x "${PINNED_CMAKE}" ]]
+cmake_version="$(${PINNED_CMAKE} --version | head -1)"
+echo "PINNED_CMAKE=${PINNED_CMAKE}"
+echo "PINNED_CMAKE_VERSION=${cmake_version}"
+[[ "${cmake_version}" == "cmake version 3.31.12" ]]
+command -v ninja >/dev/null
+
+echo "=================================================="
+echo "STW_PERSISTENT_RECOVERY_BEGIN"
+echo "=================================================="
+
+# Synchronize tracked production inputs additively.  The persistent checkout is a
+# build input, not the Git source of truth; files present only on the host are not
+# deleted.  Every tracked Project/Assets file is byte-checked after synchronization.
+copy_file_if_changed(){
+  mkdir -p "$(dirname "$2")"
+  cmp -s "$1" "$2" || cp -a "$1" "$2"
+}
+copy_tree_if_changed(){
+  mkdir -p "$2"
+  diff -qr "$1" "$2" >/dev/null 2>&1 || cp -a "$1/." "$2/"
+}
+
+tracked_gem="${GITHUB_WORKSPACE}/stw-o3de/Gems/STWGameplay"
+tracked_project_assets="${GITHUB_WORKSPACE}/stw-o3de/Project/Assets"
+[[ -f "${tracked_gem}/gem.json" && -d "${tracked_project_assets}" ]]
+echo "SYNCING_TRACKED_PRODUCTION_GEM=${GEM}"
+copy_file_if_changed "${tracked_gem}/gem.json" "${GEM}/gem.json"
+copy_file_if_changed "${tracked_gem}/CMakeLists.txt" "${GEM}/CMakeLists.txt"
+copy_tree_if_changed "${tracked_gem}/Code" "${GEM}/Code"
+copy_tree_if_changed "${tracked_gem}/Registry" "${GEM}/Registry"
+
+# The pinned DefaultProject template is generated away from the persistent Project
+# first.  A partial scaffold is an error: it is never overwritten with --force.
+scaffold_core_count=0
+for scaffold_file in project.json CMakeLists.txt CMakePresets.json; do
+  [[ -f "${PROJECT}/${scaffold_file}" ]] && scaffold_core_count=$((scaffold_core_count + 1))
+done
+project_scaffold_created=NO
+if [[ "${scaffold_core_count}" -eq 0 ]]; then
+  scaffold_stage="$(mktemp -d "${RUN_DIR}/project-scaffold.XXXXXX")"
+  "${ENGINE}/scripts/o3de.sh" create-project \
+    --project-path "${scaffold_stage}" \
+    --project-name STW \
+    --template-path "${ENGINE}/Templates/DefaultProject" \
+    --no-register 2>&1 | tee -a "${BUILD_LOG}"
+  for scaffold_file in project.json CMakeLists.txt CMakePresets.json; do
+    [[ -f "${scaffold_stage}/${scaffold_file}" ]]
+  done
+  [[ ! -e "${scaffold_stage}/Assets" ]]
+  mkdir -p "${PROJECT}"
+  cp -a "${scaffold_stage}/." "${PROJECT}/"
+  project_scaffold_created=YES
+elif [[ "${scaffold_core_count}" -ne 3 ]]; then
+  echo "PROJECT_SCAFFOLD_PARTIAL=${scaffold_core_count}/3"
+  false
+fi
+for scaffold_file in project.json CMakeLists.txt CMakePresets.json; do
+  [[ -f "${PROJECT}/${scaffold_file}" ]]
+done
+
+copy_tree_if_changed "${tracked_project_assets}" "${PROJECT}/Assets"
+tracked_asset_count=0
+while IFS= read -r -d '' tracked_asset; do
+  relative_asset="${tracked_asset#${tracked_project_assets}/}"
+  cmp -s "${tracked_asset}" "${PROJECT}/Assets/${relative_asset}"
+  tracked_asset_count=$((tracked_asset_count + 1))
+done < <(find "${tracked_project_assets}" -type f -print0)
+[[ "${tracked_asset_count}" -gt 0 ]]
+
+# These are the pinned 26.05 CLI contracts. Registration and enable-gem are
+# idempotent: O3DE de-duplicates registered external subdirectories and gem names.
+"${ENGINE}/scripts/o3de.sh" register --this-engine 2>&1 | tee -a "${BUILD_LOG}"
+"${ENGINE}/scripts/o3de.sh" register --project-path "${PROJECT}" 2>&1 | tee -a "${BUILD_LOG}"
+"${ENGINE}/scripts/o3de.sh" register \
+  --external-subdirectory "${GEM}" \
+  --external-subdirectory-project-path "${PROJECT}" 2>&1 | tee -a "${BUILD_LOG}"
+"${ENGINE}/scripts/o3de.sh" enable-gem \
+  --gem-path "${GEM}" \
+  --project-path "${PROJECT}" 2>&1 | tee -a "${BUILD_LOG}"
+
+python3 - "${PROJECT}/project.json" "${PROJECT}" "${GEM}" <<'PY'
+import json
+import os
+import sys
+
+project_json, project_path, gem_path = sys.argv[1:]
+with open(project_json, encoding="utf-8") as stream:
+    project = json.load(stream)
+if project.get("project_name") != "STW":
+    raise SystemExit("project_name is not STW")
+gem_names = []
+for entry in project.get("gem_names", []):
+    gem_names.append(entry if isinstance(entry, str) else entry.get("name", ""))
+if sum(name.split("==", 1)[0] == "STWGameplay" for name in gem_names) != 1:
+    raise SystemExit("STWGameplay is not enabled exactly once")
+resolved_external = {
+    os.path.realpath(path if os.path.isabs(path) else os.path.join(project_path, path))
+    for path in project.get("external_subdirectories", [])
+}
+if os.path.realpath(gem_path) not in resolved_external:
+    raise SystemExit("STWGameplay external_subdirectory is not registered")
+PY
+
+persistent_build_configured=NO
+if [[ ! -f "${BUILD}/CMakeCache.txt" ]]; then
+  mkdir -p "${BUILD}" "${O3DE_PACKAGES}"
+  "${PINNED_CMAKE}" -S "${PROJECT}" -B "${BUILD}" \
+    -G "Ninja Multi-Config" \
+    -DLY_3RDPARTY_PATH="${O3DE_PACKAGES}" 2>&1 | tee -a "${BUILD_LOG}"
+  persistent_build_configured=YES
+fi
+[[ -f "${BUILD}/CMakeCache.txt" ]]
 cmake_command="$(sed -n 's/^CMAKE_COMMAND:INTERNAL=//p' "${BUILD}/CMakeCache.txt" | head -1)"
 [[ -x "${cmake_command}" ]]
+[[ "$(readlink -f "${cmake_command}")" == "$(readlink -f "${PINNED_CMAKE}")" ]]
 cmake_bin_dir="$(dirname "${cmake_command}")"
 export PATH="${cmake_bin_dir}:${PATH}"
 echo "CMAKE_COMMAND=${cmake_command}"
-
-echo "SYNCING_TRACKED_PRODUCTION_GEM=${GEM}"
-copy_file_if_changed(){ cmp -s "$1" "$2" || cp -a "$1" "$2"; }
-copy_tree_if_changed(){ diff -qr "$1" "$2" >/dev/null 2>&1 || cp -a "$1/." "$2/"; }
-copy_file_if_changed "${GITHUB_WORKSPACE}/stw-o3de/Gems/STWGameplay/gem.json" "${GEM}/gem.json"
-copy_file_if_changed "${GITHUB_WORKSPACE}/stw-o3de/Gems/STWGameplay/CMakeLists.txt" "${GEM}/CMakeLists.txt"
-copy_tree_if_changed "${GITHUB_WORKSPACE}/stw-o3de/Gems/STWGameplay/Code" "${GEM}/Code"
-mkdir -p "${GEM}/Registry"
-copy_tree_if_changed "${GITHUB_WORKSPACE}/stw-o3de/Gems/STWGameplay/Registry" "${GEM}/Registry"
-tracked_project_assets="${GITHUB_WORKSPACE}/stw-o3de/Project/Assets"
-[[ -d "${tracked_project_assets}" ]]
-mkdir -p "${PROJECT}/Assets"
-copy_tree_if_changed "${tracked_project_assets}" "${PROJECT}/Assets"
 echo "SYNCED_TRACKED_PROJECT_ASSETS=${tracked_project_assets} -> ${PROJECT}/Assets"
+echo "ENGINE_PIN_VERIFIED=3db6943249d8bd7960b9ed7e9aee310b7668586e"
+echo "PROJECT_SCAFFOLD_CREATED=${project_scaffold_created}"
+echo "PROJECT_SCAFFOLD_CORE=project.json,CMakeLists.txt,CMakePresets.json"
+echo "PROJECT_REGISTRATION=VERIFIED"
+echo "STWGAMEPLAY_GEM_ENABLED=VERIFIED"
+echo "TRACKED_PROJECT_ASSETS_PRESERVED=YES count=${tracked_asset_count}"
+echo "PERSISTENT_BUILD_CONFIGURED_THIS_RUN=${persistent_build_configured}"
+echo "CONFIGURE_GENERATOR=Ninja Multi-Config"
+echo "CONFIGURE_LY_3RDPARTY_PATH=${O3DE_PACKAGES}"
+echo "FULL_ENGINE_REBUILD=NO"
+echo "=================================================="
+echo "STW_PERSISTENT_RECOVERY_END"
+echo "=================================================="
 
 start="$(date +%s)"
-"${cmake_command}" --build "${BUILD}" --config profile --target STWGameplay.Tests -j 2 2>&1 | tee "${BUILD_LOG}"
+"${cmake_command}" --build "${BUILD}" --config profile --target STWGameplay.Tests -j 2 2>&1 | tee -a "${BUILD_LOG}"
 echo "TEST_TARGET_BUILD_SECONDS=$(($(date +%s)-start))"
 "${cmake_bin_dir}/ctest" --test-dir "${BUILD}" -C profile --output-on-failure -R 'STWGameplay' 2>&1 | tee "${TEST_LOG}"
 grep -Eq '100% tests passed|The following tests passed' "${TEST_LOG}"
@@ -193,6 +309,20 @@ echo "GTEST_CASE_COUNT=${gtest_case_count}"
 start="$(date +%s)"
 "${cmake_command}" --build "${BUILD}" --config profile --target STW.GameLauncher -j 2 2>&1 | tee -a "${BUILD_LOG}"
 echo "LAUNCHER_INCREMENTAL_BUILD_SECONDS=$(($(date +%s)-start))"
+[[ -x "${LAUNCHER}" ]]
+
+# A fresh targeted GameLauncher build does not guarantee the separate AP batch
+# tool exists. Build only that exact tool target when absent; never Editor or ALL.
+ap_batch="${BIN}/AssetProcessorBatch"
+asset_processor_batch_built=NO
+if [[ ! -x "${ap_batch}" ]]; then
+  start="$(date +%s)"
+  "${cmake_command}" --build "${BUILD}" --config profile --target AssetProcessorBatch -j 2 2>&1 | tee -a "${BUILD_LOG}"
+  echo "ASSETPROCESSORBATCH_TARGET_BUILD_SECONDS=$(($(date +%s)-start))"
+  asset_processor_batch_built=YES
+fi
+[[ -x "${ap_batch}" ]]
+echo "ASSETPROCESSORBATCH_TARGET_BUILT_THIS_RUN=${asset_processor_batch_built}"
 echo "FULL_ENGINE_REBUILD=NO"
 echo "ASSET_PROCESSING=HEADLESS_INCREMENTAL_REQUIRED"
 
@@ -205,7 +335,6 @@ echo "ASSET_PROCESSING=HEADLESS_INCREMENTAL_REQUIRED"
 echo "=================================================="
 echo "STW_HEADLESS_ASSET_PIPELINE_BEGIN"
 echo "=================================================="
-ap_batch="${BIN}/AssetProcessorBatch"
 [[ -x "${ap_batch}" ]]
 AP_LOG="${RUN_DIR}/assetprocessorbatch.log"
 ap_start="$(date +%s)"
@@ -249,6 +378,31 @@ echo "LAUNCHER_WAIT_FOR_CONNECT_OVERRIDE=linux_wait_for_connect=0"
 echo "=================================================="
 echo "STW_HEADLESS_ASSET_PIPELINE_END"
 echo "=================================================="
+
+# This fresh Lightning image has no system ICD manifest.  Create a process-local
+# manifest for the already-installed NVIDIA library; no global Vulkan state changes.
+nvidia_vulkan_library="$(ldconfig -p 2>/dev/null | awk '$1 == "libGLX_nvidia.so.0" {print $NF; exit}')"
+[[ -n "${nvidia_vulkan_library}" && -r "${nvidia_vulkan_library}" ]]
+python3 - "${ICD}" "${nvidia_vulkan_library}" <<'PY'
+import json
+import sys
+
+path, library = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as stream:
+    json.dump(
+        {
+            "file_format_version": "1.0.0",
+            "ICD": {"library_path": library, "api_version": "1.3.280"},
+        },
+        stream,
+        indent=2,
+    )
+    stream.write("\n")
+PY
+chmod 600 "${ICD}"
+echo "PROCESS_LOCAL_VULKAN_ICD=${ICD}"
+echo "PROCESS_LOCAL_VULKAN_LIBRARY=${nvidia_vulkan_library}"
+echo "GLOBAL_VULKAN_ICD_CHANGED=NO"
 
 nvidia-smi --query-gpu=name,driver_version --format=csv,noheader
 VK_ICD_FILENAMES="${ICD}" vulkaninfo --summary 2>&1 | grep -E 'deviceName|driverVersion' | head -20
