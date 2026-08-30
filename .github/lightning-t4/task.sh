@@ -179,7 +179,10 @@ if [[ "${scaffold_core_count}" -eq 0 ]]; then
   for scaffold_file in project.json CMakeLists.txt CMakePresets.json; do
     [[ -f "${scaffold_stage}/${scaffold_file}" ]]
   done
-  [[ ! -e "${scaffold_stage}/Assets" ]]
+  # DefaultProject intentionally creates an empty Assets directory. Require it
+  # to remain empty so the additive scaffold copy cannot overwrite tracked assets.
+  [[ -d "${scaffold_stage}/Assets" ]]
+  [[ -z "$(find "${scaffold_stage}/Assets" -mindepth 1 -print -quit)" ]]
   mkdir -p "${PROJECT}"
   cp -a "${scaffold_stage}/." "${PROJECT}/"
   project_scaffold_created=YES
