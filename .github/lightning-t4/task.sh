@@ -130,12 +130,120 @@ else
     "${GITHUB_WORKSPACE}/stw-o3de/O3DE_VERSION.md"
 fi
 
+echo "=================================================="
+echo "STW_TOOLCHAIN_PREFLIGHT_BEGIN"
+echo "=================================================="
+# O3DE 26.05 requires CMake >= 3.30 (the host system cmake is 3.28.3), and clang++-14
+# must compile the engine against GCC-12's libstdc++, not the host-default GCC-13 whose
+# <chrono> hh_mm_ss consteval construct clang-14 rejected in run #75. A fresh/stale host
+# can additionally be missing the pinned persistent CMake and can leave an ephemeral
+# /home/zeus python-site-packages cmake baked into the persistent build tree. This
+# CPU-only preflight establishes a reproducible persistent CMake >= 3.30 and a stable
+# GCC-12 libstdc++ selection flag, proving both before the expensive O3DE build depends
+# on them. No apt, no package upgrades, no GPU, fail-closed.
+
+# --- CMake: reuse the pinned persistent install when it already satisfies the floor,
+# otherwise install the pinned 3.31.12 release from the official upstream, verifying its
+# official SHA-256 manifest, extracting into a temporary location and only swapping it
+# into the persistent tools directory after full validation so an existing good install
+# is never corrupted. The host system cmake and any /home/zeus python cmake are never used.
+STW_CMAKE_MIN_MAJOR=3
+STW_CMAKE_MIN_MINOR=30
+STW_CMAKE_PINNED_VERSION=3.31.12
+STW_CMAKE_TOOLS_DIR="${ROOT}/tools"
+STW_CMAKE_INSTALL_ROOT="${STW_CMAKE_TOOLS_DIR}/cmake-${STW_CMAKE_PINNED_VERSION}-linux-x86_64"
+cmake_meets_min() {
+  local exe="$1" ver maj min
+  [[ -x "${exe}" ]] || return 1
+  ver="$("${exe}" --version 2>/dev/null | sed -nE 's/^cmake version ([0-9]+\.[0-9]+).*/\1/p' | head -1)"
+  [[ -n "${ver}" ]] || return 1
+  maj="${ver%%.*}"; min="${ver#*.}"
+  if (( maj > STW_CMAKE_MIN_MAJOR )); then return 0; fi
+  if (( maj == STW_CMAKE_MIN_MAJOR && min >= STW_CMAKE_MIN_MINOR )); then return 0; fi
+  return 1
+}
+if cmake_meets_min "${PINNED_CMAKE}"; then
+  echo "TOOLCHAIN_CMAKE_INSTALL_STRATEGY=REUSED_EXISTING_PERSISTENT"
+else
+  echo "TOOLCHAIN_CMAKE_INSTALL_STRATEGY=INSTALL_PINNED_${STW_CMAKE_PINNED_VERSION}"
+  cmake_tmp="${RUN_DIR}/cmake-install"
+  rm -rf "${cmake_tmp}"; mkdir -p "${cmake_tmp}" "${STW_CMAKE_TOOLS_DIR}"
+  cmake_tarball="cmake-${STW_CMAKE_PINNED_VERSION}-linux-x86_64.tar.gz"
+  cmake_sha_manifest="cmake-${STW_CMAKE_PINNED_VERSION}-SHA-256.txt"
+  cmake_base_url="https://github.com/Kitware/CMake/releases/download/v${STW_CMAKE_PINNED_VERSION}"
+  curl -fsSL --retry 3 -o "${cmake_tmp}/${cmake_tarball}" "${cmake_base_url}/${cmake_tarball}"
+  curl -fsSL --retry 3 -o "${cmake_tmp}/${cmake_sha_manifest}" "${cmake_base_url}/${cmake_sha_manifest}"
+  ( cd "${cmake_tmp}" && grep -E "  ${cmake_tarball}\$" "${cmake_sha_manifest}" | sha256sum -c - )
+  tar -xzf "${cmake_tmp}/${cmake_tarball}" -C "${cmake_tmp}"
+  cmake_meets_min "${cmake_tmp}/cmake-${STW_CMAKE_PINNED_VERSION}-linux-x86_64/bin/cmake"
+  rm -rf "${STW_CMAKE_INSTALL_ROOT}.incoming"
+  mv "${cmake_tmp}/cmake-${STW_CMAKE_PINNED_VERSION}-linux-x86_64" "${STW_CMAKE_INSTALL_ROOT}.incoming"
+  rm -rf "${STW_CMAKE_INSTALL_ROOT}"
+  mv "${STW_CMAKE_INSTALL_ROOT}.incoming" "${STW_CMAKE_INSTALL_ROOT}"
+  cmake_meets_min "${PINNED_CMAKE}"
+fi
 [[ -x "${PINNED_CMAKE}" ]]
 cmake_version="$(${PINNED_CMAKE} --version | head -1)"
+cmake_meets_min "${PINNED_CMAKE}"
 echo "PINNED_CMAKE=${PINNED_CMAKE}"
 echo "PINNED_CMAKE_VERSION=${cmake_version}"
-[[ "${cmake_version}" == "cmake version 3.31.12" ]]
+echo "TOOLCHAIN_CMAKE_PATH=${PINNED_CMAKE}"
+echo "TOOLCHAIN_CMAKE_VERSION=${cmake_version}"
+echo "TOOLCHAIN_CMAKE_MIN_REQUIRED=${STW_CMAKE_MIN_MAJOR}.${STW_CMAKE_MIN_MINOR}"
+echo "TOOLCHAIN_CMAKE_READY=YES"
 command -v ninja >/dev/null
+
+# --- GCC-12 libstdc++ selection for clang++-14. Build a stable, GCC-12-only prefix
+# (symlinks only; no system file is modified) so clang's --gcc-toolchain resolves GCC 12
+# and never GCC 13, then prove the exact run #75 <chrono> construct now compiles and runs
+# under -std=c++20. The proven flag is handed to O3DE via O3DE_EXTRA_C/CXX_FLAGS, which is
+# the variable O3DE actually applies: ly_set(CMAKE_CXX_FLAGS "${O3DE_EXTRA_CXX_FLAGS}").
+STW_CLANGXX=/usr/bin/clang++-14
+STW_GXX12=/usr/bin/g++-12
+STW_LIBSTDCXX12=/usr/include/c++/12
+[[ -x "${STW_CLANGXX}" ]]
+[[ -x "${STW_GXX12}" ]]
+[[ -s "${STW_LIBSTDCXX12}/chrono" ]]
+stw_clang_major="$("${STW_CLANGXX}" --version | sed -nE 's/.*clang version ([0-9]+).*/\1/p' | head -1)"
+stw_gcc_major="$("${STW_GXX12}" -dumpversion | cut -d. -f1)"
+[[ "${stw_clang_major}" == "14" ]]
+[[ "${stw_gcc_major}" == "12" ]]
+gcc12_triple="$("${STW_GXX12}" -dumpmachine)"
+STW_TOOLCHAIN_DIR="${ROOT}/stw-o3de-toolchain"
+gcc12_prefix="${STW_TOOLCHAIN_DIR}/gcc12-prefix"
+mkdir -p "${gcc12_prefix}/lib/gcc/${gcc12_triple}" \
+         "${gcc12_prefix}/include/c++" \
+         "${gcc12_prefix}/include/${gcc12_triple}/c++"
+ln -sfn "/usr/lib/gcc/${gcc12_triple}/12"     "${gcc12_prefix}/lib/gcc/${gcc12_triple}/12"
+ln -sfn "/usr/include/c++/12"                 "${gcc12_prefix}/include/c++/12"
+ln -sfn "/usr/include/${gcc12_triple}/c++/12" "${gcc12_prefix}/include/${gcc12_triple}/c++/12"
+[[ -d "${gcc12_prefix}/lib/gcc/${gcc12_triple}/12" ]]
+[[ -e "${gcc12_prefix}/include/c++/12/chrono" ]]
+stw_gcc_toolchain_flag="--gcc-toolchain=${gcc12_prefix}"
+toolchain_probe_dir="${RUN_DIR}/toolchain"
+mkdir -p "${toolchain_probe_dir}"
+chrono_probe="${toolchain_probe_dir}/stw_chrono_probe.cpp"
+chrono_probe_bin="${toolchain_probe_dir}/stw_chrono_probe"
+cat >"${chrono_probe}" <<'CPP'
+#include <chrono>
+int main()
+{
+    using namespace std::chrono;
+    const hh_mm_ss<seconds> t{seconds{3661}};
+    return t.hours().count() == 1 ? 0 : 1;
+}
+CPP
+# A successful compile+run under -std=c++20 proves clang-14 selected GCC-12's libstdc++:
+# with GCC-13's headers this is exactly the consteval construct that failed in run #75.
+"${STW_CLANGXX}" "${stw_gcc_toolchain_flag}" -std=c++20 "${chrono_probe}" -o "${chrono_probe_bin}"
+"${chrono_probe_bin}"
+echo "TOOLCHAIN_GCC12_TRIPLE=${gcc12_triple}"
+echo "TOOLCHAIN_GCC12_PREFIX=${gcc12_prefix}"
+echo "TOOLCHAIN_GCC12_FLAG=${stw_gcc_toolchain_flag}"
+echo "TOOLCHAIN_CHRONO_PROBE=PASS"
+echo "=================================================="
+echo "STW_TOOLCHAIN_PREFLIGHT_END"
+echo "=================================================="
 
 echo "=================================================="
 echo "STW_PERSISTENT_RECOVERY_BEGIN"
@@ -238,12 +346,46 @@ if os.path.realpath(gem_path) not in resolved_external:
 PY
 
 persistent_build_configured=NO
+toolchain_reconfigured=NO
 if [[ ! -f "${BUILD}/CMakeCache.txt" ]]; then
   mkdir -p "${BUILD}" "${O3DE_PACKAGES}"
   "${PINNED_CMAKE}" -S "${PROJECT}" -B "${BUILD}" \
     -G "Ninja Multi-Config" \
-    -DLY_3RDPARTY_PATH="${O3DE_PACKAGES}" 2>&1 | tee -a "${BUILD_LOG}"
+    -DLY_3RDPARTY_PATH="${O3DE_PACKAGES}" \
+    -DO3DE_EXTRA_C_FLAGS="${stw_gcc_toolchain_flag}" \
+    -DO3DE_EXTRA_CXX_FLAGS="${stw_gcc_toolchain_flag}" 2>&1 | tee -a "${BUILD_LOG}"
   persistent_build_configured=YES
+  toolchain_reconfigured=YES
+else
+  # Persistent build tree (the stale-host case). Two independent things can be wrong and
+  # both are corrected by one in-place reconfigure with the pinned CMake, without wiping
+  # the cache or forcing a full engine rebuild:
+  #   1. The cached CMAKE_COMMAND can point at an ephemeral host cmake (e.g. a
+  #      /home/zeus python-site-packages cmake), so Ninja's own build.ninja regeneration
+  #      rule fails with "not found". Reconfiguring with the pinned CMake rewrites
+  #      CMAKE_COMMAND and the regeneration rule to the pinned executable.
+  #   2. The GCC-12 libstdc++ selection flag may not yet be baked into the O3DE flags.
+  # The reconfigure is skipped when both are already correct, so later runs are a no-op
+  # and stay incremental.
+  cache="${BUILD}/CMakeCache.txt"
+  cached_cmake_command="$(sed -n 's/^CMAKE_COMMAND:INTERNAL=//p' "${cache}" | head -1)"
+  cached_extra_cxx="$(sed -n 's/^O3DE_EXTRA_CXX_FLAGS:[^=]*=//p' "${cache}" | head -1)"
+  cached_extra_c="$(sed -n 's/^O3DE_EXTRA_C_FLAGS:[^=]*=//p' "${cache}" | head -1)"
+  need_reconfigure=NO
+  if [[ -z "${cached_cmake_command}" ]] \
+     || [[ "$(readlink -f "${cached_cmake_command}" 2>/dev/null || true)" != "$(readlink -f "${PINNED_CMAKE}")" ]]; then
+    need_reconfigure=YES
+  fi
+  if [[ "${cached_extra_cxx}" != *"${stw_gcc_toolchain_flag}"* ]] \
+     || [[ "${cached_extra_c}" != *"${stw_gcc_toolchain_flag}"* ]]; then
+    need_reconfigure=YES
+  fi
+  if [[ "${need_reconfigure}" == "YES" ]]; then
+    "${PINNED_CMAKE}" -S "${PROJECT}" -B "${BUILD}" \
+      -DO3DE_EXTRA_C_FLAGS="${stw_gcc_toolchain_flag}" \
+      -DO3DE_EXTRA_CXX_FLAGS="${stw_gcc_toolchain_flag}" 2>&1 | tee -a "${BUILD_LOG}"
+    toolchain_reconfigured=YES
+  fi
 fi
 [[ -f "${BUILD}/CMakeCache.txt" ]]
 cmake_command="$(sed -n 's/^CMAKE_COMMAND:INTERNAL=//p' "${BUILD}/CMakeCache.txt" | head -1)"
@@ -260,6 +402,9 @@ echo "PROJECT_REGISTRATION=VERIFIED"
 echo "STWGAMEPLAY_GEM_ENABLED=VERIFIED"
 echo "TRACKED_PROJECT_ASSETS_PRESERVED=YES count=${tracked_asset_count}"
 echo "PERSISTENT_BUILD_CONFIGURED_THIS_RUN=${persistent_build_configured}"
+echo "TOOLCHAIN_RECONFIGURED_THIS_RUN=${toolchain_reconfigured}"
+echo "TOOLCHAIN_O3DE_EXTRA_C_FLAGS=${stw_gcc_toolchain_flag}"
+echo "TOOLCHAIN_O3DE_EXTRA_CXX_FLAGS=${stw_gcc_toolchain_flag}"
 echo "CONFIGURE_GENERATOR=Ninja Multi-Config"
 echo "CONFIGURE_LY_3RDPARTY_PATH=${O3DE_PACKAGES}"
 echo "FULL_ENGINE_REBUILD=NO"
