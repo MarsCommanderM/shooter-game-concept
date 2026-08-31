@@ -27,7 +27,6 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
-#include <cstring>
 
 namespace STWGameplay
 {
@@ -58,13 +57,6 @@ namespace STWGameplay
                 character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
             }
             return lowercase;
-        }
-
-        bool HasSuffix(const AZStd::string& value, const char* suffix)
-        {
-            const size_t suffixLength = std::strlen(suffix);
-            return value.size() >= suffixLength
-                && value.compare(value.size() - suffixLength, suffixLength, suffix) == 0;
         }
 
         void ResetViewmodelAssetLoadState()
@@ -407,15 +399,13 @@ namespace STWGameplay
                 [&modelCandidates, &materialCandidates](const AZ::Data::AssetId assetId, const AZ::Data::AssetInfo& info)
                 {
                     const AZStd::string lowercasePath = LowercaseAssetPath(info.m_relativePath);
-                    if (lowercasePath.find("stw_smg_01") == AZStd::string::npos)
-                    {
-                        return;
-                    }
-                    if (HasSuffix(lowercasePath, ".azmodel"))
+                    // Accept only the two canonical STW_SMG_01 product paths from the O3DE asset
+                    // cache; any other product is ignored so the wrong asset can never be bound.
+                    if (lowercasePath == "assets/weapons/stw_smg_01/stw_smg_01.obj.azmodel")
                     {
                         modelCandidates.push_back({ assetId, info.m_relativePath });
                     }
-                    else if (HasSuffix(lowercasePath, ".azmaterial"))
+                    else if (lowercasePath == "assets/weapons/stw_smg_01/stw_smg_01.azmaterial")
                     {
                         materialCandidates.push_back({ assetId, info.m_relativePath });
                     }
