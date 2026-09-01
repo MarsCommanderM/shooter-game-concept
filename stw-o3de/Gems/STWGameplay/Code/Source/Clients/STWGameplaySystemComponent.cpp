@@ -219,6 +219,7 @@ namespace STWGameplay
         UpdateCamera();
         DrawPresentation();
         UpdateEnemyCombatAcceptance();
+        UpdateEnemyAiAcceptance(deltaTime);
         RecordPerformance(deltaTime);
 
         // Production runs do not set STW_NATIVE_CAPTURE_PATH. The controlled
@@ -831,6 +832,61 @@ namespace STWGameplay
         }
     }
 
+    void STWGameplaySystemComponent::UpdateEnemyAiAcceptance(float deltaTime)
+    {
+        if (!m_automatedAcceptance || m_enemyAiAcceptanceReported)
+        {
+            return;
+        }
+
+        const PlayerState& player = m_model.GetPlayer();
+        if (!player.m_alive && player.m_deathEvents > 0)
+        {
+            m_enemyAiPlayerDeathObserved = true;
+        }
+
+        // Respawn only after the established Block-7 combat gate has completed. This is a
+        // one-shot gameplay reset through the same model and PhysX ownership used at spawn.
+        if (m_enemyAiPlayerDeathObserved && m_enemyCombatAcceptanceReported && !m_enemyAiPlayerRespawned)
+        {
+            m_enemyAiRespawnDelay += deltaTime;
+            if (m_enemyAiRespawnDelay >= 0.5f)
+            {
+                m_model.ResetPlayer();
+                m_physicsPlayer.ResetPosition(m_model.GetPlayer().m_position);
+                m_enemyAiPlayerRespawned = true;
+            }
+        }
+
+        const EnemyState& enemy = m_model.GetEnemy().GetState();
+        const PlayerState& currentPlayer = m_model.GetPlayer();
+        if (m_enemyAiPlayerRespawned && currentPlayer.m_alive
+            && (enemy.m_behaviorState == EnemyBehaviorState::Detect
+                || enemy.m_behaviorState == EnemyBehaviorState::Chase
+                || enemy.m_behaviorState == EnemyBehaviorState::Attack))
+        {
+            m_enemyAiLoopReactivated = true;
+        }
+
+        if (m_enemyPhysicsReady && m_enemyMeshReported && enemy.m_detectionEvents > 0 && enemy.m_chaseEvents > 0
+            && enemy.m_attackEvents > 0 && currentPlayer.m_damageEvents > 0 && currentPlayer.m_deathEvents > 0
+            && currentPlayer.m_respawnEvents > 0 && enemy.m_deathEvents > 0 && enemy.m_respawnEvents > 0
+            && m_enemyAiLoopReactivated)
+        {
+            AZ_Printf(
+                "STWGameplay",
+                "ENEMY_AI_ACCEPTANCE result=PASS detected=1 chased=1 enemy_attacks=%d player_damage=%d "
+                "player_death=%d player_respawn=%d enemy_death=%d enemy_reset=%d loop_active=1\n",
+                enemy.m_attackEvents,
+                currentPlayer.m_damageEvents,
+                currentPlayer.m_deathEvents,
+                currentPlayer.m_respawnEvents,
+                enemy.m_deathEvents,
+                enemy.m_respawnEvents);
+            m_enemyAiAcceptanceReported = true;
+        }
+    }
+
     void STWGameplaySystemComponent::DrawPresentation()
     {
         using Bus = AzFramework::DebugDisplayRequestBus;
@@ -895,8 +951,10 @@ namespace STWGameplay
         Bus::Event(displayId, &AzFramework::DebugDisplayRequests::DrawLine2d, AZ::Vector2(0.5f, 0.508f), AZ::Vector2(0.5f, 0.52f), 0.0f);
 
         char hud[128];
-        azsnprintf(hud, AZ_ARRAY_SIZE(hud), "STW  HP 100/100   MP5 %02d / %03d   %s",
-            weapon.m_magazine, weapon.m_reserve, weapon.m_reloading ? "RELOADING" : "READY");
+        const PlayerState& player = m_model.GetPlayer();
+        azsnprintf(hud, AZ_ARRAY_SIZE(hud), "STW  HP %03d/%03d   MP5 %02d / %03d   %s",
+            static_cast<int>(player.m_health), static_cast<int>(player.m_maxHealth),
+            weapon.m_magazine, weapon.m_reserve, player.m_alive ? (weapon.m_reloading ? "RELOADING" : "READY") : "DEAD");
         Bus::Event(displayId, &AzFramework::DebugDisplayRequests::Draw2dTextLabel, 24.0f, 36.0f, 1.4f, hud, false);
         if (presentation.m_hitCueRemaining > 0.0f || m_viewmodel.IsHitFeedbackActive())
         {

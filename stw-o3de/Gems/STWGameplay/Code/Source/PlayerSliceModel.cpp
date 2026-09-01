@@ -24,7 +24,11 @@ namespace STWGameplay
         m_presentation.m_fireCueRemaining = AZStd::max(0.0f, m_presentation.m_fireCueRemaining - deltaTime);
         m_presentation.m_hitCueRemaining = AZStd::max(0.0f, m_presentation.m_hitCueRemaining - deltaTime);
         m_weapon.m_cooldownRemaining = AZStd::max(0.0f, m_weapon.m_cooldownRemaining - deltaTime);
-        m_enemy.Update(deltaTime, m_player.m_position);
+        m_enemy.Update(deltaTime, m_player.m_position, m_player.m_alive);
+        if (m_player.m_alive && m_enemy.TryAttackPlayer())
+        {
+            ApplyDamage(EnemyCombatModel::AttackDamage);
+        }
 
         if (m_weapon.m_reloading)
         {
@@ -33,6 +37,11 @@ namespace STWGameplay
             {
                 FinishReload();
             }
+        }
+
+        if (!m_player.m_alive)
+        {
+            return true;
         }
 
         m_player.m_yaw += input.m_lookX * LookSensitivity;
@@ -79,6 +88,35 @@ namespace STWGameplay
         return true;
     }
 
+    bool PlayerSliceModel::ApplyDamage(float damage)
+    {
+        if (!m_player.m_alive || !IsFinite(damage) || damage <= 0.0f)
+        {
+            return false;
+        }
+        m_player.m_health = AZStd::max(0.0f, m_player.m_health - damage);
+        ++m_player.m_damageEvents;
+        if (m_player.m_health <= 0.0f)
+        {
+            m_player.m_alive = false;
+            ++m_player.m_deathEvents;
+        }
+        return true;
+    }
+
+    void PlayerSliceModel::ResetPlayer()
+    {
+        const int damageEvents = m_player.m_damageEvents;
+        const int deathEvents = m_player.m_deathEvents;
+        const int respawnEvents = m_player.m_respawnEvents + 1;
+        m_player = {};
+        m_player.m_damageEvents = damageEvents;
+        m_player.m_deathEvents = deathEvents;
+        m_player.m_respawnEvents = respawnEvents;
+        m_weapon = {};
+        m_presentation = {};
+    }
+
     AZ::Vector3 PlayerSliceModel::GetEyePosition() const
     {
         return m_player.m_position + AZ::Vector3(0.0f, 0.0f, EyeHeight);
@@ -95,6 +133,10 @@ namespace STWGameplay
 
     AZ::Vector3 PlayerSliceModel::GetDesiredVelocity(const PlayerInput& input) const
     {
+        if (!m_player.m_alive)
+        {
+            return AZ::Vector3::CreateZero();
+        }
         const float forwardAmount = AZStd::clamp(input.m_forward, -1.0f, 1.0f);
         const float strafeAmount = AZStd::clamp(input.m_strafe, -1.0f, 1.0f);
         AZ::Vector3 movement(

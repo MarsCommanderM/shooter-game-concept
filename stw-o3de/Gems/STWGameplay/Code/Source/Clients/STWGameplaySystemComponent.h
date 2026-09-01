@@ -52,6 +52,7 @@ namespace STWGameplay
         void UpdateEnemyMeshTransform();
         void ShutdownEnemyMesh();
         void UpdateEnemyCombatAcceptance();
+        void UpdateEnemyAiAcceptance(float deltaTime);
 
         // The PhysX character controller cannot be created during Activate() because the
         // default physics scene does not exist yet; creation is deferred to OnTick.
@@ -122,5 +123,10 @@ namespace STWGameplay
         bool m_enemyMoved = false;
         bool m_enemyCombatPrepared = false;
         bool m_enemyCombatAcceptanceReported = false;
+        bool m_enemyAiAcceptanceReported = false;
+        bool m_enemyAiPlayerDeathObserved = false;
+        bool m_enemyAiPlayerRespawned = false;
+        bool m_enemyAiLoopReactivated = false;
+        float m_enemyAiRespawnDelay = 0.0f;
     };
 }

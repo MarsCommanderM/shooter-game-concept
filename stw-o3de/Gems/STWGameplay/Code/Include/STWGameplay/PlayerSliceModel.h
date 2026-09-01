@@ -25,6 +25,9 @@ namespace STWGameplay
         float m_health = 100.0f;
         bool m_alive = true;
         bool m_grounded = false;
+        int m_damageEvents = 0;
+        int m_deathEvents = 0;
+        int m_respawnEvents = 0;
     };
 
     struct WeaponState
@@ -62,6 +65,8 @@ namespace STWGameplay
         bool Update(float deltaTime, const PlayerInput& input);
         bool TryFire();
         bool StartReload();
+        bool ApplyDamage(float damage);
+        void ResetPlayer();
 
         const PlayerState& GetPlayer() const { return m_player; }
         const WeaponState& GetWeapon() const { return m_weapon; }

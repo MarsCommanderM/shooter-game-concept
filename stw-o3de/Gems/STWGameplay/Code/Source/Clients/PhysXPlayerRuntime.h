@@ -25,6 +25,7 @@ namespace STWGameplay
         bool Initialize();
         void Shutdown();
         bool QueueVelocity(const AZ::Vector3& velocity);
+        bool ResetPosition(const AZ::Vector3& position);
         bool Synchronize(AZ::Vector3& position, bool& grounded) const;
         bool IsValid() const;
 

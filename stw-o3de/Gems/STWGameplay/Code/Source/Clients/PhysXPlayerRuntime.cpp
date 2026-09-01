@@ -103,6 +103,17 @@ namespace STWGameplay
         return true;
     }
 
+    bool PhysXPlayerRuntime::ResetPosition(const AZ::Vector3& position)
+    {
+        if (!IsValid() || !position.IsFinite())
+        {
+            return false;
+        }
+        Physics::CharacterRequestBus::Event(
+            m_playerEntity->GetId(), &Physics::CharacterRequests::SetBasePosition, position);
+        return true;
+    }
+
     bool PhysXPlayerRuntime::Synchronize(AZ::Vector3& position, bool& grounded) const
     {
         if (!IsValid())

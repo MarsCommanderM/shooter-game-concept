@@ -53,6 +53,10 @@ namespace STWGameplay
         EnemyCombatModel first;
         EnemyCombatModel second;
         const AZ::Vector3 player(0.0f, -6.0f, 0.0f);
+        ASSERT_TRUE(first.Update(0.1f, player));
+        ASSERT_TRUE(first.Update(0.1f, player));
+        ASSERT_TRUE(second.Update(0.1f, player));
+        ASSERT_TRUE(second.Update(0.1f, player));
         const AZ::Vector3 intent = first.GetMovementIntent(player);
         EXPECT_TRUE(intent.IsClose(second.GetMovementIntent(player)));
         EXPECT_NEAR(intent.GetLength(), EnemyCombatModel::MoveSpeed, 0.0001f);
