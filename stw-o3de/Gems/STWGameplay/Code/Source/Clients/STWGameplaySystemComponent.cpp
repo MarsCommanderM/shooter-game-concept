@@ -178,6 +178,7 @@ namespace STWGameplay
         vpInput.m_sprinting = m_input.m_sprint && vpInput.m_moving;
         vpInput.m_adsRequested = m_adsHeld;
         m_viewmodel.Update(deltaTime, vpInput);
+        UpdateAdsAcceptanceMarkers();
 
         m_input.m_lookX = 0.0f;
         m_input.m_lookY = 0.0f;
@@ -263,11 +264,17 @@ namespace STWGameplay
 
     void STWGameplaySystemComponent::UpdateAutomatedAcceptance(float deltaTime)
     {
-        if (!m_automatedAcceptance || m_viewmodelAcceptanceReported || !std::isfinite(deltaTime) || deltaTime < 0.0f)
+        if (!m_automatedAcceptance || (m_viewmodelAcceptanceReported && m_adsAcceptanceReported)
+            || !std::isfinite(deltaTime) || deltaTime < 0.0f)
         {
             return;
         }
         m_acceptanceTime += deltaTime;
+
+        // Verification-only stimulus. It feeds the same m_adsHeld state that the real
+        // Mouse::Button::Right path writes; it is disabled unless the existing acceptance mode
+        // is explicitly enabled and uses simulation time, never wall-clock sleeps.
+        m_adsHeld = m_acceptanceTime >= 1.0f && m_acceptanceTime < 6.0f;
         m_input.m_forward = 0.0f;
         m_input.m_strafe = 0.0f;
         m_input.m_sprint = false;
@@ -334,6 +341,67 @@ namespace STWGameplay
                 m_viewmodel.GetRecoilOffset().GetLength(),
                 static_cast<int>(m_viewmodel.GetState()));
             m_viewmodelAcceptanceReported = true;
+        }
+    }
+
+    void STWGameplaySystemComponent::EmitAdsAcceptanceState(const char* phase, bool requested) const
+    {
+        const AZ::Vector3 pose = m_viewmodel.GetPoseOffset();
+        AZ_Printf("STWGameplay",
+            "ADS_STATE phase=%s requested=%d blend=%.3f fov=%.3f pose=(%.3f,%.3f,%.3f)\n",
+            phase, requested ? 1 : 0, m_viewmodel.GetAdsBlend(), m_viewmodel.GetCameraFovDegrees(),
+            pose.GetX(), pose.GetY(), pose.GetZ());
+    }
+
+    void STWGameplaySystemComponent::UpdateAdsAcceptanceMarkers()
+    {
+        if (!m_automatedAcceptance || m_adsAcceptanceReported)
+        {
+            return;
+        }
+
+        const float blend = m_viewmodel.GetAdsBlend();
+        if (!m_adsAcceptanceBegun)
+        {
+            AZ_Printf("STWGameplay", "ADS_ACCEPTANCE_BEGIN\n");
+            EmitAdsAcceptanceState("HIP", false);
+            m_adsAcceptanceBegun = true;
+        }
+        if (!m_adsEnterReported && m_adsHeld)
+        {
+            EmitAdsAcceptanceState("ENTER", true);
+            m_adsEnterReported = true;
+        }
+        if (!m_adsEndpointReported && m_adsHeld && blend >= 1.0f)
+        {
+            EmitAdsAcceptanceState("ADS", true);
+            m_adsEndpointReported = true;
+        }
+        if (m_adsEndpointReported && !m_adsFireReported && m_viewmodel.GetFireEventCount() > 0u)
+        {
+            AZ_Printf("STWGameplay", "ADS_FIRE_INTERACTION result=PASS fire_events=%u blend=%.3f\n",
+                m_viewmodel.GetFireEventCount(), blend);
+            m_adsFireReported = true;
+        }
+        if (m_adsEndpointReported && !m_adsReloadReported && m_viewmodel.GetReloadStartCount() > 0u)
+        {
+            AZ_Printf("STWGameplay", "ADS_RELOAD_INTERACTION result=PASS reload_starts=%u blend=%.3f\n",
+                m_viewmodel.GetReloadStartCount(), blend);
+            m_adsReloadReported = true;
+        }
+        if (!m_adsExitReported && m_adsEndpointReported && !m_adsHeld)
+        {
+            EmitAdsAcceptanceState("EXIT", false);
+            m_adsExitReported = true;
+        }
+        if (m_adsExitReported && !m_adsReturnReported && blend <= 0.0f)
+        {
+            EmitAdsAcceptanceState("HIP_RETURN", false);
+            m_adsReturnReported = true;
+            m_adsAcceptanceReported = true;
+            AZ_Printf("STWGameplay", "ADS_ACCEPTANCE result=%s fire=%s reload=%s\n",
+                (m_adsFireReported && m_adsReloadReported) ? "PASS" : "FAIL",
+                m_adsFireReported ? "PASS" : "FAIL", m_adsReloadReported ? "PASS" : "FAIL");
         }
     }
 

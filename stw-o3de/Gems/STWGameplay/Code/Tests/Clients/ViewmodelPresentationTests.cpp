@@ -263,6 +263,60 @@ namespace STWGameplay
         EXPECT_FLOAT_EQ(model.GetTarget().m_health, target.m_health);
     }
 
+    TEST(ViewmodelPresentationTests, VerificationStimulusIsDisabledByDefault)
+    {
+        ViewmodelPresentation vm;
+        PresentationInput idle;
+        for (int i = 0; i < 120; ++i)
+        {
+            ASSERT_TRUE(vm.Update(1.0f / 120.0f, idle));
+        }
+        EXPECT_FLOAT_EQ(vm.GetAdsBlend(), 0.0f);
+        EXPECT_EQ(vm.GetFireEventCount(), 0u);
+    }
+
+    TEST(ViewmodelPresentationTests, VerificationSequenceReachesAdsAndReturnsToHip)
+    {
+        ViewmodelPresentation vm;
+        PresentationInput input;
+        for (int i = 0; i < 120; ++i) { ASSERT_TRUE(vm.Update(1.0f / 120.0f, input)); }
+        input.m_adsRequested = true;
+        for (int i = 0; i < 600; ++i) { ASSERT_TRUE(vm.Update(1.0f / 120.0f, input)); }
+        EXPECT_FLOAT_EQ(vm.GetAdsBlend(), 1.0f);
+        EXPECT_FLOAT_EQ(vm.GetCameraFovDegrees(), ViewmodelPresentation::AdsCameraFovDegrees);
+        EXPECT_TRUE(vm.GetPoseOffset().IsClose(AZ::Vector3(
+            ViewmodelPresentation::AdsPoseRight, ViewmodelPresentation::AdsPoseForward,
+            ViewmodelPresentation::AdsPoseUp), 0.001f));
+        input.m_shotFired = true;
+        ASSERT_TRUE(vm.Update(0.0f, input));
+        EXPECT_EQ(vm.GetFireEventCount(), 1u);
+        EXPECT_FLOAT_EQ(vm.GetAdsBlend(), 1.0f);
+        input.m_shotFired = false;
+        input.m_adsRequested = false;
+        for (int i = 0; i < 600; ++i) { ASSERT_TRUE(vm.Update(1.0f / 120.0f, input)); }
+        EXPECT_FLOAT_EQ(vm.GetAdsBlend(), 0.0f);
+        EXPECT_FLOAT_EQ(vm.GetCameraFovDegrees(), ViewmodelPresentation::HipCameraFovDegrees);
+        EXPECT_TRUE(vm.GetPoseOffset().IsClose(AZ::Vector3(
+            ViewmodelPresentation::HipPoseRight, ViewmodelPresentation::HipPoseForward,
+            ViewmodelPresentation::HipPoseUp), 0.001f));
+    }
+
+    TEST(ViewmodelPresentationTests, VerificationSequenceIsDeterministic)
+    {
+        ViewmodelPresentation first;
+        ViewmodelPresentation second;
+        PresentationInput ads; ads.m_adsRequested = true;
+        for (int i = 0; i < 90; ++i)
+        {
+            ASSERT_TRUE(first.Update(1.0f / 120.0f, ads));
+            ASSERT_TRUE(second.Update(1.0f / 120.0f, ads));
+        }
+        EXPECT_FLOAT_EQ(first.GetAdsBlend(), second.GetAdsBlend());
+        EXPECT_TRUE(first.GetPoseOffset().IsClose(second.GetPoseOffset(), 0.000001f));
+        EXPECT_FLOAT_EQ(first.GetCameraFovDegrees(), second.GetCameraFovDegrees());
+        EXPECT_EQ(first.GetFireEventCount(), second.GetFireEventCount());
+    }
+
     // B. A valid shot produces exactly one fire presentation event.
     TEST(ViewmodelPresentationTests, ValidShotProducesExactlyOneFireEvent)
     {

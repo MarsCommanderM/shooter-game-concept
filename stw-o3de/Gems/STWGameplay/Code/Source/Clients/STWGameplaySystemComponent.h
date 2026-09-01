@@ -36,6 +36,8 @@ namespace STWGameplay
         void DrawPresentation();
         void RecordPerformance(float deltaTime);
         void UpdateAutomatedAcceptance(float deltaTime);
+        void UpdateAdsAcceptanceMarkers();
+        void EmitAdsAcceptanceState(const char* phase, bool requested) const;
         // Attempts to create the PhysX controller once the O3DE default physics scene exists.
         void TryStartPhysics();
         // Attempts to acquire the real Atom viewmodel mesh once the render scene exists.
@@ -90,6 +92,14 @@ namespace STWGameplay
         bool m_automatedAcceptance = false;
         bool m_acceptanceReported = false;
         bool m_viewmodelAcceptanceReported = false;
+        bool m_adsAcceptanceBegun = false;
+        bool m_adsEnterReported = false;
+        bool m_adsEndpointReported = false;
+        bool m_adsFireReported = false;
+        bool m_adsReloadReported = false;
+        bool m_adsExitReported = false;
+        bool m_adsReturnReported = false;
+        bool m_adsAcceptanceReported = false;
         float m_acceptanceTime = 0.0f;
         AZ::Vector3 m_acceptanceStartPosition = AZ::Vector3::CreateZero();
     };
