@@ -1,9 +1,12 @@
 set(FILES
+    Source/EnemyCombatModel.cpp
     Source/PlayerSliceModel.cpp
     Source/ViewmodelPresentation.cpp
     Source/STWGameplayModuleInterface.cpp
     Source/STWGameplayModuleInterface.h
     Source/Clients/STWGameplaySystemComponent.cpp
     Source/Clients/STWGameplaySystemComponent.h
+    Source/Clients/PhysXEnemyRuntime.cpp
+    Source/Clients/PhysXEnemyRuntime.h
     Source/Clients/PhysXPlayerRuntime.cpp
     Source/Clients/PhysXPlayerRuntime.h)

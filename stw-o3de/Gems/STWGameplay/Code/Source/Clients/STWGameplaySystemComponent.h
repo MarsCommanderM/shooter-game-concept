@@ -9,6 +9,7 @@
 #include <STWGameplay/PlayerSliceModel.h>
 #include <STWGameplay/ViewmodelPresentation.h>
 #include "PhysXPlayerRuntime.h"
+#include "PhysXEnemyRuntime.h"
 
 namespace STWGameplay
 {
@@ -47,6 +48,10 @@ namespace STWGameplay
         void UpdateViewmodelMeshTransform(
             const AZ::Vector3& center, const AZ::Vector3& right, const AZ::Vector3& aim, const AZ::Vector3& up);
         void ShutdownViewmodelMesh();
+        void TryStartEnemyMesh();
+        void UpdateEnemyMeshTransform();
+        void ShutdownEnemyMesh();
+        void UpdateEnemyCombatAcceptance();
 
         // The PhysX character controller cannot be created during Activate() because the
         // default physics scene does not exist yet; creation is deferred to OnTick.
@@ -77,10 +82,15 @@ namespace STWGameplay
         AZ::Render::MeshFeatureProcessorInterface::MeshHandle m_viewmodelMeshHandle;
         AZStd::string m_viewmodelMeshAssetPath;
         bool m_viewmodelMeshReported = false;
+        ViewmodelMeshStartup m_enemyMeshStartup = ViewmodelMeshStartup::Waiting;
+        AZ::Render::MeshFeatureProcessorInterface::MeshHandle m_enemyMeshHandle;
+        AZStd::string m_enemyMeshAssetPath;
+        bool m_enemyMeshReported = false;
 
         PlayerSliceModel m_model;
         ViewmodelPresentation m_viewmodel;
         PhysXPlayerRuntime m_physicsPlayer;
+        PhysXEnemyRuntime m_physicsEnemy;
         PlayerInput m_input;
         bool m_adsHeld = false;
         AZStd::string m_nativeCapturePath;
@@ -107,5 +117,10 @@ namespace STWGameplay
         bool m_swayAcceptanceReported = false;
         float m_acceptanceTime = 0.0f;
         AZ::Vector3 m_acceptanceStartPosition = AZ::Vector3::CreateZero();
+        AZ::Vector3 m_enemyAcceptanceStartPosition = AZ::Vector3::CreateZero();
+        bool m_enemyPhysicsReady = false;
+        bool m_enemyMoved = false;
+        bool m_enemyCombatPrepared = false;
+        bool m_enemyCombatAcceptanceReported = false;
     };
 }

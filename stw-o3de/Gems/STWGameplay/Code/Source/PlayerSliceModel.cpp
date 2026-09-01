@@ -24,6 +24,7 @@ namespace STWGameplay
         m_presentation.m_fireCueRemaining = AZStd::max(0.0f, m_presentation.m_fireCueRemaining - deltaTime);
         m_presentation.m_hitCueRemaining = AZStd::max(0.0f, m_presentation.m_hitCueRemaining - deltaTime);
         m_weapon.m_cooldownRemaining = AZStd::max(0.0f, m_weapon.m_cooldownRemaining - deltaTime);
+        m_enemy.Update(deltaTime, m_player.m_position);
 
         if (m_weapon.m_reloading)
         {
@@ -58,16 +59,11 @@ namespace STWGameplay
         m_weapon.m_cooldownRemaining = FireInterval;
         m_presentation.m_shotFired = true;
         m_presentation.m_fireCueRemaining = 0.06f;
-        if (m_target.m_alive && RayHitsTarget(GetEyePosition(), GetAimDirection()))
+        if (m_enemy.GetState().m_alive && RayHitsTarget(GetEyePosition(), GetAimDirection()))
         {
-            m_target.m_health = AZStd::max(0.0f, m_target.m_health - WeaponDamage);
+            m_enemy.ApplyDamage(WeaponDamage);
             m_presentation.m_hit = true;
             m_presentation.m_hitCueRemaining = 0.12f;
-            if (m_target.m_health <= 0.0f && m_target.m_alive)
-            {
-                m_target.m_alive = false;
-                ++m_target.m_deathEvents;
-            }
         }
         return true;
     }
@@ -131,14 +127,15 @@ namespace STWGameplay
 
     bool PlayerSliceModel::RayHitsTarget(const AZ::Vector3& origin, const AZ::Vector3& direction) const
     {
-        const AZ::Vector3 toTarget = m_target.m_position - origin;
+        const EnemyState& target = m_enemy.GetState();
+        const AZ::Vector3 toTarget = target.m_position - origin;
         const float projected = toTarget.Dot(direction);
         if (projected < 0.0f || projected > WeaponRange)
         {
             return false;
         }
         const AZ::Vector3 closest = origin + direction * projected;
-        return (closest - m_target.m_position).GetLengthSq() <= m_target.m_radius * m_target.m_radius;
+        return (closest - target.m_position).GetLengthSq() <= target.m_radius * target.m_radius;
     }
 
     void PlayerSliceModel::FinishReload()

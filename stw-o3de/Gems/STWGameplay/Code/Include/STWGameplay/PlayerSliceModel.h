@@ -1,6 +1,7 @@
 #pragma once
 
 #include <AzCore/Math/Vector3.h>
+#include <STWGameplay/EnemyCombatModel.h>
 
 namespace STWGameplay
 {
@@ -35,15 +36,7 @@ namespace STWGameplay
         bool m_reloading = false;
     };
 
-    struct TargetState
-    {
-        AZ::Vector3 m_position = AZ::Vector3(0.0f, 6.0f, 1.2f);
-        float m_radius = 0.75f;
-        float m_maxHealth = 100.0f;
-        float m_health = 100.0f;
-        bool m_alive = true;
-        int m_deathEvents = 0;
-    };
+    using TargetState = EnemyState; // compatibility name for existing presentation/tests
 
     struct PresentationState
     {
@@ -72,13 +65,15 @@ namespace STWGameplay
 
         const PlayerState& GetPlayer() const { return m_player; }
         const WeaponState& GetWeapon() const { return m_weapon; }
-        const TargetState& GetTarget() const { return m_target; }
+        const TargetState& GetTarget() const { return m_enemy.GetState(); }
+        const EnemyCombatModel& GetEnemy() const { return m_enemy; }
+        EnemyCombatModel& GetEnemy() { return m_enemy; }
         const PresentationState& GetPresentation() const { return m_presentation; }
         AZ::Vector3 GetEyePosition() const;
         AZ::Vector3 GetAimDirection() const;
         AZ::Vector3 GetDesiredVelocity(const PlayerInput& input) const;
 
-        void SetTargetPosition(const AZ::Vector3& position) { m_target.m_position = position; }
+        void SetTargetPosition(const AZ::Vector3& position) { m_enemy.SynchronizePhysicalPosition(position); }
         void SetPlayerPosition(const AZ::Vector3& position);
         void SynchronizePhysicalState(const AZ::Vector3& position, bool grounded);
 
@@ -88,7 +83,7 @@ namespace STWGameplay
 
         PlayerState m_player;
         WeaponState m_weapon;
-        TargetState m_target;
+        EnemyCombatModel m_enemy;
         PresentationState m_presentation;
     };
 }

@@ -570,9 +570,16 @@ stw_asset_face_count="$(grep -c '^f ' "${stw_asset_source}")"
 stw_asset_group_count="$(grep -c '^g ' "${stw_asset_source}")"
 stw_model_product="${PROJECT}/Cache/linux/assets/weapons/stw_smg_01/stw_smg_01.obj.azmodel"
 stw_material_product="${PROJECT}/Cache/linux/assets/weapons/stw_smg_01/stw_smg_01.azmaterial"
+enemy_asset_source="${PROJECT}/Assets/Enemies/STW_ENEMY_01/STW_ENEMY_01.obj"
+enemy_model_product="${PROJECT}/Cache/linux/assets/enemies/stw_enemy_01/stw_enemy_01.obj.azmodel"
+enemy_material_product="${PROJECT}/Cache/linux/assets/enemies/stw_enemy_01/stw_enemy_01.azmaterial"
 echo "STW_ASSET_MODEL_PRODUCT=${stw_model_product}"
 echo "STW_ASSET_MATERIAL_PRODUCT=${stw_material_product}"
 [[ -s "${stw_model_product}" && -s "${stw_material_product}" ]]
+echo "STW_ENEMY_ASSET_SOURCE=${enemy_asset_source}"
+echo "STW_ENEMY_MODEL_PRODUCT=${enemy_model_product}"
+echo "STW_ENEMY_MATERIAL_PRODUCT=${enemy_material_product}"
+[[ -s "${enemy_asset_source}" && -s "${enemy_model_product}" && -s "${enemy_material_product}" ]]
 # Read-only probe only: never starts, reuses or kills anything on the GUI AP port.
 # NO is the expected and accepted answer now that the launcher is AP-independent.
 gui_ap_listener="NO"
@@ -688,6 +695,8 @@ runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS'
 # model instance actually exists, so this proves the asset resolved and the mesh is renderable.
 runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS'
 runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS .*material=bound'
+runtime_grep -q 'ATOM_ENEMY_MESH result=PASS .*material=bound'
+runtime_grep -q 'ENEMY_COMBAT_ACCEPTANCE result=PASS spawned=1 mesh=ready physics=ready moved=1 .*deaths=1 respawns=1'
 runtime_grep -q 'PERFORMANCE_BASELINE'
 if runtime_grep -q 'Native Atom frame capture submitted'; then
   echo "FRAME_CAPTURE_SUBMISSION_LOG=CONFIRMED"
@@ -721,6 +730,9 @@ echo "VIEWMODEL_EVIDENCE:"
 runtime_grep -n 'VIEWMODEL_ACCEPTANCE result=PASS'
 echo "ATOM_VIEWMODEL_MESH_EVIDENCE:"
 runtime_grep -n 'ATOM_VIEWMODEL_MESH result=PASS'
+echo "ENEMY_COMBAT_EVIDENCE:"
+runtime_grep -n 'ATOM_ENEMY_MESH result=PASS'
+runtime_grep -n 'ENEMY_COMBAT_ACCEPTANCE result=PASS'
 echo "=================================================="
 echo "STW_ASSET_INTEGRATION_BEGIN"
 echo "=================================================="
