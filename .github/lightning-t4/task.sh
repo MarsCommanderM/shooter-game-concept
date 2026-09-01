@@ -26,6 +26,19 @@ FRAME_NATIVE="${RUN_DIR}/stw-player-slice.ppm"
 FRAME="${RUN_DIR}/stw-player-slice.png"
 THUMB="${RUN_DIR}/stw-player-slice-thumb.jpg"
 xvfb_pid=""; launcher_pid=""
+
+# Every Studio run shares the persistent build tree. FetchContent clone scripts
+# remove their dependency source directory before cloning, so overlapping CMake
+# configures can delete a repository while the other run is writing its pack.
+# Fail closed instead of allowing concurrent mutation of the shared build state.
+mkdir -p "$(dirname "${BUILD}")"
+exec 9>"$(dirname "${BUILD}")/.stw-production-recovery.lock"
+if ! flock -n 9; then
+  echo "PERSISTENT_BUILD_LOCK=BUSY"
+  echo "Another STW production recovery already owns ${BUILD}"
+  exit 1
+fi
+echo "PERSISTENT_BUILD_LOCK=ACQUIRED"
 cleanup(){
   if [[ -n "${launcher_pid}" ]] && kill -0 "${launcher_pid}" 2>/dev/null; then kill -TERM -- "-${launcher_pid}" 2>/dev/null || true; fi
   if [[ -n "${xvfb_pid}" ]] && kill -0 "${xvfb_pid}" 2>/dev/null; then kill -TERM "${xvfb_pid}" 2>/dev/null || true; fi
@@ -133,9 +146,10 @@ fi
 echo "=================================================="
 echo "STW_TOOLCHAIN_PREFLIGHT_BEGIN"
 echo "=================================================="
-# O3DE 26.05 requires CMake >= 3.30 (the host system cmake is 3.28.3), and clang++-14
-# must compile the engine against GCC-12's libstdc++, not the host-default GCC-13 whose
-# <chrono> hh_mm_ss consteval construct clang-14 rejected in run #75. A fresh/stale host
+# O3DE 26.05 requires CMake >= 3.30 (the host system cmake is 3.28.3). Its Linux
+# compiler selection deliberately chooses the highest installed versioned Clang,
+# which is clang 18 on this Studio. Pin that same compiler so the preflight and real
+# configure cannot diverge. A fresh/stale host
 # can additionally be missing the pinned persistent CMake and can leave an ephemeral
 # /home/zeus python-site-packages cmake baked into the persistent build tree. This
 # CPU-only preflight establishes a reproducible persistent CMake >= 3.30 and a stable
@@ -193,20 +207,20 @@ echo "TOOLCHAIN_CMAKE_MIN_REQUIRED=${STW_CMAKE_MIN_MAJOR}.${STW_CMAKE_MIN_MINOR}
 echo "TOOLCHAIN_CMAKE_READY=YES"
 command -v ninja >/dev/null
 
-# --- GCC-12 libstdc++ selection for clang++-14. Build a stable, GCC-12-only prefix
-# (symlinks only; no system file is modified) so clang's --gcc-toolchain resolves GCC 12
-# and never GCC 13, then prove the exact run #75 <chrono> construct now compiles and runs
-# under -std=c++20. The proven flag is handed to O3DE via O3DE_EXTRA_C/CXX_FLAGS, which is
-# the variable O3DE actually applies: ly_set(CMAKE_CXX_FLAGS "${O3DE_EXTRA_CXX_FLAGS}").
-STW_CLANGXX=/usr/bin/clang++-14
+# --- Pin O3DE's selected clang 18 while retaining the already-proven GCC-12
+# libstdc++ prefix used by this persistent build. Prove the exact run #75 <chrono>
+# construct under the same compiler and flags handed to the real configure.
+STW_CLANG=/usr/bin/clang-18
+STW_CLANGXX=/usr/bin/clang++-18
 STW_GXX12=/usr/bin/g++-12
 STW_LIBSTDCXX12=/usr/include/c++/12
+[[ -x "${STW_CLANG}" ]]
 [[ -x "${STW_CLANGXX}" ]]
 [[ -x "${STW_GXX12}" ]]
 [[ -s "${STW_LIBSTDCXX12}/chrono" ]]
 stw_clang_major="$("${STW_CLANGXX}" --version | sed -nE 's/.*clang version ([0-9]+).*/\1/p' | head -1)"
 stw_gcc_major="$("${STW_GXX12}" -dumpversion | cut -d. -f1)"
-[[ "${stw_clang_major}" == "14" ]]
+[[ "${stw_clang_major}" == "18" ]]
 [[ "${stw_gcc_major}" == "12" ]]
 gcc12_triple="$("${STW_GXX12}" -dumpmachine)"
 STW_TOOLCHAIN_DIR="${ROOT}/stw-o3de-toolchain"
@@ -238,6 +252,8 @@ CPP
 "${STW_CLANGXX}" "${stw_gcc_toolchain_flag}" -std=c++20 "${chrono_probe}" -o "${chrono_probe_bin}"
 "${chrono_probe_bin}"
 echo "TOOLCHAIN_GCC12_TRIPLE=${gcc12_triple}"
+echo "TOOLCHAIN_C_COMPILER=${STW_CLANG}"
+echo "TOOLCHAIN_CXX_COMPILER=${STW_CLANGXX}"
 echo "TOOLCHAIN_GCC12_PREFIX=${gcc12_prefix}"
 echo "TOOLCHAIN_GCC12_FLAG=${stw_gcc_toolchain_flag}"
 echo "TOOLCHAIN_CHRONO_PROBE=PASS"
@@ -347,11 +363,37 @@ PY
 
 persistent_build_configured=NO
 toolchain_reconfigured=NO
+vhacd_recovered=NO
+vhacd_expected_commit=22ec20a7f8ea221ab600df869369b9c6a258cb10
+vhacd_paths=(
+  "${BUILD}/_deps/v-hacd-src"
+  "${BUILD}/_deps/v-hacd-build"
+  "${BUILD}/_deps/v-hacd-tmp"
+  "${BUILD}/CMakeFiles/fc-stamp/v-hacd"
+  "${BUILD}/CMakeFiles/fc-tmp/v-hacd"
+)
+vhacd_state_present=NO
+for vhacd_path in "${vhacd_paths[@]}"; do
+  [[ -e "${vhacd_path}" ]] && vhacd_state_present=YES
+done
+vhacd_checkout_valid=NO
+if [[ -d "${BUILD}/_deps/v-hacd-src/.git" ]] \
+   && [[ "$(git -C "${BUILD}/_deps/v-hacd-src" rev-parse HEAD 2>/dev/null || true)" == "${vhacd_expected_commit}" ]] \
+   && git -C "${BUILD}/_deps/v-hacd-src" fsck --no-dangling >/dev/null 2>&1; then
+  vhacd_checkout_valid=YES
+fi
+if [[ "${vhacd_state_present}" == "YES" && "${vhacd_checkout_valid}" == "NO" ]]; then
+  echo "V_HACD_FETCHCONTENT_STATE=INVALID"
+  rm -rf -- "${vhacd_paths[@]}"
+  vhacd_recovered=YES
+fi
 if [[ ! -f "${BUILD}/CMakeCache.txt" ]]; then
   mkdir -p "${BUILD}" "${O3DE_PACKAGES}"
   "${PINNED_CMAKE}" -S "${PROJECT}" -B "${BUILD}" \
     -G "Ninja Multi-Config" \
     -DLY_3RDPARTY_PATH="${O3DE_PACKAGES}" \
+    -DCMAKE_C_COMPILER="${STW_CLANG}" \
+    -DCMAKE_CXX_COMPILER="${STW_CLANGXX}" \
     -DO3DE_EXTRA_C_FLAGS="${stw_gcc_toolchain_flag}" \
     -DO3DE_EXTRA_CXX_FLAGS="${stw_gcc_toolchain_flag}" 2>&1 | tee -a "${BUILD_LOG}"
   persistent_build_configured=YES
@@ -371,17 +413,31 @@ else
   cached_cmake_command="$(sed -n 's/^CMAKE_COMMAND:INTERNAL=//p' "${cache}" | head -1)"
   cached_extra_cxx="$(sed -n 's/^O3DE_EXTRA_CXX_FLAGS:[^=]*=//p' "${cache}" | head -1)"
   cached_extra_c="$(sed -n 's/^O3DE_EXTRA_C_FLAGS:[^=]*=//p' "${cache}" | head -1)"
+  cached_cxx_compiler="$(find "${BUILD}/CMakeFiles" -mindepth 2 -maxdepth 2 -name CMakeCXXCompiler.cmake -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2-)"
+  cached_cxx_compiler="$(sed -n 's/^set(CMAKE_CXX_COMPILER "\([^"]*\)").*/\1/p' "${cached_cxx_compiler}" 2>/dev/null | head -1)"
   need_reconfigure=NO
   if [[ -z "${cached_cmake_command}" ]] \
      || [[ "$(readlink -f "${cached_cmake_command}" 2>/dev/null || true)" != "$(readlink -f "${PINNED_CMAKE}")" ]]; then
+    need_reconfigure=YES
+  fi
+  # A configure can update CMakeCache.txt and then fail during FetchContent before
+  # regenerating Ninja. In that state the cache looks current while the Ninja graph
+  # still invokes an ephemeral CMake path from the previous Studio image.
+  if [[ ! -f "${BUILD}/CMakeFiles/rules.ninja" ]] \
+     || ! grep -Fq "${PINNED_CMAKE} --regenerate-during-build" "${BUILD}/CMakeFiles/rules.ninja"; then
     need_reconfigure=YES
   fi
   if [[ "${cached_extra_cxx}" != *"${stw_gcc_toolchain_flag}"* ]] \
      || [[ "${cached_extra_c}" != *"${stw_gcc_toolchain_flag}"* ]]; then
     need_reconfigure=YES
   fi
+  if [[ "$(readlink -f "${cached_cxx_compiler}" 2>/dev/null || true)" != "$(readlink -f "${STW_CLANGXX}")" ]]; then
+    need_reconfigure=YES
+  fi
   if [[ "${need_reconfigure}" == "YES" ]]; then
     "${PINNED_CMAKE}" -S "${PROJECT}" -B "${BUILD}" \
+      -DCMAKE_C_COMPILER="${STW_CLANG}" \
+      -DCMAKE_CXX_COMPILER="${STW_CLANGXX}" \
       -DO3DE_EXTRA_C_FLAGS="${stw_gcc_toolchain_flag}" \
       -DO3DE_EXTRA_CXX_FLAGS="${stw_gcc_toolchain_flag}" 2>&1 | tee -a "${BUILD_LOG}"
     toolchain_reconfigured=YES
@@ -393,7 +449,13 @@ cmake_command="$(sed -n 's/^CMAKE_COMMAND:INTERNAL=//p' "${BUILD}/CMakeCache.txt
 [[ "$(readlink -f "${cmake_command}")" == "$(readlink -f "${PINNED_CMAKE}")" ]]
 cmake_bin_dir="$(dirname "${cmake_command}")"
 export PATH="${cmake_bin_dir}:${PATH}"
+actual_cxx_compiler_file="$(find "${BUILD}/CMakeFiles" -mindepth 2 -maxdepth 2 -name CMakeCXXCompiler.cmake -printf '%T@ %p\n' | sort -nr | head -1 | cut -d' ' -f2-)"
+actual_cxx_compiler="$(sed -n 's/^set(CMAKE_CXX_COMPILER "\([^"]*\)").*/\1/p' "${actual_cxx_compiler_file}" | head -1)"
+[[ "$(readlink -f "${actual_cxx_compiler}")" == "$(readlink -f "${STW_CLANGXX}")" ]]
 echo "CMAKE_COMMAND=${cmake_command}"
+echo "ACTUAL_CXX_COMPILER=${actual_cxx_compiler}"
+echo "ACTUAL_CXX_COMPILER_VERSION=$("${actual_cxx_compiler}" --version | head -1)"
+echo "V_HACD_FETCHCONTENT_RECOVERED=${vhacd_recovered}"
 echo "SYNCED_TRACKED_PROJECT_ASSETS=${tracked_project_assets} -> ${PROJECT}/Assets"
 echo "ENGINE_PIN_VERIFIED=3db6943249d8bd7960b9ed7e9aee310b7668586e"
 echo "PROJECT_SCAFFOLD_CREATED=${project_scaffold_created}"
@@ -506,14 +568,10 @@ stw_asset_source_bytes="$(stat -c %s "${stw_asset_source}")"
 stw_asset_vertex_count="$(grep -c '^v ' "${stw_asset_source}")"
 stw_asset_face_count="$(grep -c '^f ' "${stw_asset_source}")"
 stw_asset_group_count="$(grep -c '^g ' "${stw_asset_source}")"
-mapfile -t stw_model_products < <(find "${PROJECT}/Cache/linux" -type f -iname '*stw_smg_01*.azmodel' -print 2>/dev/null | sort)
-mapfile -t stw_material_products < <(find "${PROJECT}/Cache/linux" -type f -iname '*stw_smg_01*.azmaterial' -print 2>/dev/null | sort)
-echo "STW_ASSET_MODEL_PRODUCT_MATCHES=${#stw_model_products[@]}"
-echo "STW_ASSET_MATERIAL_PRODUCT_MATCHES=${#stw_material_products[@]}"
-[[ "${#stw_model_products[@]}" -eq 1 ]]
-[[ "${#stw_material_products[@]}" -eq 1 ]]
-stw_model_product="${stw_model_products[0]}"
-stw_material_product="${stw_material_products[0]}"
+stw_model_product="${PROJECT}/Cache/linux/assets/weapons/stw_smg_01/stw_smg_01.obj.azmodel"
+stw_material_product="${PROJECT}/Cache/linux/assets/weapons/stw_smg_01/stw_smg_01.azmaterial"
+echo "STW_ASSET_MODEL_PRODUCT=${stw_model_product}"
+echo "STW_ASSET_MATERIAL_PRODUCT=${stw_material_product}"
 [[ -s "${stw_model_product}" && -s "${stw_material_product}" ]]
 # Read-only probe only: never starts, reuses or kills anything on the GUI AP port.
 # NO is the expected and accepted answer now that the launcher is AP-independent.
