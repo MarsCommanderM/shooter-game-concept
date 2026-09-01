@@ -580,6 +580,8 @@ if timeout 5 bash -c 'exec 3<>/dev/tcp/127.0.0.1/45643' 2>/dev/null; then
   gui_ap_listener="YES"
 fi
 echo "GUI_AP_LISTENER_PRESENT_BEFORE_LAUNCHER=${gui_ap_listener}"
+echo "GUI_ASSETPROCESSOR_REQUIRED=NO"
+echo "LAUNCHER_ASSETPROCESSOR_CONNECTION=bg_ConnectToAssetProcessor=false"
 echo "LAUNCHER_WAIT_FOR_CONNECT_OVERRIDE=linux_wait_for_connect=0"
 echo "=================================================="
 echo "STW_HEADLESS_ASSET_PIPELINE_END"
@@ -640,7 +642,9 @@ setsid env DISPLAY="${display}" XDG_RUNTIME_DIR="${RUNTIME}" ALSA_CONFIG_PATH="$
   STW_NATIVE_CAPTURE_PATH="${FRAME_NATIVE}" \
   STW_PHYSX_ACCEPTANCE=1 \
   VK_ICD_FILENAMES="${ICD}" LD_LIBRARY_PATH="${BIN}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
-  ${STDBUF_PREFIX} "${LAUNCHER}" "--project-path=${PROJECT}" "--engine-path=${ENGINE}" "--regset=/Amazon/AzCore/Bootstrap/linux_wait_for_connect=0" -sys_audio_disable 1 >"${LAUNCH_LOG}" 2>&1 &
+  ${STDBUF_PREFIX} "${LAUNCHER}" "--project-path=${PROJECT}" "--engine-path=${ENGINE}" \
+  --bg_ConnectToAssetProcessor false "--regset=/Amazon/AzCore/Bootstrap/linux_wait_for_connect=0" \
+  -sys_audio_disable 1 >"${LAUNCH_LOG}" 2>&1 &
 launcher_pid=$!; echo "LAUNCHER_PID=${launcher_pid}"
 for _ in $(seq 1 75); do
   kill -0 "${launcher_pid}" 2>/dev/null || { tail -n 200 "${LAUNCH_LOG}"; exit 1; }
