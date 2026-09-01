@@ -17,6 +17,8 @@ namespace STWGameplay
         bool m_moving = false;     //!< player has locomotion intent
         bool m_sprinting = false;  //!< player is sprinting (implies moving)
         bool m_adsRequested = false; //!< presentation blend request; no gameplay effects
+        float m_lookX = 0.0f;      //!< presentation-only look delta for transient sway
+        float m_lookY = 0.0f;
     };
 
     enum class ViewmodelState
@@ -58,6 +60,15 @@ namespace STWGameplay
         static constexpr float BobFrequencyMove = 8.0f;     //!< rad/s walk bob frequency
         static constexpr float BobFrequencySprint = 12.0f;  //!< rad/s sprint bob frequency
         static constexpr float SwayReturn = 10.0f;          //!< 1/s sway blend rate
+        static constexpr float BobReturn = 12.0f;           //!< 1/s bob amplitude recovery
+        static constexpr float LookSwayScale = 0.0025f;     //!< m per look-unit
+        static constexpr float MaxSway = 0.06f;             //!< m presentation-only sway bound
+        static constexpr float AdsBobMultiplier = 0.20f;
+        static constexpr float AdsSwayMultiplier = 0.25f;
+        static constexpr float SprintPoseRight = 0.30f;
+        static constexpr float SprintPoseForward = 0.46f;
+        static constexpr float SprintPoseUp = -0.32f;
+        static constexpr float SprintBlendRate = 10.0f;
 
         //! Advance the presentation by one frame. Returns false and leaves state untouched on
         //! an invalid delta (transactional), matching PlayerSliceModel's contract.
@@ -67,6 +78,7 @@ namespace STWGameplay
         const AZ::Vector3& GetRecoilOffset() const { return m_recoilOffset; }
         float GetRecoilPitch() const { return m_recoilPitch; }
         const AZ::Vector3& GetSwayOffset() const { return m_swayOffset; }
+        const AZ::Vector3& GetBobOffset() const { return m_bobOffset; }
         AZ::Vector3 GetPoseOffset() const;
         float GetCameraFovDegrees() const;
         float GetAdsBlend() const { return m_adsBlend; }
@@ -79,6 +91,7 @@ namespace STWGameplay
     private:
         ViewmodelState m_state = ViewmodelState::Idle;
         AZ::Vector3 m_recoilOffset = AZ::Vector3::CreateZero();
+        AZ::Vector3 m_bobOffset = AZ::Vector3::CreateZero();
         AZ::Vector3 m_swayOffset = AZ::Vector3::CreateZero();
         float m_recoilPitch = 0.0f;
         float m_bobPhase = 0.0f;
@@ -86,6 +99,7 @@ namespace STWGameplay
         float m_muzzleFlash = 0.0f;
         float m_hitFeedback = 0.0f;
         float m_adsBlend = 0.0f;
+        float m_sprintBlend = 0.0f;
         bool m_wasReloading = false;
         AZ::u32 m_fireEvents = 0;
         AZ::u32 m_reloadStarts = 0;

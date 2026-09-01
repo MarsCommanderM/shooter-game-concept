@@ -317,6 +317,135 @@ namespace STWGameplay
         EXPECT_EQ(first.GetFireEventCount(), second.GetFireEventCount());
     }
 
+    TEST(ViewmodelPresentationTests, IdleHasZeroMovementPresentation)
+    {
+        ViewmodelPresentation vm;
+        ASSERT_TRUE(vm.Update(0.016f, {}));
+        EXPECT_TRUE(vm.GetBobOffset().IsZero());
+        EXPECT_TRUE(vm.GetSwayOffset().IsZero());
+    }
+
+    TEST(ViewmodelPresentationTests, MovementBeginsDeterministicBob)
+    {
+        ViewmodelPresentation vm;
+        PresentationInput moving; moving.m_moving = true;
+        ASSERT_TRUE(vm.Update(0.2f, moving));
+        EXPECT_GT(vm.GetBobOffset().GetLength(), 0.0f);
+        EXPECT_LE(vm.GetBobOffset().GetLength(), ViewmodelPresentation::BobAmplitudeMove + 0.001f);
+    }
+
+    TEST(ViewmodelPresentationTests, BobIsBoundedAndRepeatable)
+    {
+        ViewmodelPresentation first;
+        ViewmodelPresentation second;
+        PresentationInput moving; moving.m_moving = true;
+        for (int i = 0; i < 1200; ++i)
+        {
+            ASSERT_TRUE(first.Update(1.0f / 120.0f, moving));
+            ASSERT_TRUE(second.Update(1.0f / 120.0f, moving));
+            EXPECT_LE(first.GetBobOffset().GetLength(), ViewmodelPresentation::BobAmplitudeSprint + 0.001f);
+        }
+        EXPECT_TRUE(first.GetBobOffset().IsClose(second.GetBobOffset(), 0.000001f));
+    }
+
+    TEST(ViewmodelPresentationTests, BobRecoversSmoothlyToExactNeutral)
+    {
+        ViewmodelPresentation vm;
+        PresentationInput moving; moving.m_moving = true;
+        Advance(vm, 0.6f, moving);
+        const float movingAmount = vm.GetBobOffset().GetLength();
+        PresentationInput idle;
+        ASSERT_TRUE(vm.Update(0.016f, idle));
+        EXPECT_LT(vm.GetBobOffset().GetLength(), movingAmount);
+        Advance(vm, 2.0f, idle);
+        EXPECT_TRUE(vm.GetBobOffset().IsZero());
+    }
+
+    TEST(ViewmodelPresentationTests, LongIdleHasNoBobDrift)
+    {
+        ViewmodelPresentation vm;
+        Advance(vm, 30.0f);
+        EXPECT_TRUE(vm.GetBobOffset().IsZero());
+        EXPECT_TRUE(vm.GetSwayOffset().IsZero());
+    }
+
+    TEST(ViewmodelPresentationTests, SprintTransitionsToAndFromSprintPose)
+    {
+        ViewmodelPresentation vm;
+        PresentationInput sprint; sprint.m_moving = true; sprint.m_sprinting = true;
+        Advance(vm, 1.0f, sprint);
+        EXPECT_TRUE(vm.GetPoseOffset().IsClose(AZ::Vector3(
+            ViewmodelPresentation::SprintPoseRight, ViewmodelPresentation::SprintPoseForward,
+            ViewmodelPresentation::SprintPoseUp), 0.001f));
+        PresentationInput moving; moving.m_moving = true;
+        Advance(vm, 1.0f, moving);
+        EXPECT_TRUE(vm.GetPoseOffset().IsClose(AZ::Vector3(
+            ViewmodelPresentation::HipPoseRight, ViewmodelPresentation::HipPoseForward,
+            ViewmodelPresentation::HipPoseUp), 0.001f));
+    }
+
+    TEST(ViewmodelPresentationTests, LookDeltaProducesBoundedSwayAndDecays)
+    {
+        ViewmodelPresentation vm;
+        PresentationInput look; look.m_lookX = 8.0f; look.m_lookY = -4.0f;
+        ASSERT_TRUE(vm.Update(0.016f, look));
+        EXPECT_GT(vm.GetSwayOffset().GetLength(), 0.0f);
+        EXPECT_LE(vm.GetSwayOffset().GetLength(), ViewmodelPresentation::MaxSway + 0.0001f);
+        const float kicked = vm.GetSwayOffset().GetLength();
+        Advance(vm, 1.0f);
+        EXPECT_LT(vm.GetSwayOffset().GetLength(), kicked);
+    }
+
+    TEST(ViewmodelPresentationTests, AdsAttenuatesBobAndSway)
+    {
+        ViewmodelPresentation vm;
+        PresentationInput movingLook; movingLook.m_moving = true; movingLook.m_lookX = 8.0f;
+        Advance(vm, 0.5f, movingLook);
+        const float hipBob = vm.GetBobOffset().GetLength();
+        const float hipSway = vm.GetSwayOffset().GetLength();
+        PresentationInput ads = movingLook; ads.m_adsRequested = true;
+        Advance(vm, 1.0f, ads);
+        EXPECT_FLOAT_EQ(vm.GetAdsBlend(), 1.0f);
+        EXPECT_LT(vm.GetBobOffset().GetLength(), hipBob);
+        EXPECT_LT(vm.GetSwayOffset().GetLength(), hipSway);
+    }
+
+    TEST(ViewmodelPresentationTests, FullAdsEndpointSuppressesSprintPose)
+    {
+        ViewmodelPresentation vm;
+        PresentationInput adsSprint; adsSprint.m_adsRequested = true; adsSprint.m_moving = true; adsSprint.m_sprinting = true;
+        Advance(vm, 1.0f, adsSprint);
+        EXPECT_FLOAT_EQ(vm.GetAdsBlend(), 1.0f);
+        EXPECT_TRUE(vm.GetPoseOffset().IsClose(AZ::Vector3(
+            ViewmodelPresentation::AdsPoseRight, ViewmodelPresentation::AdsPoseForward,
+            ViewmodelPresentation::AdsPoseUp), 0.001f));
+    }
+
+    TEST(ViewmodelPresentationTests, RecoilAndBobComposeWithoutPhaseReset)
+    {
+        ViewmodelPresentation vm;
+        PresentationInput moving; moving.m_moving = true;
+        Advance(vm, 0.25f, moving);
+        const AZ::Vector3 before = vm.GetBobOffset();
+        PresentationInput shot = moving; shot.m_shotFired = true;
+        ASSERT_TRUE(vm.Update(0.0f, shot));
+        EXPECT_TRUE(vm.GetBobOffset().IsClose(before, 0.000001f));
+        EXPECT_GT(vm.GetRecoilOffset().GetLength(), 0.0f);
+    }
+
+    TEST(ViewmodelPresentationTests, ReloadPreservesMovementPresentation)
+    {
+        ViewmodelPresentation vm;
+        PresentationInput moving; moving.m_moving = true;
+        Advance(vm, 0.25f, moving);
+        const float before = vm.GetBobOffset().GetLength();
+        PresentationInput reload = moving; reload.m_reloading = true;
+        ASSERT_TRUE(vm.Update(0.016f, reload));
+        EXPECT_GT(vm.GetBobOffset().GetLength(), 0.0f);
+        EXPECT_NE(vm.GetState(), ViewmodelState::Idle);
+        EXPECT_LT(std::abs(vm.GetBobOffset().GetLength() - before), 0.02f);
+    }
+
     // B. A valid shot produces exactly one fire presentation event.
     TEST(ViewmodelPresentationTests, ValidShotProducesExactlyOneFireEvent)
     {

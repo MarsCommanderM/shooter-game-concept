@@ -177,6 +177,8 @@ namespace STWGameplay
         vpInput.m_moving = (std::abs(m_input.m_forward) > 0.01f) || (std::abs(m_input.m_strafe) > 0.01f);
         vpInput.m_sprinting = m_input.m_sprint && vpInput.m_moving;
         vpInput.m_adsRequested = m_adsHeld;
+        vpInput.m_lookX = m_input.m_lookX;
+        vpInput.m_lookY = m_input.m_lookY;
         m_viewmodel.Update(deltaTime, vpInput);
         UpdateAdsAcceptanceMarkers();
 
@@ -635,6 +637,7 @@ namespace STWGameplay
         // model, which consumes authoritative events only; fire, damage and reload authority
         // remain in PlayerSliceModel.
         const AZ::Vector3 recoil = m_viewmodel.GetRecoilOffset();
+        const AZ::Vector3 bob = m_viewmodel.GetBobOffset();
         const AZ::Vector3 sway = m_viewmodel.GetSwayOffset();
         const AZ::Vector3 pose = m_viewmodel.GetPoseOffset();
         const float recoilPitch = m_viewmodel.GetRecoilPitch();
@@ -643,9 +646,9 @@ namespace STWGameplay
         const AZ::Vector3 presentedAim = aim * recoilPitchCos + up * recoilPitchSin;
         const AZ::Vector3 presentedUp = up * recoilPitchCos - aim * recoilPitchSin;
         const AZ::Vector3 vmOffset =
-            right * (recoil.GetX() + sway.GetX()) +
-            aim * (recoil.GetY() + sway.GetY()) +
-            up * (recoil.GetZ() + sway.GetZ());
+            right * (recoil.GetX() + bob.GetX() + sway.GetX()) +
+            aim * (recoil.GetY() + bob.GetY() + sway.GetY()) +
+            up * (recoil.GetZ() + bob.GetZ() + sway.GetZ());
         const bool reloadPose = (m_viewmodel.GetState() == ViewmodelState::Reload);
         const AZ::Vector3 reloadDip = reloadPose ? (-up * 0.12f - aim * 0.10f) : AZ::Vector3::CreateZero();
         const AZ::Vector3 weaponCenter =

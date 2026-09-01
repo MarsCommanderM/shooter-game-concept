@@ -19,7 +19,9 @@ namespace STWGameplay
     {
         const AZ::Vector3 hip(HipPoseRight, HipPoseForward, HipPoseUp);
         const AZ::Vector3 ads(AdsPoseRight, AdsPoseForward, AdsPoseUp);
-        return hip + (ads - hip) * m_adsBlend;
+        const AZ::Vector3 sprint(SprintPoseRight, SprintPoseForward, SprintPoseUp);
+        const AZ::Vector3 base = hip + (ads - hip) * m_adsBlend;
+        return base + (sprint - hip) * m_sprintBlend;
     }
 
     float ViewmodelPresentation::GetCameraFovDegrees() const
@@ -86,24 +88,55 @@ namespace STWGameplay
             m_adsBlend = adsTarget;
         }
 
-        // Movement-driven sway/bob, sprint-distinct, frame-rate independent, amplitude bounded.
+        const float sprintTarget = (input.m_sprinting && m_adsBlend < 1.0f) ? 1.0f : 0.0f;
+        m_sprintBlend += (sprintTarget - m_sprintBlend) * ExpBlend(SprintBlendRate, deltaTime);
+        m_sprintBlend = AZStd::clamp(m_sprintBlend, 0.0f, 1.0f);
+        if (m_adsBlend >= 1.0f)
+        {
+            m_sprintBlend = 0.0f;
+        }
+        if (std::abs(sprintTarget - m_sprintBlend) <= AdsEndpointEpsilon)
+        {
+            m_sprintBlend = sprintTarget;
+        }
+
+        // Movement-driven bob is target-smoothed and ADS attenuated. The phase is wrapped so
+        // prolonged movement cannot accumulate floating-point drift.
         AZ::Vector3 targetSway = AZ::Vector3::CreateZero();
         if (input.m_moving)
         {
             const float amplitude = input.m_sprinting ? BobAmplitudeSprint : BobAmplitudeMove;
             const float frequency = input.m_sprinting ? BobFrequencySprint : BobFrequencyMove;
             m_bobPhase += frequency * deltaTime;
+            m_bobPhase = std::fmod(m_bobPhase, 2.0f * AZ::Constants::Pi);
+            const float adsBobScale = 1.0f - m_adsBlend * (1.0f - AdsBobMultiplier);
             targetSway = AZ::Vector3(
-                std::sin(m_bobPhase) * amplitude,
+                std::sin(m_bobPhase) * amplitude * adsBobScale,
                 0.0f,
-                std::abs(std::sin(m_bobPhase * 2.0f)) * amplitude * 0.5f);
+                std::abs(std::sin(m_bobPhase * 2.0f)) * amplitude * 0.5f * adsBobScale);
         }
-        else
+        const float bobBlend = ExpBlend(BobReturn, deltaTime);
+        m_bobOffset += (targetSway - m_bobOffset) * bobBlend;
+        if (!input.m_moving && m_bobOffset.GetLengthSq() < 0.00000001f)
         {
-            m_bobPhase = 0.0f;
+            m_bobOffset = AZ::Vector3::CreateZero();
         }
-        const float swayBlend = AZStd::clamp(SwayReturn * deltaTime, 0.0f, 1.0f);
-        m_swayOffset += (targetSway - m_swayOffset) * swayBlend;
+
+        if (!IsFiniteViewmodel(input.m_lookX) || !IsFiniteViewmodel(input.m_lookY))
+        {
+            return false;
+        }
+        const float adsSwayScale = 1.0f - m_adsBlend * (1.0f - AdsSwayMultiplier);
+        const AZ::Vector3 targetLookSway(
+            -input.m_lookX * LookSwayScale * adsSwayScale,
+            0.0f,
+            input.m_lookY * LookSwayScale * adsSwayScale);
+        const float swayBlend = ExpBlend(SwayReturn, deltaTime);
+        m_swayOffset += (targetLookSway - m_swayOffset) * swayBlend;
+        if (m_swayOffset.GetLength() > MaxSway)
+        {
+            m_swayOffset = m_swayOffset.GetNormalized() * MaxSway;
+        }
 
         // Locomotion/action state, precedence Reload > Fire > Sprint > Move > Idle. Reload wins
         // over Fire because authoritative firing is rejected while reloading; the short Fire cue
