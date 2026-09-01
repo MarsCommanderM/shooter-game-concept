@@ -8,6 +8,18 @@ namespace STWGameplay
     namespace
     {
         bool IsFiniteViewmodel(float value) { return std::isfinite(value); }
+
+        float ExpBlend(float rate, float deltaTime)
+        {
+            return 1.0f - std::exp(-rate * deltaTime);
+        }
+    }
+
+    AZ::Vector3 ViewmodelPresentation::GetPoseOffset() const
+    {
+        const AZ::Vector3 hip(HipPoseRight, HipPoseForward, HipPoseUp);
+        const AZ::Vector3 ads(AdsPoseRight, AdsPoseForward, AdsPoseUp);
+        return hip + (ads - hip) * m_adsBlend;
     }
 
     bool ViewmodelPresentation::Update(float deltaTime, const PresentationInput& input)
@@ -21,6 +33,13 @@ namespace STWGameplay
         m_fireCue = AZStd::max(0.0f, m_fireCue - deltaTime);
         m_muzzleFlash = AZStd::max(0.0f, m_muzzleFlash - deltaTime);
         m_hitFeedback = AZStd::max(0.0f, m_hitFeedback - deltaTime);
+
+        // Exact exponential decay makes recovery independent of how a time interval is split
+        // across frames. Recovery happens before a new impulse, so the firing tick exposes the
+        // complete kick immediately.
+        const float recover = ExpBlend(RecoilRecovery, deltaTime);
+        m_recoilOffset -= m_recoilOffset * recover;
+        m_recoilPitch -= m_recoilPitch * recover;
 
         // Exactly one presentation reaction per authoritative valid shot. Because m_shotFired
         // is only ever set by an authoritative TryFire, a rejected/cooldown shot produces
@@ -45,15 +64,18 @@ namespace STWGameplay
         }
         m_wasReloading = input.m_reloading;
 
-        // Deterministic recoil recovery toward neutral; bounded so it can never run away.
-        const float recover = AZStd::clamp(RecoilRecovery * deltaTime, 0.0f, 1.0f);
-        m_recoilOffset -= m_recoilOffset * recover;
-        m_recoilPitch -= m_recoilPitch * recover;
+        // Repeated authoritative shots accumulate, with a hard presentation-only bound.
         if (m_recoilOffset.GetLength() > MaxRecoil)
         {
             m_recoilOffset = m_recoilOffset.GetNormalized() * MaxRecoil;
         }
         m_recoilPitch = AZStd::clamp(m_recoilPitch, -MaxRecoil, MaxRecoil);
+
+        // ADS-ready presentation architecture only. No input is currently bound to this signal,
+        // so production remains at the stable hip pose until an authoritative adapter opts in.
+        const float adsTarget = input.m_adsRequested ? 1.0f : 0.0f;
+        m_adsBlend += (adsTarget - m_adsBlend) * ExpBlend(AdsBlendRate, deltaTime);
+        m_adsBlend = AZStd::clamp(m_adsBlend, 0.0f, 1.0f);
 
         // Movement-driven sway/bob, sprint-distinct, frame-rate independent, amplitude bounded.
         AZ::Vector3 targetSway = AZ::Vector3::CreateZero();

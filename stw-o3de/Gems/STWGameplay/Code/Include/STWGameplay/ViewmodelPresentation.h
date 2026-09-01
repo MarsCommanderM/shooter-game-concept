@@ -16,6 +16,7 @@ namespace STWGameplay
         bool m_reloading = false;  //!< authoritative reload is in progress
         bool m_moving = false;     //!< player has locomotion intent
         bool m_sprinting = false;  //!< player is sprinting (implies moving)
+        bool m_adsRequested = false; //!< presentation blend request; no gameplay effects
     };
 
     enum class ViewmodelState
@@ -42,6 +43,13 @@ namespace STWGameplay
         static constexpr float RecoilPitchKick = 0.06f;     //!< rad visual pitch kick per shot
         static constexpr float RecoilRecovery = 14.0f;      //!< 1/s recovery rate toward neutral
         static constexpr float MaxRecoil = 0.18f;           //!< m / rad recoil magnitude bound
+        static constexpr float HipPoseRight = 0.24f;        //!< m camera-local stable hip pose
+        static constexpr float HipPoseForward = 0.62f;
+        static constexpr float HipPoseUp = -0.20f;
+        static constexpr float AdsPoseRight = 0.02f;        //!< future presentation-only ADS pose
+        static constexpr float AdsPoseForward = 0.66f;
+        static constexpr float AdsPoseUp = -0.12f;
+        static constexpr float AdsBlendRate = 12.0f;        //!< 1/s deterministic blend rate
         static constexpr float BobAmplitudeMove = 0.020f;   //!< m walk bob amplitude
         static constexpr float BobAmplitudeSprint = 0.045f; //!< m sprint bob amplitude
         static constexpr float BobFrequencyMove = 8.0f;     //!< rad/s walk bob frequency
@@ -56,7 +64,10 @@ namespace STWGameplay
         const AZ::Vector3& GetRecoilOffset() const { return m_recoilOffset; }
         float GetRecoilPitch() const { return m_recoilPitch; }
         const AZ::Vector3& GetSwayOffset() const { return m_swayOffset; }
+        AZ::Vector3 GetPoseOffset() const;
+        float GetAdsBlend() const { return m_adsBlend; }
         bool IsMuzzleFlashActive() const { return m_muzzleFlash > 0.0f; }
+        float GetMuzzleFlashRemaining() const { return m_muzzleFlash; }
         bool IsHitFeedbackActive() const { return m_hitFeedback > 0.0f; }
         AZ::u32 GetFireEventCount() const { return m_fireEvents; }
         AZ::u32 GetReloadStartCount() const { return m_reloadStarts; }
@@ -70,6 +81,7 @@ namespace STWGameplay
         float m_fireCue = 0.0f;
         float m_muzzleFlash = 0.0f;
         float m_hitFeedback = 0.0f;
+        float m_adsBlend = 0.0f;
         bool m_wasReloading = false;
         AZ::u32 m_fireEvents = 0;
         AZ::u32 m_reloadStarts = 0;

@@ -562,6 +562,12 @@ namespace STWGameplay
         // remain in PlayerSliceModel.
         const AZ::Vector3 recoil = m_viewmodel.GetRecoilOffset();
         const AZ::Vector3 sway = m_viewmodel.GetSwayOffset();
+        const AZ::Vector3 pose = m_viewmodel.GetPoseOffset();
+        const float recoilPitch = m_viewmodel.GetRecoilPitch();
+        const float recoilPitchCos = std::cos(recoilPitch);
+        const float recoilPitchSin = std::sin(recoilPitch);
+        const AZ::Vector3 presentedAim = aim * recoilPitchCos + up * recoilPitchSin;
+        const AZ::Vector3 presentedUp = up * recoilPitchCos - aim * recoilPitchSin;
         const AZ::Vector3 vmOffset =
             right * (recoil.GetX() + sway.GetX()) +
             aim * (recoil.GetY() + sway.GetY()) +
@@ -569,18 +575,19 @@ namespace STWGameplay
         const bool reloadPose = (m_viewmodel.GetState() == ViewmodelState::Reload);
         const AZ::Vector3 reloadDip = reloadPose ? (-up * 0.12f - aim * 0.10f) : AZ::Vector3::CreateZero();
         const AZ::Vector3 weaponCenter =
-            m_model.GetEyePosition() + aim * 0.62f + right * 0.24f - up * 0.20f + vmOffset + reloadDip;
+            m_model.GetEyePosition() + presentedAim * pose.GetY() + right * pose.GetX()
+            + presentedUp * pose.GetZ() + vmOffset + reloadDip;
         // The weapon body is the original STW_SMG_01 Atom mesh driven
         // through the Atom MeshFeatureProcessor. It is presentation only: it consumes the
         // recoil/sway/reload pose computed above and never writes gameplay state. The former
         // procedural DrawSolidOBB body is gone; if the mesh fails to initialize the runtime
         // reports it instead of silently drawing a placeholder.
-        UpdateViewmodelMeshTransform(weaponCenter, right, aim, up);
+        UpdateViewmodelMeshTransform(weaponCenter, right, presentedAim, presentedUp);
         if (m_viewmodel.IsMuzzleFlashActive())
         {
             Bus::Event(displayId, &AzFramework::DebugDisplayRequests::SetColor, AZ::Color(1.0f, 0.72f, 0.12f, 1.0f));
             Bus::Event(displayId, &AzFramework::DebugDisplayRequests::DrawBall,
-                weaponCenter + aim * 0.34f, 0.055f, true);
+                weaponCenter + presentedAim * 0.34f, 0.055f, true);
         }
 
         Bus::Event(displayId, &AzFramework::DebugDisplayRequests::SetColor,

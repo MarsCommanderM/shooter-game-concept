@@ -36,6 +36,91 @@ namespace STWGameplay
         EXPECT_EQ(vm.GetFireEventCount(), 0u);
         EXPECT_FALSE(vm.IsMuzzleFlashActive());
         EXPECT_NE(vm.GetState(), ViewmodelState::Fire);
+        EXPECT_TRUE(vm.GetRecoilOffset().IsZero());
+        EXPECT_FLOAT_EQ(vm.GetRecoilPitch(), 0.0f);
+    }
+
+    TEST(ViewmodelPresentationTests, IdleHipPoseIsStable)
+    {
+        ViewmodelPresentation vm;
+        const AZ::Vector3 expected(
+            ViewmodelPresentation::HipPoseRight,
+            ViewmodelPresentation::HipPoseForward,
+            ViewmodelPresentation::HipPoseUp);
+        EXPECT_TRUE(vm.GetPoseOffset().IsClose(expected));
+        Advance(vm, 3.0f);
+        EXPECT_TRUE(vm.GetPoseOffset().IsClose(expected));
+        EXPECT_FLOAT_EQ(vm.GetAdsBlend(), 0.0f);
+    }
+
+    TEST(ViewmodelPresentationTests, SingleFireAppliesImmediateFullImpulse)
+    {
+        ViewmodelPresentation vm;
+        ASSERT_TRUE(vm.Update(1.0f / 30.0f, ShotInput()));
+        EXPECT_TRUE(vm.GetRecoilOffset().IsClose(
+            AZ::Vector3(0.0f, -ViewmodelPresentation::RecoilKick,
+                ViewmodelPresentation::RecoilKick * 0.5f)));
+        EXPECT_FLOAT_EQ(vm.GetRecoilPitch(), ViewmodelPresentation::RecoilPitchKick);
+    }
+
+    TEST(ViewmodelPresentationTests, RecoilRecoveryIsFrameRateIndependent)
+    {
+        ViewmodelPresentation coarse;
+        ViewmodelPresentation fine;
+        ASSERT_TRUE(coarse.Update(0.0f, ShotInput()));
+        ASSERT_TRUE(fine.Update(0.0f, ShotInput()));
+        ASSERT_TRUE(coarse.Update(0.25f, {}));
+        Advance(fine, 0.25f);
+        EXPECT_TRUE(coarse.GetRecoilOffset().IsClose(fine.GetRecoilOffset(), 0.00001f));
+        EXPECT_NEAR(coarse.GetRecoilPitch(), fine.GetRecoilPitch(), 0.00001f);
+    }
+
+    TEST(ViewmodelPresentationTests, RepeatedFireAccumulatesRecoil)
+    {
+        ViewmodelPresentation vm;
+        ASSERT_TRUE(vm.Update(0.0f, ShotInput()));
+        const float first = vm.GetRecoilOffset().GetLength();
+        ASSERT_TRUE(vm.Update(0.0f, ShotInput()));
+        EXPECT_GT(vm.GetRecoilOffset().GetLength(), first);
+        EXPECT_FLOAT_EQ(vm.GetRecoilPitch(), ViewmodelPresentation::RecoilPitchKick * 2.0f);
+    }
+
+    TEST(ViewmodelPresentationTests, MuzzleFlashExpiresAtDeterministicBoundary)
+    {
+        ViewmodelPresentation vm;
+        ASSERT_TRUE(vm.Update(0.0f, ShotInput()));
+        EXPECT_TRUE(vm.IsMuzzleFlashActive());
+        EXPECT_FLOAT_EQ(vm.GetMuzzleFlashRemaining(), ViewmodelPresentation::MuzzleFlashDuration);
+        ASSERT_TRUE(vm.Update(ViewmodelPresentation::MuzzleFlashDuration, {}));
+        EXPECT_FALSE(vm.IsMuzzleFlashActive());
+        EXPECT_FLOAT_EQ(vm.GetMuzzleFlashRemaining(), 0.0f);
+    }
+
+    TEST(ViewmodelPresentationTests, ReloadDoesNotTriggerFirePresentation)
+    {
+        ViewmodelPresentation vm;
+        PresentationInput reload;
+        reload.m_reloading = true;
+        ASSERT_TRUE(vm.Update(0.016f, reload));
+        EXPECT_EQ(vm.GetReloadStartCount(), 1u);
+        EXPECT_EQ(vm.GetFireEventCount(), 0u);
+        EXPECT_TRUE(vm.GetRecoilOffset().IsZero());
+        EXPECT_FALSE(vm.IsMuzzleFlashActive());
+    }
+
+    TEST(ViewmodelPresentationTests, AdsBlendIsReadyButDefaultsToHip)
+    {
+        ViewmodelPresentation vm;
+        Advance(vm, 1.0f);
+        EXPECT_FLOAT_EQ(vm.GetAdsBlend(), 0.0f);
+        PresentationInput ads;
+        ads.m_adsRequested = true;
+        Advance(vm, 1.0f, ads);
+        EXPECT_GT(vm.GetAdsBlend(), 0.99f);
+        EXPECT_TRUE(vm.GetPoseOffset().IsClose(AZ::Vector3(
+            ViewmodelPresentation::AdsPoseRight,
+            ViewmodelPresentation::AdsPoseForward,
+            ViewmodelPresentation::AdsPoseUp), 0.001f));
     }
 
     // B. A valid shot produces exactly one fire presentation event.
