@@ -638,13 +638,18 @@ fi
 mkdir -p "$(dirname "${GAME_LOG}")"
 : >"${GAME_LOG}"
 echo "FRESH_GAME_LOG=${GAME_LOG}"
-setsid env DISPLAY="${display}" XDG_RUNTIME_DIR="${RUNTIME}" ALSA_CONFIG_PATH="${ALSA}" \
-  STW_NATIVE_CAPTURE_PATH="${FRAME_NATIVE}" \
-  STW_PHYSX_ACCEPTANCE=1 \
-  VK_ICD_FILENAMES="${ICD}" LD_LIBRARY_PATH="${BIN}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
-  ${STDBUF_PREFIX} "${LAUNCHER}" "--project-path=${PROJECT}" "--engine-path=${ENGINE}" \
-  --bg_ConnectToAssetProcessor false "--regset=/Amazon/AzCore/Bootstrap/linux_wait_for_connect=0" \
-  -sys_audio_disable 1 >"${LAUNCH_LOG}" 2>&1 &
+# Keep runtime-owned relative files (for example imgui.ini) out of the canonical
+# Git checkout. The run directory is already unique, persistent evidence storage.
+(
+  cd "${RUN_DIR}"
+  exec setsid env DISPLAY="${display}" XDG_RUNTIME_DIR="${RUNTIME}" ALSA_CONFIG_PATH="${ALSA}" \
+    STW_NATIVE_CAPTURE_PATH="${FRAME_NATIVE}" \
+    STW_PHYSX_ACCEPTANCE=1 \
+    VK_ICD_FILENAMES="${ICD}" LD_LIBRARY_PATH="${BIN}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
+    ${STDBUF_PREFIX} "${LAUNCHER}" "--project-path=${PROJECT}" "--engine-path=${ENGINE}" \
+    --bg_ConnectToAssetProcessor false "--regset=/Amazon/AzCore/Bootstrap/linux_wait_for_connect=0" \
+    -sys_audio_disable 1
+) >"${LAUNCH_LOG}" 2>&1 &
 launcher_pid=$!; echo "LAUNCHER_PID=${launcher_pid}"
 for _ in $(seq 1 75); do
   kill -0 "${launcher_pid}" 2>/dev/null || { tail -n 200 "${LAUNCH_LOG}"; exit 1; }
