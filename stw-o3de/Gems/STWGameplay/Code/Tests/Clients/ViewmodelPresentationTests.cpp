@@ -123,6 +123,146 @@ namespace STWGameplay
             ViewmodelPresentation::AdsPoseUp), 0.001f));
     }
 
+    TEST(ViewmodelPresentationTests, AdsPressStartsBlendTowardOne)
+    {
+        ViewmodelPresentation vm;
+        PresentationInput ads;
+        ads.m_adsRequested = true;
+        ASSERT_TRUE(vm.Update(1.0f / 120.0f, ads));
+        EXPECT_GT(vm.GetAdsBlend(), 0.0f);
+        EXPECT_LT(vm.GetAdsBlend(), 1.0f);
+        EXPECT_LT(vm.GetCameraFovDegrees(), ViewmodelPresentation::HipCameraFovDegrees);
+    }
+
+    TEST(ViewmodelPresentationTests, AdsHoldReachesStableEndpoint)
+    {
+        ViewmodelPresentation vm;
+        PresentationInput ads;
+        ads.m_adsRequested = true;
+        Advance(vm, 1.0f, ads);
+        EXPECT_FLOAT_EQ(vm.GetAdsBlend(), 1.0f);
+        EXPECT_FLOAT_EQ(vm.GetCameraFovDegrees(), ViewmodelPresentation::AdsCameraFovDegrees);
+        Advance(vm, 2.0f, ads);
+        EXPECT_FLOAT_EQ(vm.GetAdsBlend(), 1.0f);
+    }
+
+    TEST(ViewmodelPresentationTests, AdsReleaseReturnsToStableHipEndpoint)
+    {
+        ViewmodelPresentation vm;
+        PresentationInput ads;
+        ads.m_adsRequested = true;
+        Advance(vm, 1.0f, ads);
+        ASSERT_TRUE(vm.Update(1.0f / 120.0f, {}));
+        EXPECT_GT(vm.GetAdsBlend(), 0.0f);
+        EXPECT_LT(vm.GetAdsBlend(), 1.0f);
+        Advance(vm, 1.0f);
+        EXPECT_FLOAT_EQ(vm.GetAdsBlend(), 0.0f);
+        EXPECT_FLOAT_EQ(vm.GetCameraFovDegrees(), ViewmodelPresentation::HipCameraFovDegrees);
+        Advance(vm, 2.0f);
+        EXPECT_FLOAT_EQ(vm.GetAdsBlend(), 0.0f);
+    }
+
+    TEST(ViewmodelPresentationTests, AdsBlendRemainsClamped)
+    {
+        ViewmodelPresentation vm;
+        PresentationInput ads;
+        ads.m_adsRequested = true;
+        Advance(vm, 20.0f, ads);
+        EXPECT_GE(vm.GetAdsBlend(), 0.0f);
+        EXPECT_LE(vm.GetAdsBlend(), 1.0f);
+        Advance(vm, 20.0f);
+        EXPECT_GE(vm.GetAdsBlend(), 0.0f);
+        EXPECT_LE(vm.GetAdsBlend(), 1.0f);
+    }
+
+    TEST(ViewmodelPresentationTests, AdsBlendIsFrameRateIndependent)
+    {
+        ViewmodelPresentation coarse;
+        ViewmodelPresentation fine;
+        PresentationInput ads;
+        ads.m_adsRequested = true;
+        ASSERT_TRUE(coarse.Update(0.25f, ads));
+        Advance(fine, 0.25f, ads);
+        EXPECT_NEAR(coarse.GetAdsBlend(), fine.GetAdsBlend(), 0.00001f);
+        EXPECT_TRUE(coarse.GetPoseOffset().IsClose(fine.GetPoseOffset(), 0.00001f));
+        EXPECT_NEAR(coarse.GetCameraFovDegrees(), fine.GetCameraFovDegrees(), 0.00001f);
+    }
+
+    TEST(ViewmodelPresentationTests, FireDuringAdsPreservesBlendAndAppliesRecoil)
+    {
+        ViewmodelPresentation vm;
+        PresentationInput ads;
+        ads.m_adsRequested = true;
+        Advance(vm, 1.0f, ads);
+        PresentationInput adsShot = ads;
+        adsShot.m_shotFired = true;
+        ASSERT_TRUE(vm.Update(0.0f, adsShot));
+        EXPECT_FLOAT_EQ(vm.GetAdsBlend(), 1.0f);
+        EXPECT_GT(vm.GetRecoilOffset().GetLength(), 0.0f);
+        EXPECT_TRUE(vm.IsMuzzleFlashActive());
+    }
+
+    TEST(ViewmodelPresentationTests, ReleasingAdsDuringRecoilRecoversBothStates)
+    {
+        ViewmodelPresentation vm;
+        PresentationInput ads;
+        ads.m_adsRequested = true;
+        Advance(vm, 1.0f, ads);
+        PresentationInput adsShot = ads;
+        adsShot.m_shotFired = true;
+        ASSERT_TRUE(vm.Update(0.0f, adsShot));
+        const float recoil = vm.GetRecoilOffset().GetLength();
+        Advance(vm, 0.25f);
+        EXPECT_LT(vm.GetAdsBlend(), 1.0f);
+        EXPECT_LT(vm.GetRecoilOffset().GetLength(), recoil);
+        Advance(vm, 1.0f);
+        EXPECT_FLOAT_EQ(vm.GetAdsBlend(), 0.0f);
+        EXPECT_LT(vm.GetRecoilOffset().GetLength(), 0.001f);
+    }
+
+    TEST(ViewmodelPresentationTests, EnteringAdsDuringRecoilRecoveryPreservesRecoil)
+    {
+        ViewmodelPresentation vm;
+        ASSERT_TRUE(vm.Update(0.0f, ShotInput()));
+        const float kicked = vm.GetRecoilOffset().GetLength();
+        PresentationInput ads;
+        ads.m_adsRequested = true;
+        ASSERT_TRUE(vm.Update(0.05f, ads));
+        EXPECT_GT(vm.GetAdsBlend(), 0.0f);
+        EXPECT_GT(vm.GetRecoilOffset().GetLength(), 0.0f);
+        EXPECT_LT(vm.GetRecoilOffset().GetLength(), kicked);
+    }
+
+    TEST(ViewmodelPresentationTests, ReloadDoesNotCorruptAdsBlend)
+    {
+        ViewmodelPresentation vm;
+        PresentationInput adsReload;
+        adsReload.m_adsRequested = true;
+        adsReload.m_reloading = true;
+        Advance(vm, 1.0f, adsReload);
+        EXPECT_FLOAT_EQ(vm.GetAdsBlend(), 1.0f);
+        EXPECT_EQ(vm.GetState(), ViewmodelState::Reload);
+        adsReload.m_adsRequested = false;
+        Advance(vm, 1.0f, adsReload);
+        EXPECT_FLOAT_EQ(vm.GetAdsBlend(), 0.0f);
+        EXPECT_EQ(vm.GetState(), ViewmodelState::Reload);
+    }
+
+    TEST(ViewmodelPresentationTests, AdsPresentationDoesNotModifyGameplayAuthority)
+    {
+        PlayerSliceModel model;
+        ViewmodelPresentation vm;
+        const WeaponState weapon = model.GetWeapon();
+        const TargetState target = model.GetTarget();
+        PresentationInput ads;
+        ads.m_adsRequested = true;
+        Advance(vm, PlayerSliceModel::FireInterval * 2.0f, ads);
+        EXPECT_EQ(model.GetWeapon().m_magazine, weapon.m_magazine);
+        EXPECT_EQ(model.GetWeapon().m_reserve, weapon.m_reserve);
+        EXPECT_FLOAT_EQ(model.GetWeapon().m_cooldownRemaining, weapon.m_cooldownRemaining);
+        EXPECT_FLOAT_EQ(model.GetTarget().m_health, target.m_health);
+    }
+
     // B. A valid shot produces exactly one fire presentation event.
     TEST(ViewmodelPresentationTests, ValidShotProducesExactlyOneFireEvent)
     {

@@ -50,6 +50,9 @@ namespace STWGameplay
         static constexpr float AdsPoseForward = 0.66f;
         static constexpr float AdsPoseUp = -0.12f;
         static constexpr float AdsBlendRate = 12.0f;        //!< 1/s deterministic blend rate
+        static constexpr float AdsEndpointEpsilon = 0.0001f;
+        static constexpr float HipCameraFovDegrees = 60.0f;
+        static constexpr float AdsCameraFovDegrees = 52.0f;
         static constexpr float BobAmplitudeMove = 0.020f;   //!< m walk bob amplitude
         static constexpr float BobAmplitudeSprint = 0.045f; //!< m sprint bob amplitude
         static constexpr float BobFrequencyMove = 8.0f;     //!< rad/s walk bob frequency
@@ -65,6 +68,7 @@ namespace STWGameplay
         float GetRecoilPitch() const { return m_recoilPitch; }
         const AZ::Vector3& GetSwayOffset() const { return m_swayOffset; }
         AZ::Vector3 GetPoseOffset() const;
+        float GetCameraFovDegrees() const;
         float GetAdsBlend() const { return m_adsBlend; }
         bool IsMuzzleFlashActive() const { return m_muzzleFlash > 0.0f; }
         float GetMuzzleFlashRemaining() const { return m_muzzleFlash; }

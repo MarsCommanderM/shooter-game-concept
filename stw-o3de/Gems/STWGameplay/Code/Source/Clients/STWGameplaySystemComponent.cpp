@@ -94,6 +94,7 @@ namespace STWGameplay
     void STWGameplaySystemComponent::Activate()
     {
         ResetViewmodelAssetLoadState();
+        m_adsHeld = false;
         if (const char* capturePath = std::getenv("STW_NATIVE_CAPTURE_PATH"); capturePath && capturePath[0] != '\0')
         {
             m_nativeCapturePath = capturePath;
@@ -108,6 +109,7 @@ namespace STWGameplay
 
     void STWGameplaySystemComponent::Deactivate()
     {
+        m_adsHeld = false;
         AZ::TickBus::Handler::BusDisconnect();
         AzFramework::InputChannelEventListener::Disconnect();
         ShutdownViewmodelMesh();
@@ -174,6 +176,7 @@ namespace STWGameplay
         vpInput.m_reloading = m_model.GetWeapon().m_reloading;
         vpInput.m_moving = (std::abs(m_input.m_forward) > 0.01f) || (std::abs(m_input.m_strafe) > 0.01f);
         vpInput.m_sprinting = m_input.m_sprint && vpInput.m_moving;
+        vpInput.m_adsRequested = m_adsHeld;
         m_viewmodel.Update(deltaTime, vpInput);
 
         m_input.m_lookX = 0.0f;
@@ -348,6 +351,7 @@ namespace STWGameplay
         else if (id == Keyboard::Key::ModifierShiftL || id == Keyboard::Key::ModifierShiftR) { m_input.m_sprint = active; }
         else if (id == Keyboard::Key::AlphanumericR && channel.IsStateBegan()) { m_input.m_reload = true; }
         else if (id == Mouse::Button::Left) { m_input.m_fire = active; }
+        else if (id == Mouse::Button::Right) { m_adsHeld = active; }
         else if (id == Mouse::Movement::X) { m_input.m_lookX += channel.GetValue(); }
         else if (id == Mouse::Movement::Y) { m_input.m_lookY += channel.GetValue(); }
         return false;
@@ -367,6 +371,8 @@ namespace STWGameplay
         const AZ::Quaternion pitch = AZ::Quaternion::CreateRotationX(player.m_pitch);
         AZ::Transform transform = AZ::Transform::CreateFromQuaternionAndTranslation(yaw * pitch, m_model.GetEyePosition());
         AZ::TransformBus::Event(cameraId, &AZ::TransformInterface::SetWorldTM, transform);
+        Camera::CameraRequestBus::Event(
+            cameraId, &Camera::CameraRequestBus::Events::SetFovDegrees, m_viewmodel.GetCameraFovDegrees());
     }
 
     void STWGameplaySystemComponent::TryStartViewmodelMesh()

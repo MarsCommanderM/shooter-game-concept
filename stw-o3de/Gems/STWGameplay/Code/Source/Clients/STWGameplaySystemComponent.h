@@ -79,6 +79,7 @@ namespace STWGameplay
         ViewmodelPresentation m_viewmodel;
         PhysXPlayerRuntime m_physicsPlayer;
         PlayerInput m_input;
+        bool m_adsHeld = false;
         AZStd::string m_nativeCapturePath;
         float m_nativeCaptureDelay = 0.0f;
         bool m_nativeCaptureAttempted = false;

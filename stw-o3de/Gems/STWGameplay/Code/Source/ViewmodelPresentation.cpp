@@ -22,6 +22,11 @@ namespace STWGameplay
         return hip + (ads - hip) * m_adsBlend;
     }
 
+    float ViewmodelPresentation::GetCameraFovDegrees() const
+    {
+        return HipCameraFovDegrees + (AdsCameraFovDegrees - HipCameraFovDegrees) * m_adsBlend;
+    }
+
     bool ViewmodelPresentation::Update(float deltaTime, const PresentationInput& input)
     {
         if (!IsFiniteViewmodel(deltaTime) || deltaTime < 0.0f)
@@ -76,6 +81,10 @@ namespace STWGameplay
         const float adsTarget = input.m_adsRequested ? 1.0f : 0.0f;
         m_adsBlend += (adsTarget - m_adsBlend) * ExpBlend(AdsBlendRate, deltaTime);
         m_adsBlend = AZStd::clamp(m_adsBlend, 0.0f, 1.0f);
+        if (std::abs(adsTarget - m_adsBlend) <= AdsEndpointEpsilon)
+        {
+            m_adsBlend = adsTarget;
+        }
 
         // Movement-driven sway/bob, sprint-distinct, frame-rate independent, amplitude bounded.
         AZ::Vector3 targetSway = AZ::Vector3::CreateZero();
