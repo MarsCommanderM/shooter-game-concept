@@ -181,6 +181,7 @@ namespace STWGameplay
         vpInput.m_lookY = m_input.m_lookY;
         m_viewmodel.Update(deltaTime, vpInput);
         UpdateAdsAcceptanceMarkers();
+        UpdateSwayAcceptanceMarkers();
 
         m_input.m_lookX = 0.0f;
         m_input.m_lookY = 0.0f;
@@ -281,6 +282,19 @@ namespace STWGameplay
         m_input.m_strafe = 0.0f;
         m_input.m_sprint = false;
         m_input.m_fire = false;
+        m_input.m_lookX = 0.0f;
+        m_input.m_lookY = 0.0f;
+
+        // Acceptance-only deterministic look stimulus. It feeds the same presentation-safe
+        // look-delta path used by normal mouse input and never changes gameplay orientation.
+        if (m_acceptanceTime >= 2.2f && m_acceptanceTime < 2.5f)
+        {
+            m_input.m_lookX = 12.0f;
+        }
+        else if (m_acceptanceTime >= 2.5f && m_acceptanceTime < 2.8f)
+        {
+            m_input.m_lookX = -12.0f;
+        }
 
         if (m_acceptanceTime >= 2.0f && m_acceptanceTime < 3.0f)
         {
@@ -343,6 +357,38 @@ namespace STWGameplay
                 m_viewmodel.GetRecoilOffset().GetLength(),
                 static_cast<int>(m_viewmodel.GetState()));
             m_viewmodelAcceptanceReported = true;
+        }
+    }
+
+    void STWGameplaySystemComponent::UpdateSwayAcceptanceMarkers()
+    {
+        if (!m_automatedAcceptance || m_swayAcceptanceReported)
+        {
+            return;
+        }
+
+        const float sway = m_viewmodel.GetSwayOffset().GetLength();
+        if (!m_swayAcceptanceBegun)
+        {
+            AZ_Printf("STWGameplay", "SWAY_ACCEPTANCE_BEGIN\n");
+            AZ_Printf("STWGameplay", "SWAY_STATE phase=IDLE input=(0.000,0.000) sway=%.3f\n", sway);
+            m_swayAcceptanceBegun = true;
+        }
+        if (!m_swayPositiveReported && std::abs(m_input.m_lookX) > 0.0f)
+        {
+            AZ_Printf("STWGameplay", "SWAY_STATE phase=POSITIVE input=(%.3f,%.3f) sway=%.3f\n",
+                m_input.m_lookX, m_input.m_lookY, sway);
+            m_swayPositiveReported = true;
+        }
+        if (m_swayPositiveReported && !m_swayReturnReported && m_acceptanceTime >= 2.8f)
+        {
+            AZ_Printf("STWGameplay", "SWAY_STATE phase=RETURN input=(0.000,0.000) sway=%.3f\n", sway);
+            m_swayReturnReported = true;
+        }
+        if (m_swayReturnReported && m_acceptanceTime >= 4.0f && sway <= 0.0001f)
+        {
+            AZ_Printf("STWGameplay", "SWAY_ACCEPTANCE result=PASS final_sway=%.3f\n", sway);
+            m_swayAcceptanceReported = true;
         }
     }
 

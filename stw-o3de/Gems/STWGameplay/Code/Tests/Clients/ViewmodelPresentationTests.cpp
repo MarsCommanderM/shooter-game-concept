@@ -596,4 +596,47 @@ namespace STWGameplay
         ASSERT_TRUE(vm.Update(0.016f, idle));
         EXPECT_EQ(vm.GetState(), ViewmodelState::Idle);
     }
+
+    TEST(ViewmodelPresentationTests, AcceptanceLookStimulusUsesNormalSwayPath)
+    {
+        ViewmodelPresentation vm;
+        PresentationInput positive;
+        positive.m_lookX = 12.0f;
+        ASSERT_TRUE(vm.Update(0.1f, positive));
+        EXPECT_GT(vm.GetSwayOffset().GetLength(), 0.0f);
+        EXPECT_LE(vm.GetSwayOffset().GetLength(), ViewmodelPresentation::MaxSway + 0.0001f);
+        PresentationInput neutral;
+        for (int i = 0; i < 120; ++i)
+        {
+            ASSERT_TRUE(vm.Update(1.0f / 60.0f, neutral));
+        }
+        EXPECT_TRUE(vm.GetSwayOffset().IsZero());
+    }
+
+    TEST(ViewmodelPresentationTests, AcceptanceLookStimulusIsDeterministic)
+    {
+        ViewmodelPresentation first;
+        ViewmodelPresentation second;
+        PresentationInput positive;
+        positive.m_lookX = 12.0f;
+        PresentationInput negative;
+        negative.m_lookX = -12.0f;
+        PresentationInput neutral;
+        for (int i = 0; i < 18; ++i)
+        {
+            ASSERT_TRUE(first.Update(1.0f / 60.0f, positive));
+            ASSERT_TRUE(second.Update(1.0f / 60.0f, positive));
+        }
+        for (int i = 0; i < 18; ++i)
+        {
+            ASSERT_TRUE(first.Update(1.0f / 60.0f, negative));
+            ASSERT_TRUE(second.Update(1.0f / 60.0f, negative));
+        }
+        for (int i = 0; i < 60; ++i)
+        {
+            ASSERT_TRUE(first.Update(1.0f / 60.0f, neutral));
+            ASSERT_TRUE(second.Update(1.0f / 60.0f, neutral));
+        }
+        EXPECT_TRUE(first.GetSwayOffset().IsClose(second.GetSwayOffset(), 0.000001f));
+    }
 }
