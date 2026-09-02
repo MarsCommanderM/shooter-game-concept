@@ -48,6 +48,13 @@ namespace STWGameplay
             return true;
         }
 
+        // The model owns crouch intent only. PhysX decides whether the requested physical
+        // controller transition can be applied, and airborne input cannot introduce one.
+        if (m_player.m_grounded)
+        {
+            m_player.m_crouchDesired = input.m_crouch;
+        }
+
         if (newJumpPress && m_player.m_grounded)
         {
             m_jumpImpulseThisTick = JumpImpulseSpeed;

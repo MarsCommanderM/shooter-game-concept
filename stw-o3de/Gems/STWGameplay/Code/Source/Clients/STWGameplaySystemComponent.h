@@ -61,6 +61,7 @@ namespace STWGameplay
         void UpdateEnemyPresentationAcceptance();
         void UpdateCombatFeedbackAcceptance();
         void UpdateJumpAcceptance(bool physicalStateSynchronized);
+        void UpdateCrouchAcceptance(bool physicalStateSynchronized);
 
         // The PhysX character controller cannot be created during Activate() because the
         // default physics scene does not exist yet; creation is deferred to OnTick.
@@ -162,5 +163,13 @@ namespace STWGameplay
         float m_jumpAcceptanceStartTime = 0.0f;
         float m_jumpAcceptanceStartHeight = 0.0f;
         int m_jumpAcceptanceInitialEvents = 0;
+        bool m_crouchAcceptanceStarted = false;
+        bool m_crouchAcceptanceCrouched = false;
+        bool m_crouchAcceptanceStood = false;
+        bool m_crouchAcceptanceBasePreserved = true;
+        bool m_crouchAcceptanceCameraLowered = false;
+        bool m_crouchAcceptanceReported = false;
+        float m_crouchAcceptanceStartBaseZ = 0.0f;
+        float m_crouchAcceptanceStandingHeight = 0.0f;
     };
 }

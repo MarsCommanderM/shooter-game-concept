@@ -2,11 +2,16 @@
 
 #include <AzCore/Component/Entity.h>
 #include <AzCore/Component/TransformBus.h>
+#include <AzCore/Math/MathUtils.h>
+#include <AzCore/std/algorithm.h>
 #include <AzCore/std/smart_ptr/make_shared.h>
 #include <AzFramework/Components/TransformComponent.h>
 #include <AzFramework/Physics/CharacterBus.h>
 #include <AzFramework/Physics/Collision/CollisionGroups.h>
+#include <AzFramework/Physics/Common/PhysicsSceneQueries.h>
+#include <AzFramework/Physics/PhysicsScene.h>
 #include <AzFramework/Physics/ShapeConfiguration.h>
+#include <PhysX/CharacterControllerBus.h>
 #include <PhysX/CharacterGameplayBus.h>
 #include <PhysXCharacters/Components/CharacterControllerComponent.h>
 #include <PhysXCharacters/Components/CharacterGameplayComponent.h>
@@ -18,6 +23,8 @@ namespace STWGameplay
 {
     namespace
     {
+        constexpr float StandingClearanceLift = 0.01f;
+
         void DeactivateEntity(AZStd::unique_ptr<AZ::Entity>& entity)
         {
             if (entity && entity->GetState() == AZ::Entity::State::Active)
@@ -36,6 +43,8 @@ namespace STWGameplay
     bool PhysXPlayerRuntime::Initialize()
     {
         Shutdown();
+        m_crouched = false;
+        m_pendingJumpSpeed = 0.0f;
 
         // Minimal collision course: floor, perimeter, two covers and a valid step.
         if (!CreateStaticBox("STW Floor", AZ::Vector3(0.0f, 0.0f, -0.5f), AZ::Vector3(24.0f, 24.0f, 1.0f))
@@ -89,6 +98,8 @@ namespace STWGameplay
             DeactivateEntity(*iterator);
         }
         m_environmentEntities.clear();
+        m_crouched = false;
+        m_pendingJumpSpeed = 0.0f;
     }
 
     bool PhysXPlayerRuntime::QueueVelocity(const AZ::Vector3& velocity)
@@ -97,9 +108,81 @@ namespace STWGameplay
         {
             return false;
         }
+        if (velocity.GetZ() > 0.0f)
+        {
+            // AddVelocityForTick provides the collision-resolved takeoff step. Once PhysX
+            // reports that step made the controller airborne, Synchronize seeds the existing
+            // CharacterGameplayComponent falling velocity so gravity owns the remaining arc.
+            m_pendingJumpSpeed = velocity.GetZ();
+        }
         Physics::CharacterRequestBus::Event(
             m_playerEntity->GetId(), &Physics::CharacterRequests::AddVelocityForTick, velocity);
         return true;
+    }
+
+    bool PhysXPlayerRuntime::ApplyCrouchRequest(bool crouchDesired, bool grounded)
+    {
+        if (!IsValid() || !grounded || crouchDesired == m_crouched)
+        {
+            return IsValid();
+        }
+        if (!crouchDesired && !CanRestoreStandingHeight())
+        {
+            return true;
+        }
+
+        const float requestedHeight = crouchDesired ? CrouchedCapsuleHeight : CapsuleHeight;
+        PhysX::CharacterControllerRequestBus::Event(
+            m_playerEntity->GetId(), &PhysX::CharacterControllerRequests::Resize, requestedHeight);
+        const float appliedHeight = GetControllerHeight();
+        if (!AZ::IsClose(appliedHeight, requestedHeight, 0.001f))
+        {
+            return false;
+        }
+        m_crouched = crouchDesired;
+        return true;
+    }
+
+    float PhysXPlayerRuntime::GetControllerHeight() const
+    {
+        float height = 0.0f;
+        if (IsValid())
+        {
+            PhysX::CharacterControllerRequestBus::EventResult(
+                height, m_playerEntity->GetId(), &PhysX::CharacterControllerRequests::GetHeight);
+        }
+        return height;
+    }
+
+    float PhysXPlayerRuntime::GetEyeHeight() const
+    {
+        return AZStd::max(0.0f, GetControllerHeight() - 0.10f);
+    }
+
+    bool PhysXPlayerRuntime::CanRestoreStandingHeight() const
+    {
+        Physics::Character* character = nullptr;
+        Physics::CharacterRequestBus::EventResult(
+            character, m_playerEntity->GetId(), &Physics::CharacterRequests::GetCharacter);
+        if (!character || !character->GetScene())
+        {
+            return false;
+        }
+
+        const AZ::Vector3 basePosition = character->GetBasePosition();
+        const AZ::Transform pose = AZ::Transform::CreateTranslation(
+            basePosition + AZ::Vector3::CreateAxisZ(0.5f * CapsuleHeight + StandingClearanceLift));
+        AzPhysics::OverlapRequest request = AzPhysics::OverlapRequestHelpers::CreateCapsuleOverlapRequest(
+            CapsuleHeight, CapsuleRadius, pose);
+        request.m_collisionGroup = character->GetCollisionGroup();
+        const AZ::EntityId playerEntityId = m_playerEntity->GetId();
+        const AzPhysics::SceneQueryHits hits = character->GetScene()->QueryScene(&request);
+        return AZStd::none_of(
+            hits.m_hits.begin(), hits.m_hits.end(),
+            [&playerEntityId](const AzPhysics::SceneQueryHit& hit)
+            {
+                return hit.m_entityId != playerEntityId;
+            });
     }
 
     bool PhysXPlayerRuntime::ResetPosition(const AZ::Vector3& position)
@@ -113,7 +196,7 @@ namespace STWGameplay
         return true;
     }
 
-    bool PhysXPlayerRuntime::Synchronize(AZ::Vector3& position, bool& grounded) const
+    bool PhysXPlayerRuntime::Synchronize(AZ::Vector3& position, bool& grounded)
     {
         if (!IsValid())
         {
@@ -123,6 +206,13 @@ namespace STWGameplay
             position, m_playerEntity->GetId(), &Physics::CharacterRequests::GetBasePosition);
         PhysX::CharacterGameplayRequestBus::EventResult(
             grounded, m_playerEntity->GetId(), &PhysX::CharacterGameplayRequests::IsOnGround);
+        if (!grounded && m_pendingJumpSpeed > 0.0f)
+        {
+            PhysX::CharacterGameplayRequestBus::Event(
+                m_playerEntity->GetId(), &PhysX::CharacterGameplayRequests::SetFallingVelocity,
+                AZ::Vector3::CreateAxisZ(m_pendingJumpSpeed));
+            m_pendingJumpSpeed = 0.0f;
+        }
         return position.IsFinite();
     }
 

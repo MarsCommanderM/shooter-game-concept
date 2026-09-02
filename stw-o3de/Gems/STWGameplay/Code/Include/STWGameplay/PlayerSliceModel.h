@@ -14,6 +14,7 @@ namespace STWGameplay
         float m_lookY = 0.0f;
         bool m_sprint = false;
         bool m_jump = false;
+        bool m_crouch = false;
         bool m_fire = false;
         bool m_reload = false;
     };
@@ -27,6 +28,7 @@ namespace STWGameplay
         float m_health = 100.0f;
         bool m_alive = true;
         bool m_grounded = false;
+        bool m_crouchDesired = false;
         int m_damageEvents = 0;
         int m_deathEvents = 0;
         int m_respawnEvents = 0;

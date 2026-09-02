@@ -176,6 +176,66 @@ namespace STWGameplay
         EXPECT_EQ(model.GetPlayer().m_jumpEvents, 2);
     }
 
+    TEST(PlayerSliceModelTests, GroundedCrouchRequestIsAccepted)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_TRUE(model.GetPlayer().m_crouchDesired);
+    }
+
+    TEST(PlayerSliceModelTests, CrouchReleaseRequestsStanding)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        input.m_crouch = false;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FALSE(model.GetPlayer().m_crouchDesired);
+    }
+
+    TEST(PlayerSliceModelTests, DeadPlayerCannotBeginCrouch)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        ASSERT_TRUE(model.ApplyDamage(model.GetPlayer().m_maxHealth));
+        PlayerInput input; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FALSE(model.GetPlayer().m_crouchDesired);
+    }
+
+    TEST(PlayerSliceModelTests, CrouchPreservesPlanarDesiredVelocity)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_strafe = 1.0f; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        const AZ::Vector3 velocity = model.GetDesiredVelocity(input);
+        EXPECT_NEAR(AZ::Vector3(velocity.GetX(), velocity.GetY(), 0.0f).GetLength(), PlayerSliceModel::WalkSpeed, 0.001f);
+    }
+
+    TEST(PlayerSliceModelTests, HeldCrouchRemainsDeterministic)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_TRUE(model.GetPlayer().m_crouchDesired);
+    }
+
+    TEST(PlayerSliceModelTests, CrouchDoesNotChangeGroundedJumpImpulse)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_crouch = true; input.m_jump = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FLOAT_EQ(model.GetDesiredVelocity(input).GetZ(), PlayerSliceModel::JumpImpulseSpeed);
+        EXPECT_EQ(model.GetPlayer().m_jumpEvents, 1);
+    }
+
     TEST(PlayerSliceModelTests, ValidShotConsumesExactlyOneRound)
     {
         PlayerSliceModel model;

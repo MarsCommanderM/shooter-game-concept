@@ -214,6 +214,11 @@ namespace STWGameplay
 
         UpdateAutomatedAcceptance(deltaTime);
         m_model.Update(deltaTime, m_input);
+        if (!m_physicsPlayer.ApplyCrouchRequest(
+                m_model.GetPlayer().m_crouchDesired, m_model.GetPlayer().m_grounded))
+        {
+            AZ_Error("STWGameplay", false, "PhysX crouch controller resize failed");
+        }
         const WeaponState feedbackWeaponBefore = m_model.GetWeapon();
         const EnemyState feedbackEnemyBefore = m_model.GetEnemy().GetState();
         CombatFeedbackInput feedbackInput;
@@ -264,6 +269,7 @@ namespace STWGameplay
             m_model.SynchronizePhysicalState(physicalPosition, grounded);
         }
         UpdateJumpAcceptance(playerPhysicalStateSynchronized);
+        UpdateCrouchAcceptance(playerPhysicalStateSynchronized);
         AZ::Vector3 enemyPhysicalPosition = AZ::Vector3::CreateZero();
         bool enemyGrounded = false;
         if (m_physicsEnemy.Synchronize(enemyPhysicalPosition, enemyGrounded))
@@ -399,7 +405,7 @@ namespace STWGameplay
     void STWGameplaySystemComponent::UpdateAutomatedAcceptance(float deltaTime)
     {
         if (!m_automatedAcceptance || (m_viewmodelAcceptanceReported && m_adsAcceptanceReported
-                && m_jumpAcceptanceReported)
+                && m_jumpAcceptanceReported && m_crouchAcceptanceReported)
             || !std::isfinite(deltaTime) || deltaTime < 0.0f)
         {
             return;
@@ -415,6 +421,7 @@ namespace STWGameplay
         m_input.m_strafe = 0.0f;
         m_input.m_sprint = false;
         m_input.m_jump = false;
+        m_input.m_crouch = false;
         m_input.m_fire = false;
         m_input.m_lookX = 0.0f;
         m_input.m_lookY = 0.0f;
@@ -435,6 +442,22 @@ namespace STWGameplay
                 }
             }
             m_input.m_jump = m_jumpAcceptanceStarted;
+        }
+
+        // Exercise crouch only after jump has completed, using the normal model-to-PhysX path.
+        if (m_jumpAcceptanceReported && !m_crouchAcceptanceReported)
+        {
+            if (!m_crouchAcceptanceStarted)
+            {
+                const PlayerState& player = m_model.GetPlayer();
+                if (player.m_alive && player.m_grounded)
+                {
+                    m_crouchAcceptanceStarted = true;
+                    m_crouchAcceptanceStartBaseZ = player.m_position.GetZ();
+                    m_crouchAcceptanceStandingHeight = m_physicsPlayer.GetControllerHeight();
+                }
+            }
+            m_input.m_crouch = m_crouchAcceptanceStarted && !m_crouchAcceptanceCrouched;
         }
 
         // Acceptance-only deterministic look stimulus. It feeds the same presentation-safe
@@ -618,6 +641,7 @@ namespace STWGameplay
         else if (id == Keyboard::Key::AlphanumericA) { m_input.m_strafe = active ? -1.0f : (m_input.m_strafe < 0.0f ? 0.0f : m_input.m_strafe); }
         else if (id == Keyboard::Key::ModifierShiftL || id == Keyboard::Key::ModifierShiftR) { m_input.m_sprint = active; }
         else if (id == Keyboard::Key::EditSpace) { m_input.m_jump = active; }
+        else if (id == Keyboard::Key::ModifierCtrlL) { m_input.m_crouch = active; }
         else if (id == Keyboard::Key::AlphanumericR && channel.IsStateBegan()) { m_input.m_reload = true; }
         else if (id == Mouse::Button::Left) { m_input.m_fire = active; }
         else if (id == Mouse::Button::Right) { m_adsHeld = active; }
@@ -764,6 +788,50 @@ namespace STWGameplay
         }
     }
 
+    void STWGameplaySystemComponent::UpdateCrouchAcceptance(bool physicalStateSynchronized)
+    {
+        if (!m_automatedAcceptance || !m_crouchAcceptanceStarted || m_crouchAcceptanceReported
+            || !physicalStateSynchronized)
+        {
+            return;
+        }
+
+        const float baseZ = m_model.GetPlayer().m_position.GetZ();
+        const float height = m_physicsPlayer.GetControllerHeight();
+        m_crouchAcceptanceBasePreserved = m_crouchAcceptanceBasePreserved
+            && AZ::IsClose(baseZ, m_crouchAcceptanceStartBaseZ, 0.02f);
+        if (m_physicsPlayer.IsCrouched())
+        {
+            m_crouchAcceptanceCrouched = m_crouchAcceptanceCrouched
+                || AZ::IsClose(height, PhysXPlayerRuntime::CrouchedCapsuleHeight, 0.001f);
+            m_crouchAcceptanceCameraLowered = m_crouchAcceptanceCameraLowered
+                || m_physicsPlayer.GetEyeHeight() < PlayerSliceModel::EyeHeight;
+        }
+        else if (m_crouchAcceptanceCrouched)
+        {
+            m_crouchAcceptanceStood = AZ::IsClose(height, m_crouchAcceptanceStandingHeight, 0.001f);
+        }
+
+        if (m_crouchAcceptanceStood)
+        {
+            const bool passed = m_physicsPlayer.IsValid() && m_crouchAcceptanceCrouched
+                && m_crouchAcceptanceBasePreserved && m_crouchAcceptanceCameraLowered;
+            AZ_Printf(
+                "STWGameplay",
+                "CROUCH_ACCEPTANCE result=%s requested=1 crouched=%d stood=%d base_preserved=%d "
+                "camera_lowered=%d standing_height=%.3f crouched_height=%.3f physx_authority=%s\n",
+                passed ? "PASS" : "FAIL",
+                m_crouchAcceptanceCrouched ? 1 : 0,
+                m_crouchAcceptanceStood ? 1 : 0,
+                m_crouchAcceptanceBasePreserved ? 1 : 0,
+                m_crouchAcceptanceCameraLowered ? 1 : 0,
+                m_crouchAcceptanceStandingHeight,
+                PhysXPlayerRuntime::CrouchedCapsuleHeight,
+                m_physicsPlayer.IsValid() ? "PASS" : "FAIL");
+            m_crouchAcceptanceReported = true;
+        }
+    }
+
     void STWGameplaySystemComponent::UpdateCamera()
     {
         AZ::EntityId cameraId;
@@ -776,7 +844,9 @@ namespace STWGameplay
         const PlayerState& player = m_model.GetPlayer();
         const AZ::Quaternion yaw = AZ::Quaternion::CreateRotationZ(-player.m_yaw);
         const AZ::Quaternion pitch = AZ::Quaternion::CreateRotationX(player.m_pitch);
-        AZ::Transform transform = AZ::Transform::CreateFromQuaternionAndTranslation(yaw * pitch, m_model.GetEyePosition());
+        const AZ::Vector3 physicalEyePosition = player.m_position
+            + AZ::Vector3::CreateAxisZ(m_physicsPlayer.GetEyeHeight());
+        AZ::Transform transform = AZ::Transform::CreateFromQuaternionAndTranslation(yaw * pitch, physicalEyePosition);
         AZ::TransformBus::Event(cameraId, &AZ::TransformInterface::SetWorldTM, transform);
         Camera::CameraRequestBus::Event(
             cameraId, &Camera::CameraRequestBus::Events::SetFovDegrees, m_viewmodel.GetCameraFovDegrees());
