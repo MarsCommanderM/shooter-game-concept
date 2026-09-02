@@ -196,5 +196,7 @@ namespace STWGameplay
         float m_mantleAcceptanceMaxZ = 0.0f;
         float m_mantleAcceptanceMaxForward = 0.0f;
         int m_mantleAcceptanceInitialEvents = 0;
+        int m_mantleAcceptanceInitialJumpEvents = 0;
+        int m_mantleAcceptanceInitialSlideEvents = 0;
     };
 }

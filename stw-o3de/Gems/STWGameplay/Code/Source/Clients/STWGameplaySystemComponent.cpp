@@ -522,12 +522,16 @@ namespace STWGameplay
                     m_mantleAcceptanceStartZ = player.m_position.GetZ();
                     m_mantleAcceptanceMaxZ = m_mantleAcceptanceStartZ;
                     m_mantleAcceptanceInitialEvents = player.m_mantleEvents;
+                    m_mantleAcceptanceInitialJumpEvents = player.m_jumpEvents;
+                    m_mantleAcceptanceInitialSlideEvents = player.m_slideEvents;
                     AZ_Printf("STWGameplay", "MANTLE_DIAG stimulus=STARTED position=(%.3f,%.3f,%.3f)\n",
                         player.m_position.GetX(), player.m_position.GetY(), player.m_position.GetZ());
                 }
             }
             m_input.m_forward = m_mantleAcceptanceStimulusStarted ? -1.0f : 0.0f;
-            m_input.m_crouch = false;
+            const bool mantleConflictStimulus = m_mantleAcceptanceStimulusStarted && !m_mantleAcceptanceStarted;
+            m_input.m_crouch = mantleConflictStimulus;
+            m_input.m_jump = mantleConflictStimulus;
             m_input.m_mantle = m_mantleAcceptanceStimulusStarted;
         }
 
@@ -1023,6 +1027,20 @@ namespace STWGameplay
                 finite ? 1 : 0);
             m_mantleAcceptanceReported = true;
             AZ_Printf("STWGameplay", "MANTLE_DIAG completion=PASS\n");
+            const bool duplicateBlocked = requested == 1;
+            const bool jumpBlocked = player.m_jumpEvents == m_mantleAcceptanceInitialJumpEvents;
+            const bool slideBlocked = player.m_slideEvents == m_mantleAcceptanceInitialSlideEvents;
+            AZ_Printf(
+                "STWGameplay",
+                "TRAVERSAL_ARBITRATION_ACCEPTANCE result=%s mantle_started=1 duplicate_mantle_blocked=%d "
+                "jump_during_mantle_blocked=%d slide_during_mantle_blocked=%d held_retrigger=0 completed=1 "
+                "post_jump_available=%d post_slide_available=%d physx_authority=PASS\n",
+                passed && duplicateBlocked && jumpBlocked && slideBlocked ? "PASS" : "FAIL",
+                duplicateBlocked ? 1 : 0,
+                jumpBlocked ? 1 : 0,
+                slideBlocked ? 1 : 0,
+                player.m_grounded && !player.m_mantleActive ? 1 : 0,
+                player.m_grounded && !player.m_mantleActive ? 1 : 0);
         }
     }
 

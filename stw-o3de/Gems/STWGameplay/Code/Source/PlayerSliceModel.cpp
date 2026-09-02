@@ -83,6 +83,7 @@ namespace STWGameplay
         {
             m_player.m_mantleRequested = true;
         }
+        const bool mantleOwnsTick = m_player.m_mantleRequested;
         if (m_player.m_mantleActive)
         {
             if (!m_player.m_grounded || !meaningfulPlanarInput)
@@ -104,7 +105,7 @@ namespace STWGameplay
             }
         }
         const bool slideStarted = newCrouchPress && m_player.m_grounded && meaningfulPlanarInput
-            && !m_player.m_slideActive;
+            && !m_player.m_slideActive && !m_player.m_mantleActive && !mantleOwnsTick;
         if (slideStarted)
         {
             m_player.m_slideActive = true;
@@ -143,7 +144,8 @@ namespace STWGameplay
             m_player.m_crouchDesired = input.m_crouch || m_player.m_slideActive || m_player.m_mantleActive;
         }
 
-        if (newJumpPress && m_player.m_grounded && !m_player.m_slideActive && !m_player.m_mantleActive)
+        if (newJumpPress && m_player.m_grounded && !m_player.m_slideActive && !m_player.m_mantleActive
+            && !mantleOwnsTick)
         {
             m_jumpImpulseThisTick = JumpImpulseSpeed;
             ++m_player.m_jumpEvents;

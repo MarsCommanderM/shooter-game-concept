@@ -561,4 +561,136 @@ namespace STWGameplay
         EXPECT_TRUE(model.GetPlayer().m_position.IsClose(before.m_position));
         EXPECT_EQ(model.GetPlayer().m_grounded, before.m_grounded);
     }
+
+    TEST(PlayerSliceModelTests, MantleBlocksDuplicateActivation)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        model.BeginMantle(model.GetDesiredVelocity(input));
+        ASSERT_TRUE(model.GetPlayer().m_mantleActive);
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_EQ(model.GetPlayer().m_mantleEvents, 1);
+    }
+
+    TEST(PlayerSliceModelTests, SameTickMantleHasPriorityOverSlideAndJump)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input;
+        input.m_forward = 1.0f;
+        input.m_mantle = true;
+        input.m_crouch = true;
+        input.m_jump = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_TRUE(model.IsMantleRequested());
+        EXPECT_EQ(model.GetPlayer().m_slideEvents, 0);
+        EXPECT_EQ(model.GetPlayer().m_jumpEvents, 0);
+    }
+
+    TEST(PlayerSliceModelTests, MantleBlocksJumpActivation)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput mantle; mantle.m_forward = 1.0f; mantle.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, mantle));
+        model.BeginMantle(model.GetDesiredVelocity(mantle));
+        PlayerInput jump = mantle; jump.m_mantle = false; jump.m_jump = true;
+        ASSERT_TRUE(model.Update(0.016f, jump));
+        EXPECT_EQ(model.GetPlayer().m_jumpEvents, 0);
+    }
+
+    TEST(PlayerSliceModelTests, MantleBlocksSlideActivation)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput mantle; mantle.m_forward = 1.0f; mantle.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, mantle));
+        model.BeginMantle(model.GetDesiredVelocity(mantle));
+        PlayerInput crouch = mantle; crouch.m_mantle = false; crouch.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.016f, crouch));
+        EXPECT_FALSE(model.GetPlayer().m_slideActive);
+    }
+
+    TEST(PlayerSliceModelTests, HeldMantleDoesNotRetrigger)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        model.BeginMantle(model.GetDesiredVelocity(input));
+        Advance(model, PlayerSliceModel::MantleDuration, input);
+        EXPECT_EQ(model.GetPlayer().m_mantleEvents, 1);
+    }
+
+    TEST(PlayerSliceModelTests, MantleCompletionRestoresJumpEligibility)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput mantle; mantle.m_forward = 1.0f; mantle.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, mantle));
+        model.BeginMantle(model.GetDesiredVelocity(mantle));
+        Advance(model, PlayerSliceModel::MantleDuration, mantle);
+        PlayerInput jump; jump.m_jump = true;
+        ASSERT_TRUE(model.Update(0.016f, jump));
+        EXPECT_EQ(model.GetPlayer().m_jumpEvents, 1);
+    }
+
+    TEST(PlayerSliceModelTests, MantleCompletionRestoresSlideEligibility)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput mantle; mantle.m_forward = 1.0f; mantle.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, mantle));
+        model.BeginMantle(model.GetDesiredVelocity(mantle));
+        Advance(model, PlayerSliceModel::MantleDuration, mantle);
+        PlayerInput crouch; crouch.m_forward = 1.0f; crouch.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.016f, crouch));
+        EXPECT_TRUE(model.GetPlayer().m_slideActive);
+    }
+
+    TEST(PlayerSliceModelTests, AirborneMantleRequestIsRejected)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3(0.0f, 0.0f, 1.0f), false);
+        PlayerInput input; input.m_forward = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FALSE(model.IsMantleRequested());
+    }
+
+    TEST(PlayerSliceModelTests, DeadPlayerMantleRequestIsRejected)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        ASSERT_TRUE(model.ApplyDamage(model.GetPlayer().m_maxHealth));
+        PlayerInput input; input.m_forward = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FALSE(model.IsMantleRequested());
+    }
+
+    TEST(PlayerSliceModelTests, CrouchDuringMantlePreservesMantleState)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput mantle; mantle.m_forward = 1.0f; mantle.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, mantle));
+        model.BeginMantle(model.GetDesiredVelocity(mantle));
+        PlayerInput crouch = mantle; crouch.m_mantle = false; crouch.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.016f, crouch));
+        EXPECT_TRUE(model.GetPlayer().m_mantleActive);
+        EXPECT_FALSE(model.GetPlayer().m_slideActive);
+    }
+
+    TEST(PlayerSliceModelTests, MantlePreservesPlanarTraversalVelocity)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_strafe = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        model.BeginMantle(model.GetDesiredVelocity(input));
+        const AZ::Vector3 velocity = model.GetDesiredVelocity(input);
+        EXPECT_NEAR(AZ::Vector3(velocity.GetX(), velocity.GetY(), 0.0f).GetLength(), PlayerSliceModel::MantleSpeed, 0.001f);
+        EXPECT_FLOAT_EQ(velocity.GetZ(), 0.0f);
+    }
 }
