@@ -46,6 +46,28 @@ namespace STWGameplay
         ViewmodelAssetLoadState s_enemyAssetLoadState;
         ViewmodelAssetLoadState s_arenaAssetLoadState;
 
+        struct JumpDiagnosticState
+        {
+            bool m_started = false;
+            bool m_samplingComplete = false;
+            bool m_summaryReported = false;
+            bool m_modelPositiveObserved = false;
+            bool m_acceptReported = false;
+            bool m_queueReported = false;
+            size_t m_samples = 0;
+            size_t m_airborneSamples = 0;
+            size_t m_firstAirborneSample = 0;
+            size_t m_firstLandedSample = 0;
+            float m_tickDeltaTime = 0.0f;
+            float m_maxZ = 0.0f;
+            float m_maxDeltaZ = 0.0f;
+            float m_firstPositiveModelZ = 0.0f;
+            float m_firstAirborneTime = 0.0f;
+            float m_firstLandedTime = 0.0f;
+        };
+
+        JumpDiagnosticState s_jumpDiagnostic;
+
         struct ViewmodelAssetCandidate
         {
             AZ::Data::AssetId m_assetId;
@@ -204,14 +226,44 @@ namespace STWGameplay
             && m_model.GetWeapon().m_cooldownRemaining == feedbackWeaponBefore.m_cooldownRemaining
             && m_model.GetEnemy().GetState().m_health == feedbackEnemyBefore.m_health
             && m_model.GetEnemy().GetState().m_damageEvents == feedbackEnemyBefore.m_damageEvents;
-        m_physicsPlayer.QueueVelocity(m_model.GetDesiredVelocity(m_input));
+        const AZ::Vector3 desiredPlayerVelocity = m_model.GetDesiredVelocity(m_input);
+        if (m_automatedAcceptance && m_jumpAcceptanceStarted
+            && m_model.GetPlayer().m_jumpEvents > m_jumpAcceptanceInitialEvents)
+        {
+            if (!s_jumpDiagnostic.m_acceptReported)
+            {
+                AZ_Printf(
+                    "STWGameplay",
+                    "JUMP_DIAG_ACCEPT accepted_count=%d model_velocity_z=%.6f grounded_before=%d sim_time=%.6f\n",
+                    m_model.GetPlayer().m_jumpEvents - m_jumpAcceptanceInitialEvents,
+                    desiredPlayerVelocity.GetZ(),
+                    m_model.GetPlayer().m_grounded ? 1 : 0,
+                    m_acceptanceTime);
+                s_jumpDiagnostic.m_acceptReported = true;
+            }
+            if (!s_jumpDiagnostic.m_queueReported)
+            {
+                AZ_Printf(
+                    "STWGameplay",
+                    "JUMP_DIAG_QUEUE velocity_z=%.6f full_velocity=(%.6f,%.6f,%.6f) sim_time=%.6f\n",
+                    desiredPlayerVelocity.GetZ(),
+                    desiredPlayerVelocity.GetX(),
+                    desiredPlayerVelocity.GetY(),
+                    desiredPlayerVelocity.GetZ(),
+                    m_acceptanceTime);
+                s_jumpDiagnostic.m_queueReported = true;
+            }
+        }
+        m_physicsPlayer.QueueVelocity(desiredPlayerVelocity);
         m_physicsEnemy.QueueVelocity(m_model.GetEnemy().GetMovementIntent(m_model.GetPlayer().m_position));
         AZ::Vector3 physicalPosition = AZ::Vector3::CreateZero();
         bool grounded = false;
-        if (m_physicsPlayer.Synchronize(physicalPosition, grounded))
+        const bool playerPhysicalStateSynchronized = m_physicsPlayer.Synchronize(physicalPosition, grounded);
+        if (playerPhysicalStateSynchronized)
         {
             m_model.SynchronizePhysicalState(physicalPosition, grounded);
         }
+        UpdateJumpAcceptance(playerPhysicalStateSynchronized);
         AZ::Vector3 enemyPhysicalPosition = AZ::Vector3::CreateZero();
         bool enemyGrounded = false;
         if (m_physicsEnemy.Synchronize(enemyPhysicalPosition, enemyGrounded))
@@ -346,12 +398,14 @@ namespace STWGameplay
 
     void STWGameplaySystemComponent::UpdateAutomatedAcceptance(float deltaTime)
     {
-        if (!m_automatedAcceptance || (m_viewmodelAcceptanceReported && m_adsAcceptanceReported)
+        if (!m_automatedAcceptance || (m_viewmodelAcceptanceReported && m_adsAcceptanceReported
+                && m_jumpAcceptanceReported)
             || !std::isfinite(deltaTime) || deltaTime < 0.0f)
         {
             return;
         }
         m_acceptanceTime += deltaTime;
+        s_jumpDiagnostic.m_tickDeltaTime = deltaTime;
 
         // Verification-only stimulus. It feeds the same m_adsHeld state that the real
         // Mouse::Button::Right path writes; it is disabled unless the existing acceptance mode
@@ -360,9 +414,28 @@ namespace STWGameplay
         m_input.m_forward = 0.0f;
         m_input.m_strafe = 0.0f;
         m_input.m_sprint = false;
+        m_input.m_jump = false;
         m_input.m_fire = false;
         m_input.m_lookX = 0.0f;
         m_input.m_lookY = 0.0f;
+
+        // Exercise the normal jump input/model/PhysX path after the established visual capture
+        // and combat stimuli. Holding the request through landing proves edge-triggered behavior.
+        if (m_acceptanceTime >= 8.0f && !m_jumpAcceptanceReported)
+        {
+            if (!m_jumpAcceptanceStarted)
+            {
+                const PlayerState& player = m_model.GetPlayer();
+                if (player.m_alive && player.m_grounded)
+                {
+                    m_jumpAcceptanceStarted = true;
+                    m_jumpAcceptanceStartTime = m_acceptanceTime;
+                    m_jumpAcceptanceStartHeight = player.m_position.GetZ();
+                    m_jumpAcceptanceInitialEvents = player.m_jumpEvents;
+                }
+            }
+            m_input.m_jump = m_jumpAcceptanceStarted;
+        }
 
         // Acceptance-only deterministic look stimulus. It feeds the same presentation-safe
         // look-delta path used by normal mouse input and never changes gameplay orientation.
@@ -544,12 +617,151 @@ namespace STWGameplay
         else if (id == Keyboard::Key::AlphanumericD) { m_input.m_strafe = active ? 1.0f : (m_input.m_strafe > 0.0f ? 0.0f : m_input.m_strafe); }
         else if (id == Keyboard::Key::AlphanumericA) { m_input.m_strafe = active ? -1.0f : (m_input.m_strafe < 0.0f ? 0.0f : m_input.m_strafe); }
         else if (id == Keyboard::Key::ModifierShiftL || id == Keyboard::Key::ModifierShiftR) { m_input.m_sprint = active; }
+        else if (id == Keyboard::Key::EditSpace) { m_input.m_jump = active; }
         else if (id == Keyboard::Key::AlphanumericR && channel.IsStateBegan()) { m_input.m_reload = true; }
         else if (id == Mouse::Button::Left) { m_input.m_fire = active; }
         else if (id == Mouse::Button::Right) { m_adsHeld = active; }
         else if (id == Mouse::Movement::X) { m_input.m_lookX += channel.GetValue(); }
         else if (id == Mouse::Movement::Y) { m_input.m_lookY += channel.GetValue(); }
         return false;
+    }
+
+    void STWGameplaySystemComponent::UpdateJumpAcceptance(bool physicalStateSynchronized)
+    {
+        if (!m_automatedAcceptance || !m_jumpAcceptanceStarted || m_jumpAcceptanceReported
+            || !physicalStateSynchronized)
+        {
+            return;
+        }
+
+        const PlayerState& player = m_model.GetPlayer();
+        const int accepted = player.m_jumpEvents - m_jumpAcceptanceInitialEvents;
+        const float modelDesiredZ = m_model.GetDesiredVelocity(m_input).GetZ();
+        if (!s_jumpDiagnostic.m_started && accepted > 0)
+        {
+            s_jumpDiagnostic.m_started = true;
+            s_jumpDiagnostic.m_maxZ = player.m_position.GetZ();
+            s_jumpDiagnostic.m_maxDeltaZ = player.m_position.GetZ() - m_jumpAcceptanceStartHeight;
+            AZ_Printf(
+                "STWGameplay",
+                "JUMP_DIAG_START start_z=%.6f start_grounded=1 accepted_event_count=%d model_desired_z=%.6f "
+                "tick_delta_time=%.6f physx_timestep=NOT_OBSERVABLE_HERE "
+                "runtime_consumed_z=NOT_OBSERVABLE_HERE\n",
+                m_jumpAcceptanceStartHeight,
+                player.m_jumpEvents,
+                modelDesiredZ,
+                s_jumpDiagnostic.m_tickDeltaTime);
+        }
+        if (s_jumpDiagnostic.m_started && !s_jumpDiagnostic.m_samplingComplete)
+        {
+            ++s_jumpDiagnostic.m_samples;
+            if (!player.m_grounded)
+            {
+                ++s_jumpDiagnostic.m_airborneSamples;
+                if (s_jumpDiagnostic.m_firstAirborneSample == 0)
+                {
+                    s_jumpDiagnostic.m_firstAirborneSample = s_jumpDiagnostic.m_samples;
+                    s_jumpDiagnostic.m_firstAirborneTime = m_acceptanceTime;
+                }
+            }
+            const float deltaZ = player.m_position.GetZ() - m_jumpAcceptanceStartHeight;
+            s_jumpDiagnostic.m_maxZ = AZStd::max(s_jumpDiagnostic.m_maxZ, player.m_position.GetZ());
+            s_jumpDiagnostic.m_maxDeltaZ = AZStd::max(s_jumpDiagnostic.m_maxDeltaZ, deltaZ);
+            if (!s_jumpDiagnostic.m_modelPositiveObserved && modelDesiredZ > 0.0f)
+            {
+                s_jumpDiagnostic.m_modelPositiveObserved = true;
+                s_jumpDiagnostic.m_firstPositiveModelZ = modelDesiredZ;
+            }
+            AZ_Printf(
+                "STWGameplay",
+                "JUMP_DIAG_SAMPLE sample=%zu elapsed=%.6f physical_z=%.6f delta_z=%.6f grounded=%d "
+                "model_desired_z=%.6f max_delta_z=%.6f\n",
+                s_jumpDiagnostic.m_samples,
+                m_acceptanceTime - m_jumpAcceptanceStartTime,
+                player.m_position.GetZ(),
+                deltaZ,
+                player.m_grounded ? 1 : 0,
+                modelDesiredZ,
+                s_jumpDiagnostic.m_maxDeltaZ);
+        }
+        m_jumpAcceptanceRose = m_jumpAcceptanceRose
+            || player.m_position.GetZ() > m_jumpAcceptanceStartHeight + 0.10f;
+        m_jumpAcceptanceAirborne = m_jumpAcceptanceAirborne || !player.m_grounded;
+        m_jumpAcceptanceLanded = m_jumpAcceptanceLanded || (m_jumpAcceptanceAirborne && player.m_grounded);
+        if (m_jumpAcceptanceLanded && s_jumpDiagnostic.m_firstLandedSample == 0)
+        {
+            s_jumpDiagnostic.m_firstLandedSample = s_jumpDiagnostic.m_samples;
+            s_jumpDiagnostic.m_firstLandedTime = m_acceptanceTime;
+        }
+        s_jumpDiagnostic.m_samplingComplete = s_jumpDiagnostic.m_samplingComplete || m_jumpAcceptanceLanded;
+
+        // Keep Space held briefly after the gravity-driven landing. A second accepted event here
+        // would prove a defect, so never print PASS unless exactly one event survived the hold.
+        if (m_jumpAcceptanceLanded && m_acceptanceTime - m_jumpAcceptanceStartTime >= 1.5f)
+        {
+            if (!s_jumpDiagnostic.m_summaryReported)
+            {
+                if (s_jumpDiagnostic.m_modelPositiveObserved)
+                {
+                    AZ_Printf(
+                        "STWGameplay",
+                        "JUMP_DIAG_SUMMARY samples=%zu start_z=%.6f max_z=%.6f max_delta_z=%.6f "
+                        "airborne_samples=%zu grounded_after_airborne=%d model_positive_z_observed=1 "
+                        "first_positive_model_z=%.6f first_airborne_sample=%zu first_airborne_time=%.6f "
+                        "first_landed_sample=%zu first_landed_time=%.6f\n",
+                        s_jumpDiagnostic.m_samples,
+                        m_jumpAcceptanceStartHeight,
+                        s_jumpDiagnostic.m_maxZ,
+                        s_jumpDiagnostic.m_maxDeltaZ,
+                        s_jumpDiagnostic.m_airborneSamples,
+                        m_jumpAcceptanceLanded ? 1 : 0,
+                        s_jumpDiagnostic.m_firstPositiveModelZ,
+                        s_jumpDiagnostic.m_firstAirborneSample,
+                        s_jumpDiagnostic.m_firstAirborneTime,
+                        s_jumpDiagnostic.m_firstLandedSample,
+                        s_jumpDiagnostic.m_firstLandedTime);
+                }
+                else
+                {
+                    AZ_Printf(
+                        "STWGameplay",
+                        "JUMP_DIAG_SUMMARY samples=%zu start_z=%.6f max_z=%.6f max_delta_z=%.6f "
+                        "airborne_samples=%zu grounded_after_airborne=%d model_positive_z_observed=0 "
+                        "first_positive_model_z=NONE first_airborne_sample=%zu first_airborne_time=%.6f "
+                        "first_landed_sample=%zu first_landed_time=%.6f\n",
+                        s_jumpDiagnostic.m_samples,
+                        m_jumpAcceptanceStartHeight,
+                        s_jumpDiagnostic.m_maxZ,
+                        s_jumpDiagnostic.m_maxDeltaZ,
+                        s_jumpDiagnostic.m_airborneSamples,
+                        m_jumpAcceptanceLanded ? 1 : 0,
+                        s_jumpDiagnostic.m_firstAirborneSample,
+                        s_jumpDiagnostic.m_firstAirborneTime,
+                        s_jumpDiagnostic.m_firstLandedSample,
+                        s_jumpDiagnostic.m_firstLandedTime);
+                }
+                s_jumpDiagnostic.m_summaryReported = true;
+            }
+            const int heldRetrigger = AZStd::max(0, accepted - 1);
+            const bool passed = m_physicsPlayer.IsValid() && accepted == 1 && m_jumpAcceptanceAirborne
+                && m_jumpAcceptanceRose && player.m_grounded && heldRetrigger == 0;
+            AZ_Printf(
+                "STWGameplay",
+                "JUMP_ACCEPTANCE result=%s requested=1 airborne=%d rose=%d landed=%d held_retrigger=%d "
+                "physx_authority=%s start_z=%.6f max_z=%.6f max_delta_z=%.6f samples=%zu\n",
+                passed ? "PASS" : "FAIL",
+                m_jumpAcceptanceAirborne ? 1 : 0,
+                m_jumpAcceptanceRose ? 1 : 0,
+                player.m_grounded ? 1 : 0,
+                heldRetrigger,
+                m_physicsPlayer.IsValid() ? "PASS" : "FAIL",
+                m_jumpAcceptanceStartHeight,
+                s_jumpDiagnostic.m_maxZ,
+                s_jumpDiagnostic.m_maxDeltaZ,
+                s_jumpDiagnostic.m_samples);
+            m_jumpAcceptanceReported = true;
+            m_input.m_jump = false;
+        }
     }
 
     void STWGameplaySystemComponent::UpdateCamera()

@@ -13,6 +13,7 @@ namespace STWGameplay
         float m_lookX = 0.0f;
         float m_lookY = 0.0f;
         bool m_sprint = false;
+        bool m_jump = false;
         bool m_fire = false;
         bool m_reload = false;
     };
@@ -29,6 +30,7 @@ namespace STWGameplay
         int m_damageEvents = 0;
         int m_deathEvents = 0;
         int m_respawnEvents = 0;
+        int m_jumpEvents = 0;
     };
 
     struct WeaponState
@@ -55,6 +57,7 @@ namespace STWGameplay
     public:
         static constexpr float WalkSpeed = 4.5f;
         static constexpr float SprintSpeed = 7.5f;
+        static constexpr float JumpImpulseSpeed = 5.5f;
         static constexpr float EyeHeight = 1.7f;
         static constexpr float PitchLimit = 1.45f;
         static constexpr float LookSensitivity = 0.0025f;
@@ -91,5 +94,7 @@ namespace STWGameplay
         WeaponState m_weapon;
         EnemyCombatModel m_enemy;
         PresentationState m_presentation;
+        bool m_jumpWasHeld = false;
+        float m_jumpImpulseThisTick = 0.0f;
     };
 }

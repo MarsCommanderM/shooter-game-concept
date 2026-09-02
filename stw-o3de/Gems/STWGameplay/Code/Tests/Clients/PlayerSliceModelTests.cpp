@@ -104,6 +104,78 @@ namespace STWGameplay
         EXPECT_FLOAT_EQ(model.GetPlayer().m_pitch, -PlayerSliceModel::PitchLimit);
     }
 
+    TEST(PlayerSliceModelTests, GroundedJumpPressProducesBoundedVerticalImpulse)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_jump = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FLOAT_EQ(model.GetDesiredVelocity(input).GetZ(), PlayerSliceModel::JumpImpulseSpeed);
+        EXPECT_EQ(model.GetPlayer().m_jumpEvents, 1);
+    }
+
+    TEST(PlayerSliceModelTests, JumpImpulseLastsExactlyOneModelUpdate)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_jump = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        ASSERT_GT(model.GetDesiredVelocity(input).GetZ(), 0.0f);
+        input.m_jump = false;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FLOAT_EQ(model.GetDesiredVelocity(input).GetZ(), 0.0f);
+    }
+
+    TEST(PlayerSliceModelTests, HeldJumpDoesNotRetriggerWhileGrounded)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_jump = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FLOAT_EQ(model.GetDesiredVelocity(input).GetZ(), 0.0f);
+        EXPECT_EQ(model.GetPlayer().m_jumpEvents, 1);
+    }
+
+    TEST(PlayerSliceModelTests, AirborneJumpPressIsRejected)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3(0.0f, 0.0f, 1.0f), false);
+        PlayerInput input; input.m_jump = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FLOAT_EQ(model.GetDesiredVelocity(input).GetZ(), 0.0f);
+        EXPECT_EQ(model.GetPlayer().m_jumpEvents, 0);
+    }
+
+    TEST(PlayerSliceModelTests, DeadPlayerJumpPressIsRejected)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        ASSERT_TRUE(model.ApplyDamage(model.GetPlayer().m_maxHealth));
+        PlayerInput input; input.m_jump = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_TRUE(model.GetDesiredVelocity(input).IsZero());
+        EXPECT_EQ(model.GetPlayer().m_jumpEvents, 0);
+    }
+
+    TEST(PlayerSliceModelTests, ReleaseAndRenewedGroundingRearmJumpWithPlanarMovement)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_jump = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        model.SynchronizePhysicalState(AZ::Vector3(0.0f, 0.0f, 1.0f), false);
+        input.m_jump = false;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        input.m_jump = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        const AZ::Vector3 velocity = model.GetDesiredVelocity(input);
+        EXPECT_NEAR(AZ::Vector3(velocity.GetX(), velocity.GetY(), 0.0f).GetLength(), PlayerSliceModel::WalkSpeed, 0.001f);
+        EXPECT_FLOAT_EQ(velocity.GetZ(), PlayerSliceModel::JumpImpulseSpeed);
+        EXPECT_EQ(model.GetPlayer().m_jumpEvents, 2);
+    }
+
     TEST(PlayerSliceModelTests, ValidShotConsumesExactlyOneRound)
     {
         PlayerSliceModel model;

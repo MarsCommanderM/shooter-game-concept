@@ -21,6 +21,7 @@ namespace STWGameplay
 
         m_presentation.m_shotFired = false;
         m_presentation.m_hit = false;
+        m_jumpImpulseThisTick = 0.0f;
         m_presentation.m_fireCueRemaining = AZStd::max(0.0f, m_presentation.m_fireCueRemaining - deltaTime);
         m_presentation.m_hitCueRemaining = AZStd::max(0.0f, m_presentation.m_hitCueRemaining - deltaTime);
         m_weapon.m_cooldownRemaining = AZStd::max(0.0f, m_weapon.m_cooldownRemaining - deltaTime);
@@ -39,9 +40,18 @@ namespace STWGameplay
             }
         }
 
+        const bool newJumpPress = input.m_jump && !m_jumpWasHeld;
+        m_jumpWasHeld = input.m_jump;
+
         if (!m_player.m_alive)
         {
             return true;
+        }
+
+        if (newJumpPress && m_player.m_grounded)
+        {
+            m_jumpImpulseThisTick = JumpImpulseSpeed;
+            ++m_player.m_jumpEvents;
         }
 
         m_player.m_yaw += input.m_lookX * LookSensitivity;
@@ -147,7 +157,9 @@ namespace STWGameplay
         {
             movement.Normalize();
         }
-        return movement * (input.m_sprint ? SprintSpeed : WalkSpeed);
+        AZ::Vector3 velocity = movement * (input.m_sprint ? SprintSpeed : WalkSpeed);
+        velocity.SetZ(m_jumpImpulseThisTick);
+        return velocity;
     }
 
     void PlayerSliceModel::SetPlayerPosition(const AZ::Vector3& position)

@@ -60,6 +60,7 @@ namespace STWGameplay
         void UpdateEnemyAiAcceptance(float deltaTime);
         void UpdateEnemyPresentationAcceptance();
         void UpdateCombatFeedbackAcceptance();
+        void UpdateJumpAcceptance(bool physicalStateSynchronized);
 
         // The PhysX character controller cannot be created during Activate() because the
         // default physics scene does not exist yet; creation is deferred to OnTick.
@@ -153,5 +154,13 @@ namespace STWGameplay
         bool m_enemyPresentationAcceptanceReported = false;
         bool m_combatFeedbackAuthoritySeparated = true;
         bool m_combatFeedbackAcceptanceReported = false;
+        bool m_jumpAcceptanceStarted = false;
+        bool m_jumpAcceptanceAirborne = false;
+        bool m_jumpAcceptanceRose = false;
+        bool m_jumpAcceptanceLanded = false;
+        bool m_jumpAcceptanceReported = false;
+        float m_jumpAcceptanceStartTime = 0.0f;
+        float m_jumpAcceptanceStartHeight = 0.0f;
+        int m_jumpAcceptanceInitialEvents = 0;
     };
 }
