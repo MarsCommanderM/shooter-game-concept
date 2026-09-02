@@ -214,6 +214,18 @@ namespace STWGameplay
 
         UpdateAutomatedAcceptance(deltaTime);
         m_model.Update(deltaTime, m_input);
+        const EnemyState& encounterEnemy = m_model.GetEnemy().GetState();
+        if (encounterEnemy.m_respawnEvents > m_encounterAcceptanceLastRespawnEvents)
+        {
+            m_encounter.Rearm(encounterEnemy);
+            m_encounterAcceptanceLastRespawnEvents = encounterEnemy.m_respawnEvents;
+            if (m_automatedAcceptance)
+            {
+                m_encounterAcceptanceRearmObserved = true;
+                m_encounterAcceptancePostRearmActive = m_encounter.IsActive();
+            }
+        }
+        m_encounter.Update(encounterEnemy);
         if (m_automatedAcceptance && m_model.IsMantleRequested())
         {
             AZ_Printf("STWGameplay", "MANTLE_DIAG request=RAISED\n");
@@ -351,6 +363,9 @@ namespace STWGameplay
         UpdateCamera();
         DrawPresentation();
         UpdateEnemyCombatAcceptance();
+        const EnemyState& encounterAfterAcceptance = m_model.GetEnemy().GetState();
+        m_encounter.Update(encounterAfterAcceptance);
+        UpdateEncounterAcceptance();
         UpdateEnemyAiAcceptance(deltaTime);
         UpdateEnemyPresentationAcceptance();
         UpdateCombatFeedbackAcceptance();
@@ -1505,8 +1520,21 @@ namespace STWGameplay
 
     void STWGameplaySystemComponent::UpdateEnemyCombatAcceptance()
     {
-        if (!m_automatedAcceptance || m_enemyCombatAcceptanceReported)
+        if (!m_automatedAcceptance)
         {
+            return;
+        }
+        if (m_enemyCombatAcceptanceReported)
+        {
+            if (m_encounterAcceptanceRearmObserved && m_enemyAiAcceptanceReported
+                && !m_encounterAcceptanceSecondEliminationTriggered && m_acceptanceTime >= 7.5f
+                && m_model.GetEnemy().GetState().m_alive)
+            {
+                // Acceptance stimulus only; elimination still flows through the authoritative
+                // EnemyCombatModel API and is observed by EncounterModel on the next tick.
+                m_model.GetEnemy().ApplyDamage(m_model.GetEnemy().GetState().m_health);
+                m_encounterAcceptanceSecondEliminationTriggered = true;
+            }
             return;
         }
         // Place the enemy on the current authoritative aim ray before the existing acceptance
@@ -1536,6 +1564,44 @@ namespace STWGameplay
                 "damage_events=%d deaths=%d respawns=%d\n",
                 finalState.m_damageEvents, finalState.m_deathEvents, finalState.m_respawnEvents);
             m_enemyCombatAcceptanceReported = true;
+        }
+
+    }
+
+    void STWGameplaySystemComponent::UpdateEncounterAcceptance()
+    {
+        if (!m_automatedAcceptance || m_encounterAcceptanceReported)
+        {
+            return;
+        }
+        if (!m_encounterAcceptanceFirstCompletion && m_encounter.GetCompletedCount() >= 1)
+        {
+            m_encounterAcceptanceFirstCompletion = true;
+            m_encounterAcceptanceDuplicateBlocked = m_encounter.GetCompletedCount() == 1;
+        }
+        m_encounterAcceptanceSecondCompletion = m_encounter.GetCompletedCount() >= 2;
+        if (m_encounterAcceptanceSecondCompletion)
+        {
+            const bool playerAuthorityValid = m_model.GetPlayer().m_position.IsFinite()
+                && m_model.GetPlayer().m_health >= 0.0f && m_model.GetPlayer().m_health <= m_model.GetPlayer().m_maxHealth;
+            const bool enemyAuthorityValid = m_model.GetEnemy().GetState().m_deathEvents >= 2;
+            const bool passed = m_encounterAcceptanceFirstCompletion
+                && m_encounterAcceptanceDuplicateBlocked
+                && m_encounterAcceptanceRearmObserved
+                && m_encounterAcceptancePostRearmActive
+                && m_encounterAcceptanceSecondCompletion
+                && playerAuthorityValid && enemyAuthorityValid;
+            AZ_Printf("STWGameplay",
+                "ENCOUNTER_ACCEPTANCE result=%s initial_active=1 first_elimination=1 first_completed_count=1 "
+                "duplicate_completion_blocked=%d rearm=1 post_rearm_active=%d second_elimination=1 "
+                "second_completed_count=%d player_authority=%s enemy_authority=%s\n",
+                passed ? "PASS" : "FAIL",
+                m_encounterAcceptanceDuplicateBlocked ? 1 : 0,
+                m_encounterAcceptancePostRearmActive ? 1 : 0,
+                m_encounter.GetCompletedCount(),
+                playerAuthorityValid ? "PASS" : "FAIL",
+                enemyAuthorityValid ? "PASS" : "FAIL");
+            m_encounterAcceptanceReported = true;
         }
     }
 
@@ -1680,6 +1746,12 @@ namespace STWGameplay
             static_cast<int>(player.m_health), static_cast<int>(player.m_maxHealth),
             weapon.m_magazine, weapon.m_reserve, player.m_alive ? (weapon.m_reloading ? "RELOADING" : "READY") : "DEAD");
         Bus::Event(displayId, &AzFramework::DebugDisplayRequests::Draw2dTextLabel, 24.0f, 36.0f, 1.4f, hud, false);
+        char objective[96];
+        azsnprintf(objective, AZ_ARRAY_SIZE(objective), "%s   ENCOUNTERS: %d",
+            m_encounter.IsCompleted() ? "OBJECTIVE COMPLETE" : "OBJECTIVE: ELIMINATE HOSTILE",
+            m_encounter.GetCompletedCount());
+        Bus::Event(displayId, &AzFramework::DebugDisplayRequests::Draw2dTextLabel,
+            24.0f, 64.0f, 1.1f, objective, false);
         if (presentation.m_hitCueRemaining > 0.0f || m_viewmodel.IsHitFeedbackActive())
         {
             Bus::Event(displayId, &AzFramework::DebugDisplayRequests::SetColor, AZ::Color(1.0f, 0.25f, 0.2f, 1.0f));

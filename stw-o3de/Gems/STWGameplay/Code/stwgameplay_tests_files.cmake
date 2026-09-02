@@ -1,6 +1,7 @@
 set(FILES
     Tests/Clients/ArenaLayoutTests.cpp
     Tests/Clients/CombatFeedbackPresentationTests.cpp
+    Tests/Clients/EncounterModelTests.cpp
     Tests/Clients/EnemyCombatModelTests.cpp
     Tests/Clients/EnemyAiCombatLoopTests.cpp
     Tests/Clients/EnemyPresentationTests.cpp

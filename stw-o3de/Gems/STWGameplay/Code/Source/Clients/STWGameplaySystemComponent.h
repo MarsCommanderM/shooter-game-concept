@@ -8,6 +8,7 @@
 #include <Atom/Feature/Mesh/MeshFeatureProcessorInterface.h>
 #include <STWGameplay/PlayerSliceModel.h>
 #include <STWGameplay/CombatFeedbackPresentation.h>
+#include <STWGameplay/EncounterModel.h>
 #include <STWGameplay/EnemyPresentation.h>
 #include <STWGameplay/ViewmodelPresentation.h>
 #include "PhysXPlayerRuntime.h"
@@ -60,6 +61,7 @@ namespace STWGameplay
         void UpdateEnemyAiAcceptance(float deltaTime);
         void UpdateEnemyPresentationAcceptance();
         void UpdateCombatFeedbackAcceptance();
+        void UpdateEncounterAcceptance();
         void UpdateJumpAcceptance(bool physicalStateSynchronized);
         void UpdateCrouchAcceptance(bool physicalStateSynchronized);
         void UpdateSlideAcceptance(bool physicalStateSynchronized);
@@ -110,6 +112,7 @@ namespace STWGameplay
         EnemyPresentation m_enemyPresentation;
         ViewmodelPresentation m_viewmodel;
         CombatFeedbackPresentation m_combatFeedback;
+        EncounterModel m_encounter;
         PhysXPlayerRuntime m_physicsPlayer;
         PhysXEnemyRuntime m_physicsEnemy;
         PlayerInput m_input;
@@ -157,6 +160,14 @@ namespace STWGameplay
         bool m_enemyPresentationAcceptanceReported = false;
         bool m_combatFeedbackAuthoritySeparated = true;
         bool m_combatFeedbackAcceptanceReported = false;
+        bool m_encounterAcceptanceReported = false;
+        bool m_encounterAcceptanceFirstCompletion = false;
+        bool m_encounterAcceptanceDuplicateBlocked = false;
+        bool m_encounterAcceptanceRearmObserved = false;
+        bool m_encounterAcceptancePostRearmActive = false;
+        bool m_encounterAcceptanceSecondCompletion = false;
+        bool m_encounterAcceptanceSecondEliminationTriggered = false;
+        int m_encounterAcceptanceLastRespawnEvents = 0;
         bool m_jumpAcceptanceStarted = false;
         bool m_jumpAcceptanceAirborne = false;
         bool m_jumpAcceptanceRose = false;
