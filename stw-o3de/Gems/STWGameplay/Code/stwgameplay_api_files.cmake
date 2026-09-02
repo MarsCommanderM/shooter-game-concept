@@ -1,5 +1,6 @@
 set(FILES
     Include/STWGameplay/ArenaLayout.h
+    Include/STWGameplay/CombatFeedbackPresentation.h
     Include/STWGameplay/EnemyCombatModel.h
     Include/STWGameplay/EnemyPresentation.h
     Include/STWGameplay/STWGameplayTypeIds.h

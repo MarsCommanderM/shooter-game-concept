@@ -685,7 +685,7 @@ for _ in $(seq 1 45); do
 done
 [[ -s "${FRAME_NATIVE}" ]]
 for _ in $(seq 1 30); do
-  runtime_grep -q 'PERFORMANCE_BASELINE' && runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS' && runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS' && runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS' && runtime_grep -q 'ENEMY_AI_ACCEPTANCE result=PASS' && runtime_grep -q 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS' && break
+  runtime_grep -q 'PERFORMANCE_BASELINE' && runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS' && runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS' && runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS' && runtime_grep -q 'ENEMY_AI_ACCEPTANCE result=PASS' && runtime_grep -q 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'COMBAT_FEEDBACK_ACCEPTANCE result=PASS' && break
   kill -0 "${launcher_pid}" 2>/dev/null || { tail -n 200 "${LAUNCH_LOG}"; exit 1; }
   sleep 1
 done
@@ -701,6 +701,7 @@ runtime_grep -q 'ENEMY_AI_ACCEPTANCE result=PASS detected=1 chased=1 enemy_attac
 runtime_grep -q 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS idle=PASS chase=PASS attack=PASS death=PASS reset=PASS authority_separation=PASS'
 runtime_grep -q 'ATOM_ARENA result=PASS .*mesh=ready material=bound lighting=native_environment'
 runtime_grep -q 'ARENA_ACCEPTANCE result=PASS player_spawn=PASS enemy_spawn=PASS bounds=PASS lighting=PASS combat_lane=PASS native_scene=PASS'
+runtime_grep -Eq 'COMBAT_FEEDBACK_ACCEPTANCE result=PASS fire_feedback=[1-9][0-9]* hit_feedback=[1-9][0-9]* impact_feedback=[1-9][0-9]* authority_separation=PASS native_atom_meshes=PASS'
 runtime_grep -q 'PERFORMANCE_BASELINE'
 if runtime_grep -q 'Native Atom frame capture submitted'; then
   echo "FRAME_CAPTURE_SUBMISSION_LOG=CONFIRMED"
@@ -744,6 +745,8 @@ runtime_grep -n 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS'
 echo "ARENA_EVIDENCE:"
 runtime_grep -n 'ATOM_ARENA result=PASS'
 runtime_grep -n 'ARENA_ACCEPTANCE result=PASS'
+echo "COMBAT_FEEDBACK_EVIDENCE:"
+runtime_grep -n 'COMBAT_FEEDBACK_ACCEPTANCE result=PASS'
 echo "=================================================="
 echo "STW_ASSET_INTEGRATION_BEGIN"
 echo "=================================================="

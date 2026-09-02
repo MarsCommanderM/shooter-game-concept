@@ -7,6 +7,7 @@
 #include <AzFramework/Input/Events/InputChannelEventListener.h>
 #include <Atom/Feature/Mesh/MeshFeatureProcessorInterface.h>
 #include <STWGameplay/PlayerSliceModel.h>
+#include <STWGameplay/CombatFeedbackPresentation.h>
 #include <STWGameplay/EnemyPresentation.h>
 #include <STWGameplay/ViewmodelPresentation.h>
 #include "PhysXPlayerRuntime.h"
@@ -58,6 +59,7 @@ namespace STWGameplay
         void UpdateEnemyCombatAcceptance();
         void UpdateEnemyAiAcceptance(float deltaTime);
         void UpdateEnemyPresentationAcceptance();
+        void UpdateCombatFeedbackAcceptance();
 
         // The PhysX character controller cannot be created during Activate() because the
         // default physics scene does not exist yet; creation is deferred to OnTick.
@@ -86,10 +88,12 @@ namespace STWGameplay
 
         AZ::Render::MeshFeatureProcessorInterface* m_meshFeatureProcessor = nullptr;
         AZ::Render::MeshFeatureProcessorInterface::MeshHandle m_viewmodelMeshHandle;
+        AZ::Render::MeshFeatureProcessorInterface::MeshHandle m_fireFeedbackMeshHandle;
         AZStd::string m_viewmodelMeshAssetPath;
         bool m_viewmodelMeshReported = false;
         ViewmodelMeshStartup m_enemyMeshStartup = ViewmodelMeshStartup::Waiting;
         AZ::Render::MeshFeatureProcessorInterface::MeshHandle m_enemyMeshHandle;
+        AZ::Render::MeshFeatureProcessorInterface::MeshHandle m_impactFeedbackMeshHandle;
         AZStd::string m_enemyMeshAssetPath;
         bool m_enemyMeshReported = false;
         ViewmodelMeshStartup m_arenaMeshStartup = ViewmodelMeshStartup::Waiting;
@@ -101,6 +105,7 @@ namespace STWGameplay
         PlayerSliceModel m_model;
         EnemyPresentation m_enemyPresentation;
         ViewmodelPresentation m_viewmodel;
+        CombatFeedbackPresentation m_combatFeedback;
         PhysXPlayerRuntime m_physicsPlayer;
         PhysXEnemyRuntime m_physicsEnemy;
         PlayerInput m_input;
@@ -146,5 +151,7 @@ namespace STWGameplay
         bool m_enemyPresentationResetObserved = false;
         bool m_enemyPresentationAuthoritySeparated = true;
         bool m_enemyPresentationAcceptanceReported = false;
+        bool m_combatFeedbackAuthoritySeparated = true;
+        bool m_combatFeedbackAcceptanceReported = false;
     };
 }

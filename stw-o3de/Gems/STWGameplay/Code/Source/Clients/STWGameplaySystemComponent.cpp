@@ -192,6 +192,18 @@ namespace STWGameplay
 
         UpdateAutomatedAcceptance(deltaTime);
         m_model.Update(deltaTime, m_input);
+        const WeaponState feedbackWeaponBefore = m_model.GetWeapon();
+        const EnemyState feedbackEnemyBefore = m_model.GetEnemy().GetState();
+        CombatFeedbackInput feedbackInput;
+        feedbackInput.m_shotFired = m_model.GetPresentation().m_shotFired;
+        feedbackInput.m_hitConfirmed = m_model.GetPresentation().m_hit;
+        feedbackInput.m_impactPosition = feedbackEnemyBefore.m_position;
+        m_combatFeedback.Update(deltaTime, feedbackInput);
+        m_combatFeedbackAuthoritySeparated = m_combatFeedbackAuthoritySeparated
+            && m_model.GetWeapon().m_magazine == feedbackWeaponBefore.m_magazine
+            && m_model.GetWeapon().m_cooldownRemaining == feedbackWeaponBefore.m_cooldownRemaining
+            && m_model.GetEnemy().GetState().m_health == feedbackEnemyBefore.m_health
+            && m_model.GetEnemy().GetState().m_damageEvents == feedbackEnemyBefore.m_damageEvents;
         m_physicsPlayer.QueueVelocity(m_model.GetDesiredVelocity(m_input));
         m_physicsEnemy.QueueVelocity(m_model.GetEnemy().GetMovementIntent(m_model.GetPlayer().m_position));
         AZ::Vector3 physicalPosition = AZ::Vector3::CreateZero();
@@ -253,6 +265,7 @@ namespace STWGameplay
         UpdateEnemyCombatAcceptance();
         UpdateEnemyAiAcceptance(deltaTime);
         UpdateEnemyPresentationAcceptance();
+        UpdateCombatFeedbackAcceptance();
         UpdateArenaAcceptance();
         RecordPerformance(deltaTime);
 
@@ -683,6 +696,14 @@ namespace STWGameplay
             m_viewmodelMeshStartup = ViewmodelMeshStartup::Failed;
             return;
         }
+        m_fireFeedbackMeshHandle = m_meshFeatureProcessor->AcquireMesh(descriptor);
+        if (!m_fireFeedbackMeshHandle.IsValid())
+        {
+            AZ_Error("STWGameplay", false, "COMBAT_FEEDBACK result=FAIL reason=fire_mesh_acquire_failed");
+            m_viewmodelMeshStartup = ViewmodelMeshStartup::Failed;
+            return;
+        }
+        m_meshFeatureProcessor->SetVisible(m_fireFeedbackMeshHandle, false);
         m_viewmodelMeshStartup = ViewmodelMeshStartup::Acquired;
     }
 
@@ -696,10 +717,19 @@ namespace STWGameplay
 
         // Assimp imports OBJ coordinates as (-X, Z, Y). Map those product axes back to
         // the authored STW convention (+X right, +Y aim, +Z up) at presentation time.
-        const AZ::Transform transform = AZ::Transform::CreateFromQuaternionAndTranslation(
-            AZ::Quaternion::CreateFromMatrix3x3(AZ::Matrix3x3::CreateFromColumns(-right, up, aim)), center);
+        const AZ::Quaternion orientation =
+            AZ::Quaternion::CreateFromMatrix3x3(AZ::Matrix3x3::CreateFromColumns(-right, up, aim));
+        const AZ::Transform transform = AZ::Transform::CreateFromQuaternionAndTranslation(orientation, center);
         m_meshFeatureProcessor->SetTransform(m_viewmodelMeshHandle, transform,
             AZ::Vector3::CreateOne());
+        const bool fireVisible = m_combatFeedback.IsFireFlashVisible();
+        const AZ::Transform fireTransform = AZ::Transform::CreateFromQuaternionAndTranslation(
+            orientation, center + aim * 0.36f);
+        m_meshFeatureProcessor->SetTransform(
+            m_fireFeedbackMeshHandle, fireTransform,
+            AZ::Vector3::CreateOne() * (CombatFeedbackPresentation::FirePulseScale
+                * m_combatFeedback.GetFireIntensity()));
+        m_meshFeatureProcessor->SetVisible(m_fireFeedbackMeshHandle, fireVisible);
 
         // PASS is only reported once the model instance actually exists, i.e. the asset really
         // loaded and the mesh is renderable - never merely because the handle was acquired.
@@ -718,8 +748,13 @@ namespace STWGameplay
         {
             m_meshFeatureProcessor->ReleaseMesh(m_viewmodelMeshHandle);
         }
+        if (m_meshFeatureProcessor != nullptr && m_fireFeedbackMeshHandle.IsValid())
+        {
+            m_meshFeatureProcessor->ReleaseMesh(m_fireFeedbackMeshHandle);
+        }
         m_meshFeatureProcessor = nullptr;
         m_viewmodelMeshHandle = {};
+        m_fireFeedbackMeshHandle = {};
         m_viewmodelMeshAssetPath.clear();
         m_viewmodelMeshStartup = ViewmodelMeshStartup::Waiting;
         m_viewmodelMeshReported = false;
@@ -796,6 +831,14 @@ namespace STWGameplay
             m_enemyMeshStartup = ViewmodelMeshStartup::Failed;
             return;
         }
+        m_impactFeedbackMeshHandle = m_meshFeatureProcessor->AcquireMesh(descriptor);
+        if (!m_impactFeedbackMeshHandle.IsValid())
+        {
+            AZ_Error("STWGameplay", false, "COMBAT_FEEDBACK result=FAIL reason=impact_mesh_acquire_failed");
+            m_enemyMeshStartup = ViewmodelMeshStartup::Failed;
+            return;
+        }
+        m_meshFeatureProcessor->SetVisible(m_impactFeedbackMeshHandle, false);
         m_enemyMeshStartup = ViewmodelMeshStartup::Acquired;
     }
 
@@ -812,10 +855,18 @@ namespace STWGameplay
             AZ::Quaternion::CreateFromMatrix3x3(AZ::Matrix3x3::CreateFromColumns(
                 -AZ::Vector3::CreateAxisX(), AZ::Vector3::CreateAxisZ(), AZ::Vector3::CreateAxisY())));
         const AZ::Vector3 presentationScale = m_enemyPresentation.GetScale();
+        const float hitScale = m_combatFeedback.GetEnemyHitScale();
         m_meshFeatureProcessor->SetTransform(
             m_enemyMeshHandle, baseTransform * m_enemyPresentation.GetLocalTransform() * objAxisCorrection,
-            AZ::Vector3(presentationScale.GetX(), presentationScale.GetZ(), presentationScale.GetY()));
+            AZ::Vector3(presentationScale.GetX(), presentationScale.GetZ(), presentationScale.GetY()) * hitScale);
         m_meshFeatureProcessor->SetVisible(m_enemyMeshHandle, enemy.m_alive);
+        const bool impactVisible = m_combatFeedback.IsImpactVisible();
+        const AZ::Transform impactTransform = AZ::Transform::CreateTranslation(
+            m_combatFeedback.GetImpactPosition()) * objAxisCorrection;
+        m_meshFeatureProcessor->SetTransform(
+            m_impactFeedbackMeshHandle, impactTransform,
+            AZ::Vector3::CreateOne() * m_combatFeedback.GetImpactScale());
+        m_meshFeatureProcessor->SetVisible(m_impactFeedbackMeshHandle, impactVisible);
         if (!m_enemyMeshReported && m_meshFeatureProcessor->GetModel(m_enemyMeshHandle))
         {
             m_enemyMeshReported = true;
@@ -831,7 +882,12 @@ namespace STWGameplay
         {
             m_meshFeatureProcessor->ReleaseMesh(m_enemyMeshHandle);
         }
+        if (m_meshFeatureProcessor != nullptr && m_impactFeedbackMeshHandle.IsValid())
+        {
+            m_meshFeatureProcessor->ReleaseMesh(m_impactFeedbackMeshHandle);
+        }
         m_enemyMeshHandle = {};
+        m_impactFeedbackMeshHandle = {};
         m_enemyMeshAssetPath.clear();
         m_enemyMeshStartup = ViewmodelMeshStartup::Waiting;
         m_enemyMeshReported = false;
@@ -929,6 +985,28 @@ namespace STWGameplay
                 "lighting=PASS combat_lane=PASS native_scene=PASS\n");
             m_arenaAcceptanceReported = true;
         }
+    }
+
+    void STWGameplaySystemComponent::UpdateCombatFeedbackAcceptance()
+    {
+        if (!m_automatedAcceptance || m_combatFeedbackAcceptanceReported
+            || m_combatFeedback.GetFireFeedbackCount() == 0u
+            || m_combatFeedback.GetHitFeedbackCount() == 0u
+            || m_combatFeedback.GetImpactFeedbackCount() == 0u)
+        {
+            return;
+        }
+        const bool meshesReady = m_fireFeedbackMeshHandle.IsValid() && m_impactFeedbackMeshHandle.IsValid()
+            && m_meshFeatureProcessor->GetModel(m_fireFeedbackMeshHandle)
+            && m_meshFeatureProcessor->GetModel(m_impactFeedbackMeshHandle);
+        const bool passed = meshesReady && m_combatFeedbackAuthoritySeparated;
+        AZ_Printf("STWGameplay",
+            "COMBAT_FEEDBACK_ACCEPTANCE result=%s fire_feedback=%u hit_feedback=%u impact_feedback=%u "
+            "authority_separation=%s native_atom_meshes=%s\n",
+            passed ? "PASS" : "FAIL", m_combatFeedback.GetFireFeedbackCount(),
+            m_combatFeedback.GetHitFeedbackCount(), m_combatFeedback.GetImpactFeedbackCount(),
+            m_combatFeedbackAuthoritySeparated ? "PASS" : "FAIL", meshesReady ? "PASS" : "FAIL");
+        m_combatFeedbackAcceptanceReported = true;
     }
 
     void STWGameplaySystemComponent::UpdateEnemyCombatAcceptance()
