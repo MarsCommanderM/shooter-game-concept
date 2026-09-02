@@ -2,6 +2,7 @@
 
 #include <AzCore/Math/Vector3.h>
 #include <STWGameplay/EnemyCombatModel.h>
+#include <STWGameplay/ArenaLayout.h>
 
 namespace STWGameplay
 {
@@ -18,7 +19,7 @@ namespace STWGameplay
 
     struct PlayerState
     {
-        AZ::Vector3 m_position = AZ::Vector3(0.0f, -6.0f, 0.15f);
+        AZ::Vector3 m_position = ArenaLayout::PlayerSpawn;
         float m_yaw = 0.0f;
         float m_pitch = 0.0f;
         float m_maxHealth = 100.0f;

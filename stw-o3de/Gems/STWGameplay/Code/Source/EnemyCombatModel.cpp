@@ -1,11 +1,12 @@
 #include <STWGameplay/EnemyCombatModel.h>
+#include <STWGameplay/ArenaLayout.h>
 
 #include <AzCore/std/algorithm.h>
 #include <cmath>
 
 namespace STWGameplay
 {
-    const AZ::Vector3 EnemyCombatModel::SpawnPosition(0.0f, 6.0f, 1.2f);
+    const AZ::Vector3 EnemyCombatModel::SpawnPosition = ArenaLayout::EnemySpawn;
 
     bool EnemyCombatModel::Update(float deltaTime, const AZ::Vector3& playerPosition, bool playerAlive)
     {

@@ -52,6 +52,9 @@ namespace STWGameplay
         void TryStartEnemyMesh();
         void UpdateEnemyMeshTransform();
         void ShutdownEnemyMesh();
+        void TryStartArenaMesh();
+        void ShutdownArenaMesh();
+        void UpdateArenaAcceptance();
         void UpdateEnemyCombatAcceptance();
         void UpdateEnemyAiAcceptance(float deltaTime);
         void UpdateEnemyPresentationAcceptance();
@@ -89,6 +92,11 @@ namespace STWGameplay
         AZ::Render::MeshFeatureProcessorInterface::MeshHandle m_enemyMeshHandle;
         AZStd::string m_enemyMeshAssetPath;
         bool m_enemyMeshReported = false;
+        ViewmodelMeshStartup m_arenaMeshStartup = ViewmodelMeshStartup::Waiting;
+        AZ::Render::MeshFeatureProcessorInterface::MeshHandle m_arenaMeshHandle;
+        AZStd::string m_arenaMeshAssetPath;
+        bool m_arenaMeshReported = false;
+        bool m_arenaAcceptanceReported = false;
 
         PlayerSliceModel m_model;
         EnemyPresentation m_enemyPresentation;

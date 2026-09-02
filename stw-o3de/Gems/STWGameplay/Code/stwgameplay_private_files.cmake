@@ -1,4 +1,5 @@
 set(FILES
+    Source/ArenaLayout.cpp
     Source/EnemyCombatModel.cpp
     Source/EnemyPresentation.cpp
     Source/PlayerSliceModel.cpp

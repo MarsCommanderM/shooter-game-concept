@@ -22,6 +22,7 @@
 #include <Atom/RPI.Reflect/Material/MaterialAsset.h>
 #include <Atom/RPI.Reflect/Model/ModelAsset.h>
 #include <STWGameplay/STWGameplayTypeIds.h>
+#include <STWGameplay/ArenaLayout.h>
 
 #include <cstdlib>
 #include <algorithm>
@@ -43,6 +44,7 @@ namespace STWGameplay
 
         ViewmodelAssetLoadState s_viewmodelAssetLoadState;
         ViewmodelAssetLoadState s_enemyAssetLoadState;
+        ViewmodelAssetLoadState s_arenaAssetLoadState;
 
         struct ViewmodelAssetCandidate
         {
@@ -69,6 +71,8 @@ namespace STWGameplay
         {
             s_enemyAssetLoadState = {};
         }
+
+        void ResetArenaAssetLoadState() { s_arenaAssetLoadState = {}; }
     }
 
     AZ_COMPONENT_IMPL(STWGameplaySystemComponent, "STWGameplaySystemComponent", STWGameplaySystemComponentTypeId);
@@ -101,6 +105,7 @@ namespace STWGameplay
     {
         ResetViewmodelAssetLoadState();
         ResetEnemyAssetLoadState();
+        ResetArenaAssetLoadState();
         m_adsHeld = false;
         if (const char* capturePath = std::getenv("STW_NATIVE_CAPTURE_PATH"); capturePath && capturePath[0] != '\0')
         {
@@ -121,6 +126,7 @@ namespace STWGameplay
         AZ::TickBus::Handler::BusDisconnect();
         AzFramework::InputChannelEventListener::Disconnect();
         ShutdownEnemyMesh();
+        ShutdownArenaMesh();
         ShutdownViewmodelMesh();
         m_physicsEnemy.Shutdown();
         m_physicsPlayer.Shutdown();
@@ -178,6 +184,10 @@ namespace STWGameplay
         if (m_enemyMeshStartup == ViewmodelMeshStartup::Waiting)
         {
             TryStartEnemyMesh();
+        }
+        if (m_arenaMeshStartup == ViewmodelMeshStartup::Waiting)
+        {
+            TryStartArenaMesh();
         }
 
         UpdateAutomatedAcceptance(deltaTime);
@@ -243,6 +253,7 @@ namespace STWGameplay
         UpdateEnemyCombatAcceptance();
         UpdateEnemyAiAcceptance(deltaTime);
         UpdateEnemyPresentationAcceptance();
+        UpdateArenaAcceptance();
         RecordPerformance(deltaTime);
 
         // Production runs do not set STW_NATIVE_CAPTURE_PATH. The controlled
@@ -251,7 +262,7 @@ namespace STWGameplay
         if (!m_nativeCapturePath.empty() && !m_nativeCaptureAttempted)
         {
             m_nativeCaptureDelay += deltaTime;
-            if (m_nativeCaptureDelay >= 8.0f)
+            if (m_nativeCaptureDelay >= 0.75f)
             {
                 m_nativeCaptureAttempted = true;
                 bool canCapture = false;
@@ -683,8 +694,10 @@ namespace STWGameplay
             return;
         }
 
+        // Assimp imports OBJ coordinates as (-X, Z, Y). Map those product axes back to
+        // the authored STW convention (+X right, +Y aim, +Z up) at presentation time.
         const AZ::Transform transform = AZ::Transform::CreateFromQuaternionAndTranslation(
-            AZ::Quaternion::CreateFromMatrix3x3(AZ::Matrix3x3::CreateFromColumns(right, aim, up)), center);
+            AZ::Quaternion::CreateFromMatrix3x3(AZ::Matrix3x3::CreateFromColumns(-right, up, aim)), center);
         m_meshFeatureProcessor->SetTransform(m_viewmodelMeshHandle, transform,
             AZ::Vector3::CreateOne());
 
@@ -795,8 +808,13 @@ namespace STWGameplay
         const EnemyState& enemy = m_model.GetEnemy().GetState();
         const AZ::Vector3 meshOrigin = enemy.m_position - AZ::Vector3(0.0f, 0.0f, PhysXEnemyRuntime::CenterHeight);
         const AZ::Transform baseTransform = AZ::Transform::CreateTranslation(meshOrigin);
+        const AZ::Transform objAxisCorrection = AZ::Transform::CreateFromQuaternion(
+            AZ::Quaternion::CreateFromMatrix3x3(AZ::Matrix3x3::CreateFromColumns(
+                -AZ::Vector3::CreateAxisX(), AZ::Vector3::CreateAxisZ(), AZ::Vector3::CreateAxisY())));
+        const AZ::Vector3 presentationScale = m_enemyPresentation.GetScale();
         m_meshFeatureProcessor->SetTransform(
-            m_enemyMeshHandle, baseTransform * m_enemyPresentation.GetLocalTransform(), m_enemyPresentation.GetScale());
+            m_enemyMeshHandle, baseTransform * m_enemyPresentation.GetLocalTransform() * objAxisCorrection,
+            AZ::Vector3(presentationScale.GetX(), presentationScale.GetZ(), presentationScale.GetY()));
         m_meshFeatureProcessor->SetVisible(m_enemyMeshHandle, enemy.m_alive);
         if (!m_enemyMeshReported && m_meshFeatureProcessor->GetModel(m_enemyMeshHandle))
         {
@@ -818,6 +836,99 @@ namespace STWGameplay
         m_enemyMeshStartup = ViewmodelMeshStartup::Waiting;
         m_enemyMeshReported = false;
         ResetEnemyAssetLoadState();
+    }
+
+    void STWGameplaySystemComponent::TryStartArenaMesh()
+    {
+        if (m_meshFeatureProcessor == nullptr)
+        {
+            return;
+        }
+        if (!s_arenaAssetLoadState.m_enumerated)
+        {
+            s_arenaAssetLoadState.m_enumerated = true;
+            AZStd::vector<ViewmodelAssetCandidate> models;
+            AZStd::vector<ViewmodelAssetCandidate> materials;
+            AZ::Data::AssetCatalogRequestBus::Broadcast(
+                &AZ::Data::AssetCatalogRequests::EnumerateAssets, []() {},
+                [&models, &materials](const AZ::Data::AssetId id, const AZ::Data::AssetInfo& info)
+                {
+                    const AZStd::string path = LowercaseAssetPath(info.m_relativePath);
+                    if (path == "assets/environment/stw_arena_01/stw_arena_01.obj.azmodel")
+                    {
+                        models.push_back({ id, info.m_relativePath });
+                    }
+                    else if (path == "assets/environment/stw_arena_01/stw_arena_01.azmaterial")
+                    {
+                        materials.push_back({ id, info.m_relativePath });
+                    }
+                }, []() {});
+            if (models.size() != 1 || materials.size() != 1)
+            {
+                AZ_Error("STWGameplay", false, "ATOM_ARENA result=FAIL reason=asset_candidate_count model=%zu material=%zu",
+                    models.size(), materials.size());
+                m_arenaMeshStartup = ViewmodelMeshStartup::Failed;
+                return;
+            }
+            s_arenaAssetLoadState.m_enumeratedModelAssetId = models[0].m_assetId;
+            s_arenaAssetLoadState.m_enumeratedMaterialAssetId = materials[0].m_assetId;
+            m_arenaMeshAssetPath = models[0].m_relativePath;
+            s_arenaAssetLoadState.m_materialAsset = AZ::Data::Asset<AZ::RPI::MaterialAsset>(
+                materials[0].m_assetId, azrtti_typeid<AZ::RPI::MaterialAsset>(), materials[0].m_relativePath.c_str());
+            s_arenaAssetLoadState.m_materialAsset.QueueLoad();
+        }
+        if (!s_arenaAssetLoadState.m_materialAsset.IsReady())
+        {
+            if (s_arenaAssetLoadState.m_materialAsset.IsError())
+            {
+                m_arenaMeshStartup = ViewmodelMeshStartup::Failed;
+            }
+            return;
+        }
+        s_arenaAssetLoadState.m_material = AZ::RPI::Material::FindOrCreate(s_arenaAssetLoadState.m_materialAsset);
+        AZ::Data::Asset<AZ::RPI::ModelAsset> modelAsset(
+            s_arenaAssetLoadState.m_enumeratedModelAssetId, azrtti_typeid<AZ::RPI::ModelAsset>(), m_arenaMeshAssetPath.c_str());
+        modelAsset.QueueLoad();
+        AZ::Render::MeshHandleDescriptor descriptor(modelAsset, s_arenaAssetLoadState.m_material);
+        m_arenaMeshHandle = m_meshFeatureProcessor->AcquireMesh(descriptor);
+        if (!m_arenaMeshHandle.IsValid())
+        {
+            m_arenaMeshStartup = ViewmodelMeshStartup::Failed;
+            return;
+        }
+        m_meshFeatureProcessor->SetTransform(
+            m_arenaMeshHandle, AZ::Transform::CreateIdentity(), AZ::Vector3::CreateOne());
+        m_arenaMeshStartup = ViewmodelMeshStartup::Acquired;
+    }
+
+    void STWGameplaySystemComponent::ShutdownArenaMesh()
+    {
+        if (m_meshFeatureProcessor != nullptr && m_arenaMeshHandle.IsValid())
+        {
+            m_meshFeatureProcessor->ReleaseMesh(m_arenaMeshHandle);
+        }
+        m_arenaMeshHandle = {};
+        m_arenaMeshAssetPath.clear();
+        m_arenaMeshStartup = ViewmodelMeshStartup::Waiting;
+        m_arenaMeshReported = false;
+        ResetArenaAssetLoadState();
+    }
+
+    void STWGameplaySystemComponent::UpdateArenaAcceptance()
+    {
+        if (m_arenaMeshStartup == ViewmodelMeshStartup::Acquired && !m_arenaMeshReported
+            && m_meshFeatureProcessor->GetModel(m_arenaMeshHandle))
+        {
+            m_arenaMeshReported = true;
+            AZ_Printf("STWGameplay", "ATOM_ARENA result=PASS asset=%s mesh=ready material=bound lighting=native_environment\n",
+                m_arenaMeshAssetPath.c_str());
+        }
+        if (m_automatedAcceptance && !m_arenaAcceptanceReported && m_arenaMeshReported && ArenaLayout::Validate())
+        {
+            AZ_Printf("STWGameplay", "ARENA_ACCEPTANCE result=PASS player_spawn=PASS enemy_spawn=PASS bounds=PASS "
+                "lighting=PASS combat_lane=PASS native_scene=PASS\n");
+            m_arenaAcceptanceReported = true;
+        }
     }
 
     void STWGameplaySystemComponent::UpdateEnemyCombatAcceptance()

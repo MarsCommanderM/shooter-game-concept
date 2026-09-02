@@ -12,13 +12,12 @@
 #include <PhysXCharacters/Components/CharacterGameplayComponent.h>
 #include <Source/BoxColliderComponent.h>
 #include <Source/StaticRigidBodyComponent.h>
+#include <STWGameplay/ArenaLayout.h>
 
 namespace STWGameplay
 {
     namespace
     {
-        const AZ::Vector3 PlayerSpawn(0.0f, -6.0f, 0.15f);
-
         void DeactivateEntity(AZStd::unique_ptr<AZ::Entity>& entity)
         {
             if (entity && entity->GetState() == AZ::Entity::State::Active)
@@ -54,7 +53,7 @@ namespace STWGameplay
 
         m_playerEntity = AZStd::make_unique<AZ::Entity>("STW PhysX Player");
         auto* transform = m_playerEntity->CreateComponent<AzFramework::TransformComponent>();
-        transform->SetWorldTM(AZ::Transform::CreateTranslation(PlayerSpawn));
+        transform->SetWorldTM(AZ::Transform::CreateTranslation(ArenaLayout::PlayerSpawn));
 
         auto characterConfiguration = AZStd::make_unique<Physics::CharacterConfiguration>();
         characterConfiguration->m_maximumSlopeAngle = SlopeLimitDegrees;
