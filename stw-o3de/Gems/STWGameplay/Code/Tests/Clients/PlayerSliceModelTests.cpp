@@ -355,6 +355,101 @@ namespace STWGameplay
         EXPECT_EQ(model.GetPlayer().m_jumpEvents, 1);
     }
 
+    TEST(PlayerSliceModelTests, MantleRequestIsRaisedForGroundedMovingFreshPress)
+    {
+        PlayerSliceModel model; model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_TRUE(model.IsMantleRequested());
+    }
+
+    TEST(PlayerSliceModelTests, MantleRequestRequiresGroundedMovement)
+    {
+        PlayerSliceModel model; model.SynchronizePhysicalState(AZ::Vector3::CreateAxisZ(1.0f), false);
+        PlayerInput input; input.m_forward = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FALSE(model.IsMantleRequested());
+    }
+
+    TEST(PlayerSliceModelTests, HeldMantleDoesNotRaiseRepeatedRequests)
+    {
+        PlayerSliceModel model; model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        model.BeginMantle(AZ::Vector3::CreateAxisY());
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FALSE(model.IsMantleRequested());
+        EXPECT_EQ(model.GetPlayer().m_mantleEvents, 1);
+    }
+
+    TEST(PlayerSliceModelTests, DeadPlayerCannotRequestMantle)
+    {
+        PlayerSliceModel model; model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        ASSERT_TRUE(model.ApplyDamage(model.GetPlayer().m_maxHealth));
+        PlayerInput input; input.m_forward = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FALSE(model.IsMantleRequested());
+    }
+
+    TEST(PlayerSliceModelTests, MantleCompletesAfterBoundedDuration)
+    {
+        PlayerSliceModel model; model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.0f, input)); model.BeginMantle(AZ::Vector3::CreateAxisY());
+        ASSERT_TRUE(model.Update(PlayerSliceModel::MantleDuration, input));
+        EXPECT_FALSE(model.GetPlayer().m_mantleActive);
+    }
+
+    TEST(PlayerSliceModelTests, MantlePreservesPlanarDirection)
+    {
+        PlayerSliceModel model; model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_strafe = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.0f, input)); model.BeginMantle(AZ::Vector3(1.0f, 1.0f, 0.0f));
+        const AZ::Vector3 velocity = model.GetDesiredVelocity(input);
+        EXPECT_NEAR(AZ::Vector3(velocity.GetX(), velocity.GetY(), 0.0f).GetLength(), PlayerSliceModel::MantleSpeed, 0.001f);
+        EXPECT_NEAR(velocity.GetZ(), 0.0f, 0.001f);
+    }
+
+    TEST(PlayerSliceModelTests, MantleDoesNotAlterJumpImpulseWhenInactive)
+    {
+        PlayerSliceModel model; model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput mantle; mantle.m_forward = 1.0f; mantle.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, mantle));
+        PlayerInput jump; jump.m_forward = 1.0f; jump.m_jump = true;
+        ASSERT_TRUE(model.Update(0.016f, jump));
+        EXPECT_FLOAT_EQ(model.GetDesiredVelocity(jump).GetZ(), PlayerSliceModel::JumpImpulseSpeed);
+    }
+
+    TEST(PlayerSliceModelTests, MantleRequestIsIndependentOfCrouchState)
+    {
+        PlayerSliceModel model; model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        input.m_crouch = false; input.m_forward = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_TRUE(model.IsMantleRequested());
+    }
+
+    TEST(PlayerSliceModelTests, MantleStateClearsWhenAirborne)
+    {
+        PlayerSliceModel model; model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.0f, input)); model.BeginMantle(AZ::Vector3::CreateAxisY());
+        model.SynchronizePhysicalState(AZ::Vector3::CreateAxisZ(1.0f), false);
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FALSE(model.GetPlayer().m_mantleActive);
+    }
+
+    TEST(PlayerSliceModelTests, MantleStateDoesNotChangeCombatAuthority)
+    {
+        PlayerSliceModel model; model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        const int magazine = model.GetWeapon().m_magazine;
+        PlayerInput input; input.m_forward = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_EQ(model.GetWeapon().m_magazine, magazine);
+        EXPECT_EQ(model.GetPlayer().m_health, model.GetPlayer().m_maxHealth);
+    }
+
     TEST(PlayerSliceModelTests, ValidShotConsumesExactlyOneRound)
     {
         PlayerSliceModel model;

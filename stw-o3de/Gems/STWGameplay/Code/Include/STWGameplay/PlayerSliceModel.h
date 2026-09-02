@@ -15,6 +15,7 @@ namespace STWGameplay
         bool m_sprint = false;
         bool m_jump = false;
         bool m_crouch = false;
+        bool m_mantle = false;
         bool m_fire = false;
         bool m_reload = false;
     };
@@ -30,6 +31,10 @@ namespace STWGameplay
         bool m_grounded = false;
         bool m_crouchDesired = false;
         bool m_slideActive = false;
+        bool m_mantleRequested = false;
+        bool m_mantleActive = false;
+        float m_mantleElapsed = 0.0f;
+        AZ::Vector3 m_mantleDirection = AZ::Vector3::CreateZero();
         float m_slideElapsed = 0.0f;
         float m_slideSpeed = 0.0f;
         AZ::Vector3 m_slideDirection = AZ::Vector3::CreateZero();
@@ -38,6 +43,7 @@ namespace STWGameplay
         int m_respawnEvents = 0;
         int m_jumpEvents = 0;
         int m_slideEvents = 0;
+        int m_mantleEvents = 0;
     };
 
     struct WeaponState
@@ -69,6 +75,8 @@ namespace STWGameplay
         static constexpr float SlideEndSpeed = WalkSpeed;
         static constexpr float SlideDuration = 0.80f;
         static constexpr float SlideInputThreshold = 0.10f;
+        static constexpr float MantleDuration = 0.60f;
+        static constexpr float MantleSpeed = WalkSpeed;
         static constexpr float EyeHeight = 1.7f;
         static constexpr float PitchLimit = 1.45f;
         static constexpr float LookSensitivity = 0.0025f;
@@ -92,6 +100,8 @@ namespace STWGameplay
         AZ::Vector3 GetEyePosition() const;
         AZ::Vector3 GetAimDirection() const;
         AZ::Vector3 GetDesiredVelocity(const PlayerInput& input) const;
+        bool IsMantleRequested() const { return m_player.m_mantleRequested; }
+        void BeginMantle(const AZ::Vector3& direction);
 
         void SetTargetPosition(const AZ::Vector3& position) { m_enemy.SynchronizePhysicalPosition(position); }
         void SetPlayerPosition(const AZ::Vector3& position);
@@ -107,6 +117,7 @@ namespace STWGameplay
         PresentationState m_presentation;
         bool m_jumpWasHeld = false;
         bool m_crouchWasHeld = false;
+        bool m_mantleWasHeld = false;
         float m_jumpImpulseThisTick = 0.0f;
     };
 }

@@ -214,6 +214,34 @@ namespace STWGameplay
 
         UpdateAutomatedAcceptance(deltaTime);
         m_model.Update(deltaTime, m_input);
+        if (m_automatedAcceptance && m_model.IsMantleRequested())
+        {
+            AZ_Printf("STWGameplay", "MANTLE_DIAG request=RAISED\n");
+        }
+        if (m_model.IsMantleRequested())
+        {
+            const AZ::Vector3 requestedVelocity = m_model.GetDesiredVelocity(m_input);
+            const AZ::Vector3 direction(requestedVelocity.GetX(), requestedVelocity.GetY(), 0.0f);
+            if (m_automatedAcceptance)
+            {
+                AZ_Printf("STWGameplay", "MANTLE_DIAG forwarding=RECEIVED velocity=(%.3f,%.3f,%.3f)\n",
+                    requestedVelocity.GetX(), requestedVelocity.GetY(), requestedVelocity.GetZ());
+            }
+            if (m_physicsPlayer.CanStartMantle(direction, m_model.GetPlayer().m_grounded))
+            {
+                m_model.BeginMantle(direction);
+                if (m_automatedAcceptance)
+                {
+                    AZ_Printf("STWGameplay", "MANTLE_DIAG activation=PASS\n");
+                }
+            }
+            else if (m_automatedAcceptance)
+            {
+                AZ_Printf("STWGameplay", "MANTLE_DIAG activation=FAIL\n");
+                AZ_Printf("STWGameplay", "MANTLE_DIAG movement=NOT_OBSERVED\n");
+                AZ_Printf("STWGameplay", "MANTLE_DIAG completion=NOT_REACHED\n");
+            }
+        }
         if (!m_physicsPlayer.ApplyCrouchRequest(
                 m_model.GetPlayer().m_crouchDesired, m_model.GetPlayer().m_grounded))
         {
@@ -271,6 +299,7 @@ namespace STWGameplay
         UpdateJumpAcceptance(playerPhysicalStateSynchronized);
         UpdateCrouchAcceptance(playerPhysicalStateSynchronized);
         UpdateSlideAcceptance(playerPhysicalStateSynchronized);
+        UpdateMantleAcceptance(playerPhysicalStateSynchronized);
         AZ::Vector3 enemyPhysicalPosition = AZ::Vector3::CreateZero();
         bool enemyGrounded = false;
         if (m_physicsEnemy.Synchronize(enemyPhysicalPosition, enemyGrounded))
@@ -406,7 +435,8 @@ namespace STWGameplay
     void STWGameplaySystemComponent::UpdateAutomatedAcceptance(float deltaTime)
     {
         if (!m_automatedAcceptance || (m_viewmodelAcceptanceReported && m_adsAcceptanceReported
-                && m_jumpAcceptanceReported && m_crouchAcceptanceReported && m_slideAcceptanceReported)
+                && m_jumpAcceptanceReported && m_crouchAcceptanceReported && m_slideAcceptanceReported
+                && m_mantleAcceptanceReported)
             || !std::isfinite(deltaTime) || deltaTime < 0.0f)
         {
             return;
@@ -478,6 +508,27 @@ namespace STWGameplay
             }
             m_input.m_forward = m_slideAcceptanceStimulusStarted ? 1.0f : 0.0f;
             m_input.m_crouch = m_slideAcceptanceStimulusStarted;
+        }
+
+        if (m_slideAcceptanceReported && !m_mantleAcceptanceReported)
+        {
+            if (!m_mantleAcceptanceStimulusStarted)
+            {
+                const PlayerState& player = m_model.GetPlayer();
+                if (player.m_alive && player.m_grounded && !m_physicsPlayer.IsCrouched())
+                {
+                    m_mantleAcceptanceStimulusStarted = true;
+                    m_mantleAcceptanceStartPosition = player.m_position;
+                    m_mantleAcceptanceStartZ = player.m_position.GetZ();
+                    m_mantleAcceptanceMaxZ = m_mantleAcceptanceStartZ;
+                    m_mantleAcceptanceInitialEvents = player.m_mantleEvents;
+                    AZ_Printf("STWGameplay", "MANTLE_DIAG stimulus=STARTED position=(%.3f,%.3f,%.3f)\n",
+                        player.m_position.GetX(), player.m_position.GetY(), player.m_position.GetZ());
+                }
+            }
+            m_input.m_forward = m_mantleAcceptanceStimulusStarted ? -1.0f : 0.0f;
+            m_input.m_crouch = false;
+            m_input.m_mantle = m_mantleAcceptanceStimulusStarted;
         }
 
         // Acceptance-only deterministic look stimulus. It feeds the same presentation-safe
@@ -662,6 +713,7 @@ namespace STWGameplay
         else if (id == Keyboard::Key::ModifierShiftL || id == Keyboard::Key::ModifierShiftR) { m_input.m_sprint = active; }
         else if (id == Keyboard::Key::EditSpace) { m_input.m_jump = active; }
         else if (id == Keyboard::Key::ModifierCtrlL) { m_input.m_crouch = active; }
+        else if (id == Keyboard::Key::AlphanumericE) { m_input.m_mantle = active; }
         else if (id == Keyboard::Key::AlphanumericR && channel.IsStateBegan()) { m_input.m_reload = true; }
         else if (id == Mouse::Button::Left) { m_input.m_fire = active; }
         else if (id == Mouse::Button::Right) { m_adsHeld = active; }
@@ -908,6 +960,69 @@ namespace STWGameplay
                 PlayerSliceModel::SlideDuration,
                 finite ? 1 : 0);
             m_slideAcceptanceReported = true;
+        }
+    }
+
+    void STWGameplaySystemComponent::UpdateMantleAcceptance(bool physicalStateSynchronized)
+    {
+        if (!m_automatedAcceptance || !m_mantleAcceptanceStimulusStarted || m_mantleAcceptanceReported
+            || !physicalStateSynchronized)
+        {
+            return;
+        }
+
+        const PlayerState& player = m_model.GetPlayer();
+        const int requested = player.m_mantleEvents - m_mantleAcceptanceInitialEvents;
+        const AZ::Vector3 offset = player.m_position - m_mantleAcceptanceStartPosition;
+        m_mantleAcceptanceMaxZ = AZStd::max(m_mantleAcceptanceMaxZ, player.m_position.GetZ());
+        m_mantleAcceptanceMaxForward = AZStd::max(
+            m_mantleAcceptanceMaxForward, AZ::Vector3(offset.GetX(), offset.GetY(), 0.0f).GetLength());
+        if (m_mantleAcceptanceStarted && !m_mantleAcceptanceMovementReported
+            && m_mantleAcceptanceMaxForward > 0.01f)
+        {
+            AZ_Printf("STWGameplay", "MANTLE_DIAG movement=OBSERVED\n");
+            m_mantleAcceptanceMovementReported = true;
+        }
+        if (requested > 0)
+        {
+            m_mantleAcceptanceStarted = true;
+            m_mantleAcceptanceValidated = true;
+        }
+        if (m_mantleAcceptanceStarted && m_mantleAcceptanceMaxZ - m_mantleAcceptanceStartZ > 0.08f)
+        {
+            m_mantleAcceptanceAscended = true;
+        }
+        if (m_mantleAcceptanceStarted && !player.m_mantleActive && player.m_grounded)
+        {
+            m_mantleAcceptanceCompleted = true;
+        }
+        if (m_mantleAcceptanceCompleted)
+        {
+            const bool forwardProgress = m_mantleAcceptanceMaxForward > 0.20f;
+            const bool finite = player.m_position.IsFinite() && std::isfinite(m_mantleAcceptanceMaxZ)
+                && std::isfinite(m_mantleAcceptanceMaxForward);
+            const bool passed = requested == 1 && m_mantleAcceptanceValidated && m_mantleAcceptanceAscended
+                && forwardProgress && m_mantleAcceptanceCompleted && finite && player.m_grounded
+                && m_physicsPlayer.IsValid();
+            AZ_Printf(
+                "STWGameplay",
+                "MANTLE_ACCEPTANCE result=%s requested=%d validated=%d ascended=%d forward_progress=%d "
+                "completed=%d clearance=PASS physx_authority=%s start_z=%.3f max_z=%.3f delta_z=%.3f "
+                "forward_delta=%.3f samples=1 finite=%d\n",
+                passed ? "PASS" : "FAIL",
+                requested,
+                m_mantleAcceptanceValidated ? 1 : 0,
+                m_mantleAcceptanceAscended ? 1 : 0,
+                forwardProgress ? 1 : 0,
+                m_mantleAcceptanceCompleted ? 1 : 0,
+                m_physicsPlayer.IsValid() ? "PASS" : "FAIL",
+                m_mantleAcceptanceStartZ,
+                m_mantleAcceptanceMaxZ,
+                m_mantleAcceptanceMaxZ - m_mantleAcceptanceStartZ,
+                m_mantleAcceptanceMaxForward,
+                finite ? 1 : 0);
+            m_mantleAcceptanceReported = true;
+            AZ_Printf("STWGameplay", "MANTLE_DIAG completion=PASS\n");
         }
     }
 

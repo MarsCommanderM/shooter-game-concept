@@ -63,6 +63,7 @@ namespace STWGameplay
         void UpdateJumpAcceptance(bool physicalStateSynchronized);
         void UpdateCrouchAcceptance(bool physicalStateSynchronized);
         void UpdateSlideAcceptance(bool physicalStateSynchronized);
+        void UpdateMantleAcceptance(bool physicalStateSynchronized);
 
         // The PhysX character controller cannot be created during Activate() because the
         // default physics scene does not exist yet; creation is deferred to OnTick.
@@ -183,5 +184,17 @@ namespace STWGameplay
         float m_slideAcceptanceEndSpeed = 0.0f;
         float m_slideAcceptanceMaxTravel = 0.0f;
         int m_slideAcceptanceInitialEvents = 0;
+        bool m_mantleAcceptanceStimulusStarted = false;
+        bool m_mantleAcceptanceStarted = false;
+        bool m_mantleAcceptanceValidated = false;
+        bool m_mantleAcceptanceAscended = false;
+        bool m_mantleAcceptanceCompleted = false;
+        bool m_mantleAcceptanceReported = false;
+        bool m_mantleAcceptanceMovementReported = false;
+        AZ::Vector3 m_mantleAcceptanceStartPosition = AZ::Vector3::CreateZero();
+        float m_mantleAcceptanceStartZ = 0.0f;
+        float m_mantleAcceptanceMaxZ = 0.0f;
+        float m_mantleAcceptanceMaxForward = 0.0f;
+        int m_mantleAcceptanceInitialEvents = 0;
     };
 }

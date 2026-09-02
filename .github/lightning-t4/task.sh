@@ -685,7 +685,7 @@ for _ in $(seq 1 45); do
 done
 [[ -s "${FRAME_NATIVE}" ]]
 for _ in $(seq 1 30); do
-  runtime_grep -q 'PERFORMANCE_BASELINE' && runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS' && runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS' && runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS' && runtime_grep -q 'ENEMY_AI_ACCEPTANCE result=PASS' && runtime_grep -q 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'COMBAT_FEEDBACK_ACCEPTANCE result=PASS' && runtime_grep -q 'JUMP_ACCEPTANCE result=PASS' && runtime_grep -q 'CROUCH_ACCEPTANCE result=PASS' && runtime_grep -q 'SLIDE_ACCEPTANCE result=PASS' && break
+  runtime_grep -q 'PERFORMANCE_BASELINE' && runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS' && runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS' && runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS' && runtime_grep -q 'ENEMY_AI_ACCEPTANCE result=PASS' && runtime_grep -q 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'COMBAT_FEEDBACK_ACCEPTANCE result=PASS' && runtime_grep -q 'JUMP_ACCEPTANCE result=PASS' && runtime_grep -q 'CROUCH_ACCEPTANCE result=PASS' && runtime_grep -q 'SLIDE_ACCEPTANCE result=PASS' && runtime_grep -q 'MANTLE_ACCEPTANCE result=PASS' && break
   kill -0 "${launcher_pid}" 2>/dev/null || { tail -n 200 "${LAUNCH_LOG}"; exit 1; }
   sleep 1
 done
@@ -705,6 +705,7 @@ runtime_grep -Eq 'COMBAT_FEEDBACK_ACCEPTANCE result=PASS fire_feedback=[1-9][0-9
 runtime_grep -Eq 'JUMP_ACCEPTANCE result=PASS requested=1 airborne=1 rose=1 landed=1 held_retrigger=0 physx_authority=PASS start_z=-?[0-9]+\.[0-9]+ max_z=-?[0-9]+\.[0-9]+ max_delta_z=[0-9]+\.[0-9]+ samples=[1-9][0-9]*'
 runtime_grep -Eq 'CROUCH_ACCEPTANCE result=PASS requested=1 crouched=1 stood=1 base_preserved=1 camera_lowered=1 standing_height=[0-9]+\.[0-9]+ crouched_height=[0-9]+\.[0-9]+ physx_authority=PASS'
 runtime_grep -Eq 'SLIDE_ACCEPTANCE result=PASS requested=1 started=1 grounded_start=1 moved=1 speed_decayed=1 ended=1 crouch_state_valid=1 physx_authority=PASS start_speed=[0-9]+\.[0-9]+ end_speed=[0-9]+\.[0-9]+ travel=[0-9]+\.[0-9]+ duration=[0-9]+\.[0-9]+ finite=1'
+runtime_grep -Eq 'MANTLE_ACCEPTANCE result=PASS requested=1 validated=1 ascended=1 forward_progress=1 completed=1 clearance=PASS physx_authority=PASS start_z=-?[0-9]+\.[0-9]+ max_z=-?[0-9]+\.[0-9]+ delta_z=-?[0-9]+\.[0-9]+ forward_delta=[0-9]+\.[0-9]+ samples=[1-9][0-9]* finite=1'
 runtime_grep -q 'PERFORMANCE_BASELINE'
 if runtime_grep -q 'Native Atom frame capture submitted'; then
   echo "FRAME_CAPTURE_SUBMISSION_LOG=CONFIRMED"

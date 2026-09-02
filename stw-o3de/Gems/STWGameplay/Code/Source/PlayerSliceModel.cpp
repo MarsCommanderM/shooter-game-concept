@@ -37,6 +37,7 @@ namespace STWGameplay
         m_presentation.m_shotFired = false;
         m_presentation.m_hit = false;
         m_jumpImpulseThisTick = 0.0f;
+        m_player.m_mantleRequested = false;
         m_presentation.m_fireCueRemaining = AZStd::max(0.0f, m_presentation.m_fireCueRemaining - deltaTime);
         m_presentation.m_hitCueRemaining = AZStd::max(0.0f, m_presentation.m_hitCueRemaining - deltaTime);
         m_weapon.m_cooldownRemaining = AZStd::max(0.0f, m_weapon.m_cooldownRemaining - deltaTime);
@@ -57,8 +58,10 @@ namespace STWGameplay
 
         const bool newJumpPress = input.m_jump && !m_jumpWasHeld;
         const bool newCrouchPress = input.m_crouch && !m_crouchWasHeld;
+        const bool newMantlePress = input.m_mantle && !m_mantleWasHeld;
         m_jumpWasHeld = input.m_jump;
         m_crouchWasHeld = input.m_crouch;
+        m_mantleWasHeld = input.m_mantle;
 
         if (!m_player.m_alive)
         {
@@ -66,12 +69,40 @@ namespace STWGameplay
             m_player.m_slideElapsed = 0.0f;
             m_player.m_slideSpeed = 0.0f;
             m_player.m_slideDirection = AZ::Vector3::CreateZero();
+            m_player.m_mantleActive = false;
+            m_player.m_mantleElapsed = 0.0f;
+            m_player.m_mantleDirection = AZ::Vector3::CreateZero();
             return true;
         }
 
         const AZ::Vector3 planarDirection = GetPlanarDirection(m_player.m_yaw, input);
         const bool meaningfulPlanarInput = planarDirection.GetLengthSq()
             >= SlideInputThreshold * SlideInputThreshold;
+        if (newMantlePress && m_player.m_grounded && meaningfulPlanarInput && !m_player.m_slideActive
+            && !m_player.m_mantleActive)
+        {
+            m_player.m_mantleRequested = true;
+        }
+        if (m_player.m_mantleActive)
+        {
+            if (!m_player.m_grounded || !meaningfulPlanarInput)
+            {
+                m_player.m_mantleActive = false;
+            }
+            else
+            {
+                m_player.m_mantleElapsed = AZStd::min(MantleDuration, m_player.m_mantleElapsed + deltaTime);
+                if (m_player.m_mantleElapsed >= MantleDuration)
+                {
+                    m_player.m_mantleActive = false;
+                }
+            }
+            if (!m_player.m_mantleActive)
+            {
+                m_player.m_mantleElapsed = 0.0f;
+                m_player.m_mantleDirection = AZ::Vector3::CreateZero();
+            }
+        }
         const bool slideStarted = newCrouchPress && m_player.m_grounded && meaningfulPlanarInput
             && !m_player.m_slideActive;
         if (slideStarted)
@@ -109,10 +140,10 @@ namespace STWGameplay
         // controller transition can be applied, and airborne input cannot introduce one.
         if (m_player.m_grounded)
         {
-            m_player.m_crouchDesired = input.m_crouch || m_player.m_slideActive;
+            m_player.m_crouchDesired = input.m_crouch || m_player.m_slideActive || m_player.m_mantleActive;
         }
 
-        if (newJumpPress && m_player.m_grounded && !m_player.m_slideActive)
+        if (newJumpPress && m_player.m_grounded && !m_player.m_slideActive && !m_player.m_mantleActive)
         {
             m_jumpImpulseThisTick = JumpImpulseSpeed;
             ++m_player.m_jumpEvents;
@@ -130,6 +161,25 @@ namespace STWGameplay
             TryFire();
         }
         return true;
+    }
+
+    void PlayerSliceModel::BeginMantle(const AZ::Vector3& direction)
+    {
+        if (!m_player.m_mantleRequested || m_player.m_mantleActive || !direction.IsFinite())
+        {
+            return;
+        }
+        const AZ::Vector3 planarDirection(direction.GetX(), direction.GetY(), 0.0f);
+        if (planarDirection.GetLengthSq() < 0.01f)
+        {
+            m_player.m_mantleRequested = false;
+            return;
+        }
+        m_player.m_mantleRequested = false;
+        m_player.m_mantleActive = true;
+        m_player.m_mantleElapsed = 0.0f;
+        m_player.m_mantleDirection = planarDirection.GetNormalized();
+        ++m_player.m_mantleEvents;
     }
 
     bool PlayerSliceModel::TryFire()
@@ -213,7 +263,11 @@ namespace STWGameplay
         }
         AZ::Vector3 movement = GetPlanarDirection(m_player.m_yaw, input);
         AZ::Vector3 velocity;
-        if (m_player.m_slideActive)
+        if (m_player.m_mantleActive)
+        {
+            velocity = m_player.m_mantleDirection * MantleSpeed;
+        }
+        else if (m_player.m_slideActive)
         {
             velocity = m_player.m_slideDirection * m_player.m_slideSpeed;
         }
