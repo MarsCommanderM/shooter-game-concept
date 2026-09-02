@@ -685,7 +685,7 @@ for _ in $(seq 1 45); do
 done
 [[ -s "${FRAME_NATIVE}" ]]
 for _ in $(seq 1 30); do
-  runtime_grep -q 'PERFORMANCE_BASELINE' && runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS' && runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS' && runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS' && runtime_grep -q 'ENEMY_AI_ACCEPTANCE result=PASS' && break
+  runtime_grep -q 'PERFORMANCE_BASELINE' && runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS' && runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS' && runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS' && runtime_grep -q 'ENEMY_AI_ACCEPTANCE result=PASS' && runtime_grep -q 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS' && break
   kill -0 "${launcher_pid}" 2>/dev/null || { tail -n 200 "${LAUNCH_LOG}"; exit 1; }
   sleep 1
 done
@@ -698,6 +698,7 @@ runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS .*material=bound'
 runtime_grep -q 'ATOM_ENEMY_MESH result=PASS .*material=bound'
 runtime_grep -q 'ENEMY_COMBAT_ACCEPTANCE result=PASS spawned=1 mesh=ready physics=ready moved=1 .*deaths=1 respawns=1'
 runtime_grep -q 'ENEMY_AI_ACCEPTANCE result=PASS detected=1 chased=1 enemy_attacks=[1-9][0-9]* player_damage=[1-9][0-9]* player_death=[1-9][0-9]* player_respawn=[1-9][0-9]* enemy_death=[1-9][0-9]* enemy_reset=[1-9][0-9]* loop_active=1'
+runtime_grep -q 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS idle=PASS chase=PASS attack=PASS death=PASS reset=PASS authority_separation=PASS'
 runtime_grep -q 'PERFORMANCE_BASELINE'
 if runtime_grep -q 'Native Atom frame capture submitted'; then
   echo "FRAME_CAPTURE_SUBMISSION_LOG=CONFIRMED"
@@ -736,6 +737,8 @@ runtime_grep -n 'ATOM_ENEMY_MESH result=PASS'
 runtime_grep -n 'ENEMY_COMBAT_ACCEPTANCE result=PASS'
 echo "ENEMY_AI_EVIDENCE:"
 runtime_grep -n 'ENEMY_AI_ACCEPTANCE result=PASS'
+echo "ENEMY_PRESENTATION_EVIDENCE:"
+runtime_grep -n 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS'
 echo "=================================================="
 echo "STW_ASSET_INTEGRATION_BEGIN"
 echo "=================================================="

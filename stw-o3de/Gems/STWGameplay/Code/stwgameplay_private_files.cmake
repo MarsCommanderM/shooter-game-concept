@@ -1,5 +1,6 @@
 set(FILES
     Source/EnemyCombatModel.cpp
+    Source/EnemyPresentation.cpp
     Source/PlayerSliceModel.cpp
     Source/ViewmodelPresentation.cpp
     Source/STWGameplayModuleInterface.cpp

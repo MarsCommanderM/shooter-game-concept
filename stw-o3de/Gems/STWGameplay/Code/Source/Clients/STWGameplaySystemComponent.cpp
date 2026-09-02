@@ -107,6 +107,7 @@ namespace STWGameplay
             m_nativeCapturePath = capturePath;
         }
         m_automatedAcceptance = std::getenv("STW_PHYSX_ACCEPTANCE") != nullptr;
+        m_enemyPresentationIdleObserved = m_model.GetEnemy().GetState().m_behaviorState == EnemyBehaviorState::Idle;
         // The PhysX character controller requires the O3DE default physics scene, which does
         // not exist yet during system activation. Defer its creation to OnTick (TryStartPhysics)
         // and only start input/tick handling here. A missing scene now is not an error.
@@ -198,6 +199,27 @@ namespace STWGameplay
                 || (enemyPhysicalPosition - m_enemyAcceptanceStartPosition).GetLength() > 0.25f;
         }
 
+        const EnemyState presentationInput = m_model.GetEnemy().GetState();
+        m_enemyPresentation.Update(deltaTime, presentationInput);
+        const EnemyState& presentationAfter = m_model.GetEnemy().GetState();
+        m_enemyPresentationAuthoritySeparated = m_enemyPresentationAuthoritySeparated
+            && presentationAfter.m_position.IsClose(presentationInput.m_position)
+            && presentationAfter.m_health == presentationInput.m_health
+            && presentationAfter.m_behaviorState == presentationInput.m_behaviorState
+            && presentationAfter.m_attackEvents == presentationInput.m_attackEvents;
+        m_enemyPresentationIdleObserved = m_enemyPresentationIdleObserved
+            || m_enemyPresentation.GetState() == EnemyBehaviorState::Idle;
+        m_enemyPresentationChaseObserved = m_enemyPresentationChaseObserved
+            || m_enemyPresentation.GetState() == EnemyBehaviorState::Chase;
+        m_enemyPresentationAttackObserved = m_enemyPresentationAttackObserved
+            || (m_enemyPresentation.GetState() == EnemyBehaviorState::Attack
+                && m_enemyPresentation.GetAttackReactionCount() > 0);
+        m_enemyPresentationDeadObserved = m_enemyPresentationDeadObserved
+            || (m_enemyPresentation.GetState() == EnemyBehaviorState::Dead
+                && m_enemyPresentation.GetDeathReactionCount() > 0);
+        m_enemyPresentationResetObserved = m_enemyPresentationResetObserved
+            || m_enemyPresentation.GetResetReactionCount() > 0;
+
         // Presentation reacts to authoritative events/state only (read-only). It never writes
         // ammo, damage, reload completion, target health or player movement back.
         PresentationInput vpInput;
@@ -220,6 +242,7 @@ namespace STWGameplay
         DrawPresentation();
         UpdateEnemyCombatAcceptance();
         UpdateEnemyAiAcceptance(deltaTime);
+        UpdateEnemyPresentationAcceptance();
         RecordPerformance(deltaTime);
 
         // Production runs do not set STW_NATIVE_CAPTURE_PATH. The controlled
@@ -771,8 +794,9 @@ namespace STWGameplay
         }
         const EnemyState& enemy = m_model.GetEnemy().GetState();
         const AZ::Vector3 meshOrigin = enemy.m_position - AZ::Vector3(0.0f, 0.0f, PhysXEnemyRuntime::CenterHeight);
+        const AZ::Transform baseTransform = AZ::Transform::CreateTranslation(meshOrigin);
         m_meshFeatureProcessor->SetTransform(
-            m_enemyMeshHandle, AZ::Transform::CreateTranslation(meshOrigin), AZ::Vector3::CreateOne());
+            m_enemyMeshHandle, baseTransform * m_enemyPresentation.GetLocalTransform(), m_enemyPresentation.GetScale());
         m_meshFeatureProcessor->SetVisible(m_enemyMeshHandle, enemy.m_alive);
         if (!m_enemyMeshReported && m_meshFeatureProcessor->GetModel(m_enemyMeshHandle))
         {
@@ -884,6 +908,23 @@ namespace STWGameplay
                 enemy.m_deathEvents,
                 enemy.m_respawnEvents);
             m_enemyAiAcceptanceReported = true;
+        }
+    }
+
+    void STWGameplaySystemComponent::UpdateEnemyPresentationAcceptance()
+    {
+        if (!m_automatedAcceptance || m_enemyPresentationAcceptanceReported)
+        {
+            return;
+        }
+        if (m_enemyPresentationIdleObserved && m_enemyPresentationChaseObserved && m_enemyPresentationAttackObserved
+            && m_enemyPresentationDeadObserved && m_enemyPresentationResetObserved
+            && m_enemyPresentationAuthoritySeparated && m_enemyMeshReported)
+        {
+            AZ_Printf("STWGameplay",
+                "ENEMY_PRESENTATION_ACCEPTANCE result=PASS idle=PASS chase=PASS attack=PASS death=PASS "
+                "reset=PASS authority_separation=PASS\n");
+            m_enemyPresentationAcceptanceReported = true;
         }
     }
 

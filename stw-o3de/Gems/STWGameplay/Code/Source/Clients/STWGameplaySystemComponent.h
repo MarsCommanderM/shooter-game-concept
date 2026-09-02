@@ -7,6 +7,7 @@
 #include <AzFramework/Input/Events/InputChannelEventListener.h>
 #include <Atom/Feature/Mesh/MeshFeatureProcessorInterface.h>
 #include <STWGameplay/PlayerSliceModel.h>
+#include <STWGameplay/EnemyPresentation.h>
 #include <STWGameplay/ViewmodelPresentation.h>
 #include "PhysXPlayerRuntime.h"
 #include "PhysXEnemyRuntime.h"
@@ -53,6 +54,7 @@ namespace STWGameplay
         void ShutdownEnemyMesh();
         void UpdateEnemyCombatAcceptance();
         void UpdateEnemyAiAcceptance(float deltaTime);
+        void UpdateEnemyPresentationAcceptance();
 
         // The PhysX character controller cannot be created during Activate() because the
         // default physics scene does not exist yet; creation is deferred to OnTick.
@@ -89,6 +91,7 @@ namespace STWGameplay
         bool m_enemyMeshReported = false;
 
         PlayerSliceModel m_model;
+        EnemyPresentation m_enemyPresentation;
         ViewmodelPresentation m_viewmodel;
         PhysXPlayerRuntime m_physicsPlayer;
         PhysXEnemyRuntime m_physicsEnemy;
@@ -128,5 +131,12 @@ namespace STWGameplay
         bool m_enemyAiPlayerRespawned = false;
         bool m_enemyAiLoopReactivated = false;
         float m_enemyAiRespawnDelay = 0.0f;
+        bool m_enemyPresentationIdleObserved = false;
+        bool m_enemyPresentationChaseObserved = false;
+        bool m_enemyPresentationAttackObserved = false;
+        bool m_enemyPresentationDeadObserved = false;
+        bool m_enemyPresentationResetObserved = false;
+        bool m_enemyPresentationAuthoritySeparated = true;
+        bool m_enemyPresentationAcceptanceReported = false;
     };
 }
