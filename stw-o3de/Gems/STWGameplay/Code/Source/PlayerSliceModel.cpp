@@ -9,6 +9,21 @@ namespace STWGameplay
     namespace
     {
         bool IsFinite(float value) { return std::isfinite(value); }
+
+        AZ::Vector3 GetPlanarDirection(float yaw, const PlayerInput& input)
+        {
+            const float forwardAmount = AZStd::clamp(input.m_forward, -1.0f, 1.0f);
+            const float strafeAmount = AZStd::clamp(input.m_strafe, -1.0f, 1.0f);
+            AZ::Vector3 direction(
+                std::sin(yaw) * forwardAmount + std::cos(yaw) * strafeAmount,
+                std::cos(yaw) * forwardAmount - std::sin(yaw) * strafeAmount,
+                0.0f);
+            if (direction.GetLengthSq() > 1.0f)
+            {
+                direction.Normalize();
+            }
+            return direction;
+        }
     }
 
     bool PlayerSliceModel::Update(float deltaTime, const PlayerInput& input)
@@ -41,21 +56,63 @@ namespace STWGameplay
         }
 
         const bool newJumpPress = input.m_jump && !m_jumpWasHeld;
+        const bool newCrouchPress = input.m_crouch && !m_crouchWasHeld;
         m_jumpWasHeld = input.m_jump;
+        m_crouchWasHeld = input.m_crouch;
 
         if (!m_player.m_alive)
         {
+            m_player.m_slideActive = false;
+            m_player.m_slideElapsed = 0.0f;
+            m_player.m_slideSpeed = 0.0f;
+            m_player.m_slideDirection = AZ::Vector3::CreateZero();
             return true;
+        }
+
+        const AZ::Vector3 planarDirection = GetPlanarDirection(m_player.m_yaw, input);
+        const bool meaningfulPlanarInput = planarDirection.GetLengthSq()
+            >= SlideInputThreshold * SlideInputThreshold;
+        const bool slideStarted = newCrouchPress && m_player.m_grounded && meaningfulPlanarInput
+            && !m_player.m_slideActive;
+        if (slideStarted)
+        {
+            m_player.m_slideActive = true;
+            m_player.m_slideElapsed = 0.0f;
+            m_player.m_slideSpeed = SlideStartSpeed;
+            m_player.m_slideDirection = planarDirection.GetNormalized();
+            ++m_player.m_slideEvents;
+        }
+        else if (m_player.m_slideActive)
+        {
+            if (!m_player.m_grounded || !meaningfulPlanarInput)
+            {
+                m_player.m_slideActive = false;
+            }
+            else
+            {
+                m_player.m_slideElapsed = AZStd::min(SlideDuration, m_player.m_slideElapsed + deltaTime);
+                const float decay = m_player.m_slideElapsed / SlideDuration;
+                m_player.m_slideSpeed = SlideStartSpeed + (SlideEndSpeed - SlideStartSpeed) * decay;
+                if (m_player.m_slideElapsed >= SlideDuration || m_player.m_slideSpeed <= SlideEndSpeed)
+                {
+                    m_player.m_slideActive = false;
+                }
+            }
+            if (!m_player.m_slideActive)
+            {
+                m_player.m_slideSpeed = 0.0f;
+                m_player.m_slideDirection = AZ::Vector3::CreateZero();
+            }
         }
 
         // The model owns crouch intent only. PhysX decides whether the requested physical
         // controller transition can be applied, and airborne input cannot introduce one.
         if (m_player.m_grounded)
         {
-            m_player.m_crouchDesired = input.m_crouch;
+            m_player.m_crouchDesired = input.m_crouch || m_player.m_slideActive;
         }
 
-        if (newJumpPress && m_player.m_grounded)
+        if (newJumpPress && m_player.m_grounded && !m_player.m_slideActive)
         {
             m_jumpImpulseThisTick = JumpImpulseSpeed;
             ++m_player.m_jumpEvents;
@@ -154,17 +211,16 @@ namespace STWGameplay
         {
             return AZ::Vector3::CreateZero();
         }
-        const float forwardAmount = AZStd::clamp(input.m_forward, -1.0f, 1.0f);
-        const float strafeAmount = AZStd::clamp(input.m_strafe, -1.0f, 1.0f);
-        AZ::Vector3 movement(
-            std::sin(m_player.m_yaw) * forwardAmount + std::cos(m_player.m_yaw) * strafeAmount,
-            std::cos(m_player.m_yaw) * forwardAmount - std::sin(m_player.m_yaw) * strafeAmount,
-            0.0f);
-        if (movement.GetLengthSq() > 1.0f)
+        AZ::Vector3 movement = GetPlanarDirection(m_player.m_yaw, input);
+        AZ::Vector3 velocity;
+        if (m_player.m_slideActive)
         {
-            movement.Normalize();
+            velocity = m_player.m_slideDirection * m_player.m_slideSpeed;
         }
-        AZ::Vector3 velocity = movement * (input.m_sprint ? SprintSpeed : WalkSpeed);
+        else
+        {
+            velocity = movement * (input.m_sprint ? SprintSpeed : WalkSpeed);
+        }
         velocity.SetZ(m_jumpImpulseThisTick);
         return velocity;
     }

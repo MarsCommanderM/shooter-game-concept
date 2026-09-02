@@ -210,7 +210,10 @@ namespace STWGameplay
     {
         PlayerSliceModel model;
         model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
-        PlayerInput input; input.m_forward = 1.0f; input.m_strafe = 1.0f; input.m_crouch = true;
+        PlayerInput input; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        input.m_forward = 1.0f;
+        input.m_strafe = 1.0f;
         ASSERT_TRUE(model.Update(0.016f, input));
         const AZ::Vector3 velocity = model.GetDesiredVelocity(input);
         EXPECT_NEAR(AZ::Vector3(velocity.GetX(), velocity.GetY(), 0.0f).GetLength(), PlayerSliceModel::WalkSpeed, 0.001f);
@@ -231,6 +234,122 @@ namespace STWGameplay
         PlayerSliceModel model;
         model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
         PlayerInput input; input.m_crouch = true; input.m_jump = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FLOAT_EQ(model.GetDesiredVelocity(input).GetZ(), PlayerSliceModel::JumpImpulseSpeed);
+        EXPECT_EQ(model.GetPlayer().m_jumpEvents, 1);
+    }
+
+    TEST(PlayerSliceModelTests, GroundedMovingFreshCrouchPressStartsSlide)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.0f, input));
+        EXPECT_TRUE(model.GetPlayer().m_slideActive);
+        EXPECT_EQ(model.GetPlayer().m_slideEvents, 1);
+        EXPECT_FLOAT_EQ(model.GetPlayer().m_slideSpeed, PlayerSliceModel::SlideStartSpeed);
+    }
+
+    TEST(PlayerSliceModelTests, StationaryCrouchDoesNotStartSlide)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FALSE(model.GetPlayer().m_slideActive);
+        EXPECT_TRUE(model.GetPlayer().m_crouchDesired);
+    }
+
+    TEST(PlayerSliceModelTests, AirbornePlayerCannotStartSlide)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateAxisZ(1.0f), false);
+        PlayerInput input; input.m_forward = 1.0f; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FALSE(model.GetPlayer().m_slideActive);
+        EXPECT_EQ(model.GetPlayer().m_slideEvents, 0);
+    }
+
+    TEST(PlayerSliceModelTests, DeadPlayerCannotStartSlide)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        ASSERT_TRUE(model.ApplyDamage(model.GetPlayer().m_maxHealth));
+        PlayerInput input; input.m_forward = 1.0f; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FALSE(model.GetPlayer().m_slideActive);
+        EXPECT_EQ(model.GetPlayer().m_slideEvents, 0);
+    }
+
+    TEST(PlayerSliceModelTests, SlideSpeedDecaysDeterministically)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.0f, input));
+        ASSERT_TRUE(model.Update(PlayerSliceModel::SlideDuration * 0.5f, input));
+        EXPECT_NEAR(
+            model.GetPlayer().m_slideSpeed,
+            0.5f * (PlayerSliceModel::SlideStartSpeed + PlayerSliceModel::SlideEndSpeed),
+            0.001f);
+    }
+
+    TEST(PlayerSliceModelTests, SlideTerminatesAfterBoundedDuration)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.0f, input));
+        ASSERT_TRUE(model.Update(PlayerSliceModel::SlideDuration, input));
+        EXPECT_FALSE(model.GetPlayer().m_slideActive);
+        EXPECT_FLOAT_EQ(model.GetPlayer().m_slideSpeed, 0.0f);
+    }
+
+    TEST(PlayerSliceModelTests, SlidePreservesCapturedPlanarDirection)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_strafe = 1.0f; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.0f, input));
+        const AZ::Vector3 initialDirection = model.GetDesiredVelocity(input).GetNormalized();
+        input.m_forward = 0.2f;
+        input.m_strafe = 1.0f;
+        ASSERT_TRUE(model.Update(0.1f, input));
+        EXPECT_TRUE(model.GetDesiredVelocity(input).GetNormalized().IsClose(initialDirection, 0.001f));
+        EXPECT_NEAR(model.GetDesiredVelocity(input).GetZ(), 0.0f, 0.001f);
+    }
+
+    TEST(PlayerSliceModelTests, HeldCrouchDoesNotRetriggerSlide)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.0f, input));
+        Advance(model, PlayerSliceModel::SlideDuration + 0.1f, input);
+        EXPECT_FALSE(model.GetPlayer().m_slideActive);
+        EXPECT_EQ(model.GetPlayer().m_slideEvents, 1);
+    }
+
+    TEST(PlayerSliceModelTests, SlideExitCanRemainCrouched)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.0f, input));
+        ASSERT_TRUE(model.Update(PlayerSliceModel::SlideDuration, input));
+        EXPECT_FALSE(model.GetPlayer().m_slideActive);
+        EXPECT_TRUE(model.GetPlayer().m_crouchDesired);
+    }
+
+    TEST(PlayerSliceModelTests, GroundedJumpRemainsValidAfterSlideEnds)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.0f, input));
+        ASSERT_TRUE(model.Update(PlayerSliceModel::SlideDuration, input));
+        input.m_crouch = false;
+        input.m_jump = true;
         ASSERT_TRUE(model.Update(0.016f, input));
         EXPECT_FLOAT_EQ(model.GetDesiredVelocity(input).GetZ(), PlayerSliceModel::JumpImpulseSpeed);
         EXPECT_EQ(model.GetPlayer().m_jumpEvents, 1);

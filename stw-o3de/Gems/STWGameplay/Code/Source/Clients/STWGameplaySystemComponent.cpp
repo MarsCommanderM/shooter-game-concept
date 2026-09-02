@@ -270,6 +270,7 @@ namespace STWGameplay
         }
         UpdateJumpAcceptance(playerPhysicalStateSynchronized);
         UpdateCrouchAcceptance(playerPhysicalStateSynchronized);
+        UpdateSlideAcceptance(playerPhysicalStateSynchronized);
         AZ::Vector3 enemyPhysicalPosition = AZ::Vector3::CreateZero();
         bool enemyGrounded = false;
         if (m_physicsEnemy.Synchronize(enemyPhysicalPosition, enemyGrounded))
@@ -405,7 +406,7 @@ namespace STWGameplay
     void STWGameplaySystemComponent::UpdateAutomatedAcceptance(float deltaTime)
     {
         if (!m_automatedAcceptance || (m_viewmodelAcceptanceReported && m_adsAcceptanceReported
-                && m_jumpAcceptanceReported && m_crouchAcceptanceReported)
+                && m_jumpAcceptanceReported && m_crouchAcceptanceReported && m_slideAcceptanceReported)
             || !std::isfinite(deltaTime) || deltaTime < 0.0f)
         {
             return;
@@ -458,6 +459,25 @@ namespace STWGameplay
                 }
             }
             m_input.m_crouch = m_crouchAcceptanceStarted && !m_crouchAcceptanceCrouched;
+        }
+
+        // Exercise a fresh moving Left Ctrl press only after normal crouch has stood again.
+        // This uses the same input, model velocity and PhysX controller paths as gameplay.
+        if (m_crouchAcceptanceReported && !m_slideAcceptanceReported)
+        {
+            if (!m_slideAcceptanceStimulusStarted)
+            {
+                const PlayerState& player = m_model.GetPlayer();
+                if (player.m_alive && player.m_grounded && !m_physicsPlayer.IsCrouched())
+                {
+                    m_slideAcceptanceStimulusStarted = true;
+                    m_slideAcceptanceGroundedStart = true;
+                    m_slideAcceptanceStartPosition = player.m_position;
+                    m_slideAcceptanceInitialEvents = player.m_slideEvents;
+                }
+            }
+            m_input.m_forward = m_slideAcceptanceStimulusStarted ? 1.0f : 0.0f;
+            m_input.m_crouch = m_slideAcceptanceStimulusStarted;
         }
 
         // Acceptance-only deterministic look stimulus. It feeds the same presentation-safe
@@ -829,6 +849,65 @@ namespace STWGameplay
                 PhysXPlayerRuntime::CrouchedCapsuleHeight,
                 m_physicsPlayer.IsValid() ? "PASS" : "FAIL");
             m_crouchAcceptanceReported = true;
+        }
+    }
+
+    void STWGameplaySystemComponent::UpdateSlideAcceptance(bool physicalStateSynchronized)
+    {
+        if (!m_automatedAcceptance || !m_slideAcceptanceStimulusStarted || m_slideAcceptanceReported
+            || !physicalStateSynchronized)
+        {
+            return;
+        }
+
+        const PlayerState& player = m_model.GetPlayer();
+        const int requested = player.m_slideEvents - m_slideAcceptanceInitialEvents;
+        const float travel = (player.m_position - m_slideAcceptanceStartPosition).GetLength();
+        m_slideAcceptanceMaxTravel = AZStd::max(m_slideAcceptanceMaxTravel, travel);
+        if (player.m_slideActive)
+        {
+            if (!m_slideAcceptanceStarted)
+            {
+                m_slideAcceptanceStarted = true;
+                m_slideAcceptanceStartSpeed = player.m_slideSpeed;
+            }
+            m_slideAcceptanceEndSpeed = player.m_slideSpeed;
+            m_slideAcceptanceSpeedDecayed = m_slideAcceptanceSpeedDecayed
+                || player.m_slideSpeed < m_slideAcceptanceStartSpeed - 0.10f;
+        }
+        else if (m_slideAcceptanceStarted)
+        {
+            m_slideAcceptanceEnded = true;
+        }
+
+        if (m_slideAcceptanceEnded)
+        {
+            const bool crouchStateValid = player.m_crouchDesired && m_physicsPlayer.IsCrouched();
+            const bool finite = player.m_position.IsFinite() && std::isfinite(m_slideAcceptanceMaxTravel)
+                && std::isfinite(m_slideAcceptanceStartSpeed) && std::isfinite(m_slideAcceptanceEndSpeed);
+            const bool passed = requested == 1 && m_slideAcceptanceGroundedStart && m_slideAcceptanceStarted
+                && m_slideAcceptanceMaxTravel > 0.25f && m_slideAcceptanceSpeedDecayed
+                && crouchStateValid && finite && m_physicsPlayer.IsValid();
+            AZ_Printf(
+                "STWGameplay",
+                "SLIDE_ACCEPTANCE result=%s requested=%d started=%d grounded_start=%d moved=%d "
+                "speed_decayed=%d ended=%d crouch_state_valid=%d physx_authority=%s "
+                "start_speed=%.3f end_speed=%.3f travel=%.3f duration=%.3f finite=%d\n",
+                passed ? "PASS" : "FAIL",
+                requested,
+                m_slideAcceptanceStarted ? 1 : 0,
+                m_slideAcceptanceGroundedStart ? 1 : 0,
+                m_slideAcceptanceMaxTravel > 0.25f ? 1 : 0,
+                m_slideAcceptanceSpeedDecayed ? 1 : 0,
+                m_slideAcceptanceEnded ? 1 : 0,
+                crouchStateValid ? 1 : 0,
+                m_physicsPlayer.IsValid() ? "PASS" : "FAIL",
+                m_slideAcceptanceStartSpeed,
+                m_slideAcceptanceEndSpeed,
+                m_slideAcceptanceMaxTravel,
+                PlayerSliceModel::SlideDuration,
+                finite ? 1 : 0);
+            m_slideAcceptanceReported = true;
         }
     }
 

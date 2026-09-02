@@ -29,10 +29,15 @@ namespace STWGameplay
         bool m_alive = true;
         bool m_grounded = false;
         bool m_crouchDesired = false;
+        bool m_slideActive = false;
+        float m_slideElapsed = 0.0f;
+        float m_slideSpeed = 0.0f;
+        AZ::Vector3 m_slideDirection = AZ::Vector3::CreateZero();
         int m_damageEvents = 0;
         int m_deathEvents = 0;
         int m_respawnEvents = 0;
         int m_jumpEvents = 0;
+        int m_slideEvents = 0;
     };
 
     struct WeaponState
@@ -60,6 +65,10 @@ namespace STWGameplay
         static constexpr float WalkSpeed = 4.5f;
         static constexpr float SprintSpeed = 7.5f;
         static constexpr float JumpImpulseSpeed = 5.5f;
+        static constexpr float SlideStartSpeed = 8.5f;
+        static constexpr float SlideEndSpeed = WalkSpeed;
+        static constexpr float SlideDuration = 0.80f;
+        static constexpr float SlideInputThreshold = 0.10f;
         static constexpr float EyeHeight = 1.7f;
         static constexpr float PitchLimit = 1.45f;
         static constexpr float LookSensitivity = 0.0025f;
@@ -97,6 +106,7 @@ namespace STWGameplay
         EnemyCombatModel m_enemy;
         PresentationState m_presentation;
         bool m_jumpWasHeld = false;
+        bool m_crouchWasHeld = false;
         float m_jumpImpulseThisTick = 0.0f;
     };
 }
