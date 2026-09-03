@@ -532,6 +532,125 @@ namespace STWGameplay
         EXPECT_FLOAT_EQ(model.GetTarget().m_health, 0.0f);
     }
 
+    TEST(PlayerSliceModelTests, InitialActiveWeaponIsFirstSlot)
+    {
+        PlayerSliceModel model;
+        EXPECT_EQ(model.GetActiveWeaponId(), WeaponId::STW_SMG_01);
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_SMG_01).m_magazine, 30);
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_RIFLE_02).m_magazine, 12);
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_RIFLE_02).m_reserve, 48);
+    }
+
+    TEST(PlayerSliceModelTests, SwitchChangesActiveWeaponExactlyOnce)
+    {
+        PlayerSliceModel model;
+        PlayerInput switchInput;
+        switchInput.m_switchWeapon = true;
+        ASSERT_TRUE(model.Update(0.016f, switchInput));
+        EXPECT_EQ(model.GetActiveWeaponId(), WeaponId::STW_RIFLE_02);
+        ASSERT_TRUE(model.Update(0.016f, PlayerInput{}));
+        EXPECT_EQ(model.GetActiveWeaponId(), WeaponId::STW_RIFLE_02);
+    }
+
+    TEST(PlayerSliceModelTests, HeldSwitchDoesNotToggleEveryTick)
+    {
+        PlayerSliceModel model;
+        PlayerInput heldSwitch;
+        heldSwitch.m_switchWeapon = true;
+        ASSERT_TRUE(model.Update(0.016f, heldSwitch));
+        ASSERT_TRUE(model.Update(0.016f, heldSwitch));
+        ASSERT_TRUE(model.Update(0.016f, heldSwitch));
+        EXPECT_EQ(model.GetActiveWeaponId(), WeaponId::STW_RIFLE_02);
+
+        ASSERT_TRUE(model.Update(0.016f, PlayerInput{}));
+        ASSERT_TRUE(model.Update(0.016f, heldSwitch));
+        EXPECT_EQ(model.GetActiveWeaponId(), WeaponId::STW_SMG_01);
+    }
+
+    TEST(PlayerSliceModelTests, EachWeaponPreservesIndependentAmmoAcrossSwitches)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.TryFire());
+        const WeaponState weaponABeforeSwitch = model.GetWeapon(WeaponId::STW_SMG_01);
+        ASSERT_TRUE(model.Update(0.016f, PlayerInput{}));
+
+        PlayerInput switchInput;
+        switchInput.m_switchWeapon = true;
+        ASSERT_TRUE(model.Update(0.016f, switchInput));
+        const WeaponState weaponBBeforeFire = model.GetWeapon(WeaponId::STW_RIFLE_02);
+        ASSERT_TRUE(model.TryFire());
+        const WeaponState weaponBAfterFire = model.GetWeapon(WeaponId::STW_RIFLE_02);
+        EXPECT_EQ(weaponBAfterFire.m_magazine, weaponBBeforeFire.m_magazine - 1);
+
+        ASSERT_TRUE(model.RequestWeaponSwitch());
+        const WeaponState weaponAAfterSwitchBack = model.GetWeapon(WeaponId::STW_SMG_01);
+        EXPECT_EQ(weaponAAfterSwitchBack.m_magazine, weaponABeforeSwitch.m_magazine);
+        EXPECT_EQ(weaponAAfterSwitchBack.m_reserve, weaponABeforeSwitch.m_reserve);
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_RIFLE_02).m_magazine, weaponBAfterFire.m_magazine);
+    }
+
+    TEST(PlayerSliceModelTests, FireAffectsOnlyActiveWeaponAmmo)
+    {
+        PlayerSliceModel model;
+        const int weaponAMagazine = model.GetWeapon(WeaponId::STW_SMG_01).m_magazine;
+        const int weaponBMagazine = model.GetWeapon(WeaponId::STW_RIFLE_02).m_magazine;
+        ASSERT_TRUE(model.TryFire());
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_SMG_01).m_magazine, weaponAMagazine - 1);
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_RIFLE_02).m_magazine, weaponBMagazine);
+
+        Advance(model, PlayerSliceModel::FireInterval);
+        ASSERT_TRUE(model.RequestWeaponSwitch());
+        ASSERT_TRUE(model.TryFire());
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_SMG_01).m_magazine, weaponAMagazine - 1);
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_RIFLE_02).m_magazine, weaponBMagazine - 1);
+    }
+
+    TEST(PlayerSliceModelTests, ReloadAffectsOnlyActiveWeaponAmmo)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.TryFire());
+        Advance(model, PlayerSliceModel::FireInterval);
+        ASSERT_TRUE(model.StartReload());
+        const WeaponState weaponBBeforeReload = model.GetWeapon(WeaponId::STW_RIFLE_02);
+        EXPECT_FALSE(model.RequestWeaponSwitch());
+        EXPECT_EQ(model.GetActiveWeaponId(), WeaponId::STW_SMG_01);
+        Advance(model, PlayerSliceModel::ReloadDuration + 0.01f);
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_SMG_01).m_magazine, 30);
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_SMG_01).m_reserve, 149);
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_RIFLE_02).m_magazine, weaponBBeforeReload.m_magazine);
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_RIFLE_02).m_reserve, weaponBBeforeReload.m_reserve);
+    }
+
+    TEST(PlayerSliceModelTests, SwitchDoesNotDuplicateAmmo)
+    {
+        PlayerSliceModel model;
+        const WeaponState weaponABefore = model.GetWeapon(WeaponId::STW_SMG_01);
+        const WeaponState weaponBBefore = model.GetWeapon(WeaponId::STW_RIFLE_02);
+        ASSERT_TRUE(model.RequestWeaponSwitch());
+        ASSERT_TRUE(model.RequestWeaponSwitch());
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_SMG_01).m_magazine, weaponABefore.m_magazine);
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_SMG_01).m_reserve, weaponABefore.m_reserve);
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_RIFLE_02).m_magazine, weaponBBefore.m_magazine);
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_RIFLE_02).m_reserve, weaponBBefore.m_reserve);
+    }
+
+    TEST(PlayerSliceModelTests, SwitchCannotBypassReloadOrCooldownPolicy)
+    {
+        PlayerSliceModel cooldownModel;
+        ASSERT_TRUE(cooldownModel.TryFire());
+        ASSERT_TRUE(cooldownModel.RequestWeaponSwitch());
+        ASSERT_TRUE(cooldownModel.RequestWeaponSwitch());
+        EXPECT_FALSE(cooldownModel.TryFire());
+        EXPECT_GT(cooldownModel.GetWeapon().m_cooldownRemaining, 0.0f);
+
+        PlayerSliceModel reloadModel;
+        ASSERT_TRUE(reloadModel.TryFire());
+        Advance(reloadModel, PlayerSliceModel::FireInterval);
+        ASSERT_TRUE(reloadModel.StartReload());
+        EXPECT_FALSE(reloadModel.RequestWeaponSwitch());
+        EXPECT_EQ(reloadModel.GetActiveWeaponId(), WeaponId::STW_SMG_01);
+    }
+
     TEST(PlayerSliceModelTests, PresentationCannotMutateWeaponOrTargetState)
     {
         PlayerSliceModel model;

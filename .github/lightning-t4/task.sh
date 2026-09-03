@@ -570,12 +570,28 @@ stw_asset_face_count="$(grep -c '^f ' "${stw_asset_source}")"
 stw_asset_group_count="$(grep -c '^g ' "${stw_asset_source}")"
 stw_model_product="${PROJECT}/Cache/linux/assets/weapons/stw_smg_01/stw_smg_01.obj.azmodel"
 stw_material_product="${PROJECT}/Cache/linux/assets/weapons/stw_smg_01/stw_smg_01.azmaterial"
+stw_second_asset_source="${PROJECT}/Assets/Weapons/STW_RIFLE_02/STW_RIFLE_02.obj"
+[[ -s "${stw_second_asset_source}" ]]
+stw_second_asset_source_bytes="$(stat -c %s "${stw_second_asset_source}")"
+stw_second_asset_vertex_count="$(grep -c '^v ' "${stw_second_asset_source}")"
+stw_second_asset_face_count="$(grep -c '^f ' "${stw_second_asset_source}")"
+stw_second_asset_group_count="$(grep -c '^g ' "${stw_second_asset_source}")"
+stw_second_model_product="${PROJECT}/Cache/linux/assets/weapons/stw_rifle_02/stw_rifle_02.obj.azmodel"
+stw_second_material_product="${PROJECT}/Cache/linux/assets/weapons/stw_rifle_02/stw_rifle_02.azmaterial"
 enemy_asset_source="${PROJECT}/Assets/Enemies/STW_ENEMY_01/STW_ENEMY_01.obj"
 enemy_model_product="${PROJECT}/Cache/linux/assets/enemies/stw_enemy_01/stw_enemy_01.obj.azmodel"
 enemy_material_product="${PROJECT}/Cache/linux/assets/enemies/stw_enemy_01/stw_enemy_01.azmaterial"
 echo "STW_ASSET_MODEL_PRODUCT=${stw_model_product}"
 echo "STW_ASSET_MATERIAL_PRODUCT=${stw_material_product}"
 [[ -s "${stw_model_product}" && -s "${stw_material_product}" ]]
+echo "STW_SECOND_ASSET_SOURCE=${stw_second_asset_source}"
+echo "STW_SECOND_ASSET_SOURCE_BYTES=${stw_second_asset_source_bytes}"
+echo "STW_SECOND_ASSET_VERTEX_COUNT=${stw_second_asset_vertex_count}"
+echo "STW_SECOND_ASSET_FACE_COUNT=${stw_second_asset_face_count}"
+echo "STW_SECOND_ASSET_GROUP_COUNT=${stw_second_asset_group_count}"
+echo "STW_SECOND_ASSET_MODEL_PRODUCT=${stw_second_model_product}"
+echo "STW_SECOND_ASSET_MATERIAL_PRODUCT=${stw_second_material_product}"
+[[ -s "${stw_second_model_product}" && -s "${stw_second_material_product}" ]]
 echo "STW_ENEMY_ASSET_SOURCE=${enemy_asset_source}"
 echo "STW_ENEMY_MODEL_PRODUCT=${enemy_model_product}"
 echo "STW_ENEMY_MATERIAL_PRODUCT=${enemy_material_product}"
@@ -685,7 +701,7 @@ for _ in $(seq 1 45); do
 done
 [[ -s "${FRAME_NATIVE}" ]]
 for _ in $(seq 1 30); do
-  runtime_grep -q 'PERFORMANCE_BASELINE' && runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS' && runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS' && runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS' && runtime_grep -q 'ENEMY_AI_ACCEPTANCE result=PASS' && runtime_grep -q 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'COMBAT_FEEDBACK_ACCEPTANCE result=PASS' && runtime_grep -q 'JUMP_ACCEPTANCE result=PASS' && runtime_grep -q 'CROUCH_ACCEPTANCE result=PASS' && runtime_grep -q 'SLIDE_ACCEPTANCE result=PASS' && runtime_grep -q 'MANTLE_ACCEPTANCE result=PASS' && runtime_grep -q 'TRAVERSAL_ARBITRATION_ACCEPTANCE result=PASS' && runtime_grep -q 'ENCOUNTER_ACCEPTANCE result=PASS' && runtime_grep -q 'SPAWN_CHECKPOINT_ACCEPTANCE result=PASS' && break
+  runtime_grep -q 'PERFORMANCE_BASELINE' && runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS' && runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS' && runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS' && runtime_grep -q 'ENEMY_AI_ACCEPTANCE result=PASS' && runtime_grep -q 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'COMBAT_FEEDBACK_ACCEPTANCE result=PASS' && runtime_grep -q 'JUMP_ACCEPTANCE result=PASS' && runtime_grep -q 'CROUCH_ACCEPTANCE result=PASS' && runtime_grep -q 'SLIDE_ACCEPTANCE result=PASS' && runtime_grep -q 'MANTLE_ACCEPTANCE result=PASS' && runtime_grep -q 'TRAVERSAL_ARBITRATION_ACCEPTANCE result=PASS' && runtime_grep -q 'ENCOUNTER_ACCEPTANCE result=PASS' && runtime_grep -q 'SPAWN_CHECKPOINT_ACCEPTANCE result=PASS' && runtime_grep -q 'WEAPON_SWITCH_ACCEPTANCE result=PASS' && break
   kill -0 "${launcher_pid}" 2>/dev/null || { tail -n 200 "${LAUNCH_LOG}"; exit 1; }
   sleep 1
 done
@@ -709,6 +725,7 @@ runtime_grep -Eq 'MANTLE_ACCEPTANCE result=PASS requested=1 validated=1 ascended
 runtime_grep -Eq 'TRAVERSAL_ARBITRATION_ACCEPTANCE result=PASS mantle_started=1 duplicate_mantle_blocked=1 jump_during_mantle_blocked=1 slide_during_mantle_blocked=1 held_retrigger=0 completed=1 post_jump_available=1 post_slide_available=1 physx_authority=PASS'
 runtime_grep -Eq 'ENCOUNTER_ACCEPTANCE result=PASS initial_active=1 first_elimination=1 first_completed_count=1 duplicate_completion_blocked=1 rearm=1 post_rearm_active=1 second_elimination=1 second_completed_count=2 player_authority=PASS enemy_authority=PASS'
 runtime_grep -Eq 'SPAWN_CHECKPOINT_ACCEPTANCE result=PASS initial_spawn=1 default_respawn=1 checkpoint_activated=1 duplicate_checkpoint_blocked=1 active_checkpoint_persisted=1 player_death=1 respawn_at_checkpoint=1 physical_position=1 player_authority=PASS player_physical_authority=PASS encounter_authority=PASS'
+runtime_grep -Eq 'WEAPON_SWITCH_ACCEPTANCE result=PASS initial_slot=0 first_weapon_visible=1 first_switch_slot=1 second_switch_slot=0 weapon_a_ammo_preserved=1 weapon_b_ammo_changed_on_fire=1 inactive_weapon_ammo_unchanged=1 held_switch_retrigger_blocked=1'
 runtime_grep -q 'PERFORMANCE_BASELINE'
 if runtime_grep -q 'Native Atom frame capture submitted'; then
   echo "FRAME_CAPTURE_SUBMISSION_LOG=CONFIRMED"
@@ -770,6 +787,15 @@ echo "STW_ASSET_MATERIAL_PRODUCT=${stw_material_product}"
 echo "STW_ASSET_CATALOG_RESOLVES=YES"
 echo "STW_ASSET_PBR_BINDING=BOUND"
 echo "STW_ASSET_EXTERNAL_SOURCE=NO"
+echo "STW_SECOND_ASSET_NAME=STW_RIFLE_02"
+echo "STW_SECOND_ASSET_SOURCE=${stw_second_asset_source}"
+echo "STW_SECOND_ASSET_SOURCE_EXISTS=YES"
+echo "STW_SECOND_ASSET_PRODUCT=${stw_second_model_product}"
+echo "STW_SECOND_ASSET_PRODUCT_EXISTS=YES"
+echo "STW_SECOND_ASSET_MATERIAL_PRODUCT=${stw_second_material_product}"
+echo "STW_SECOND_ASSET_CATALOG_RESOLVES=YES"
+echo "STW_SECOND_ASSET_PBR_BINDING=BOUND"
+echo "STW_SECOND_ASSET_EXTERNAL_SOURCE=NO"
 echo "=================================================="
 echo "STW_ASSET_INTEGRATION_END"
 echo "=================================================="
@@ -1031,7 +1057,7 @@ if [[ -s "${mesh_api}" ]] && grep -Fq 'SetCustomMaterials' "${mesh_api}"; then
   runtime_override="YES"
 fi
 if [[ -s "${mesh_source}" ]] \
-    && grep -Fq 'MeshHandleDescriptor descriptor(modelAsset, s_viewmodelAssetLoadState.m_material)' "${mesh_source}" \
+    && grep -Fq 'MeshHandleDescriptor descriptor(modelAsset, loadState.m_material)' "${mesh_source}" \
     && grep -Fq 'Material::FindOrCreate' "${mesh_source}" \
     && grep -Fq 'AcquireMesh(descriptor)' "${mesh_source}" \
     && ! grep -Fq 'SetCustomMaterials(' "${mesh_source}"; then

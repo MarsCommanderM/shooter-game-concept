@@ -64,6 +64,7 @@ namespace STWGameplay
         void UpdateCombatFeedbackAcceptance();
         void UpdateEncounterAcceptance();
         void UpdateSpawnCheckpointAcceptance();
+        void UpdateWeaponSwitchAcceptance();
         void UpdateJumpAcceptance(bool physicalStateSynchronized);
         void UpdateCrouchAcceptance(bool physicalStateSynchronized);
         void UpdateSlideAcceptance(bool physicalStateSynchronized);
@@ -95,9 +96,11 @@ namespace STWGameplay
         static constexpr float ViewmodelMeshScaleZ = 0.16f;
 
         AZ::Render::MeshFeatureProcessorInterface* m_meshFeatureProcessor = nullptr;
-        AZ::Render::MeshFeatureProcessorInterface::MeshHandle m_viewmodelMeshHandle;
+        AZStd::array<AZ::Render::MeshFeatureProcessorInterface::MeshHandle, PlayerSliceModel::WeaponCount>
+            m_viewmodelMeshHandles;
         AZ::Render::MeshFeatureProcessorInterface::MeshHandle m_fireFeedbackMeshHandle;
-        AZStd::string m_viewmodelMeshAssetPath;
+        AZStd::array<AZStd::string, PlayerSliceModel::WeaponCount> m_viewmodelMeshAssetPaths;
+        size_t m_visibleViewmodelSlot = PlayerSliceModel::WeaponCount;
         bool m_viewmodelMeshReported = false;
         ViewmodelMeshStartup m_enemyMeshStartup = ViewmodelMeshStartup::Waiting;
         AZ::Render::MeshFeatureProcessorInterface::MeshHandle m_enemyMeshHandle;
@@ -171,6 +174,20 @@ namespace STWGameplay
         bool m_encounterAcceptanceSecondCompletion = false;
         bool m_encounterAcceptanceSecondEliminationTriggered = false;
         int m_encounterAcceptanceLastRespawnEvents = 0;
+        bool m_weaponSwitchAcceptanceStarted = false;
+        bool m_weaponSwitchFirstSwitchObserved = false;
+        bool m_weaponSwitchFirstWeaponVisible = false;
+        bool m_weaponSwitchHeldStable = false;
+        bool m_weaponSwitchBAmmoChangedOnFire = false;
+        bool m_weaponSwitchInactiveAUnchanged = true;
+        bool m_weaponSwitchSecondSwitchObserved = false;
+        bool m_weaponSwitchAAmmoPreserved = false;
+        bool m_weaponSwitchAcceptanceReported = false;
+        int m_weaponSwitchInitialSlot = -1;
+        int m_weaponSwitchInitialAMagazine = 0;
+        int m_weaponSwitchInitialAReserve = 0;
+        int m_weaponSwitchInitialBMagazine = 0;
+        int m_weaponSwitchInitialBReserve = 0;
         bool m_spawnCheckpointAcceptanceStarted = false;
         bool m_spawnCheckpointDefaultRespawnObserved = false;
         bool m_spawnCheckpointActivationObserved = false;

@@ -8,6 +8,11 @@ namespace STWGameplay
 {
     namespace
     {
+        const AZStd::array<WeaponProfile, PlayerSliceModel::WeaponCount> s_weaponProfiles = {
+            WeaponProfile{ 30, 150, 0.075f, 1.75f, 60.0f, 16.0f },
+            WeaponProfile{ 12, 48, 0.180f, 1.75f, 75.0f, 24.0f }
+        };
+
         bool IsFinite(float value) { return std::isfinite(value); }
 
         AZ::Vector3 GetPlanarDirection(float yaw, const PlayerInput& input)
@@ -26,6 +31,17 @@ namespace STWGameplay
         }
     }
 
+    PlayerSliceModel::PlayerSliceModel()
+    {
+        ResetWeapons();
+    }
+
+    const WeaponProfile& PlayerSliceModel::GetWeaponProfile(WeaponId weaponId)
+    {
+        const size_t index = static_cast<size_t>(weaponId);
+        return s_weaponProfiles[index < WeaponCount ? index : 0];
+    }
+
     bool PlayerSliceModel::Update(float deltaTime, const PlayerInput& input)
     {
         if (!IsFinite(deltaTime) || deltaTime < 0.0f || !IsFinite(input.m_forward) || !IsFinite(input.m_strafe)
@@ -40,17 +56,18 @@ namespace STWGameplay
         m_player.m_mantleRequested = false;
         m_presentation.m_fireCueRemaining = AZStd::max(0.0f, m_presentation.m_fireCueRemaining - deltaTime);
         m_presentation.m_hitCueRemaining = AZStd::max(0.0f, m_presentation.m_hitCueRemaining - deltaTime);
-        m_weapon.m_cooldownRemaining = AZStd::max(0.0f, m_weapon.m_cooldownRemaining - deltaTime);
+        WeaponState& activeWeapon = m_weapons[static_cast<size_t>(m_activeWeapon)];
+        activeWeapon.m_cooldownRemaining = AZStd::max(0.0f, activeWeapon.m_cooldownRemaining - deltaTime);
         m_enemy.Update(deltaTime, m_player.m_position, m_player.m_alive);
         if (m_player.m_alive && m_enemy.TryAttackPlayer())
         {
             ApplyDamage(EnemyCombatModel::AttackDamage);
         }
 
-        if (m_weapon.m_reloading)
+        if (activeWeapon.m_reloading)
         {
-            m_weapon.m_reloadRemaining -= deltaTime;
-            if (m_weapon.m_reloadRemaining <= 0.0f)
+            activeWeapon.m_reloadRemaining -= deltaTime;
+            if (activeWeapon.m_reloadRemaining <= 0.0f)
             {
                 FinishReload();
             }
@@ -59,9 +76,11 @@ namespace STWGameplay
         const bool newJumpPress = input.m_jump && !m_jumpWasHeld;
         const bool newCrouchPress = input.m_crouch && !m_crouchWasHeld;
         const bool newMantlePress = input.m_mantle && !m_mantleWasHeld;
+        const bool newWeaponSwitch = input.m_switchWeapon && !m_weaponSwitchWasHeld;
         m_jumpWasHeld = input.m_jump;
         m_crouchWasHeld = input.m_crouch;
         m_mantleWasHeld = input.m_mantle;
+        m_weaponSwitchWasHeld = input.m_switchWeapon;
 
         if (!m_player.m_alive)
         {
@@ -154,6 +173,10 @@ namespace STWGameplay
         m_player.m_yaw += input.m_lookX * LookSensitivity;
         m_player.m_pitch = AZStd::clamp(m_player.m_pitch - input.m_lookY * LookSensitivity, -PitchLimit, PitchLimit);
 
+        if (newWeaponSwitch)
+        {
+            RequestWeaponSwitch();
+        }
         if (input.m_reload)
         {
             StartReload();
@@ -186,17 +209,19 @@ namespace STWGameplay
 
     bool PlayerSliceModel::TryFire()
     {
-        if (!m_player.m_alive || m_weapon.m_reloading || m_weapon.m_cooldownRemaining > 0.0f || m_weapon.m_magazine <= 0)
+        WeaponState& weapon = m_weapons[static_cast<size_t>(m_activeWeapon)];
+        const WeaponProfile& profile = GetWeaponProfile(m_activeWeapon);
+        if (!m_player.m_alive || weapon.m_reloading || weapon.m_cooldownRemaining > 0.0f || weapon.m_magazine <= 0)
         {
             return false;
         }
-        --m_weapon.m_magazine;
-        m_weapon.m_cooldownRemaining = FireInterval;
+        --weapon.m_magazine;
+        weapon.m_cooldownRemaining = profile.m_fireInterval;
         m_presentation.m_shotFired = true;
         m_presentation.m_fireCueRemaining = 0.06f;
         if (m_enemy.GetState().m_alive && RayHitsTarget(GetEyePosition(), GetAimDirection()))
         {
-            m_enemy.ApplyDamage(WeaponDamage);
+            m_enemy.ApplyDamage(profile.m_damage);
             m_presentation.m_hit = true;
             m_presentation.m_hitCueRemaining = 0.12f;
         }
@@ -205,12 +230,28 @@ namespace STWGameplay
 
     bool PlayerSliceModel::StartReload()
     {
-        if (!m_player.m_alive || m_weapon.m_reloading || m_weapon.m_magazine >= 30 || m_weapon.m_reserve <= 0)
+        WeaponState& weapon = m_weapons[static_cast<size_t>(m_activeWeapon)];
+        const WeaponProfile& profile = GetWeaponProfile(m_activeWeapon);
+        if (!m_player.m_alive || weapon.m_reloading || weapon.m_magazine >= profile.m_magazineCapacity
+            || weapon.m_reserve <= 0)
         {
             return false;
         }
-        m_weapon.m_reloading = true;
-        m_weapon.m_reloadRemaining = ReloadDuration;
+        weapon.m_reloading = true;
+        weapon.m_reloadRemaining = profile.m_reloadDuration;
+        return true;
+    }
+
+    bool PlayerSliceModel::RequestWeaponSwitch()
+    {
+        const WeaponState& weapon = m_weapons[static_cast<size_t>(m_activeWeapon)];
+        if (!m_player.m_alive || weapon.m_reloading)
+        {
+            return false;
+        }
+        m_activeWeapon = m_activeWeapon == WeaponId::STW_SMG_01
+            ? WeaponId::STW_RIFLE_02
+            : WeaponId::STW_SMG_01;
         return true;
     }
 
@@ -239,7 +280,9 @@ namespace STWGameplay
         m_player.m_damageEvents = damageEvents;
         m_player.m_deathEvents = deathEvents;
         m_player.m_respawnEvents = respawnEvents;
-        m_weapon = {};
+        ResetWeapons();
+        m_activeWeapon = WeaponId::STW_SMG_01;
+        m_weaponSwitchWasHeld = false;
         m_presentation = {};
     }
 
@@ -303,7 +346,7 @@ namespace STWGameplay
         const EnemyState& target = m_enemy.GetState();
         const AZ::Vector3 toTarget = target.m_position - origin;
         const float projected = toTarget.Dot(direction);
-        if (projected < 0.0f || projected > WeaponRange)
+        if (projected < 0.0f || projected > GetWeaponProfile(m_activeWeapon).m_range)
         {
             return false;
         }
@@ -313,11 +356,22 @@ namespace STWGameplay
 
     void PlayerSliceModel::FinishReload()
     {
-        const int needed = 30 - m_weapon.m_magazine;
-        const int transferred = AZStd::min(needed, m_weapon.m_reserve);
-        m_weapon.m_magazine += transferred;
-        m_weapon.m_reserve -= transferred;
-        m_weapon.m_reloading = false;
-        m_weapon.m_reloadRemaining = 0.0f;
+        WeaponState& weapon = m_weapons[static_cast<size_t>(m_activeWeapon)];
+        const WeaponProfile& profile = GetWeaponProfile(m_activeWeapon);
+        const int needed = profile.m_magazineCapacity - weapon.m_magazine;
+        const int transferred = AZStd::min(needed, weapon.m_reserve);
+        weapon.m_magazine += transferred;
+        weapon.m_reserve -= transferred;
+        weapon.m_reloading = false;
+        weapon.m_reloadRemaining = 0.0f;
+    }
+
+    void PlayerSliceModel::ResetWeapons()
+    {
+        m_weapons = {};
+        m_weapons[static_cast<size_t>(WeaponId::STW_RIFLE_02)].m_magazine =
+            GetWeaponProfile(WeaponId::STW_RIFLE_02).m_magazineCapacity;
+        m_weapons[static_cast<size_t>(WeaponId::STW_RIFLE_02)].m_reserve =
+            GetWeaponProfile(WeaponId::STW_RIFLE_02).m_initialReserve;
     }
 }

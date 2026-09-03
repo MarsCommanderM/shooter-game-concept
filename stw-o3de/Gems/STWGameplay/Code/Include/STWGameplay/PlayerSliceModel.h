@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cstddef>
 #include <AzCore/Math/Vector3.h>
+#include <AzCore/std/containers/array.h>
 #include <STWGameplay/EnemyCombatModel.h>
 #include <STWGameplay/ArenaLayout.h>
 
@@ -18,6 +20,7 @@ namespace STWGameplay
         bool m_mantle = false;
         bool m_fire = false;
         bool m_reload = false;
+        bool m_switchWeapon = false;
     };
 
     struct PlayerState
@@ -55,6 +58,22 @@ namespace STWGameplay
         bool m_reloading = false;
     };
 
+    enum class WeaponId : AZ::u8
+    {
+        STW_SMG_01 = 0,
+        STW_RIFLE_02 = 1
+    };
+
+    struct WeaponProfile
+    {
+        int m_magazineCapacity = 30;
+        int m_initialReserve = 150;
+        float m_fireInterval = 0.075f;
+        float m_reloadDuration = 1.75f;
+        float m_range = 60.0f;
+        float m_damage = 16.0f;
+    };
+
     using TargetState = EnemyState; // compatibility name for existing presentation/tests
 
     struct PresentationState
@@ -80,19 +99,28 @@ namespace STWGameplay
         static constexpr float EyeHeight = 1.7f;
         static constexpr float PitchLimit = 1.45f;
         static constexpr float LookSensitivity = 0.0025f;
-        static constexpr float FireInterval = 0.075f; // MP5: 800 rounds/minute
+        static constexpr float FireInterval = 0.075f; // STW_SMG_01 base cadence
         static constexpr float ReloadDuration = 1.75f;
         static constexpr float WeaponRange = 60.0f;
         static constexpr float WeaponDamage = 16.0f;
+        static constexpr size_t WeaponCount = 2;
 
+        PlayerSliceModel();
         bool Update(float deltaTime, const PlayerInput& input);
         bool TryFire();
         bool StartReload();
+        bool RequestWeaponSwitch();
         bool ApplyDamage(float damage);
         void ResetPlayer();
 
         const PlayerState& GetPlayer() const { return m_player; }
-        const WeaponState& GetWeapon() const { return m_weapon; }
+        const WeaponState& GetWeapon() const { return m_weapons[static_cast<size_t>(m_activeWeapon)]; }
+        const WeaponState& GetWeapon(WeaponId weaponId) const
+        {
+            return m_weapons[static_cast<size_t>(weaponId)];
+        }
+        WeaponId GetActiveWeaponId() const { return m_activeWeapon; }
+        static const WeaponProfile& GetWeaponProfile(WeaponId weaponId);
         const TargetState& GetTarget() const { return m_enemy.GetState(); }
         const EnemyCombatModel& GetEnemy() const { return m_enemy; }
         EnemyCombatModel& GetEnemy() { return m_enemy; }
@@ -110,14 +138,17 @@ namespace STWGameplay
     private:
         bool RayHitsTarget(const AZ::Vector3& origin, const AZ::Vector3& direction) const;
         void FinishReload();
+        void ResetWeapons();
 
         PlayerState m_player;
-        WeaponState m_weapon;
+        AZStd::array<WeaponState, WeaponCount> m_weapons;
+        WeaponId m_activeWeapon = WeaponId::STW_SMG_01;
         EnemyCombatModel m_enemy;
         PresentationState m_presentation;
         bool m_jumpWasHeld = false;
         bool m_crouchWasHeld = false;
         bool m_mantleWasHeld = false;
+        bool m_weaponSwitchWasHeld = false;
         float m_jumpImpulseThisTick = 0.0f;
     };
 }

@@ -42,7 +42,22 @@ namespace STWGameplay
             AZ::Data::Instance<AZ::RPI::Material> m_material;
         };
 
-        ViewmodelAssetLoadState s_viewmodelAssetLoadState;
+        struct WeaponViewmodelSelector
+        {
+            const char* m_modelPath;
+            const char* m_materialPath;
+        };
+
+        const AZStd::array<WeaponViewmodelSelector, PlayerSliceModel::WeaponCount> s_weaponViewmodelSelectors = {
+            WeaponViewmodelSelector{
+                "assets/weapons/stw_smg_01/stw_smg_01.obj.azmodel",
+                "assets/weapons/stw_smg_01/stw_smg_01.azmaterial" },
+            WeaponViewmodelSelector{
+                "assets/weapons/stw_rifle_02/stw_rifle_02.obj.azmodel",
+                "assets/weapons/stw_rifle_02/stw_rifle_02.azmaterial" }
+        };
+
+        AZStd::array<ViewmodelAssetLoadState, PlayerSliceModel::WeaponCount> s_viewmodelAssetLoadStates;
         ViewmodelAssetLoadState s_enemyAssetLoadState;
         ViewmodelAssetLoadState s_arenaAssetLoadState;
 
@@ -86,7 +101,7 @@ namespace STWGameplay
 
         void ResetViewmodelAssetLoadState()
         {
-            s_viewmodelAssetLoadState = {};
+            s_viewmodelAssetLoadStates = {};
         }
 
         void ResetEnemyAssetLoadState()
@@ -366,6 +381,7 @@ namespace STWGameplay
         m_input.m_reload = false;
         UpdateCamera();
         DrawPresentation();
+        UpdateWeaponSwitchAcceptance();
         UpdateEnemyCombatAcceptance();
         const EnemyState& encounterAfterAcceptance = m_model.GetEnemy().GetState();
         m_encounter.Update(encounterAfterAcceptance);
@@ -478,6 +494,7 @@ namespace STWGameplay
         m_input.m_jump = false;
         m_input.m_crouch = false;
         m_input.m_fire = false;
+        m_input.m_switchWeapon = false;
         m_input.m_lookX = 0.0f;
         m_input.m_lookY = 0.0f;
 
@@ -639,6 +656,21 @@ namespace STWGameplay
                 static_cast<int>(m_viewmodel.GetState()));
             m_viewmodelAcceptanceReported = true;
         }
+
+        // Acceptance-only two-weapon stimulus. The model consumes this as an edge-triggered
+        // request, so the held interval below must produce exactly one switch.
+        if (m_acceptanceTime >= 7.5f && m_acceptanceTime < 8.25f)
+        {
+            m_input.m_switchWeapon = true;
+        }
+        else if (m_acceptanceTime >= 8.50f && m_acceptanceTime < 9.20f)
+        {
+            m_input.m_fire = true;
+        }
+        else if (m_acceptanceTime >= 9.60f && m_acceptanceTime < 10.25f)
+        {
+            m_input.m_switchWeapon = true;
+        }
     }
 
     void STWGameplaySystemComponent::UpdateSwayAcceptanceMarkers()
@@ -670,6 +702,90 @@ namespace STWGameplay
         {
             AZ_Printf("STWGameplay", "SWAY_ACCEPTANCE result=PASS final_sway=%.3f\n", sway);
             m_swayAcceptanceReported = true;
+        }
+    }
+
+    void STWGameplaySystemComponent::UpdateWeaponSwitchAcceptance()
+    {
+        if (!m_automatedAcceptance || m_weaponSwitchAcceptanceReported)
+        {
+            return;
+        }
+
+        if (!m_weaponSwitchAcceptanceStarted && m_acceptanceTime >= 7.25f)
+        {
+            m_weaponSwitchAcceptanceStarted = true;
+            m_weaponSwitchInitialSlot = static_cast<int>(m_model.GetActiveWeaponId());
+            const WeaponState& weaponA = m_model.GetWeapon(WeaponId::STW_SMG_01);
+            const WeaponState& weaponB = m_model.GetWeapon(WeaponId::STW_RIFLE_02);
+            m_weaponSwitchInitialAMagazine = weaponA.m_magazine;
+            m_weaponSwitchInitialAReserve = weaponA.m_reserve;
+            m_weaponSwitchInitialBMagazine = weaponB.m_magazine;
+            m_weaponSwitchInitialBReserve = weaponB.m_reserve;
+            m_weaponSwitchHeldStable = true;
+        }
+        if (!m_weaponSwitchAcceptanceStarted)
+        {
+            return;
+        }
+
+        const int activeSlot = static_cast<int>(m_model.GetActiveWeaponId());
+        if (!m_weaponSwitchFirstSwitchObserved && activeSlot == static_cast<int>(WeaponId::STW_RIFLE_02))
+        {
+            m_weaponSwitchFirstSwitchObserved = true;
+        }
+        if (m_weaponSwitchFirstSwitchObserved && activeSlot == static_cast<int>(WeaponId::STW_RIFLE_02))
+        {
+            m_weaponSwitchFirstWeaponVisible = m_weaponSwitchFirstWeaponVisible
+                || (m_viewmodelMeshReported && m_visibleViewmodelSlot == static_cast<size_t>(WeaponId::STW_RIFLE_02));
+            if (m_input.m_switchWeapon && m_acceptanceTime >= 7.5f && m_acceptanceTime < 8.25f)
+            {
+                m_weaponSwitchHeldStable = m_weaponSwitchHeldStable && activeSlot == static_cast<int>(WeaponId::STW_RIFLE_02);
+            }
+        }
+
+        if (m_weaponSwitchFirstSwitchObserved && m_acceptanceTime >= 9.20f)
+        {
+            const WeaponState& weaponA = m_model.GetWeapon(WeaponId::STW_SMG_01);
+            const WeaponState& weaponB = m_model.GetWeapon(WeaponId::STW_RIFLE_02);
+            m_weaponSwitchBAmmoChangedOnFire = weaponB.m_magazine < m_weaponSwitchInitialBMagazine;
+            m_weaponSwitchInactiveAUnchanged = weaponA.m_magazine == m_weaponSwitchInitialAMagazine
+                && weaponA.m_reserve == m_weaponSwitchInitialAReserve;
+        }
+
+        if (!m_weaponSwitchSecondSwitchObserved && m_acceptanceTime >= 10.25f
+            && activeSlot == static_cast<int>(WeaponId::STW_SMG_01))
+        {
+            const WeaponState& weaponA = m_model.GetWeapon(WeaponId::STW_SMG_01);
+            m_weaponSwitchSecondSwitchObserved = true;
+            m_weaponSwitchAAmmoPreserved = weaponA.m_magazine == m_weaponSwitchInitialAMagazine
+                && weaponA.m_reserve == m_weaponSwitchInitialAReserve;
+        }
+
+        const bool passed = m_weaponSwitchInitialSlot == static_cast<int>(WeaponId::STW_SMG_01)
+            && m_weaponSwitchFirstSwitchObserved
+            && m_weaponSwitchFirstWeaponVisible
+            && m_weaponSwitchHeldStable
+            && m_weaponSwitchBAmmoChangedOnFire
+            && m_weaponSwitchInactiveAUnchanged
+            && m_weaponSwitchSecondSwitchObserved
+            && m_weaponSwitchAAmmoPreserved;
+        if (passed)
+        {
+            AZ_Printf(
+                "STWGameplay",
+                "WEAPON_SWITCH_ACCEPTANCE result=PASS initial_slot=%d first_weapon_visible=%d "
+                "first_switch_slot=%d second_switch_slot=%d weapon_a_ammo_preserved=%d "
+                "weapon_b_ammo_changed_on_fire=%d inactive_weapon_ammo_unchanged=%d "
+                "held_switch_retrigger_blocked=1\n",
+                m_weaponSwitchInitialSlot,
+                m_weaponSwitchFirstWeaponVisible ? 1 : 0,
+                static_cast<int>(WeaponId::STW_RIFLE_02),
+                static_cast<int>(WeaponId::STW_SMG_01),
+                m_weaponSwitchAAmmoPreserved ? 1 : 0,
+                m_weaponSwitchBAmmoChangedOnFire ? 1 : 0,
+                m_weaponSwitchInactiveAUnchanged ? 1 : 0);
+            m_weaponSwitchAcceptanceReported = true;
         }
     }
 
@@ -750,6 +866,7 @@ namespace STWGameplay
         else if (id == Keyboard::Key::ModifierCtrlL) { m_input.m_crouch = active; }
         else if (id == Keyboard::Key::AlphanumericE) { m_input.m_mantle = active; }
         else if (id == Keyboard::Key::AlphanumericR && channel.IsStateBegan()) { m_input.m_reload = true; }
+        else if (id == Keyboard::Key::AlphanumericQ) { m_input.m_switchWeapon = active; }
         else if (id == Mouse::Button::Left) { m_input.m_fire = active; }
         else if (id == Mouse::Button::Right) { m_adsHeld = active; }
         else if (id == Mouse::Movement::X) { m_input.m_lookX += channel.GetValue(); }
@@ -1114,128 +1231,156 @@ namespace STWGameplay
             return;
         }
 
-        if (!s_viewmodelAssetLoadState.m_enumerated)
+        for (size_t slot = 0; slot < PlayerSliceModel::WeaponCount; ++slot)
         {
-            s_viewmodelAssetLoadState.m_enumerated = true;
-            AZStd::vector<ViewmodelAssetCandidate> modelCandidates;
-            AZStd::vector<ViewmodelAssetCandidate> materialCandidates;
-            AZ::Data::AssetCatalogRequestBus::Broadcast(
-                &AZ::Data::AssetCatalogRequests::EnumerateAssets,
-                []() {},
-                [&modelCandidates, &materialCandidates](const AZ::Data::AssetId assetId, const AZ::Data::AssetInfo& info)
+            ViewmodelAssetLoadState& loadState = s_viewmodelAssetLoadStates[slot];
+            const WeaponViewmodelSelector& selector = s_weaponViewmodelSelectors[slot];
+            if (!loadState.m_enumerated)
+            {
+                loadState.m_enumerated = true;
+                AZStd::vector<ViewmodelAssetCandidate> modelCandidates;
+                AZStd::vector<ViewmodelAssetCandidate> materialCandidates;
+                AZ::Data::AssetCatalogRequestBus::Broadcast(
+                    &AZ::Data::AssetCatalogRequests::EnumerateAssets,
+                    []() {},
+                    [&modelCandidates, &materialCandidates, &selector](
+                        const AZ::Data::AssetId assetId, const AZ::Data::AssetInfo& info)
+                    {
+                        const AZStd::string lowercasePath = LowercaseAssetPath(info.m_relativePath);
+                        if (lowercasePath == selector.m_modelPath)
+                        {
+                            modelCandidates.push_back({ assetId, info.m_relativePath });
+                        }
+                        else if (lowercasePath == selector.m_materialPath)
+                        {
+                            materialCandidates.push_back({ assetId, info.m_relativePath });
+                        }
+                    },
+                    []() {});
+
+                if (modelCandidates.size() != 1 || materialCandidates.size() != 1)
                 {
-                    const AZStd::string lowercasePath = LowercaseAssetPath(info.m_relativePath);
-                    // Accept only the two canonical STW_SMG_01 product paths from the O3DE asset
-                    // cache; any other product is ignored so the wrong asset can never be bound.
-                    if (lowercasePath == "assets/weapons/stw_smg_01/stw_smg_01.obj.azmodel")
-                    {
-                        modelCandidates.push_back({ assetId, info.m_relativePath });
-                    }
-                    else if (lowercasePath == "assets/weapons/stw_smg_01/stw_smg_01.azmaterial")
-                    {
-                        materialCandidates.push_back({ assetId, info.m_relativePath });
-                    }
-                },
-                []() {});
+                    AZ_Error(
+                        "STWGameplay", false,
+                        "ATOM_VIEWMODEL_MESH result=FAIL reason=asset_candidate_count slot=%zu model=%zu material=%zu",
+                        slot, modelCandidates.size(), materialCandidates.size());
+                    m_viewmodelMeshStartup = ViewmodelMeshStartup::Failed;
+                    return;
+                }
 
-            if (modelCandidates.size() != 1 || materialCandidates.size() != 1)
+                loadState.m_enumeratedModelAssetId = modelCandidates[0].m_assetId;
+                loadState.m_enumeratedMaterialAssetId = materialCandidates[0].m_assetId;
+                m_viewmodelMeshAssetPaths[slot] = modelCandidates[0].m_relativePath;
+
+                AZ::Data::AssetId resolvedModelAssetId;
+                AZ::Data::AssetCatalogRequestBus::BroadcastResult(
+                    resolvedModelAssetId, &AZ::Data::AssetCatalogRequests::GetAssetIdByPath,
+                    modelCandidates[0].m_relativePath.c_str(), AZ::Data::AssetType{}, false);
+                AZ::Data::AssetId resolvedMaterialAssetId;
+                AZ::Data::AssetCatalogRequestBus::BroadcastResult(
+                    resolvedMaterialAssetId, &AZ::Data::AssetCatalogRequests::GetAssetIdByPath,
+                    materialCandidates[0].m_relativePath.c_str(), AZ::Data::AssetType{}, false);
+
+                if (!resolvedModelAssetId.IsValid() || !resolvedMaterialAssetId.IsValid()
+                    || resolvedModelAssetId != loadState.m_enumeratedModelAssetId
+                    || resolvedMaterialAssetId != loadState.m_enumeratedMaterialAssetId)
+                {
+                    AZ_Error(
+                        "STWGameplay", false,
+                        "ATOM_VIEWMODEL_MESH result=FAIL reason=catalog_resolution_mismatch slot=%zu model=%s material=%s",
+                        slot, modelCandidates[0].m_relativePath.c_str(), materialCandidates[0].m_relativePath.c_str());
+                    m_viewmodelMeshStartup = ViewmodelMeshStartup::Failed;
+                    return;
+                }
+
+                loadState.m_materialAsset = AZ::Data::Asset<AZ::RPI::MaterialAsset>(
+                    resolvedMaterialAssetId,
+                    azrtti_typeid<AZ::RPI::MaterialAsset>(),
+                    materialCandidates[0].m_relativePath.c_str());
+                loadState.m_materialAsset.QueueLoad();
+            }
+
+            if (loadState.m_materialAsset.IsError())
             {
-                AZ_Error(
-                    "STWGameplay", false,
-                    "ATOM_VIEWMODEL_MESH result=FAIL reason=asset_candidate_count model=%zu material=%zu",
-                    modelCandidates.size(), materialCandidates.size());
+                AZ_Error("STWGameplay", false,
+                    "ATOM_VIEWMODEL_MESH result=FAIL reason=material_load_failed slot=%zu asset=%s",
+                    slot, m_viewmodelMeshAssetPaths[slot].c_str());
                 m_viewmodelMeshStartup = ViewmodelMeshStartup::Failed;
                 return;
             }
-
-            s_viewmodelAssetLoadState.m_enumeratedModelAssetId = modelCandidates[0].m_assetId;
-            s_viewmodelAssetLoadState.m_enumeratedMaterialAssetId = materialCandidates[0].m_assetId;
-            m_viewmodelMeshAssetPath = modelCandidates[0].m_relativePath;
-
-            AZ::Data::AssetId resolvedModelAssetId;
-            AZ::Data::AssetCatalogRequestBus::BroadcastResult(
-                resolvedModelAssetId, &AZ::Data::AssetCatalogRequests::GetAssetIdByPath,
-                modelCandidates[0].m_relativePath.c_str(), AZ::Data::AssetType{}, false);
-            AZ::Data::AssetId resolvedMaterialAssetId;
-            AZ::Data::AssetCatalogRequestBus::BroadcastResult(
-                resolvedMaterialAssetId, &AZ::Data::AssetCatalogRequests::GetAssetIdByPath,
-                materialCandidates[0].m_relativePath.c_str(), AZ::Data::AssetType{}, false);
-
-            if (!resolvedModelAssetId.IsValid() || !resolvedMaterialAssetId.IsValid()
-                || resolvedModelAssetId != s_viewmodelAssetLoadState.m_enumeratedModelAssetId
-                || resolvedMaterialAssetId != s_viewmodelAssetLoadState.m_enumeratedMaterialAssetId)
+            if (!loadState.m_materialAsset.IsReady())
             {
-                AZ_Error(
-                    "STWGameplay", false,
-                    "ATOM_VIEWMODEL_MESH result=FAIL reason=catalog_resolution_mismatch model=%s material=%s",
-                    modelCandidates[0].m_relativePath.c_str(), materialCandidates[0].m_relativePath.c_str());
-                m_viewmodelMeshStartup = ViewmodelMeshStartup::Failed;
                 return;
             }
 
-            s_viewmodelAssetLoadState.m_materialAsset = AZ::Data::Asset<AZ::RPI::MaterialAsset>(
-                resolvedMaterialAssetId,
-                azrtti_typeid<AZ::RPI::MaterialAsset>(),
-                materialCandidates[0].m_relativePath.c_str());
-            s_viewmodelAssetLoadState.m_materialAsset.QueueLoad();
+            if (!loadState.m_material)
+            {
+                loadState.m_material = AZ::RPI::Material::FindOrCreate(loadState.m_materialAsset);
+                if (!loadState.m_material)
+                {
+                    AZ_Error("STWGameplay", false,
+                        "ATOM_VIEWMODEL_MESH result=FAIL reason=material_instance_failed slot=%zu asset=%s",
+                        slot, m_viewmodelMeshAssetPaths[slot].c_str());
+                    m_viewmodelMeshStartup = ViewmodelMeshStartup::Failed;
+                    return;
+                }
+            }
+
+            if (!m_viewmodelMeshHandles[slot].IsValid())
+            {
+                AZ::Data::Asset<AZ::RPI::ModelAsset> modelAsset(
+                    loadState.m_enumeratedModelAssetId,
+                    azrtti_typeid<AZ::RPI::ModelAsset>(),
+                    m_viewmodelMeshAssetPaths[slot].c_str());
+                modelAsset.QueueLoad();
+
+                AZ::Render::MeshHandleDescriptor descriptor(modelAsset, loadState.m_material);
+                descriptor.m_isAlwaysDynamic = true; // the viewmodel follows the camera every frame
+                m_viewmodelMeshHandles[slot] = m_meshFeatureProcessor->AcquireMesh(descriptor);
+                if (!m_viewmodelMeshHandles[slot].IsValid())
+                {
+                    AZ_Error("STWGameplay", false,
+                        "ATOM_VIEWMODEL_MESH result=FAIL reason=acquire_mesh_failed slot=%zu asset=%s",
+                        slot, m_viewmodelMeshAssetPaths[slot].c_str());
+                    m_viewmodelMeshStartup = ViewmodelMeshStartup::Failed;
+                    return;
+                }
+                m_meshFeatureProcessor->SetVisible(m_viewmodelMeshHandles[slot], false);
+            }
         }
 
-        if (s_viewmodelAssetLoadState.m_materialAsset.IsError())
-        {
-            AZ_Error("STWGameplay", false,
-                "ATOM_VIEWMODEL_MESH result=FAIL reason=material_load_failed asset=%s",
-                m_viewmodelMeshAssetPath.c_str());
-            m_viewmodelMeshStartup = ViewmodelMeshStartup::Failed;
-            return;
-        }
-        if (!s_viewmodelAssetLoadState.m_materialAsset.IsReady())
-        {
-            return;
-        }
-
-        s_viewmodelAssetLoadState.m_material =
-            AZ::RPI::Material::FindOrCreate(s_viewmodelAssetLoadState.m_materialAsset);
-        if (!s_viewmodelAssetLoadState.m_material)
-        {
-            AZ_Error("STWGameplay", false,
-                "ATOM_VIEWMODEL_MESH result=FAIL reason=material_instance_failed asset=%s",
-                m_viewmodelMeshAssetPath.c_str());
-            m_viewmodelMeshStartup = ViewmodelMeshStartup::Failed;
-            return;
-        }
-
-        AZ::Data::Asset<AZ::RPI::ModelAsset> modelAsset(
-            s_viewmodelAssetLoadState.m_enumeratedModelAssetId,
-            azrtti_typeid<AZ::RPI::ModelAsset>(),
-            m_viewmodelMeshAssetPath.c_str());
-        modelAsset.QueueLoad();
-
-        AZ::Render::MeshHandleDescriptor descriptor(modelAsset, s_viewmodelAssetLoadState.m_material);
-        descriptor.m_isAlwaysDynamic = true; // the viewmodel follows the camera every frame
-        m_viewmodelMeshHandle = m_meshFeatureProcessor->AcquireMesh(descriptor);
-        if (!m_viewmodelMeshHandle.IsValid())
-        {
-            AZ_Error("STWGameplay", false,
-                "ATOM_VIEWMODEL_MESH result=FAIL reason=acquire_mesh_failed asset=%s",
-                m_viewmodelMeshAssetPath.c_str());
-            m_viewmodelMeshStartup = ViewmodelMeshStartup::Failed;
-            return;
-        }
-        m_fireFeedbackMeshHandle = m_meshFeatureProcessor->AcquireMesh(descriptor);
         if (!m_fireFeedbackMeshHandle.IsValid())
         {
-            AZ_Error("STWGameplay", false, "COMBAT_FEEDBACK result=FAIL reason=fire_mesh_acquire_failed");
-            m_viewmodelMeshStartup = ViewmodelMeshStartup::Failed;
-            return;
+            const ViewmodelAssetLoadState& loadState = s_viewmodelAssetLoadStates[0];
+            AZ::Data::Asset<AZ::RPI::ModelAsset> modelAsset(
+                loadState.m_enumeratedModelAssetId,
+                azrtti_typeid<AZ::RPI::ModelAsset>(),
+                m_viewmodelMeshAssetPaths[0].c_str());
+            modelAsset.QueueLoad();
+            AZ::Render::MeshHandleDescriptor descriptor(modelAsset, loadState.m_material);
+            descriptor.m_isAlwaysDynamic = true;
+            m_fireFeedbackMeshHandle = m_meshFeatureProcessor->AcquireMesh(descriptor);
+            if (!m_fireFeedbackMeshHandle.IsValid())
+            {
+                AZ_Error("STWGameplay", false, "COMBAT_FEEDBACK result=FAIL reason=fire_mesh_acquire_failed");
+                m_viewmodelMeshStartup = ViewmodelMeshStartup::Failed;
+                return;
+            }
+            m_meshFeatureProcessor->SetVisible(m_fireFeedbackMeshHandle, false);
         }
-        m_meshFeatureProcessor->SetVisible(m_fireFeedbackMeshHandle, false);
         m_viewmodelMeshStartup = ViewmodelMeshStartup::Acquired;
     }
 
     void STWGameplaySystemComponent::UpdateViewmodelMeshTransform(
         const AZ::Vector3& center, const AZ::Vector3& right, const AZ::Vector3& aim, const AZ::Vector3& up)
     {
-        if (m_viewmodelMeshStartup != ViewmodelMeshStartup::Acquired || !m_viewmodelMeshHandle.IsValid())
+        if (m_viewmodelMeshStartup != ViewmodelMeshStartup::Acquired)
+        {
+            return;
+        }
+
+        const size_t activeSlot = static_cast<size_t>(m_model.GetActiveWeaponId());
+        if (activeSlot >= PlayerSliceModel::WeaponCount || !m_viewmodelMeshHandles[activeSlot].IsValid())
         {
             return;
         }
@@ -1245,8 +1390,13 @@ namespace STWGameplay
         const AZ::Quaternion orientation =
             AZ::Quaternion::CreateFromMatrix3x3(AZ::Matrix3x3::CreateFromColumns(-right, up, aim));
         const AZ::Transform transform = AZ::Transform::CreateFromQuaternionAndTranslation(orientation, center);
-        m_meshFeatureProcessor->SetTransform(m_viewmodelMeshHandle, transform,
+        m_meshFeatureProcessor->SetTransform(m_viewmodelMeshHandles[activeSlot], transform,
             AZ::Vector3::CreateOne());
+        for (size_t slot = 0; slot < PlayerSliceModel::WeaponCount; ++slot)
+        {
+            m_meshFeatureProcessor->SetVisible(m_viewmodelMeshHandles[slot], slot == activeSlot);
+        }
+        m_visibleViewmodelSlot = activeSlot;
         const bool fireVisible = m_combatFeedback.IsFireFlashVisible();
         const AZ::Transform fireTransform = AZ::Transform::CreateFromQuaternionAndTranslation(
             orientation, center + aim * 0.36f);
@@ -1258,29 +1408,41 @@ namespace STWGameplay
 
         // PASS is only reported once the model instance actually exists, i.e. the asset really
         // loaded and the mesh is renderable - never merely because the handle was acquired.
-        if (!m_viewmodelMeshReported && m_meshFeatureProcessor->GetModel(m_viewmodelMeshHandle))
+        bool meshesReady = true;
+        for (size_t slot = 0; slot < PlayerSliceModel::WeaponCount; ++slot)
+        {
+            meshesReady = meshesReady && m_meshFeatureProcessor->GetModel(m_viewmodelMeshHandles[slot]);
+        }
+        if (!m_viewmodelMeshReported && meshesReady)
         {
             m_viewmodelMeshReported = true;
             AZ_Printf("STWGameplay",
-                "ATOM_VIEWMODEL_MESH result=PASS asset=%s handle=valid mesh=ready material=bound\n",
-                m_viewmodelMeshAssetPath.c_str());
+                "ATOM_VIEWMODEL_MESH result=PASS asset=%s second_asset=%s handles=2 mesh=ready material=bound\n",
+                m_viewmodelMeshAssetPaths[0].c_str(), m_viewmodelMeshAssetPaths[1].c_str());
         }
     }
 
     void STWGameplaySystemComponent::ShutdownViewmodelMesh()
     {
-        if (m_meshFeatureProcessor != nullptr && m_viewmodelMeshHandle.IsValid())
+        if (m_meshFeatureProcessor != nullptr)
         {
-            m_meshFeatureProcessor->ReleaseMesh(m_viewmodelMeshHandle);
+            for (auto& meshHandle : m_viewmodelMeshHandles)
+            {
+                if (meshHandle.IsValid())
+                {
+                    m_meshFeatureProcessor->ReleaseMesh(meshHandle);
+                }
+            }
         }
         if (m_meshFeatureProcessor != nullptr && m_fireFeedbackMeshHandle.IsValid())
         {
             m_meshFeatureProcessor->ReleaseMesh(m_fireFeedbackMeshHandle);
         }
         m_meshFeatureProcessor = nullptr;
-        m_viewmodelMeshHandle = {};
+        m_viewmodelMeshHandles = {};
         m_fireFeedbackMeshHandle = {};
-        m_viewmodelMeshAssetPath.clear();
+        m_viewmodelMeshAssetPaths = {};
+        m_visibleViewmodelSlot = PlayerSliceModel::WeaponCount;
         m_viewmodelMeshStartup = ViewmodelMeshStartup::Waiting;
         m_viewmodelMeshReported = false;
         ResetViewmodelAssetLoadState();
@@ -1791,8 +1953,8 @@ namespace STWGameplay
             right.Normalize();
         }
 
-        // Camera-relative native viewmodel. The weapon BODY is now the original STW Atom mesh;
-        // arms and hands do not exist yet, and the muzzle cue remains procedural.
+        // Camera-relative native viewmodel. Exactly one of the two original STW Atom meshes is
+        // visible at a time; arms and hands do not exist yet, and the muzzle cue remains procedural.
         // Recoil/sway/reload pose come from the presentation
         // model, which consumes authoritative events only; fire, damage and reload authority
         // remain in PlayerSliceModel.
@@ -1814,8 +1976,8 @@ namespace STWGameplay
         const AZ::Vector3 weaponCenter =
             m_model.GetEyePosition() + presentedAim * pose.GetY() + right * pose.GetX()
             + presentedUp * pose.GetZ() + vmOffset + reloadDip;
-        // The weapon body is the original STW_SMG_01 Atom mesh driven
-        // through the Atom MeshFeatureProcessor. It is presentation only: it consumes the
+        // The active weapon body is an original STW Atom mesh driven through the
+        // Atom MeshFeatureProcessor. It is presentation only: it consumes the
         // recoil/sway/reload pose computed above and never writes gameplay state. The former
         // procedural DrawSolidOBB body is gone; if the mesh fails to initialize the runtime
         // reports it instead of silently drawing a placeholder.
@@ -1838,9 +2000,12 @@ namespace STWGameplay
 
         char hud[128];
         const PlayerState& player = m_model.GetPlayer();
-        azsnprintf(hud, AZ_ARRAY_SIZE(hud), "STW  HP %03d/%03d   MP5 %02d / %03d   %s",
+        const char* weaponName = m_model.GetActiveWeaponId() == WeaponId::STW_SMG_01
+            ? "STW_SMG_01" : "STW_RIFLE_02";
+        azsnprintf(hud, AZ_ARRAY_SIZE(hud), "STW  HP %03d/%03d   %s %02d / %03d   %s",
             static_cast<int>(player.m_health), static_cast<int>(player.m_maxHealth),
-            weapon.m_magazine, weapon.m_reserve, player.m_alive ? (weapon.m_reloading ? "RELOADING" : "READY") : "DEAD");
+            weaponName, weapon.m_magazine, weapon.m_reserve,
+            player.m_alive ? (weapon.m_reloading ? "RELOADING" : "READY") : "DEAD");
         Bus::Event(displayId, &AzFramework::DebugDisplayRequests::Draw2dTextLabel, 24.0f, 36.0f, 1.4f, hud, false);
         char objective[96];
         azsnprintf(objective, AZ_ARRAY_SIZE(objective), "%s   ENCOUNTERS: %d",
