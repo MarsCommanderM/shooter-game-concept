@@ -126,6 +126,11 @@ namespace STWGameplay
         {
             return false;
         }
+        // These immutable identity fields select the already-acquired presentation item. The
+        // presentation stores them for rendering and never writes back to the authoritative model.
+        m_activeEquipmentSlot = input.m_activeEquipmentSlot;
+        m_activeEquipmentCategory = input.m_activeEquipmentCategory;
+        m_activeEquipmentProfile = input.m_activeEquipmentProfile;
         const float adsSwayScale = 1.0f - m_adsBlend * (1.0f - AdsSwayMultiplier);
         const AZ::Vector3 targetLookSway(
             -input.m_lookX * LookSwayScale * adsSwayScale,

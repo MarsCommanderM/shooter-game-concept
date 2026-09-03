@@ -65,6 +65,7 @@ namespace STWGameplay
         void UpdateEncounterAcceptance();
         void UpdateSpawnCheckpointAcceptance();
         void UpdateWeaponSwitchAcceptance();
+        void UpdateLoadoutAcceptance();
         void UpdateJumpAcceptance(bool physicalStateSynchronized);
         void UpdateCrouchAcceptance(bool physicalStateSynchronized);
         void UpdateSlideAcceptance(bool physicalStateSynchronized);
@@ -96,11 +97,11 @@ namespace STWGameplay
         static constexpr float ViewmodelMeshScaleZ = 0.16f;
 
         AZ::Render::MeshFeatureProcessorInterface* m_meshFeatureProcessor = nullptr;
-        AZStd::array<AZ::Render::MeshFeatureProcessorInterface::MeshHandle, PlayerSliceModel::WeaponCount>
+        AZStd::array<AZ::Render::MeshFeatureProcessorInterface::MeshHandle, PlayerSliceModel::EquipmentProfileCount>
             m_viewmodelMeshHandles;
         AZ::Render::MeshFeatureProcessorInterface::MeshHandle m_fireFeedbackMeshHandle;
-        AZStd::array<AZStd::string, PlayerSliceModel::WeaponCount> m_viewmodelMeshAssetPaths;
-        size_t m_visibleViewmodelSlot = PlayerSliceModel::WeaponCount;
+        AZStd::array<AZStd::string, PlayerSliceModel::EquipmentProfileCount> m_viewmodelMeshAssetPaths;
+        size_t m_visibleViewmodelSlot = PlayerSliceModel::EquipmentProfileCount;
         bool m_viewmodelMeshReported = false;
         ViewmodelMeshStartup m_enemyMeshStartup = ViewmodelMeshStartup::Waiting;
         AZ::Render::MeshFeatureProcessorInterface::MeshHandle m_enemyMeshHandle;
@@ -188,6 +189,7 @@ namespace STWGameplay
         int m_weaponSwitchInitialAReserve = 0;
         int m_weaponSwitchInitialBMagazine = 0;
         int m_weaponSwitchInitialBReserve = 0;
+        bool m_loadoutAcceptanceReported = false;
         bool m_spawnCheckpointAcceptanceStarted = false;
         bool m_spawnCheckpointDefaultRespawnObserved = false;
         bool m_spawnCheckpointActivationObserved = false;

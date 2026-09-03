@@ -42,22 +42,7 @@ namespace STWGameplay
             AZ::Data::Instance<AZ::RPI::Material> m_material;
         };
 
-        struct WeaponViewmodelSelector
-        {
-            const char* m_modelPath;
-            const char* m_materialPath;
-        };
-
-        const AZStd::array<WeaponViewmodelSelector, PlayerSliceModel::WeaponCount> s_weaponViewmodelSelectors = {
-            WeaponViewmodelSelector{
-                "assets/weapons/stw_smg_01/stw_smg_01.obj.azmodel",
-                "assets/weapons/stw_smg_01/stw_smg_01.azmaterial" },
-            WeaponViewmodelSelector{
-                "assets/weapons/stw_rifle_02/stw_rifle_02.obj.azmodel",
-                "assets/weapons/stw_rifle_02/stw_rifle_02.azmaterial" }
-        };
-
-        AZStd::array<ViewmodelAssetLoadState, PlayerSliceModel::WeaponCount> s_viewmodelAssetLoadStates;
+        AZStd::array<ViewmodelAssetLoadState, PlayerSliceModel::EquipmentProfileCount> s_viewmodelAssetLoadStates;
         ViewmodelAssetLoadState s_enemyAssetLoadState;
         ViewmodelAssetLoadState s_arenaAssetLoadState;
 
@@ -367,6 +352,11 @@ namespace STWGameplay
         vpInput.m_shotFired = m_model.GetPresentation().m_shotFired;
         vpInput.m_hit = m_model.GetPresentation().m_hit;
         vpInput.m_reloading = m_model.GetWeapon().m_reloading;
+        vpInput.m_activeEquipmentSlot = static_cast<AZ::u8>(m_model.GetActiveEquipmentSlot());
+        vpInput.m_activeEquipmentCategory = static_cast<AZ::u8>(m_model.GetActiveEquipmentProfile().m_category);
+        vpInput.m_activeEquipmentProfile = static_cast<AZ::u8>(m_model.GetActiveEquipmentProfileId());
+        vpInput.m_equipmentChanged = m_model.GetPresentation().m_equipmentChanged;
+        vpInput.m_equipmentUsed = m_model.GetPresentation().m_equipmentUsed;
         vpInput.m_moving = (std::abs(m_input.m_forward) > 0.01f) || (std::abs(m_input.m_strafe) > 0.01f);
         vpInput.m_sprinting = m_input.m_sprint && vpInput.m_moving;
         vpInput.m_adsRequested = m_adsHeld;
@@ -382,6 +372,7 @@ namespace STWGameplay
         UpdateCamera();
         DrawPresentation();
         UpdateWeaponSwitchAcceptance();
+        UpdateLoadoutAcceptance();
         UpdateEnemyCombatAcceptance();
         const EnemyState& encounterAfterAcceptance = m_model.GetEnemy().GetState();
         m_encounter.Update(encounterAfterAcceptance);
@@ -476,7 +467,7 @@ namespace STWGameplay
     {
         if (!m_automatedAcceptance || (m_viewmodelAcceptanceReported && m_adsAcceptanceReported
                 && m_jumpAcceptanceReported && m_crouchAcceptanceReported && m_slideAcceptanceReported
-                && m_mantleAcceptanceReported)
+                && m_mantleAcceptanceReported && m_loadoutAcceptanceReported)
             || !std::isfinite(deltaTime) || deltaTime < 0.0f)
         {
             return;
@@ -495,6 +486,7 @@ namespace STWGameplay
         m_input.m_crouch = false;
         m_input.m_fire = false;
         m_input.m_switchWeapon = false;
+        m_input.m_requestedEquipmentSlot = -1;
         m_input.m_lookX = 0.0f;
         m_input.m_lookY = 0.0f;
 
@@ -640,7 +632,7 @@ namespace STWGameplay
                 m_input.m_reload = true; // authoritative StartReload; self-limiting once reloading
             }
         }
-        else if (m_acceptanceTime >= 7.5f)
+        else if (m_acceptanceTime >= 7.5f && !m_viewmodelAcceptanceReported)
         {
             const bool vmPass = m_viewmodel.GetFireEventCount() > 0u
                 && m_viewmodel.GetReloadStartCount() > 0u
@@ -789,6 +781,120 @@ namespace STWGameplay
         }
     }
 
+    void STWGameplaySystemComponent::UpdateLoadoutAcceptance()
+    {
+        if (!m_automatedAcceptance || m_loadoutAcceptanceReported || m_acceptanceTime < 10.5f
+            || !m_weaponSwitchAcceptanceReported)
+        {
+            return;
+        }
+
+        const bool primaryAvailable = m_model.GetLoadoutProfile(EquipmentSlot::Primary)
+                == EquipmentProfileId::STW_SMG_01
+            && PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Primary, EquipmentProfileId::STW_SMG_01);
+        const bool secondaryAvailable = m_model.GetLoadoutProfile(EquipmentSlot::Secondary)
+                == EquipmentProfileId::STW_RIFLE_02
+            && PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Secondary, EquipmentProfileId::STW_RIFLE_02);
+        const bool tacticalAvailable = m_model.GetLoadoutProfile(EquipmentSlot::Tactical)
+                == EquipmentProfileId::STW_TACTICAL_FLASH_01
+            && PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Tactical, EquipmentProfileId::STW_TACTICAL_FLASH_01);
+        const bool lethalAvailable = m_model.GetLoadoutProfile(EquipmentSlot::Lethal)
+                == EquipmentProfileId::STW_LETHAL_FRAG_01
+            && PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Lethal, EquipmentProfileId::STW_LETHAL_FRAG_01);
+        const bool meleeAvailable = m_model.GetLoadoutProfile(EquipmentSlot::Melee)
+                == EquipmentProfileId::STW_MELEE_01
+            && PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Melee, EquipmentProfileId::STW_MELEE_01);
+
+        // The acceptance is deliberately model-level stimulus after the normal runtime switch
+        // gate. It exercises the same authoritative APIs without adding a second gameplay path.
+        m_model.RequestEquipmentSwitch(EquipmentSlot::Primary);
+        const EquipmentState primaryBefore = m_model.GetEquipment(EquipmentSlot::Primary);
+        const EquipmentState secondaryBefore = m_model.GetEquipment(EquipmentSlot::Secondary);
+        const EquipmentState tacticalBefore = m_model.GetEquipment(EquipmentSlot::Tactical);
+        const EquipmentState lethalBefore = m_model.GetEquipment(EquipmentSlot::Lethal);
+
+        const bool primaryFired = m_model.TryFire();
+        const EquipmentState primaryAfterUse = m_model.GetEquipment(EquipmentSlot::Primary);
+        const bool primaryToSecondary = m_model.RequestEquipmentSwitch(EquipmentSlot::Secondary);
+        const bool primaryPreservedWhileInactive = m_model.GetEquipment(EquipmentSlot::Primary).m_magazine
+                == primaryAfterUse.m_magazine
+            && m_model.GetEquipment(EquipmentSlot::Primary).m_reserve == primaryAfterUse.m_reserve;
+        const bool secondaryFired = m_model.TryFire();
+        const EquipmentState secondaryAfterUse = m_model.GetEquipment(EquipmentSlot::Secondary);
+        const bool secondaryToPrimary = m_model.RequestEquipmentSwitch(EquipmentSlot::Primary);
+
+        const bool primaryToTactical = m_model.RequestEquipmentSwitch(EquipmentSlot::Tactical);
+        const bool tacticalUsed = m_model.TryFire();
+        const EquipmentState tacticalAfterUse = m_model.GetEquipment(EquipmentSlot::Tactical);
+        const bool tacticalInactivePreserved = m_model.GetEquipment(EquipmentSlot::Lethal).m_charges
+            == lethalBefore.m_charges;
+        const bool tacticalToPrimary = m_model.RequestEquipmentSwitch(EquipmentSlot::Primary);
+
+        const bool primaryToLethal = m_model.RequestEquipmentSwitch(EquipmentSlot::Lethal);
+        const bool lethalUsed = m_model.TryFire();
+        const EquipmentState lethalAfterUse = m_model.GetEquipment(EquipmentSlot::Lethal);
+        const bool lethalInactivePreserved = m_model.GetEquipment(EquipmentSlot::Tactical).m_charges
+            == tacticalAfterUse.m_charges;
+        const bool lethalToPrimary = m_model.RequestEquipmentSwitch(EquipmentSlot::Primary);
+
+        const bool primaryToMelee = m_model.RequestEquipmentSwitch(EquipmentSlot::Melee);
+        const bool meleeToPrimary = m_model.RequestEquipmentSwitch(EquipmentSlot::Primary);
+
+        const bool invalidSlotRejected = !m_model.RequestEquipmentSwitch(static_cast<EquipmentSlot>(255));
+        const bool invalidProfileRejected = !m_model.SetLoadoutProfile(
+            EquipmentSlot::Tactical, EquipmentProfileId::STW_RIFLE_03);
+
+        PlayerInput heldSwitch;
+        heldSwitch.m_switchWeapon = true;
+        const bool heldFirstSwitch = m_model.Update(0.0f, heldSwitch)
+            && m_model.GetActiveEquipmentSlot() == EquipmentSlot::Secondary;
+        const bool heldSecondSwitch = m_model.Update(0.0f, heldSwitch)
+            && m_model.GetActiveEquipmentSlot() == EquipmentSlot::Secondary;
+        m_model.Update(0.0f, PlayerInput{});
+        m_model.RequestEquipmentSwitch(EquipmentSlot::Primary);
+
+        const EquipmentState authorityBefore = m_model.GetWeapon();
+        const EquipmentSlot authoritySlotBefore = m_model.GetActiveEquipmentSlot();
+        PresentationInput presentationInput;
+        presentationInput.m_activeEquipmentSlot = static_cast<AZ::u8>(authoritySlotBefore);
+        presentationInput.m_activeEquipmentCategory = static_cast<AZ::u8>(m_model.GetActiveEquipmentProfile().m_category);
+        presentationInput.m_activeEquipmentProfile = static_cast<AZ::u8>(m_model.GetActiveEquipmentProfileId());
+        const bool presentationUpdated = m_viewmodel.Update(0.0f, presentationInput);
+        const bool authoritySeparation = presentationUpdated
+            && m_model.GetActiveEquipmentSlot() == authoritySlotBefore
+            && m_model.GetWeapon().m_profileId == authorityBefore.m_profileId
+            && m_model.GetWeapon().m_magazine == authorityBefore.m_magazine
+            && m_model.GetWeapon().m_reserve == authorityBefore.m_reserve
+            && m_model.GetWeapon().m_charges == authorityBefore.m_charges
+            && m_model.GetWeapon().m_reloading == authorityBefore.m_reloading;
+
+        const bool independentAmmo = primaryFired && secondaryFired && primaryToSecondary && secondaryToPrimary
+            && primaryPreservedWhileInactive
+            && primaryAfterUse.m_magazine == primaryBefore.m_magazine - 1
+            && secondaryAfterUse.m_magazine == secondaryBefore.m_magazine - 1;
+        const bool independentCharges = primaryToTactical && tacticalUsed && tacticalToPrimary
+            && primaryToLethal && lethalUsed && lethalToPrimary
+            && tacticalAfterUse.m_charges == tacticalBefore.m_charges - 1
+            && lethalAfterUse.m_charges == lethalBefore.m_charges - 1;
+        const bool inactiveStatePreserved = primaryPreservedWhileInactive && tacticalInactivePreserved
+            && lethalInactivePreserved && m_model.GetEquipment(EquipmentSlot::Primary).m_reserve
+                == primaryAfterUse.m_reserve;
+        const bool heldSwitchBlocked = heldFirstSwitch && heldSecondSwitch;
+
+        const bool passed = primaryAvailable && secondaryAvailable && tacticalAvailable && lethalAvailable
+            && meleeAvailable && independentAmmo && independentCharges && inactiveStatePreserved
+            && invalidSlotRejected && invalidProfileRejected && heldSwitchBlocked && authoritySeparation
+            && primaryToMelee && meleeToPrimary;
+        if (passed)
+        {
+            AZ_Printf("STWGameplay",
+                "LOADOUT_ACCEPTANCE result=PASS primary_available=1 secondary_available=1 tactical_available=1 "
+                "lethal_available=1 melee_available=1 independent_ammo=1 independent_charges=1 "
+                "inactive_state_preserved=1 slot_validation=1 held_switch_blocked=1 authority_separation=PASS\n");
+            m_loadoutAcceptanceReported = true;
+        }
+    }
+
     void STWGameplaySystemComponent::EmitAdsAcceptanceState(const char* phase, bool requested) const
     {
         const AZ::Vector3 pose = m_viewmodel.GetPoseOffset();
@@ -866,6 +972,13 @@ namespace STWGameplay
         else if (id == Keyboard::Key::ModifierCtrlL) { m_input.m_crouch = active; }
         else if (id == Keyboard::Key::AlphanumericE) { m_input.m_mantle = active; }
         else if (id == Keyboard::Key::AlphanumericR && channel.IsStateBegan()) { m_input.m_reload = true; }
+        // The current callback has no number-row consumers. These proven O3DE key IDs
+        // select slots through PlayerSliceModel; release clears the edge-trigger request.
+        else if (id == Keyboard::Key::Alphanumeric1) { m_input.m_requestedEquipmentSlot = active ? static_cast<int>(EquipmentSlot::Primary) : -1; }
+        else if (id == Keyboard::Key::Alphanumeric2) { m_input.m_requestedEquipmentSlot = active ? static_cast<int>(EquipmentSlot::Secondary) : -1; }
+        else if (id == Keyboard::Key::Alphanumeric3) { m_input.m_requestedEquipmentSlot = active ? static_cast<int>(EquipmentSlot::Tactical) : -1; }
+        else if (id == Keyboard::Key::Alphanumeric4) { m_input.m_requestedEquipmentSlot = active ? static_cast<int>(EquipmentSlot::Lethal) : -1; }
+        else if (id == Keyboard::Key::Alphanumeric5) { m_input.m_requestedEquipmentSlot = active ? static_cast<int>(EquipmentSlot::Melee) : -1; }
         else if (id == Keyboard::Key::AlphanumericQ) { m_input.m_switchWeapon = active; }
         else if (id == Mouse::Button::Left) { m_input.m_fire = active; }
         else if (id == Mouse::Button::Right) { m_adsHeld = active; }
@@ -1231,10 +1344,11 @@ namespace STWGameplay
             return;
         }
 
-        for (size_t slot = 0; slot < PlayerSliceModel::WeaponCount; ++slot)
+        for (size_t slot = 0; slot < PlayerSliceModel::EquipmentProfileCount; ++slot)
         {
             ViewmodelAssetLoadState& loadState = s_viewmodelAssetLoadStates[slot];
-            const WeaponViewmodelSelector& selector = s_weaponViewmodelSelectors[slot];
+            const EquipmentProfile& profile = PlayerSliceModel::GetEquipmentProfile(
+                static_cast<EquipmentProfileId>(slot));
             if (!loadState.m_enumerated)
             {
                 loadState.m_enumerated = true;
@@ -1243,15 +1357,15 @@ namespace STWGameplay
                 AZ::Data::AssetCatalogRequestBus::Broadcast(
                     &AZ::Data::AssetCatalogRequests::EnumerateAssets,
                     []() {},
-                    [&modelCandidates, &materialCandidates, &selector](
+                    [&modelCandidates, &materialCandidates, &profile](
                         const AZ::Data::AssetId assetId, const AZ::Data::AssetInfo& info)
                     {
                         const AZStd::string lowercasePath = LowercaseAssetPath(info.m_relativePath);
-                        if (lowercasePath == selector.m_modelPath)
+                        if (lowercasePath == profile.m_presentationAssetPath)
                         {
                             modelCandidates.push_back({ assetId, info.m_relativePath });
                         }
-                        else if (lowercasePath == selector.m_materialPath)
+                        else if (lowercasePath == profile.m_presentationMaterialPath)
                         {
                             materialCandidates.push_back({ assetId, info.m_relativePath });
                         }
@@ -1379,8 +1493,8 @@ namespace STWGameplay
             return;
         }
 
-        const size_t activeSlot = static_cast<size_t>(m_model.GetActiveWeaponId());
-        if (activeSlot >= PlayerSliceModel::WeaponCount || !m_viewmodelMeshHandles[activeSlot].IsValid())
+        const size_t activeSlot = static_cast<size_t>(m_model.GetActiveEquipmentProfileId());
+        if (activeSlot >= PlayerSliceModel::EquipmentProfileCount || !m_viewmodelMeshHandles[activeSlot].IsValid())
         {
             return;
         }
@@ -1392,7 +1506,7 @@ namespace STWGameplay
         const AZ::Transform transform = AZ::Transform::CreateFromQuaternionAndTranslation(orientation, center);
         m_meshFeatureProcessor->SetTransform(m_viewmodelMeshHandles[activeSlot], transform,
             AZ::Vector3::CreateOne());
-        for (size_t slot = 0; slot < PlayerSliceModel::WeaponCount; ++slot)
+        for (size_t slot = 0; slot < PlayerSliceModel::EquipmentProfileCount; ++slot)
         {
             m_meshFeatureProcessor->SetVisible(m_viewmodelMeshHandles[slot], slot == activeSlot);
         }
@@ -1409,7 +1523,7 @@ namespace STWGameplay
         // PASS is only reported once the model instance actually exists, i.e. the asset really
         // loaded and the mesh is renderable - never merely because the handle was acquired.
         bool meshesReady = true;
-        for (size_t slot = 0; slot < PlayerSliceModel::WeaponCount; ++slot)
+        for (size_t slot = 0; slot < PlayerSliceModel::EquipmentProfileCount; ++slot)
         {
             meshesReady = meshesReady && m_meshFeatureProcessor->GetModel(m_viewmodelMeshHandles[slot]);
         }
@@ -1417,8 +1531,9 @@ namespace STWGameplay
         {
             m_viewmodelMeshReported = true;
             AZ_Printf("STWGameplay",
-                "ATOM_VIEWMODEL_MESH result=PASS asset=%s second_asset=%s handles=2 mesh=ready material=bound\n",
-                m_viewmodelMeshAssetPaths[0].c_str(), m_viewmodelMeshAssetPaths[1].c_str());
+                "ATOM_VIEWMODEL_MESH result=PASS asset=%s second_asset=%s handles=%zu mesh=ready material=bound\n",
+                m_viewmodelMeshAssetPaths[0].c_str(), m_viewmodelMeshAssetPaths[1].c_str(),
+                PlayerSliceModel::EquipmentProfileCount);
         }
     }
 
@@ -1442,7 +1557,7 @@ namespace STWGameplay
         m_viewmodelMeshHandles = {};
         m_fireFeedbackMeshHandle = {};
         m_viewmodelMeshAssetPaths = {};
-        m_visibleViewmodelSlot = PlayerSliceModel::WeaponCount;
+        m_visibleViewmodelSlot = PlayerSliceModel::EquipmentProfileCount;
         m_viewmodelMeshStartup = ViewmodelMeshStartup::Waiting;
         m_viewmodelMeshReported = false;
         ResetViewmodelAssetLoadState();
@@ -1953,8 +2068,8 @@ namespace STWGameplay
             right.Normalize();
         }
 
-        // Camera-relative native viewmodel. Exactly one of the two original STW Atom meshes is
-        // visible at a time; arms and hands do not exist yet, and the muzzle cue remains procedural.
+        // Camera-relative native viewmodel. Exactly one pre-acquired STW Atom mesh is visible at
+        // a time; arms and hands do not exist yet, and the muzzle cue remains procedural.
         // Recoil/sway/reload pose come from the presentation
         // model, which consumes authoritative events only; fire, damage and reload authority
         // remain in PlayerSliceModel.
@@ -2000,12 +2115,27 @@ namespace STWGameplay
 
         char hud[128];
         const PlayerState& player = m_model.GetPlayer();
-        const char* weaponName = m_model.GetActiveWeaponId() == WeaponId::STW_SMG_01
-            ? "STW_SMG_01" : "STW_RIFLE_02";
-        azsnprintf(hud, AZ_ARRAY_SIZE(hud), "STW  HP %03d/%03d   %s %02d / %03d   %s",
+        const EquipmentProfile& equipmentProfile = m_model.GetActiveEquipmentProfile();
+        if (equipmentProfile.m_chargeCapacity > 0)
+        {
+            azsnprintf(hud, AZ_ARRAY_SIZE(hud), "STW  HP %03d/%03d   %s charges %02d   %s",
+                static_cast<int>(player.m_health), static_cast<int>(player.m_maxHealth),
+                equipmentProfile.m_displayName, weapon.m_charges,
+                player.m_alive ? "READY" : "DEAD");
+        }
+        else if (equipmentProfile.m_magazineCapacity > 0)
+        {
+            azsnprintf(hud, AZ_ARRAY_SIZE(hud), "STW  HP %03d/%03d   %s %02d / %03d   %s",
+                static_cast<int>(player.m_health), static_cast<int>(player.m_maxHealth),
+                equipmentProfile.m_displayName, weapon.m_magazine, weapon.m_reserve,
+                player.m_alive ? (weapon.m_reloading ? "RELOADING" : "READY") : "DEAD");
+        }
+        else
+        {
+            azsnprintf(hud, AZ_ARRAY_SIZE(hud), "STW  HP %03d/%03d   %s READY   %s",
             static_cast<int>(player.m_health), static_cast<int>(player.m_maxHealth),
-            weaponName, weapon.m_magazine, weapon.m_reserve,
-            player.m_alive ? (weapon.m_reloading ? "RELOADING" : "READY") : "DEAD");
+            equipmentProfile.m_displayName, player.m_alive ? "READY" : "DEAD");
+        }
         Bus::Event(displayId, &AzFramework::DebugDisplayRequests::Draw2dTextLabel, 24.0f, 36.0f, 1.4f, hud, false);
         char objective[96];
         azsnprintf(objective, AZ_ARRAY_SIZE(objective), "%s   ENCOUNTERS: %d",

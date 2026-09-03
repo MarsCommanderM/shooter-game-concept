@@ -21,6 +21,9 @@ namespace STWGameplay
         bool m_fire = false;
         bool m_reload = false;
         bool m_switchWeapon = false;
+        // -1 means no direct slot request. The native adapter uses this only for the
+        // proven-unused number-row slot keys; the model validates the request.
+        int m_requestedEquipmentSlot = -1;
     };
 
     struct PlayerState
@@ -49,30 +52,76 @@ namespace STWGameplay
         int m_mantleEvents = 0;
     };
 
-    struct WeaponState
+    enum class EquipmentSlot : AZ::u8
     {
-        int m_magazine = 30;
-        int m_reserve = 150;
+        Primary = 0,
+        Secondary,
+        Tactical,
+        Lethal,
+        Melee
+    };
+
+    enum class EquipmentCategory : AZ::u8
+    {
+        Rifle = 0,
+        Smg,
+        Lmg,
+        Marksman,
+        Sidearm,
+        Launcher,
+        Flash,
+        Smoke,
+        Frag,
+        Melee
+    };
+
+    enum class EquipmentProfileId : AZ::u8
+    {
+        STW_SMG_01 = 0,
+        STW_RIFLE_02 = 1, // Block 19B compatibility profile
+        STW_RIFLE_03,
+        STW_LMG_04,
+        STW_SIDEARM_01,
+        STW_LAUNCHER_01,
+        STW_TACTICAL_FLASH_01,
+        STW_TACTICAL_SMOKE_01,
+        STW_LETHAL_FRAG_01,
+        STW_MELEE_01
+    };
+
+    struct EquipmentState
+    {
+        EquipmentProfileId m_profileId = EquipmentProfileId::STW_SMG_01;
+        int m_magazine = 0;
+        int m_reserve = 0;
+        int m_charges = 0;
         float m_cooldownRemaining = 0.0f;
         float m_reloadRemaining = 0.0f;
         bool m_reloading = false;
     };
 
-    enum class WeaponId : AZ::u8
+    struct EquipmentProfile
     {
-        STW_SMG_01 = 0,
-        STW_RIFLE_02 = 1
-    };
-
-    struct WeaponProfile
-    {
-        int m_magazineCapacity = 30;
-        int m_initialReserve = 150;
+        EquipmentProfileId m_profileId = EquipmentProfileId::STW_SMG_01;
+        EquipmentCategory m_category = EquipmentCategory::Smg;
+        EquipmentSlot m_allowedSlot = EquipmentSlot::Primary;
+        int m_magazineCapacity = 0;
+        int m_initialReserve = 0;
+        int m_chargeCapacity = 0;
+        int m_initialCharges = 0;
         float m_fireInterval = 0.075f;
         float m_reloadDuration = 1.75f;
         float m_range = 60.0f;
         float m_damage = 16.0f;
+        const char* m_displayName = "STW_SMG_01";
+        const char* m_presentationAssetPath = nullptr;
+        const char* m_presentationMaterialPath = nullptr;
     };
+
+    // Compatibility names retained for the verified Block 19B public surface.
+    using WeaponId = EquipmentProfileId;
+    using WeaponState = EquipmentState;
+    using WeaponProfile = EquipmentProfile;
 
     using TargetState = EnemyState; // compatibility name for existing presentation/tests
 
@@ -80,6 +129,9 @@ namespace STWGameplay
     {
         bool m_shotFired = false;
         bool m_hit = false;
+        bool m_equipmentUsed = false;
+        bool m_equipmentChanged = false;
+        EquipmentProfileId m_activeEquipmentProfile = EquipmentProfileId::STW_SMG_01;
         float m_fireCueRemaining = 0.0f;
         float m_hitCueRemaining = 0.0f;
     };
@@ -103,24 +155,41 @@ namespace STWGameplay
         static constexpr float ReloadDuration = 1.75f;
         static constexpr float WeaponRange = 60.0f;
         static constexpr float WeaponDamage = 16.0f;
-        static constexpr size_t WeaponCount = 2;
+        static constexpr size_t EquipmentSlotCount = 5;
+        static constexpr size_t EquipmentProfileCount = 10;
+        static constexpr size_t WeaponCount = 2; // legacy two-weapon gate compatibility
 
         PlayerSliceModel();
         bool Update(float deltaTime, const PlayerInput& input);
         bool TryFire();
         bool StartReload();
         bool RequestWeaponSwitch();
+        bool RequestEquipmentSwitch(EquipmentSlot slot);
+        bool SetLoadoutProfile(EquipmentSlot slot, EquipmentProfileId profileId);
         bool ApplyDamage(float damage);
         void ResetPlayer();
 
         const PlayerState& GetPlayer() const { return m_player; }
-        const WeaponState& GetWeapon() const { return m_weapons[static_cast<size_t>(m_activeWeapon)]; }
+        const WeaponState& GetWeapon() const { return GetEquipment(m_activeEquipmentSlot); }
         const WeaponState& GetWeapon(WeaponId weaponId) const
         {
-            return m_weapons[static_cast<size_t>(weaponId)];
+            return m_equipment[static_cast<size_t>(weaponId) < EquipmentProfileCount
+                    ? static_cast<size_t>(weaponId) : 0];
         }
-        WeaponId GetActiveWeaponId() const { return m_activeWeapon; }
+        const EquipmentState& GetEquipment(EquipmentSlot slot) const;
+        const EquipmentState& GetEquipment(EquipmentProfileId profileId) const
+        {
+            return GetWeapon(profileId);
+        }
+        WeaponId GetActiveWeaponId() const { return GetActiveEquipmentProfileId(); }
+        EquipmentSlot GetActiveEquipmentSlot() const { return m_activeEquipmentSlot; }
+        EquipmentProfileId GetActiveEquipmentProfileId() const;
+        const EquipmentProfile& GetActiveEquipmentProfile() const;
+        static const EquipmentProfile& GetEquipmentProfile(EquipmentProfileId profileId);
         static const WeaponProfile& GetWeaponProfile(WeaponId weaponId);
+        static bool IsValidEquipmentSlot(EquipmentSlot slot);
+        static bool IsSlotCompatible(EquipmentSlot slot, EquipmentProfileId profileId);
+        EquipmentProfileId GetLoadoutProfile(EquipmentSlot slot) const;
         const TargetState& GetTarget() const { return m_enemy.GetState(); }
         const EnemyCombatModel& GetEnemy() const { return m_enemy; }
         EnemyCombatModel& GetEnemy() { return m_enemy; }
@@ -139,16 +208,19 @@ namespace STWGameplay
         bool RayHitsTarget(const AZ::Vector3& origin, const AZ::Vector3& direction) const;
         void FinishReload();
         void ResetWeapons();
+        size_t GetActiveEquipmentIndex() const;
 
         PlayerState m_player;
-        AZStd::array<WeaponState, WeaponCount> m_weapons;
-        WeaponId m_activeWeapon = WeaponId::STW_SMG_01;
+        AZStd::array<WeaponState, EquipmentProfileCount> m_equipment;
+        AZStd::array<EquipmentProfileId, EquipmentSlotCount> m_loadoutProfiles;
+        EquipmentSlot m_activeEquipmentSlot = EquipmentSlot::Primary;
         EnemyCombatModel m_enemy;
         PresentationState m_presentation;
         bool m_jumpWasHeld = false;
         bool m_crouchWasHeld = false;
         bool m_mantleWasHeld = false;
         bool m_weaponSwitchWasHeld = false;
+        int m_requestedEquipmentSlotWasHeld = -1;
         float m_jumpImpulseThisTick = 0.0f;
     };
 }

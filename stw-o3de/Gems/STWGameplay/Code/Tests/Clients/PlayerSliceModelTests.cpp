@@ -812,4 +812,237 @@ namespace STWGameplay
         EXPECT_NEAR(AZ::Vector3(velocity.GetX(), velocity.GetY(), 0.0f).GetLength(), PlayerSliceModel::MantleSpeed, 0.001f);
         EXPECT_FLOAT_EQ(velocity.GetZ(), 0.0f);
     }
+
+    TEST(PlayerSliceModelTests, DefaultLoadoutIsValid)
+    {
+        PlayerSliceModel model;
+        EXPECT_EQ(PlayerSliceModel::EquipmentSlotCount, 5u);
+        EXPECT_EQ(model.GetLoadoutProfile(EquipmentSlot::Primary), EquipmentProfileId::STW_SMG_01);
+        EXPECT_EQ(model.GetLoadoutProfile(EquipmentSlot::Secondary), EquipmentProfileId::STW_RIFLE_02);
+        EXPECT_EQ(model.GetLoadoutProfile(EquipmentSlot::Tactical), EquipmentProfileId::STW_TACTICAL_FLASH_01);
+        EXPECT_EQ(model.GetLoadoutProfile(EquipmentSlot::Lethal), EquipmentProfileId::STW_LETHAL_FRAG_01);
+        EXPECT_EQ(model.GetLoadoutProfile(EquipmentSlot::Melee), EquipmentProfileId::STW_MELEE_01);
+        EXPECT_TRUE(PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Primary,
+            model.GetLoadoutProfile(EquipmentSlot::Primary)));
+        EXPECT_TRUE(PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Secondary,
+            model.GetLoadoutProfile(EquipmentSlot::Secondary)));
+        EXPECT_TRUE(PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Tactical,
+            model.GetLoadoutProfile(EquipmentSlot::Tactical)));
+        EXPECT_TRUE(PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Lethal,
+            model.GetLoadoutProfile(EquipmentSlot::Lethal)));
+        EXPECT_TRUE(PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Melee,
+            model.GetLoadoutProfile(EquipmentSlot::Melee)));
+    }
+
+    TEST(PlayerSliceModelTests, PrimarySlotActivatesCorrectly)
+    {
+        PlayerSliceModel model;
+        EXPECT_EQ(model.GetActiveEquipmentSlot(), EquipmentSlot::Primary);
+        EXPECT_EQ(model.GetActiveEquipmentProfileId(), EquipmentProfileId::STW_SMG_01);
+    }
+
+    TEST(PlayerSliceModelTests, SecondarySlotActivatesCorrectly)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Secondary));
+        EXPECT_EQ(model.GetActiveEquipmentSlot(), EquipmentSlot::Secondary);
+        EXPECT_EQ(model.GetActiveEquipmentProfileId(), EquipmentProfileId::STW_RIFLE_02);
+    }
+
+    TEST(PlayerSliceModelTests, TacticalSlotActivatesCorrectly)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Tactical));
+        EXPECT_EQ(model.GetActiveEquipmentSlot(), EquipmentSlot::Tactical);
+        EXPECT_EQ(model.GetActiveEquipmentProfileId(), EquipmentProfileId::STW_TACTICAL_FLASH_01);
+    }
+
+    TEST(PlayerSliceModelTests, LethalSlotActivatesCorrectly)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Lethal));
+        EXPECT_EQ(model.GetActiveEquipmentSlot(), EquipmentSlot::Lethal);
+        EXPECT_EQ(model.GetActiveEquipmentProfileId(), EquipmentProfileId::STW_LETHAL_FRAG_01);
+    }
+
+    TEST(PlayerSliceModelTests, MeleeSlotActivatesCorrectly)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Melee));
+        EXPECT_EQ(model.GetActiveEquipmentSlot(), EquipmentSlot::Melee);
+        EXPECT_EQ(model.GetActiveEquipmentProfileId(), EquipmentProfileId::STW_MELEE_01);
+    }
+
+    TEST(PlayerSliceModelTests, PrimaryAmmoRemainsIndependent)
+    {
+        PlayerSliceModel model;
+        const int primaryBefore = model.GetEquipment(EquipmentSlot::Primary).m_magazine;
+        ASSERT_TRUE(model.TryFire());
+        const int primaryAfter = model.GetEquipment(EquipmentSlot::Primary).m_magazine;
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Secondary));
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Primary).m_magazine, primaryAfter);
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Primary).m_reserve, 150);
+        EXPECT_EQ(primaryAfter, primaryBefore - 1);
+    }
+
+    TEST(PlayerSliceModelTests, SecondaryAmmoRemainsIndependent)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Secondary));
+        const int secondaryBefore = model.GetEquipment(EquipmentSlot::Secondary).m_magazine;
+        ASSERT_TRUE(model.TryFire());
+        const int secondaryAfter = model.GetEquipment(EquipmentSlot::Secondary).m_magazine;
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Primary));
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Secondary).m_magazine, secondaryAfter);
+        EXPECT_EQ(secondaryAfter, secondaryBefore - 1);
+    }
+
+    TEST(PlayerSliceModelTests, TacticalChargeStateRemainsIndependent)
+    {
+        PlayerSliceModel model;
+        const int tacticalBefore = model.GetEquipment(EquipmentSlot::Tactical).m_charges;
+        const int lethalBefore = model.GetEquipment(EquipmentSlot::Lethal).m_charges;
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Tactical));
+        ASSERT_TRUE(model.TryFire());
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Primary));
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Tactical).m_charges, tacticalBefore - 1);
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Lethal).m_charges, lethalBefore);
+    }
+
+    TEST(PlayerSliceModelTests, LethalChargeStateRemainsIndependent)
+    {
+        PlayerSliceModel model;
+        const int tacticalBefore = model.GetEquipment(EquipmentSlot::Tactical).m_charges;
+        const int lethalBefore = model.GetEquipment(EquipmentSlot::Lethal).m_charges;
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Lethal));
+        ASSERT_TRUE(model.TryFire());
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Primary));
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Lethal).m_charges, lethalBefore - 1);
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Tactical).m_charges, tacticalBefore);
+    }
+
+    TEST(PlayerSliceModelTests, InactiveWeaponCannotConsumeAmmo)
+    {
+        PlayerSliceModel model;
+        const WeaponState secondaryBefore = model.GetEquipment(EquipmentSlot::Secondary);
+        ASSERT_TRUE(model.TryFire());
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Secondary).m_magazine, secondaryBefore.m_magazine);
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Secondary).m_reserve, secondaryBefore.m_reserve);
+    }
+
+    TEST(PlayerSliceModelTests, InactiveEquipmentCannotConsumeCharges)
+    {
+        PlayerSliceModel model;
+        const int tacticalBefore = model.GetEquipment(EquipmentSlot::Tactical).m_charges;
+        const int lethalBefore = model.GetEquipment(EquipmentSlot::Lethal).m_charges;
+        ASSERT_TRUE(model.TryFire());
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Tactical).m_charges, tacticalBefore);
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Lethal).m_charges, lethalBefore);
+    }
+
+    TEST(PlayerSliceModelTests, InvalidSlotProfileCombinationIsRejected)
+    {
+        PlayerSliceModel model;
+        EXPECT_FALSE(model.SetLoadoutProfile(EquipmentSlot::Tactical, EquipmentProfileId::STW_RIFLE_03));
+        EXPECT_FALSE(model.SetLoadoutProfile(EquipmentSlot::Secondary, EquipmentProfileId::STW_LMG_04));
+        EXPECT_FALSE(model.RequestEquipmentSwitch(static_cast<EquipmentSlot>(255)));
+        EXPECT_EQ(model.GetLoadoutProfile(EquipmentSlot::Tactical), EquipmentProfileId::STW_TACTICAL_FLASH_01);
+    }
+
+    TEST(PlayerSliceModelTests, HeldEquipmentSwitchDoesNotRetrigger)
+    {
+        PlayerSliceModel model;
+        PlayerInput held;
+        held.m_switchWeapon = true;
+        ASSERT_TRUE(model.Update(0.016f, held));
+        ASSERT_TRUE(model.Update(0.016f, held));
+        ASSERT_TRUE(model.Update(0.016f, held));
+        EXPECT_EQ(model.GetActiveEquipmentSlot(), EquipmentSlot::Secondary);
+        ASSERT_TRUE(model.Update(0.016f, PlayerInput{}));
+        ASSERT_TRUE(model.Update(0.016f, held));
+        EXPECT_EQ(model.GetActiveEquipmentSlot(), EquipmentSlot::Primary);
+    }
+
+    TEST(PlayerSliceModelTests, PrimarySecondaryPrimaryPreservesState)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.TryFire());
+        const WeaponState primaryAfterFire = model.GetEquipment(EquipmentSlot::Primary);
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Secondary));
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Primary));
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Primary).m_magazine, primaryAfterFire.m_magazine);
+        EXPECT_GT(model.GetEquipment(EquipmentSlot::Primary).m_cooldownRemaining, 0.0f);
+    }
+
+    TEST(PlayerSliceModelTests, PrimaryMeleePrimaryPreservesState)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.TryFire());
+        const WeaponState primaryBefore = model.GetEquipment(EquipmentSlot::Primary);
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Melee));
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Primary));
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Primary).m_magazine, primaryBefore.m_magazine);
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Primary).m_reserve, primaryBefore.m_reserve);
+    }
+
+    TEST(PlayerSliceModelTests, PrimaryTacticalPrimaryPreservesState)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.TryFire());
+        const WeaponState primaryBefore = model.GetEquipment(EquipmentSlot::Primary);
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Tactical));
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Primary));
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Primary).m_magazine, primaryBefore.m_magazine);
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Primary).m_cooldownRemaining, primaryBefore.m_cooldownRemaining);
+    }
+
+    TEST(PlayerSliceModelTests, ReloadAndCooldownSwitchingObeysExistingPolicy)
+    {
+        PlayerSliceModel reloadModel;
+        ASSERT_TRUE(reloadModel.TryFire());
+        Advance(reloadModel, PlayerSliceModel::FireInterval);
+        ASSERT_TRUE(reloadModel.StartReload());
+        EXPECT_FALSE(reloadModel.RequestEquipmentSwitch(EquipmentSlot::Secondary));
+        EXPECT_TRUE(reloadModel.GetEquipment(EquipmentSlot::Primary).m_reloading);
+
+        PlayerSliceModel cooldownModel;
+        ASSERT_TRUE(cooldownModel.TryFire());
+        ASSERT_TRUE(cooldownModel.RequestEquipmentSwitch(EquipmentSlot::Secondary));
+        ASSERT_TRUE(cooldownModel.RequestEquipmentSwitch(EquipmentSlot::Primary));
+        EXPECT_FALSE(cooldownModel.TryFire());
+        EXPECT_GT(cooldownModel.GetEquipment(EquipmentSlot::Primary).m_cooldownRemaining, 0.0f);
+    }
+
+    TEST(PlayerSliceModelTests, AdditionalPrimaryProfileReplacesDefaultDeterministically)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.SetLoadoutProfile(EquipmentSlot::Primary, EquipmentProfileId::STW_RIFLE_03));
+        EXPECT_EQ(model.GetActiveEquipmentProfileId(), EquipmentProfileId::STW_RIFLE_03);
+        EXPECT_EQ(model.GetWeapon().m_magazine, 20);
+        ASSERT_TRUE(model.TryFire());
+        EXPECT_EQ(model.GetWeapon().m_magazine, 19);
+    }
+
+    TEST(PlayerSliceModelTests, AdditionalTacticalProfileReplacesDefaultDeterministically)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.SetLoadoutProfile(EquipmentSlot::Tactical, EquipmentProfileId::STW_TACTICAL_SMOKE_01));
+        EXPECT_EQ(model.GetLoadoutProfile(EquipmentSlot::Tactical), EquipmentProfileId::STW_TACTICAL_SMOKE_01);
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Tactical));
+        ASSERT_TRUE(model.TryFire());
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Tactical).m_charges, 1);
+    }
+
+    TEST(PlayerSliceModelTests, AdditionalProfilesExposeExplicitSlotPolicies)
+    {
+        EXPECT_TRUE(PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Primary, EquipmentProfileId::STW_LMG_04));
+        EXPECT_TRUE(PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Secondary, EquipmentProfileId::STW_SIDEARM_01));
+        // Launcher is intentionally a Primary profile in this bounded architecture.
+        EXPECT_TRUE(PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Primary, EquipmentProfileId::STW_LAUNCHER_01));
+        EXPECT_TRUE(PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Tactical,
+            EquipmentProfileId::STW_TACTICAL_SMOKE_01));
+        EXPECT_TRUE(PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Lethal,
+            EquipmentProfileId::STW_LETHAL_FRAG_01));
+        EXPECT_TRUE(PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Melee, EquipmentProfileId::STW_MELEE_01));
+    }
 }

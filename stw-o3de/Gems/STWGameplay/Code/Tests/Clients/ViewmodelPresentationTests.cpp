@@ -639,4 +639,43 @@ namespace STWGameplay
         }
         EXPECT_TRUE(first.GetSwayOffset().IsClose(second.GetSwayOffset(), 0.000001f));
     }
+
+    TEST(ViewmodelPresentationTests, EquipmentIdentityIsPresentationInputOnly)
+    {
+        PlayerSliceModel model;
+        ViewmodelPresentation vm;
+        const EquipmentState before = model.GetWeapon();
+        PresentationInput input;
+        input.m_activeEquipmentSlot = static_cast<AZ::u8>(model.GetActiveEquipmentSlot());
+        input.m_activeEquipmentCategory = static_cast<AZ::u8>(model.GetActiveEquipmentProfile().m_category);
+        input.m_activeEquipmentProfile = static_cast<AZ::u8>(model.GetActiveEquipmentProfileId());
+        input.m_equipmentChanged = true;
+        ASSERT_TRUE(vm.Update(0.0f, input));
+        EXPECT_EQ(vm.GetActiveEquipmentSlot(), input.m_activeEquipmentSlot);
+        EXPECT_EQ(vm.GetActiveEquipmentCategory(), input.m_activeEquipmentCategory);
+        EXPECT_EQ(vm.GetActiveEquipmentProfile(), input.m_activeEquipmentProfile);
+        EXPECT_EQ(model.GetActiveEquipmentSlot(), EquipmentSlot::Primary);
+        EXPECT_EQ(model.GetWeapon().m_profileId, before.m_profileId);
+        EXPECT_EQ(model.GetWeapon().m_magazine, before.m_magazine);
+        EXPECT_EQ(model.GetWeapon().m_reserve, before.m_reserve);
+        EXPECT_EQ(model.GetWeapon().m_charges, before.m_charges);
+    }
+
+    TEST(ViewmodelPresentationTests, EquipmentPresentationCannotMutateAmmoOrCharges)
+    {
+        PlayerSliceModel model;
+        ViewmodelPresentation vm;
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Tactical));
+        const EquipmentState before = model.GetWeapon();
+        PresentationInput input;
+        input.m_activeEquipmentSlot = static_cast<AZ::u8>(model.GetActiveEquipmentSlot());
+        input.m_activeEquipmentCategory = static_cast<AZ::u8>(model.GetActiveEquipmentProfile().m_category);
+        input.m_activeEquipmentProfile = static_cast<AZ::u8>(model.GetActiveEquipmentProfileId());
+        input.m_equipmentUsed = true;
+        ASSERT_TRUE(vm.Update(0.016f, input));
+        EXPECT_EQ(model.GetWeapon().m_charges, before.m_charges);
+        EXPECT_EQ(model.GetWeapon().m_magazine, before.m_magazine);
+        EXPECT_EQ(model.GetWeapon().m_reserve, before.m_reserve);
+        EXPECT_EQ(model.GetActiveEquipmentSlot(), EquipmentSlot::Tactical);
+    }
 }

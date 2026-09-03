@@ -17,6 +17,11 @@ namespace STWGameplay
         bool m_moving = false;     //!< player has locomotion intent
         bool m_sprinting = false;  //!< player is sprinting (implies moving)
         bool m_adsRequested = false; //!< presentation blend request; no gameplay effects
+        AZ::u8 m_activeEquipmentSlot = 0; //!< immutable slot identity for presentation selection
+        AZ::u8 m_activeEquipmentCategory = 0;
+        AZ::u8 m_activeEquipmentProfile = 0;
+        bool m_equipmentChanged = false;
+        bool m_equipmentUsed = false;
         float m_lookX = 0.0f;      //!< presentation-only look delta for transient sway
         float m_lookY = 0.0f;
     };
@@ -87,6 +92,9 @@ namespace STWGameplay
         bool IsHitFeedbackActive() const { return m_hitFeedback > 0.0f; }
         AZ::u32 GetFireEventCount() const { return m_fireEvents; }
         AZ::u32 GetReloadStartCount() const { return m_reloadStarts; }
+        AZ::u8 GetActiveEquipmentSlot() const { return m_activeEquipmentSlot; }
+        AZ::u8 GetActiveEquipmentCategory() const { return m_activeEquipmentCategory; }
+        AZ::u8 GetActiveEquipmentProfile() const { return m_activeEquipmentProfile; }
 
     private:
         ViewmodelState m_state = ViewmodelState::Idle;
@@ -101,6 +109,9 @@ namespace STWGameplay
         float m_adsBlend = 0.0f;
         float m_sprintBlend = 0.0f;
         bool m_wasReloading = false;
+        AZ::u8 m_activeEquipmentSlot = 0;
+        AZ::u8 m_activeEquipmentCategory = 0;
+        AZ::u8 m_activeEquipmentProfile = 0;
         AZ::u32 m_fireEvents = 0;
         AZ::u32 m_reloadStarts = 0;
     };
