@@ -307,6 +307,10 @@ namespace STWGameplay
         if (playerPhysicalStateSynchronized)
         {
             m_model.SynchronizePhysicalState(physicalPosition, grounded);
+            if (m_automatedAcceptance)
+            {
+                m_spawnCheckpointLastPhysicalPosition = physicalPosition;
+            }
         }
         UpdateJumpAcceptance(playerPhysicalStateSynchronized);
         UpdateCrouchAcceptance(playerPhysicalStateSynchronized);
@@ -366,6 +370,11 @@ namespace STWGameplay
         const EnemyState& encounterAfterAcceptance = m_model.GetEnemy().GetState();
         m_encounter.Update(encounterAfterAcceptance);
         UpdateEncounterAcceptance();
+        if (m_encounter.IsCompleted() && !m_spawnCheckpoint.HasActiveCheckpoint())
+        {
+            m_spawnCheckpoint.ActivateCheckpoint(m_model.GetPlayer().m_position);
+        }
+        UpdateSpawnCheckpointAcceptance();
         UpdateEnemyAiAcceptance(deltaTime);
         UpdateEnemyPresentationAcceptance();
         UpdateCombatFeedbackAcceptance();
@@ -529,6 +538,13 @@ namespace STWGameplay
         {
             if (!m_mantleAcceptanceStimulusStarted)
             {
+                // Restore the already verified low-step mantle fixture before the acceptance
+                // stimulus. This is harness setup only; normal model and PhysX authority remain
+                // responsible for the request, probe, and movement.
+                const AZ::Vector3 mantleFixturePosition(6.027f, -0.073f, 0.026f);
+                m_model.SetPlayerPosition(mantleFixturePosition);
+                m_physicsPlayer.ResetPosition(mantleFixturePosition);
+                m_input.m_lookX = (0.03f - m_model.GetPlayer().m_yaw) / PlayerSliceModel::LookSensitivity;
                 const PlayerState& player = m_model.GetPlayer();
                 if (player.m_alive && player.m_grounded && !m_physicsPlayer.IsCrouched())
                 {
@@ -1605,6 +1621,84 @@ namespace STWGameplay
         }
     }
 
+    void STWGameplaySystemComponent::UpdateSpawnCheckpointAcceptance()
+    {
+        if (!m_automatedAcceptance || m_spawnCheckpointAcceptanceReported)
+        {
+            return;
+        }
+
+        const PlayerState& player = m_model.GetPlayer();
+        if (!m_spawnCheckpointAcceptanceStarted)
+        {
+            m_spawnCheckpointAcceptanceStarted = true;
+            m_spawnCheckpointInitialDeathEvents = player.m_deathEvents;
+            const AZ::Vector3& defaultSpawn = m_spawnCheckpoint.GetDefaultSpawnPosition();
+            const AZ::Vector3& physicalStart = m_spawnCheckpointLastPhysicalPosition;
+            m_spawnCheckpointDefaultRespawnObserved = m_spawnCheckpoint.ResolveRespawnPosition().IsClose(defaultSpawn)
+                && physicalStart.IsFinite()
+                && (physicalStart - defaultSpawn).GetLengthSq() <= 0.20f * 0.20f;
+        }
+
+        if (m_spawnCheckpoint.HasActiveCheckpoint())
+        {
+            if (!m_spawnCheckpointActivationObserved)
+            {
+                m_spawnCheckpointActivationObserved = true;
+                m_spawnCheckpointAcceptancePosition = m_spawnCheckpoint.GetActiveCheckpointPosition();
+                m_spawnCheckpointInitialActivationCount = m_spawnCheckpoint.GetActivationCount();
+            }
+
+            m_spawnCheckpointActivePersisted = m_spawnCheckpoint.ResolveRespawnPosition().IsClose(
+                m_spawnCheckpointAcceptancePosition);
+            if (!m_spawnCheckpointDuplicateChecked)
+            {
+                const int activationCountBeforeDuplicate = m_spawnCheckpoint.GetActivationCount();
+                const bool duplicateAccepted = m_spawnCheckpoint.ActivateCheckpoint(m_spawnCheckpointAcceptancePosition);
+                m_spawnCheckpointDuplicateBlocked = duplicateAccepted
+                    && m_spawnCheckpoint.GetActivationCount() == activationCountBeforeDuplicate
+                    && m_spawnCheckpoint.GetActivationCount() == m_spawnCheckpointInitialActivationCount;
+                m_spawnCheckpointDuplicateChecked = true;
+            }
+        }
+
+        m_spawnCheckpointPlayerDeathObserved = m_spawnCheckpointPlayerDeathObserved
+            || player.m_deathEvents > m_spawnCheckpointInitialDeathEvents;
+        if (m_enemyAiPlayerRespawned && m_spawnCheckpointActivationObserved && player.m_alive
+            && player.m_respawnEvents > 0)
+        {
+            m_spawnCheckpointRespawnObserved = player.m_position.IsClose(m_spawnCheckpointAcceptancePosition, 0.05f);
+            m_spawnCheckpointPhysicalPositionConfirmed = m_spawnCheckpointLastPhysicalPosition.IsClose(
+                m_spawnCheckpointAcceptancePosition, 0.05f);
+        }
+
+        const bool playerAuthorityValid = player.m_position.IsFinite()
+            && player.m_health >= 0.0f && player.m_health <= player.m_maxHealth;
+        const bool playerPhysicalAuthorityValid = m_physicsPlayer.IsValid()
+            && m_spawnCheckpointLastPhysicalPosition.IsFinite();
+        const bool encounterAuthorityValid = m_encounter.GetCompletedCount() >= 1
+            && m_model.GetEnemy().GetState().m_deathEvents >= 1;
+        const bool passed = m_spawnCheckpointDefaultRespawnObserved
+            && m_spawnCheckpointActivationObserved
+            && m_spawnCheckpointDuplicateBlocked
+            && m_spawnCheckpointActivePersisted
+            && m_spawnCheckpointPlayerDeathObserved
+            && m_spawnCheckpointRespawnObserved
+            && m_spawnCheckpointPhysicalPositionConfirmed
+            && playerAuthorityValid
+            && playerPhysicalAuthorityValid
+            && encounterAuthorityValid;
+        if (passed)
+        {
+            AZ_Printf("STWGameplay",
+                "SPAWN_CHECKPOINT_ACCEPTANCE result=PASS initial_spawn=1 default_respawn=1 "
+                "checkpoint_activated=1 duplicate_checkpoint_blocked=1 active_checkpoint_persisted=1 "
+                "player_death=1 respawn_at_checkpoint=1 physical_position=1 player_authority=PASS "
+                "player_physical_authority=PASS encounter_authority=PASS\n");
+            m_spawnCheckpointAcceptanceReported = true;
+        }
+    }
+
     void STWGameplaySystemComponent::UpdateEnemyAiAcceptance(float deltaTime)
     {
         if (!m_automatedAcceptance || m_enemyAiAcceptanceReported)
@@ -1626,7 +1720,9 @@ namespace STWGameplay
             if (m_enemyAiRespawnDelay >= 0.5f)
             {
                 m_model.ResetPlayer();
-                m_physicsPlayer.ResetPosition(m_model.GetPlayer().m_position);
+                const AZ::Vector3 respawnPosition = m_spawnCheckpoint.ResolveRespawnPosition();
+                m_model.SetPlayerPosition(respawnPosition);
+                m_physicsPlayer.ResetPosition(respawnPosition);
                 m_enemyAiPlayerRespawned = true;
             }
         }

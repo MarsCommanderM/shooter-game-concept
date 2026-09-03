@@ -5,6 +5,7 @@ set(FILES
     Source/EnemyCombatModel.cpp
     Source/EnemyPresentation.cpp
     Source/PlayerSliceModel.cpp
+    Source/SpawnCheckpointModel.cpp
     Source/ViewmodelPresentation.cpp
     Source/STWGameplayModuleInterface.cpp
     Source/STWGameplayModuleInterface.h

@@ -10,6 +10,7 @@
 #include <STWGameplay/CombatFeedbackPresentation.h>
 #include <STWGameplay/EncounterModel.h>
 #include <STWGameplay/EnemyPresentation.h>
+#include <STWGameplay/SpawnCheckpointModel.h>
 #include <STWGameplay/ViewmodelPresentation.h>
 #include "PhysXPlayerRuntime.h"
 #include "PhysXEnemyRuntime.h"
@@ -62,6 +63,7 @@ namespace STWGameplay
         void UpdateEnemyPresentationAcceptance();
         void UpdateCombatFeedbackAcceptance();
         void UpdateEncounterAcceptance();
+        void UpdateSpawnCheckpointAcceptance();
         void UpdateJumpAcceptance(bool physicalStateSynchronized);
         void UpdateCrouchAcceptance(bool physicalStateSynchronized);
         void UpdateSlideAcceptance(bool physicalStateSynchronized);
@@ -113,6 +115,7 @@ namespace STWGameplay
         ViewmodelPresentation m_viewmodel;
         CombatFeedbackPresentation m_combatFeedback;
         EncounterModel m_encounter;
+        SpawnCheckpointModel m_spawnCheckpoint;
         PhysXPlayerRuntime m_physicsPlayer;
         PhysXEnemyRuntime m_physicsEnemy;
         PlayerInput m_input;
@@ -168,6 +171,20 @@ namespace STWGameplay
         bool m_encounterAcceptanceSecondCompletion = false;
         bool m_encounterAcceptanceSecondEliminationTriggered = false;
         int m_encounterAcceptanceLastRespawnEvents = 0;
+        bool m_spawnCheckpointAcceptanceStarted = false;
+        bool m_spawnCheckpointDefaultRespawnObserved = false;
+        bool m_spawnCheckpointActivationObserved = false;
+        bool m_spawnCheckpointDuplicateChecked = false;
+        bool m_spawnCheckpointDuplicateBlocked = false;
+        bool m_spawnCheckpointActivePersisted = false;
+        bool m_spawnCheckpointPlayerDeathObserved = false;
+        bool m_spawnCheckpointRespawnObserved = false;
+        bool m_spawnCheckpointPhysicalPositionConfirmed = false;
+        bool m_spawnCheckpointAcceptanceReported = false;
+        AZ::Vector3 m_spawnCheckpointAcceptancePosition = AZ::Vector3::CreateZero();
+        AZ::Vector3 m_spawnCheckpointLastPhysicalPosition = AZ::Vector3::CreateZero();
+        int m_spawnCheckpointInitialActivationCount = 0;
+        int m_spawnCheckpointInitialDeathEvents = 0;
         bool m_jumpAcceptanceStarted = false;
         bool m_jumpAcceptanceAirborne = false;
         bool m_jumpAcceptanceRose = false;
