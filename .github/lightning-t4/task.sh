@@ -27,6 +27,28 @@ FRAME="${RUN_DIR}/stw-player-slice.png"
 THUMB="${RUN_DIR}/stw-player-slice-thumb.jpg"
 xvfb_pid=""; launcher_pid=""
 
+# Block 21AC diagnosis: trace only the pre-toolchain command path. The ERR trap
+# reports the original status and returns it unchanged, so set -e/pipefail and
+# every production gate retain their existing behavior.
+pipeline_diagnostic_phase="PRE_TOOLCHAIN"
+pipeline_diagnostic_debug(){
+  printf 'PIPELINE_DIAGNOSTIC_PHASE=%s\n' "${pipeline_diagnostic_phase}"
+  printf 'PIPELINE_DIAGNOSTIC_COMMAND=%q\n' "${BASH_COMMAND}"
+  printf 'PIPELINE_DIAGNOSTIC_SOURCE_FILE=%s\n' "${BASH_SOURCE[1]:-unknown}"
+  printf 'PIPELINE_DIAGNOSTIC_LINE=%s\n' "${BASH_LINENO[0]:-unknown}"
+}
+pipeline_diagnostic_err(){
+  local pipeline_status=$?
+  printf 'PIPELINE_DIAGNOSTIC_PHASE=%s\n' "${pipeline_diagnostic_phase}"
+  printf 'PIPELINE_DIAGNOSTIC_COMMAND=%q\n' "${BASH_COMMAND}"
+  printf 'PIPELINE_DIAGNOSTIC_SOURCE_FILE=%s\n' "${BASH_SOURCE[1]:-unknown}"
+  printf 'PIPELINE_DIAGNOSTIC_LINE=%s\n' "${BASH_LINENO[0]:-unknown}"
+  printf 'PIPELINE_DIAGNOSTIC_EXIT_CODE=%s\n' "${pipeline_status}"
+  return "${pipeline_status}"
+}
+trap pipeline_diagnostic_debug DEBUG
+trap pipeline_diagnostic_err ERR
+
 # Every Studio run shares the persistent build tree. FetchContent clone scripts
 # remove their dependency source directory before cloning, so overlapping CMake
 # configures can delete a repository while the other run is writing its pack.
@@ -146,6 +168,8 @@ fi
 echo "=================================================="
 echo "STW_TOOLCHAIN_PREFLIGHT_BEGIN"
 echo "=================================================="
+trap - DEBUG
+trap - ERR
 # O3DE 26.05 requires CMake >= 3.30 (the host system cmake is 3.28.3). Its Linux
 # compiler selection deliberately chooses the highest installed versioned Clang,
 # which is clang 18 on this Studio. Pin that same compiler so the preflight and real
@@ -721,7 +745,7 @@ for _ in $(seq 1 45); do
 done
 [[ -s "${FRAME_NATIVE}" ]]
 for _ in $(seq 1 30); do
-  runtime_grep -q 'PERFORMANCE_BASELINE' && runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS' && runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS' && runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS' && runtime_grep -q 'ENEMY_AI_ACCEPTANCE result=PASS' && runtime_grep -q 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'COMBAT_FEEDBACK_ACCEPTANCE result=PASS' && runtime_grep -q 'JUMP_ACCEPTANCE result=PASS' && runtime_grep -q 'CROUCH_ACCEPTANCE result=PASS' && runtime_grep -q 'SLIDE_ACCEPTANCE result=PASS' && runtime_grep -q 'MANTLE_ACCEPTANCE result=PASS' && runtime_grep -q 'TRAVERSAL_ARBITRATION_ACCEPTANCE result=PASS' && runtime_grep -q 'ENCOUNTER_ACCEPTANCE result=PASS' && runtime_grep -q 'SPAWN_CHECKPOINT_ACCEPTANCE result=PASS' && runtime_grep -q 'WEAPON_SWITCH_ACCEPTANCE result=PASS' && runtime_grep -q 'LOADOUT_ACCEPTANCE result=PASS' && break
+  runtime_grep -q 'PERFORMANCE_BASELINE' && runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS' && runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS' && runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS' && runtime_grep -q 'ENEMY_AI_ACCEPTANCE result=PASS' && runtime_grep -q 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'COMBAT_FEEDBACK_ACCEPTANCE result=PASS' && runtime_grep -q 'JUMP_ACCEPTANCE result=PASS' && runtime_grep -q 'CROUCH_ACCEPTANCE result=PASS' && runtime_grep -q 'SLIDE_ACCEPTANCE result=PASS' && runtime_grep -q 'MANTLE_ACCEPTANCE result=PASS' && runtime_grep -q 'TRAVERSAL_ARBITRATION_ACCEPTANCE result=PASS' && runtime_grep -q 'ENCOUNTER_ACCEPTANCE result=PASS' && runtime_grep -q 'MULTI_ENEMY_ACCEPTANCE result=PASS' && runtime_grep -q 'SPAWN_CHECKPOINT_ACCEPTANCE result=PASS' && runtime_grep -q 'WEAPON_SWITCH_ACCEPTANCE result=PASS' && runtime_grep -q 'LOADOUT_ACCEPTANCE result=PASS' && break
   kill -0 "${launcher_pid}" 2>/dev/null || { tail -n 200 "${LAUNCH_LOG}"; exit 1; }
   sleep 1
 done
@@ -735,6 +759,29 @@ runtime_grep -q 'ATOM_ENEMY_MESH result=PASS .*material=bound'
 runtime_grep -q 'ENEMY_COMBAT_ACCEPTANCE result=PASS spawned=1 mesh=ready physics=ready moved=1 .*deaths=1 respawns=1'
 runtime_grep -q 'ENEMY_AI_ACCEPTANCE result=PASS detected=1 chased=1 enemy_attacks=[1-9][0-9]* player_damage=[1-9][0-9]* player_death=[1-9][0-9]* player_respawn=[1-9][0-9]* enemy_death=[1-9][0-9]* enemy_reset=[1-9][0-9]* loop_active=1'
 runtime_grep -q 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS idle=PASS chase=PASS attack=PASS death=PASS reset=PASS authority_separation=PASS'
+runtime_grep -q 'MULTI_ENEMY_COUNT=3'
+runtime_grep -q 'ENEMY_ID_UNIQUE=1'
+runtime_grep -q 'ENEMY_A_ACTIVE=1'
+runtime_grep -q 'ENEMY_B_ACTIVE=1'
+runtime_grep -q 'ENEMY_C_ACTIVE=1'
+runtime_grep -q 'INDEPENDENT_HEALTH_STATE=PASS'
+runtime_grep -q 'INDEPENDENT_AI_STATE=PASS'
+runtime_grep -q 'INDEPENDENT_PHYSICAL_STATE=PASS'
+runtime_grep -q 'FIRST_ENEMY_ELIMINATION_OBSERVED=1'
+runtime_grep -q 'ENCOUNTER_ACTIVE_AFTER_FIRST_ELIMINATION=1'
+runtime_grep -q 'SECOND_ENEMY_ELIMINATION_OBSERVED=1'
+runtime_grep -q 'ENCOUNTER_ACTIVE_AFTER_SECOND_ELIMINATION=1'
+runtime_grep -q 'THIRD_ENEMY_ELIMINATION_OBSERVED=1'
+runtime_grep -q 'ENCOUNTER_COMPLETED_AFTER_REQUIRED_SET=1'
+runtime_grep -q 'DUPLICATE_COMPLETION_BLOCKED=1'
+runtime_grep -q 'MULTI_ENEMY_REARM_OBSERVED=1'
+runtime_grep -q 'MULTI_ENEMY_POST_REARM_ACTIVE=1'
+runtime_grep -q 'PLAYER_AUTHORITY=PASS'
+runtime_grep -q 'PLAYER_PHYSICAL_AUTHORITY=PASS'
+runtime_grep -q 'ENEMY_COMBAT_AUTHORITY=PASS'
+runtime_grep -q 'ENEMY_PHYSICAL_AUTHORITY=PASS'
+runtime_grep -q 'ENCOUNTER_AUTHORITY=PASS'
+runtime_grep -Eq 'MULTI_ENEMY_ACCEPTANCE result=PASS count=3 ids=unique active=3 independent_health=PASS independent_ai=PASS independent_physical=PASS first_elimination=1 active_after_first=1 second_elimination=1 active_after_second=1 third_elimination=1 completed_after_required_set=1 duplicate_completion_blocked=1 rearm=1 post_rearm_active=1 player_authority=PASS player_physical_authority=PASS enemy_combat_authority=PASS enemy_physical_authority=PASS encounter_authority=PASS'
 runtime_grep -q 'ATOM_ARENA result=PASS .*mesh=ready material=bound lighting=native_environment'
 runtime_grep -q 'ARENA_ACCEPTANCE result=PASS player_spawn=PASS enemy_spawn=PASS bounds=PASS lighting=PASS combat_lane=PASS native_scene=PASS'
 runtime_grep -Eq 'COMBAT_FEEDBACK_ACCEPTANCE result=PASS fire_feedback=[1-9][0-9]* hit_feedback=[1-9][0-9]* impact_feedback=[1-9][0-9]* authority_separation=PASS native_atom_meshes=PASS'
@@ -787,6 +834,8 @@ echo "ENEMY_AI_EVIDENCE:"
 runtime_grep -n 'ENEMY_AI_ACCEPTANCE result=PASS'
 echo "ENEMY_PRESENTATION_EVIDENCE:"
 runtime_grep -n 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS'
+echo "MULTI_ENEMY_EVIDENCE:"
+runtime_grep -n 'MULTI_ENEMY_ACCEPTANCE result=PASS'
 echo "ARENA_EVIDENCE:"
 runtime_grep -n 'ATOM_ARENA result=PASS'
 runtime_grep -n 'ARENA_ACCEPTANCE result=PASS'

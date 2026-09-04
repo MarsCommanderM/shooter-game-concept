@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <AzCore/Math/Vector3.h>
 #include <AzCore/std/containers/array.h>
-#include <STWGameplay/EnemyCombatModel.h>
+#include <STWGameplay/EnemyCollectionModel.h>
 #include <STWGameplay/ArenaLayout.h>
 
 namespace STWGameplay
@@ -131,6 +131,7 @@ namespace STWGameplay
         bool m_hit = false;
         bool m_equipmentUsed = false;
         bool m_equipmentChanged = false;
+        EnemyId m_hitEnemyId = InvalidEnemyId;
         EquipmentProfileId m_activeEquipmentProfile = EquipmentProfileId::STW_SMG_01;
         float m_fireCueRemaining = 0.0f;
         float m_hitCueRemaining = 0.0f;
@@ -190,9 +191,11 @@ namespace STWGameplay
         static bool IsValidEquipmentSlot(EquipmentSlot slot);
         static bool IsSlotCompatible(EquipmentSlot slot, EquipmentProfileId profileId);
         EquipmentProfileId GetLoadoutProfile(EquipmentSlot slot) const;
-        const TargetState& GetTarget() const { return m_enemy.GetState(); }
-        const EnemyCombatModel& GetEnemy() const { return m_enemy; }
-        EnemyCombatModel& GetEnemy() { return m_enemy; }
+        const TargetState& GetTarget() const { return GetEnemy().GetState(); }
+        const EnemyCombatModel& GetEnemy() const { return *m_enemies.GetEnemy(PrimaryEnemyId); }
+        EnemyCombatModel& GetEnemy() { return *m_enemies.GetEnemy(PrimaryEnemyId); }
+        const EnemyCollectionModel& GetEnemies() const { return m_enemies; }
+        EnemyCollectionModel& GetEnemies() { return m_enemies; }
         const PresentationState& GetPresentation() const { return m_presentation; }
         AZ::Vector3 GetEyePosition() const;
         AZ::Vector3 GetAimDirection() const;
@@ -200,12 +203,13 @@ namespace STWGameplay
         bool IsMantleRequested() const { return m_player.m_mantleRequested; }
         void BeginMantle(const AZ::Vector3& direction);
 
-        void SetTargetPosition(const AZ::Vector3& position) { m_enemy.SynchronizePhysicalPosition(position); }
+        void SetTargetPosition(const AZ::Vector3& position) { m_enemies.SynchronizePhysicalPosition(PrimaryEnemyId, position); }
         void SetPlayerPosition(const AZ::Vector3& position);
         void SynchronizePhysicalState(const AZ::Vector3& position, bool grounded);
 
     private:
-        bool RayHitsTarget(const AZ::Vector3& origin, const AZ::Vector3& direction) const;
+        bool RayHitsEnemy(const EnemyState& target, const AZ::Vector3& origin, const AZ::Vector3& direction,
+            float& projectedDistance) const;
         void FinishReload();
         void ResetWeapons();
         size_t GetActiveEquipmentIndex() const;
@@ -214,7 +218,7 @@ namespace STWGameplay
         AZStd::array<WeaponState, EquipmentProfileCount> m_equipment;
         AZStd::array<EquipmentProfileId, EquipmentSlotCount> m_loadoutProfiles;
         EquipmentSlot m_activeEquipmentSlot = EquipmentSlot::Primary;
-        EnemyCombatModel m_enemy;
+        EnemyCollectionModel m_enemies;
         PresentationState m_presentation;
         bool m_jumpWasHeld = false;
         bool m_crouchWasHeld = false;

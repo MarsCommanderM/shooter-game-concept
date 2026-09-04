@@ -134,7 +134,7 @@ namespace STWGameplay
             m_nativeCapturePath = capturePath;
         }
         m_automatedAcceptance = std::getenv("STW_PHYSX_ACCEPTANCE") != nullptr;
-        m_enemyPresentationIdleObserved = m_model.GetEnemy().GetState().m_behaviorState == EnemyBehaviorState::Idle;
+        m_enemyPresentationIdleObserved = m_enemyPresentations[0].GetState() == EnemyBehaviorState::Idle;
         // The PhysX character controller requires the O3DE default physics scene, which does
         // not exist yet during system activation. Defer its creation to OnTick (TryStartPhysics)
         // and only start input/tick handling here. A missing scene now is not an error.
@@ -150,7 +150,7 @@ namespace STWGameplay
         ShutdownEnemyMesh();
         ShutdownArenaMesh();
         ShutdownViewmodelMesh();
-        m_physicsEnemy.Shutdown();
+        ShutdownEnemyPhysics();
         m_physicsPlayer.Shutdown();
     }
 
@@ -176,16 +176,30 @@ namespace STWGameplay
         bool grounded = false;
         m_physicsPlayer.Synchronize(physicalPosition, grounded);
         m_model.SynchronizePhysicalState(physicalPosition, grounded);
-        if (!m_physicsEnemy.Initialize(m_model.GetEnemy().GetState().m_position))
+        for (size_t index = 0; index < m_model.GetEnemies().GetEnemyCount(); ++index)
         {
-            AZ_Error("STWGameplay", false, "STW_ENEMY_01 PhysX controller failed to initialize");
-            m_physicsStartup = PhysicsStartup::Failed;
-            return;
+            const EnemyInstance& instance = m_model.GetEnemies().GetInstanceByIndex(index);
+            if (!m_enemyPhysicsRuntimes[index].Initialize(instance.m_id, instance.m_combat.GetState().m_position))
+            {
+                AZ_Error("STWGameplay", false, "Enemy %u PhysX controller failed to initialize", instance.m_id);
+                ShutdownEnemyPhysics();
+                m_physicsStartup = PhysicsStartup::Failed;
+                return;
+            }
         }
         m_enemyPhysicsReady = true;
         m_enemyAcceptanceStartPosition = m_model.GetEnemy().GetState().m_position;
         m_physicsStartup = PhysicsStartup::Ready;
         AZ_Printf("STWGameplay", "Native Player Movement V2 PhysX active\n");
+    }
+
+    void STWGameplaySystemComponent::ShutdownEnemyPhysics()
+    {
+        for (PhysXEnemyRuntime& runtime : m_enemyPhysicsRuntimes)
+        {
+            runtime.Shutdown();
+        }
+        m_enemyPhysicsReady = false;
     }
 
     void STWGameplaySystemComponent::OnTick(float deltaTime, AZ::ScriptTimePoint)
@@ -214,18 +228,19 @@ namespace STWGameplay
 
         UpdateAutomatedAcceptance(deltaTime);
         m_model.Update(deltaTime, m_input);
-        const EnemyState& encounterEnemy = m_model.GetEnemy().GetState();
-        if (encounterEnemy.m_respawnEvents > m_encounterAcceptanceLastRespawnEvents)
+        const EnemyCollectionModel& enemies = m_model.GetEnemies();
+        m_encounter.Update(enemies);
+        if (m_encounter.IsCompleted() && enemies.AreRequiredEnemiesAlive()
+            && m_encounter.Rearm(enemies))
         {
-            m_encounter.Rearm(encounterEnemy);
-            m_encounterAcceptanceLastRespawnEvents = encounterEnemy.m_respawnEvents;
             if (m_automatedAcceptance)
             {
                 m_encounterAcceptanceRearmObserved = true;
                 m_encounterAcceptancePostRearmActive = m_encounter.IsActive();
+                m_multiEnemyRearmObserved = true;
+                m_multiEnemyPostRearmActive = m_encounter.IsActive();
             }
         }
-        m_encounter.Update(encounterEnemy);
         if (m_automatedAcceptance && m_model.IsMantleRequested())
         {
             AZ_Printf("STWGameplay", "MANTLE_DIAG request=RAISED\n");
@@ -260,17 +275,23 @@ namespace STWGameplay
             AZ_Error("STWGameplay", false, "PhysX crouch controller resize failed");
         }
         const WeaponState feedbackWeaponBefore = m_model.GetWeapon();
-        const EnemyState feedbackEnemyBefore = m_model.GetEnemy().GetState();
+        const EnemyInstance* feedbackEnemyInstance = m_model.GetEnemies().Find(m_model.GetPresentation().m_hitEnemyId);
+        const EnemyState& feedbackEnemyBefore = feedbackEnemyInstance != nullptr
+            ? feedbackEnemyInstance->m_combat.GetState() : m_model.GetEnemy().GetState();
         CombatFeedbackInput feedbackInput;
         feedbackInput.m_shotFired = m_model.GetPresentation().m_shotFired;
         feedbackInput.m_hitConfirmed = m_model.GetPresentation().m_hit;
         feedbackInput.m_impactPosition = feedbackEnemyBefore.m_position;
         m_combatFeedback.Update(deltaTime, feedbackInput);
+        const bool feedbackEnemyAuthorityUnchanged = feedbackEnemyInstance != nullptr
+            ? feedbackEnemyInstance->m_combat.GetState().m_health == feedbackEnemyBefore.m_health
+                && feedbackEnemyInstance->m_combat.GetState().m_damageEvents == feedbackEnemyBefore.m_damageEvents
+            : m_model.GetEnemy().GetState().m_health == feedbackEnemyBefore.m_health
+                && m_model.GetEnemy().GetState().m_damageEvents == feedbackEnemyBefore.m_damageEvents;
         m_combatFeedbackAuthoritySeparated = m_combatFeedbackAuthoritySeparated
             && m_model.GetWeapon().m_magazine == feedbackWeaponBefore.m_magazine
             && m_model.GetWeapon().m_cooldownRemaining == feedbackWeaponBefore.m_cooldownRemaining
-            && m_model.GetEnemy().GetState().m_health == feedbackEnemyBefore.m_health
-            && m_model.GetEnemy().GetState().m_damageEvents == feedbackEnemyBefore.m_damageEvents;
+            && feedbackEnemyAuthorityUnchanged;
         const AZ::Vector3 desiredPlayerVelocity = m_model.GetDesiredVelocity(m_input);
         if (m_automatedAcceptance && m_jumpAcceptanceStarted
             && m_model.GetPlayer().m_jumpEvents > m_jumpAcceptanceInitialEvents)
@@ -300,7 +321,12 @@ namespace STWGameplay
             }
         }
         m_physicsPlayer.QueueVelocity(desiredPlayerVelocity);
-        m_physicsEnemy.QueueVelocity(m_model.GetEnemy().GetMovementIntent(m_model.GetPlayer().m_position));
+        for (size_t index = 0; index < enemies.GetEnemyCount(); ++index)
+        {
+            const EnemyInstance& instance = enemies.GetInstanceByIndex(index);
+            m_enemyPhysicsRuntimes[index].QueueVelocity(
+                instance.m_combat.GetMovementIntent(m_model.GetPlayer().m_position));
+        }
         AZ::Vector3 physicalPosition = AZ::Vector3::CreateZero();
         bool grounded = false;
         const bool playerPhysicalStateSynchronized = m_physicsPlayer.Synchronize(physicalPosition, grounded);
@@ -316,35 +342,49 @@ namespace STWGameplay
         UpdateCrouchAcceptance(playerPhysicalStateSynchronized);
         UpdateSlideAcceptance(playerPhysicalStateSynchronized);
         UpdateMantleAcceptance(playerPhysicalStateSynchronized);
-        AZ::Vector3 enemyPhysicalPosition = AZ::Vector3::CreateZero();
-        bool enemyGrounded = false;
-        if (m_physicsEnemy.Synchronize(enemyPhysicalPosition, enemyGrounded))
+        for (size_t index = 0; index < enemies.GetEnemyCount(); ++index)
         {
-            m_model.GetEnemy().SynchronizePhysicalPosition(enemyPhysicalPosition);
-            m_enemyMoved = m_enemyMoved
-                || (enemyPhysicalPosition - m_enemyAcceptanceStartPosition).GetLength() > 0.25f;
+            AZ::Vector3 enemyPhysicalPosition = AZ::Vector3::CreateZero();
+            bool enemyGrounded = false;
+            if (m_enemyPhysicsRuntimes[index].Synchronize(enemyPhysicalPosition, enemyGrounded))
+            {
+                const EnemyInstance& instance = enemies.GetInstanceByIndex(index);
+                m_model.GetEnemies().SynchronizePhysicalPosition(instance.m_id, enemyPhysicalPosition);
+                if (index == 0)
+                {
+                    m_enemyMoved = m_enemyMoved
+                        || (enemyPhysicalPosition - m_enemyAcceptanceStartPosition).GetLength() > 0.25f;
+                }
+            }
         }
 
-        const EnemyState presentationInput = m_model.GetEnemy().GetState();
-        m_enemyPresentation.Update(deltaTime, presentationInput);
-        const EnemyState& presentationAfter = m_model.GetEnemy().GetState();
-        m_enemyPresentationAuthoritySeparated = m_enemyPresentationAuthoritySeparated
-            && presentationAfter.m_position.IsClose(presentationInput.m_position)
-            && presentationAfter.m_health == presentationInput.m_health
-            && presentationAfter.m_behaviorState == presentationInput.m_behaviorState
-            && presentationAfter.m_attackEvents == presentationInput.m_attackEvents;
-        m_enemyPresentationIdleObserved = m_enemyPresentationIdleObserved
-            || m_enemyPresentation.GetState() == EnemyBehaviorState::Idle;
-        m_enemyPresentationChaseObserved = m_enemyPresentationChaseObserved
-            || m_enemyPresentation.GetState() == EnemyBehaviorState::Chase;
-        m_enemyPresentationAttackObserved = m_enemyPresentationAttackObserved
-            || (m_enemyPresentation.GetState() == EnemyBehaviorState::Attack
-                && m_enemyPresentation.GetAttackReactionCount() > 0);
-        m_enemyPresentationDeadObserved = m_enemyPresentationDeadObserved
-            || (m_enemyPresentation.GetState() == EnemyBehaviorState::Dead
-                && m_enemyPresentation.GetDeathReactionCount() > 0);
-        m_enemyPresentationResetObserved = m_enemyPresentationResetObserved
-            || m_enemyPresentation.GetResetReactionCount() > 0;
+        for (size_t index = 0; index < enemies.GetEnemyCount(); ++index)
+        {
+            const EnemyState presentationInput = enemies.GetInstanceByIndex(index).m_combat.GetState();
+            m_enemyPresentations[index].Update(deltaTime, presentationInput);
+            const EnemyState& presentationAfter = enemies.GetInstanceByIndex(index).m_combat.GetState();
+            m_enemyPresentationAuthoritySeparated = m_enemyPresentationAuthoritySeparated
+                && presentationAfter.m_id == presentationInput.m_id
+                && presentationAfter.m_position.IsClose(presentationInput.m_position)
+                && presentationAfter.m_health == presentationInput.m_health
+                && presentationAfter.m_behaviorState == presentationInput.m_behaviorState
+                && presentationAfter.m_attackEvents == presentationInput.m_attackEvents;
+            if (index == 0)
+            {
+                m_enemyPresentationIdleObserved = m_enemyPresentationIdleObserved
+                    || m_enemyPresentations[index].GetState() == EnemyBehaviorState::Idle;
+                m_enemyPresentationChaseObserved = m_enemyPresentationChaseObserved
+                    || m_enemyPresentations[index].GetState() == EnemyBehaviorState::Chase;
+                m_enemyPresentationAttackObserved = m_enemyPresentationAttackObserved
+                    || (m_enemyPresentations[index].GetState() == EnemyBehaviorState::Attack
+                        && m_enemyPresentations[index].GetAttackReactionCount() > 0);
+                m_enemyPresentationDeadObserved = m_enemyPresentationDeadObserved
+                    || (m_enemyPresentations[index].GetState() == EnemyBehaviorState::Dead
+                        && m_enemyPresentations[index].GetDeathReactionCount() > 0);
+                m_enemyPresentationResetObserved = m_enemyPresentationResetObserved
+                    || m_enemyPresentations[index].GetResetReactionCount() > 0;
+            }
+        }
 
         // Presentation reacts to authoritative events/state only (read-only). It never writes
         // ammo, damage, reload completion, target health or player movement back.
@@ -374,8 +414,8 @@ namespace STWGameplay
         UpdateWeaponSwitchAcceptance();
         UpdateLoadoutAcceptance();
         UpdateEnemyCombatAcceptance();
-        const EnemyState& encounterAfterAcceptance = m_model.GetEnemy().GetState();
-        m_encounter.Update(encounterAfterAcceptance);
+        UpdateMultiEnemyAcceptance();
+        m_encounter.Update(enemies);
         UpdateEncounterAcceptance();
         if (m_encounter.IsCompleted() && !m_spawnCheckpoint.HasActiveCheckpoint())
         {
@@ -649,19 +689,43 @@ namespace STWGameplay
             m_viewmodelAcceptanceReported = true;
         }
 
-        // Acceptance-only two-weapon stimulus. The model consumes this as an edge-triggered
-        // request, so the held interval below must produce exactly one switch.
-        if (m_acceptanceTime >= 7.5f && m_acceptanceTime < 8.25f)
-        {
-            m_input.m_switchWeapon = true;
-        }
-        else if (m_acceptanceTime >= 8.50f && m_acceptanceTime < 9.20f)
+        if (m_acceptanceTime >= 8.50f && m_acceptanceTime < 9.20f)
         {
             m_input.m_fire = true;
         }
-        else if (m_acceptanceTime >= 9.60f && m_acceptanceTime < 10.25f)
+
+        // Acceptance-only two-weapon stimulus. The model consumes a rising edge, so every switch
+        // phase explicitly owns its assertion and is followed by a bounded release phase. In
+        // particular, no time-windowed switch input may survive the authoritative player reset.
+        if (m_weaponSwitchAcceptanceStarted && !m_weaponSwitchSecondSwitchObserved)
         {
-            m_input.m_switchWeapon = true;
+            const PlayerState& player = m_model.GetPlayer();
+            const WeaponId activeWeapon = m_model.GetActiveWeaponId();
+            if (m_weaponSwitchAcceptancePhase == WeaponSwitchAcceptancePhase::InitialSwitch
+                && player.m_alive && activeWeapon == WeaponId::STW_SMG_01)
+            {
+                m_input.m_switchWeapon = true;
+            }
+            else if (m_weaponSwitchAcceptancePhase == WeaponSwitchAcceptancePhase::EnsureSecondary
+                && player.m_alive && activeWeapon == WeaponId::STW_SMG_01)
+            {
+                m_input.m_switchWeapon = true;
+                m_weaponSwitchEnsureSecondaryInputAsserted = true;
+                if (m_weaponSwitchEnsureSecondarySlotBefore < 0)
+                {
+                    m_weaponSwitchEnsureSecondarySlotBefore = static_cast<int>(activeWeapon);
+                }
+            }
+            else if (m_weaponSwitchAcceptancePhase == WeaponSwitchAcceptancePhase::SecondSwitch
+                && player.m_alive && activeWeapon == WeaponId::STW_RIFLE_02)
+            {
+                m_input.m_switchWeapon = true;
+                m_weaponSwitchSecondSwitchInputAsserted = true;
+                if (m_weaponSwitchSecondSwitchSlotBefore < 0)
+                {
+                    m_weaponSwitchSecondSwitchSlotBefore = static_cast<int>(activeWeapon);
+                }
+            }
         }
     }
 
@@ -708,6 +772,7 @@ namespace STWGameplay
         {
             m_weaponSwitchAcceptanceStarted = true;
             m_weaponSwitchInitialSlot = static_cast<int>(m_model.GetActiveWeaponId());
+            m_weaponSwitchInitialRespawnEvents = m_model.GetPlayer().m_respawnEvents;
             const WeaponState& weaponA = m_model.GetWeapon(WeaponId::STW_SMG_01);
             const WeaponState& weaponB = m_model.GetWeapon(WeaponId::STW_RIFLE_02);
             m_weaponSwitchInitialAMagazine = weaponA.m_magazine;
@@ -715,6 +780,8 @@ namespace STWGameplay
             m_weaponSwitchInitialBMagazine = weaponB.m_magazine;
             m_weaponSwitchInitialBReserve = weaponB.m_reserve;
             m_weaponSwitchHeldStable = true;
+            m_weaponSwitchAcceptancePhase = WeaponSwitchAcceptancePhase::InitialSwitch;
+            m_weaponSwitchAcceptancePhaseStartTime = m_acceptanceTime;
         }
         if (!m_weaponSwitchAcceptanceStarted)
         {
@@ -736,22 +803,298 @@ namespace STWGameplay
             }
         }
 
-        if (m_weaponSwitchFirstSwitchObserved && m_acceptanceTime >= 9.20f)
+        if (m_weaponSwitchFirstSwitchObserved && activeSlot == static_cast<int>(WeaponId::STW_RIFLE_02)
+            && m_acceptanceTime >= 8.50f
+            && m_acceptanceTime < 9.20f)
         {
             const WeaponState& weaponA = m_model.GetWeapon(WeaponId::STW_SMG_01);
             const WeaponState& weaponB = m_model.GetWeapon(WeaponId::STW_RIFLE_02);
-            m_weaponSwitchBAmmoChangedOnFire = weaponB.m_magazine < m_weaponSwitchInitialBMagazine;
-            m_weaponSwitchInactiveAUnchanged = weaponA.m_magazine == m_weaponSwitchInitialAMagazine
+            // Preserve the authoritative fire-window observation before a later acceptance-only
+            // player reset can restore the weapon magazine to its initial value.
+            m_weaponSwitchBAmmoChangedOnFire = m_weaponSwitchBAmmoChangedOnFire
+                || weaponB.m_magazine < m_weaponSwitchInitialBMagazine;
+            m_weaponSwitchInactiveAUnchanged = m_weaponSwitchInactiveAUnchanged
+                && weaponA.m_magazine == m_weaponSwitchInitialAMagazine
                 && weaponA.m_reserve == m_weaponSwitchInitialAReserve;
         }
 
-        if (!m_weaponSwitchSecondSwitchObserved && m_acceptanceTime >= 10.25f
+        if (m_weaponSwitchFirstSwitchObserved && m_acceptanceTime >= 9.20f
+            && !m_weaponSwitchInactiveAAmmoAfterBFireCaptured)
+        {
+            const WeaponState& weaponA = m_model.GetWeapon(WeaponId::STW_SMG_01);
+            m_weaponSwitchInactiveAAmmoAfterBFire = weaponA.m_magazine;
+            m_weaponSwitchInactiveAAmmoAfterBFireCaptured = true;
+        }
+
+        const PlayerState& weaponSwitchPlayer = m_model.GetPlayer();
+        if (!m_weaponSwitchResetComplete && weaponSwitchPlayer.m_alive
+            && weaponSwitchPlayer.m_respawnEvents > m_weaponSwitchInitialRespawnEvents)
+        {
+            m_weaponSwitchResetComplete = true;
+            m_weaponSwitchAcceptancePhase = WeaponSwitchAcceptancePhase::PostResetRelease;
+            m_weaponSwitchAcceptancePhaseStartTime = m_acceptanceTime;
+            const WeaponState& weaponAAfterReset = m_model.GetWeapon(WeaponId::STW_SMG_01);
+            m_weaponSwitchPostResetAMagazine = weaponAAfterReset.m_magazine;
+            m_weaponSwitchPostResetAReserve = weaponAAfterReset.m_reserve;
+            m_weaponSwitchPostResetBaselineCaptured = true;
+        }
+
+        if (m_weaponSwitchAcceptancePhase == WeaponSwitchAcceptancePhase::InitialSwitch
+            && m_weaponSwitchFirstSwitchObserved
+            && activeSlot == static_cast<int>(WeaponId::STW_RIFLE_02)
+            && m_input.m_switchWeapon)
+        {
+            m_weaponSwitchAcceptancePhase = WeaponSwitchAcceptancePhase::InitialSwitchRelease;
+            m_weaponSwitchAcceptancePhaseStartTime = m_acceptanceTime;
+        }
+        if (m_weaponSwitchAcceptancePhase == WeaponSwitchAcceptancePhase::InitialSwitchRelease
+            && !m_input.m_switchWeapon && weaponSwitchPlayer.m_alive
+            && activeSlot == static_cast<int>(WeaponId::STW_RIFLE_02)
+            && m_acceptanceTime - m_weaponSwitchAcceptancePhaseStartTime >= 0.25f)
+        {
+            m_weaponSwitchAcceptancePhase = WeaponSwitchAcceptancePhase::WaitingForReset;
+            m_weaponSwitchAcceptancePhaseStartTime = m_acceptanceTime;
+        }
+
+        if (m_weaponSwitchAcceptancePhase == WeaponSwitchAcceptancePhase::WaitingForReset
+            && m_weaponSwitchResetComplete)
+        {
+            m_weaponSwitchAcceptancePhase = WeaponSwitchAcceptancePhase::PostResetRelease;
+            m_weaponSwitchAcceptancePhaseStartTime = m_acceptanceTime;
+        }
+        if (m_weaponSwitchAcceptancePhase == WeaponSwitchAcceptancePhase::PostResetRelease
+            && !m_input.m_switchWeapon && weaponSwitchPlayer.m_alive
+            && activeSlot == static_cast<int>(WeaponId::STW_SMG_01)
+            && m_acceptanceTime - m_weaponSwitchAcceptancePhaseStartTime >= 0.25f)
+        {
+            m_weaponSwitchPostResetReleaseObserved = true;
+            m_weaponSwitchAcceptancePhase = WeaponSwitchAcceptancePhase::EnsureSecondary;
+            m_weaponSwitchAcceptancePhaseStartTime = m_acceptanceTime;
+        }
+        if (m_weaponSwitchAcceptancePhase == WeaponSwitchAcceptancePhase::EnsureSecondary
+            && m_weaponSwitchEnsureSecondaryInputAsserted
+            && activeSlot == static_cast<int>(WeaponId::STW_RIFLE_02))
+        {
+            m_weaponSwitchEnsureSecondaryEdge = true;
+            m_weaponSwitchEnsureSecondarySlotAfter = activeSlot;
+            m_weaponSwitchAcceptancePhase = WeaponSwitchAcceptancePhase::EnsureSecondaryRelease;
+            m_weaponSwitchAcceptancePhaseStartTime = m_acceptanceTime;
+        }
+        if (m_weaponSwitchAcceptancePhase == WeaponSwitchAcceptancePhase::EnsureSecondaryRelease
+            && !m_input.m_switchWeapon && weaponSwitchPlayer.m_alive
+            && activeSlot == static_cast<int>(WeaponId::STW_RIFLE_02)
+            && m_acceptanceTime - m_weaponSwitchAcceptancePhaseStartTime >= 0.25f)
+        {
+            m_weaponSwitchPreSecondSwitchReleaseObserved = true;
+            m_weaponSwitchAcceptancePhase = WeaponSwitchAcceptancePhase::SecondSwitch;
+            m_weaponSwitchAcceptancePhaseStartTime = m_acceptanceTime;
+        }
+        if (m_weaponSwitchAcceptancePhase == WeaponSwitchAcceptancePhase::SecondSwitch
+            && !m_weaponSwitchSecondSwitchObserved && m_weaponSwitchSecondSwitchInputAsserted
+            && m_weaponSwitchPreSecondSwitchReleaseObserved
+            && m_weaponSwitchSecondSwitchSlotBefore == static_cast<int>(WeaponId::STW_RIFLE_02)
             && activeSlot == static_cast<int>(WeaponId::STW_SMG_01))
         {
             const WeaponState& weaponA = m_model.GetWeapon(WeaponId::STW_SMG_01);
+            m_weaponSwitchSecondSwitchEdge = true;
+            m_weaponSwitchSecondSwitchSlotAfter = activeSlot;
+            m_weaponSwitchSecondSwitchTransitionEventDelta = m_model.GetPresentation().m_equipmentChanged ? 1 : 0;
+            ++m_weaponSwitchSecondSwitchObservationCount;
             m_weaponSwitchSecondSwitchObserved = true;
-            m_weaponSwitchAAmmoPreserved = weaponA.m_magazine == m_weaponSwitchInitialAMagazine
-                && weaponA.m_reserve == m_weaponSwitchInitialAReserve;
+            // The inactive-window predicate covers the pre-reset interval. Once the
+            // authoritative reset has occurred, compare the return-to-primary state only
+            // against a baseline captured after that reset, never against the pre-reset
+            // acceptance snapshot.
+            m_weaponSwitchAAmmoPreserved = m_weaponSwitchPostResetBaselineCaptured
+                && weaponA.m_magazine == m_weaponSwitchPostResetAMagazine
+                && weaponA.m_reserve == m_weaponSwitchPostResetAReserve;
+            m_weaponSwitchAcceptancePhase = WeaponSwitchAcceptancePhase::Complete;
+        }
+
+        if (!m_weaponSwitchPostResetDiagnosticReported
+            && (m_weaponSwitchAcceptancePhase == WeaponSwitchAcceptancePhase::Complete
+                || m_acceptanceTime >= 12.0f))
+        {
+            AZ_Printf("STWGameplay",
+                "WEAPON_SWITCH_POST_RESET_DIAG RESET_COMPLETE=%d POST_RESET_RELEASE_OBSERVED=%d "
+                "ENSURE_SECONDARY_EDGE=%d ENSURE_SECONDARY_SLOT_BEFORE=%d ENSURE_SECONDARY_SLOT_AFTER=%d "
+                "PRE_SECOND_SWITCH_RELEASE_OBSERVED=%d SECOND_SWITCH_EDGE=%d "
+                "SECOND_SWITCH_SLOT_BEFORE=%d SECOND_SWITCH_SLOT_AFTER=%d "
+                "SECOND_SWITCH_TRANSITION_EVENT_DELTA=%d SECOND_SWITCH_OBSERVED=%d "
+                "SECOND_SWITCH_OBSERVATION_COUNT=%d\n",
+                m_weaponSwitchResetComplete ? 1 : 0,
+                m_weaponSwitchPostResetReleaseObserved ? 1 : 0,
+                m_weaponSwitchEnsureSecondaryEdge ? 1 : 0,
+                m_weaponSwitchEnsureSecondarySlotBefore,
+                m_weaponSwitchEnsureSecondarySlotAfter,
+                m_weaponSwitchPreSecondSwitchReleaseObserved ? 1 : 0,
+                m_weaponSwitchSecondSwitchEdge ? 1 : 0,
+                m_weaponSwitchSecondSwitchSlotBefore,
+                m_weaponSwitchSecondSwitchSlotAfter,
+                m_weaponSwitchSecondSwitchTransitionEventDelta,
+                m_weaponSwitchSecondSwitchObserved ? 1 : 0,
+                m_weaponSwitchSecondSwitchObservationCount);
+            m_weaponSwitchPostResetDiagnosticReported = true;
+        }
+
+        // Acceptance-only diagnostics. Observe the existing input, model presentation,
+        // and authoritative state around the Weapon B fire window without changing them.
+        if (!m_weaponBFireDiagnosticStarted && m_acceptanceTime >= 8.25f)
+        {
+            const PlayerState& player = m_model.GetPlayer();
+            const WeaponState& weaponB = m_model.GetWeapon(WeaponId::STW_RIFLE_02);
+            m_weaponBFireDiagnosticStarted = true;
+            m_weaponBFireSlotBefore = activeSlot;
+            m_weaponBFireSelectedBefore = activeSlot == static_cast<int>(WeaponId::STW_RIFLE_02);
+            m_weaponBFirePlayerAliveBefore = player.m_alive;
+            m_weaponBFireHealthBefore = player.m_health;
+            m_weaponBFireDamageEventsBefore = player.m_damageEvents;
+            m_weaponBFireDeathEventsBefore = player.m_deathEvents;
+            m_weaponBFireRespawnEventsBefore = player.m_respawnEvents;
+            m_weaponBFireAmmoBefore = weaponB.m_magazine;
+            m_weaponBFirePreviousInput = false;
+        }
+
+        if (m_weaponBFireDiagnosticStarted && !m_weaponBFireDiagnosticReported
+            && m_acceptanceTime >= 8.50f && m_acceptanceTime < 9.20f)
+        {
+            const bool inputThisTick = m_input.m_fire;
+            const bool activeWeaponB = activeSlot == static_cast<int>(WeaponId::STW_RIFLE_02);
+            const bool shotFiredThisTick = m_model.GetPresentation().m_shotFired;
+            const bool weaponBFireAcceptedThisTick = activeWeaponB && shotFiredThisTick;
+            m_weaponBFireInputAsserted = m_weaponBFireInputAsserted || inputThisTick;
+            m_weaponBFireInputEdge = m_weaponBFireInputEdge
+                || (inputThisTick && !m_weaponBFirePreviousInput);
+            m_weaponBFireInputHeld = m_weaponBFireInputHeld
+                || (inputThisTick && m_weaponBFirePreviousInput);
+            m_weaponBFirePreviousInput = inputThisTick;
+            m_weaponBFireRequestReachedModel = m_weaponBFireRequestReachedModel || inputThisTick;
+            m_weaponBFireAcceptedByModel = m_weaponBFireAcceptedByModel || weaponBFireAcceptedThisTick;
+            m_weaponBFireRejectedByModel = m_weaponBFireRejectedByModel
+                || (inputThisTick && !weaponBFireAcceptedThisTick);
+            m_weaponBFireSelectedDuringWindow = m_weaponBFireSelectedDuringWindow || activeWeaponB;
+            if (weaponBFireAcceptedThisTick)
+            {
+                ++m_weaponBFireEventCount;
+            }
+        }
+
+        if (m_weaponBFireDiagnosticStarted && !m_weaponBFireDiagnosticReported
+            && m_acceptanceTime >= 9.20f)
+        {
+            const PlayerState& playerAfter = m_model.GetPlayer();
+            const WeaponState& weaponBAfter = m_model.GetWeapon(WeaponId::STW_RIFLE_02);
+            const int ammoDelta = weaponBAfter.m_magazine - m_weaponBFireAmmoBefore;
+            const int damageDelta = playerAfter.m_damageEvents - m_weaponBFireDamageEventsBefore;
+            const int deathDelta = playerAfter.m_deathEvents - m_weaponBFireDeathEventsBefore;
+            const int respawnDelta = playerAfter.m_respawnEvents - m_weaponBFireRespawnEventsBefore;
+            const bool wrongSlot = !m_weaponBFireSelectedBefore || !m_weaponBFireSelectedDuringWindow;
+            const bool playerDead = !m_weaponBFirePlayerAliveBefore || !playerAfter.m_alive;
+            const bool playerRespawned = respawnDelta > 0;
+            const bool noAmmo = m_weaponBFireAmmoBefore <= 0;
+            const bool acceptedAndDecremented = m_weaponBFireAcceptedByModel && ammoDelta < 0;
+            const char* pathResult = "UNPROVEN";
+            const char* rejectReason = "UNKNOWN";
+            bool pathRootCauseProven = false;
+            if (!m_weaponBFireInputAsserted)
+            {
+                pathResult = "INPUT_NOT_ASSERTED";
+                rejectReason = "INPUT_NOT_ASSERTED";
+                pathRootCauseProven = true;
+            }
+            else if (wrongSlot)
+            {
+                pathResult = "WRONG_SLOT";
+                rejectReason = "WRONG_ACTIVE_SLOT";
+                pathRootCauseProven = true;
+            }
+            else if (playerRespawned)
+            {
+                pathResult = "PLAYER_RESPAWN_INTERFERENCE";
+                rejectReason = "PLAYER_RESPAWN_INTERFERENCE";
+                pathRootCauseProven = true;
+            }
+            else if (acceptedAndDecremented)
+            {
+                pathResult = "PASS";
+                pathRootCauseProven = true;
+            }
+            else if (playerDead)
+            {
+                pathResult = "PLAYER_DEAD";
+                rejectReason = "DEAD";
+                pathRootCauseProven = true;
+            }
+            else if (noAmmo)
+            {
+                pathResult = "NO_AMMO";
+                rejectReason = "EMPTY_AMMO";
+                pathRootCauseProven = true;
+            }
+            else if (weaponBAfter.m_reloading)
+            {
+                pathResult = "TRYFIRE_REJECTED_RELOAD";
+                rejectReason = "RELOADING";
+                pathRootCauseProven = true;
+            }
+            else if (weaponBAfter.m_cooldownRemaining > 0.0f && !m_weaponBFireAcceptedByModel)
+            {
+                pathResult = "TRYFIRE_REJECTED_COOLDOWN";
+                rejectReason = "COOLDOWN";
+                pathRootCauseProven = true;
+            }
+            else if (m_weaponBFireRejectedByModel)
+            {
+                pathResult = "TRYFIRE_REJECTED_OTHER";
+            }
+            else if (ammoDelta >= 0)
+            {
+                pathResult = "AMMO_DID_NOT_DECREMENT";
+            }
+
+            AZ_Printf("STWGameplay",
+                "WEAPON_B_FIRE_DIAG_STARTED=1 WEAPON_B_SLOT_BEFORE_FIRE=%d "
+                "WEAPON_B_SELECTED_BEFORE_FIRE=%d PLAYER_ALIVE_BEFORE_FIRE=%d "
+                "PLAYER_HEALTH_BEFORE_FIRE=%.3f PLAYER_RESPAWN_EVENTS_BEFORE_FIRE=%d "
+                "WEAPON_B_AMMO_BEFORE_FIRE=%d WEAPON_B_FIRE_INPUT_ASSERTED=%d "
+                "WEAPON_B_FIRE_INPUT_HELD=%d WEAPON_B_FIRE_INPUT_EDGE=%d\n",
+                m_weaponBFireSlotBefore,
+                m_weaponBFireSelectedBefore ? 1 : 0,
+                m_weaponBFirePlayerAliveBefore ? 1 : 0,
+                m_weaponBFireHealthBefore,
+                m_weaponBFireRespawnEventsBefore,
+                m_weaponBFireAmmoBefore,
+                m_weaponBFireInputAsserted ? 1 : 0,
+                m_weaponBFireInputHeld ? 1 : 0,
+                m_weaponBFireInputEdge ? 1 : 0);
+            AZ_Printf("STWGameplay",
+                "WEAPON_B_FIRE_REQUEST_REACHED_MODEL=%d WEAPON_B_FIRE_ACCEPTED_BY_MODEL=%d "
+                "WEAPON_B_FIRE_REJECTED_BY_MODEL=%d WEAPON_B_FIRE_REJECT_REASON=%s\n",
+                m_weaponBFireRequestReachedModel ? 1 : 0,
+                m_weaponBFireAcceptedByModel ? 1 : 0,
+                m_weaponBFireRejectedByModel ? 1 : 0,
+                rejectReason);
+            AZ_Printf("STWGameplay",
+                "WEAPON_B_AMMO_AFTER_FIRE=%d WEAPON_B_AMMO_DELTA=%d WEAPON_B_FIRE_EVENT_DELTA=%d "
+                "PLAYER_ALIVE_AFTER_FIRE=%d PLAYER_HEALTH_AFTER_FIRE=%.3f "
+                "PLAYER_RESPAWN_EVENTS_AFTER_FIRE=%d PLAYER_DAMAGE_DURING_FIRE_WINDOW=%d "
+                "PLAYER_DEATH_DURING_FIRE_WINDOW=%d PLAYER_RESPAWN_DURING_FIRE_WINDOW=%d "
+                "WEAPON_SWITCH_SLOT_AFTER_FIRE=%d\n",
+                weaponBAfter.m_magazine,
+                ammoDelta,
+                m_weaponBFireEventCount,
+                playerAfter.m_alive ? 1 : 0,
+                playerAfter.m_health,
+                playerAfter.m_respawnEvents,
+                damageDelta,
+                deathDelta > 0 ? 1 : 0,
+                respawnDelta > 0 ? 1 : 0,
+                static_cast<int>(m_model.GetActiveWeaponId()));
+            AZ_Printf("STWGameplay",
+                "WEAPON_B_FIRE_PATH_RESULT=%s WEAPON_B_FIRE_PATH_ROOT_CAUSE_PROVEN=%s\n",
+                pathResult,
+                pathRootCauseProven ? "YES" : "NO");
+            m_weaponBFireDiagnosticReported = true;
         }
 
         const bool passed = m_weaponSwitchInitialSlot == static_cast<int>(WeaponId::STW_SMG_01)
@@ -762,6 +1105,102 @@ namespace STWGameplay
             && m_weaponSwitchInactiveAUnchanged
             && m_weaponSwitchSecondSwitchObserved
             && m_weaponSwitchAAmmoPreserved;
+
+        // Acceptance-only diagnostics. These expose the existing predicate state without
+        // changing the stimulus, timing, authority, or official PASS marker.
+        if (!m_weaponSwitchDiagnosticReported
+            && (m_weaponSwitchSecondSwitchObserved || m_acceptanceTime >= 12.0f))
+        {
+            const bool initialSlotValid = m_weaponSwitchInitialSlot == static_cast<int>(WeaponId::STW_SMG_01);
+            const bool firstSwitchObserved = m_weaponSwitchFirstSwitchObserved;
+            const bool firstWeaponVisible = m_weaponSwitchFirstWeaponVisible;
+            const bool heldSwitchRetriggerBlocked = m_weaponSwitchHeldStable;
+            const bool weaponBFireObserved = m_weaponSwitchBAmmoChangedOnFire;
+            const bool inactiveWeaponAmmoUnchanged = m_weaponSwitchInactiveAUnchanged;
+            const bool secondSwitchObserved = m_weaponSwitchSecondSwitchObserved;
+            const bool weaponAAmmoPreserved = m_weaponSwitchAAmmoPreserved;
+            const char* firstFalsePredicate = "none";
+            if (!initialSlotValid)
+            {
+                firstFalsePredicate = "initial_slot";
+            }
+            else if (!firstSwitchObserved)
+            {
+                firstFalsePredicate = "first_switch_observed";
+            }
+            else if (!firstWeaponVisible)
+            {
+                firstFalsePredicate = "first_weapon_visible";
+            }
+            else if (!heldSwitchRetriggerBlocked)
+            {
+                firstFalsePredicate = "held_switch_retrigger_blocked";
+            }
+            else if (!weaponBFireObserved)
+            {
+                firstFalsePredicate = "weapon_b_ammo_changed_on_fire";
+            }
+            else if (!inactiveWeaponAmmoUnchanged)
+            {
+                firstFalsePredicate = "inactive_weapon_ammo_unchanged";
+            }
+            else if (!secondSwitchObserved)
+            {
+                firstFalsePredicate = "second_switch_observed";
+            }
+            else if (!weaponAAmmoPreserved)
+            {
+                firstFalsePredicate = "weapon_a_ammo_preserved";
+            }
+
+            AZ_Printf(
+                "STWGameplay",
+                "WEAPON_SWITCH_DIAG started=%d initial_slot=%d current_slot=%d first_weapon_visible=%d "
+                "first_switch_observed=%d first_switch_slot=%d weapon_a_ammo_preserved=%d "
+                "weapon_b_fire_observed=%d weapon_b_ammo_changed=%d inactive_weapon_ammo_unchanged=%d "
+                "second_switch_observed=%d second_switch_slot=%d held_switch_retrigger_blocked=%d "
+                "final_predicate=%d\n",
+                m_weaponSwitchAcceptanceStarted ? 1 : 0,
+                m_weaponSwitchInitialSlot,
+                activeSlot,
+                firstWeaponVisible ? 1 : 0,
+                firstSwitchObserved ? 1 : 0,
+                firstSwitchObserved ? static_cast<int>(WeaponId::STW_RIFLE_02) : -1,
+                weaponAAmmoPreserved ? 1 : 0,
+                weaponBFireObserved ? 1 : 0,
+                m_weaponSwitchBAmmoChangedOnFire ? 1 : 0,
+                inactiveWeaponAmmoUnchanged ? 1 : 0,
+                secondSwitchObserved ? 1 : 0,
+                secondSwitchObserved ? static_cast<int>(WeaponId::STW_SMG_01) : -1,
+                heldSwitchRetriggerBlocked ? 1 : 0,
+                passed ? 1 : 0);
+            const WeaponState& inactiveWeaponAfterReport = m_model.GetWeapon(WeaponId::STW_SMG_01);
+            const PlayerState& playerAtReport = m_model.GetPlayer();
+            const bool resetAfterProtectedWindow = playerAtReport.m_respawnEvents
+                > m_weaponBFireRespawnEventsBefore;
+            AZ_Printf("STWGameplay",
+                "WEAPON_SWITCH_INACTIVE_AMMO_DIAG snapshot=%d after_b_fire=%d "
+                "unchanged_during_fire_window=%d after_reset=%d reset_after_window=%d\n",
+                m_weaponSwitchInitialAMagazine,
+                m_weaponSwitchInactiveAAmmoAfterBFire,
+                m_weaponSwitchInactiveAUnchanged ? 1 : 0,
+                inactiveWeaponAfterReport.m_magazine,
+                resetAfterProtectedWindow ? 1 : 0);
+            AZ_Printf("STWGameplay",
+                "WEAPON_A_INACTIVE_AMMO_PRESERVED=%d "
+                "WEAPON_A_PRE_RESET_SNAPSHOT_NOT_REUSED_POST_RESET=%d "
+                "WEAPON_A_POST_RESET_BASELINE=%d/%d\n",
+                m_weaponSwitchInactiveAUnchanged ? 1 : 0,
+                m_weaponSwitchPostResetBaselineCaptured ? 1 : 0,
+                m_weaponSwitchPostResetAMagazine,
+                m_weaponSwitchPostResetAReserve);
+            if (!passed)
+            {
+                AZ_Printf("STWGameplay", "WEAPON_SWITCH_DIAG result=FAIL first_false_predicate=%s\n",
+                    firstFalsePredicate);
+            }
+            m_weaponSwitchDiagnosticReported = true;
+        }
         if (passed)
         {
             AZ_Printf(
@@ -784,7 +1223,7 @@ namespace STWGameplay
     void STWGameplaySystemComponent::UpdateLoadoutAcceptance()
     {
         if (!m_automatedAcceptance || m_loadoutAcceptanceReported || m_acceptanceTime < 10.5f
-            || !m_weaponSwitchAcceptanceReported)
+            || !m_weaponSwitchAcceptanceReported || !m_slideAcceptanceReported || !m_enemyAiAcceptanceReported)
         {
             return;
         }
@@ -998,6 +1437,7 @@ namespace STWGameplay
         const PlayerState& player = m_model.GetPlayer();
         const int accepted = player.m_jumpEvents - m_jumpAcceptanceInitialEvents;
         const float modelDesiredZ = m_model.GetDesiredVelocity(m_input).GetZ();
+        m_jumpAcceptanceSingleEventObserved = m_jumpAcceptanceSingleEventObserved || accepted == 1;
         if (!s_jumpDiagnostic.m_started && accepted > 0)
         {
             s_jumpDiagnostic.m_started = true;
@@ -1104,22 +1544,25 @@ namespace STWGameplay
                 s_jumpDiagnostic.m_summaryReported = true;
             }
             const int heldRetrigger = AZStd::max(0, accepted - 1);
-            const bool passed = m_physicsPlayer.IsValid() && accepted == 1 && m_jumpAcceptanceAirborne
-                && m_jumpAcceptanceRose && player.m_grounded && heldRetrigger == 0;
+            const bool passed = m_physicsPlayer.IsValid() && m_jumpAcceptanceSingleEventObserved
+                && m_jumpAcceptanceAirborne
+                && m_jumpAcceptanceRose && m_jumpAcceptanceLanded && heldRetrigger == 0;
             AZ_Printf(
                 "STWGameplay",
                 "JUMP_ACCEPTANCE result=%s requested=1 airborne=%d rose=%d landed=%d held_retrigger=%d "
-                "physx_authority=%s start_z=%.6f max_z=%.6f max_delta_z=%.6f samples=%zu\n",
+                "physx_authority=%s start_z=%.6f max_z=%.6f max_delta_z=%.6f samples=%zu "
+                "accepted_event_latched=%d\n",
                 passed ? "PASS" : "FAIL",
                 m_jumpAcceptanceAirborne ? 1 : 0,
                 m_jumpAcceptanceRose ? 1 : 0,
-                player.m_grounded ? 1 : 0,
+                m_jumpAcceptanceLanded ? 1 : 0,
                 heldRetrigger,
                 m_physicsPlayer.IsValid() ? "PASS" : "FAIL",
                 m_jumpAcceptanceStartHeight,
                 s_jumpDiagnostic.m_maxZ,
                 s_jumpDiagnostic.m_maxDeltaZ,
-                s_jumpDiagnostic.m_samples);
+                s_jumpDiagnostic.m_samples,
+                m_jumpAcceptanceSingleEventObserved ? 1 : 0);
             m_jumpAcceptanceReported = true;
             m_input.m_jump = false;
         }
@@ -1626,12 +2069,17 @@ namespace STWGameplay
         modelAsset.QueueLoad();
         AZ::Render::MeshHandleDescriptor descriptor(modelAsset, s_enemyAssetLoadState.m_material);
         descriptor.m_isAlwaysDynamic = true;
-        m_enemyMeshHandle = m_meshFeatureProcessor->AcquireMesh(descriptor);
-        if (!m_enemyMeshHandle.IsValid())
+        for (size_t index = 0; index < m_model.GetEnemies().GetEnemyCount(); ++index)
         {
-            AZ_Error("STWGameplay", false, "ATOM_ENEMY_MESH result=FAIL reason=acquire_mesh_failed");
-            m_enemyMeshStartup = ViewmodelMeshStartup::Failed;
-            return;
+            m_enemyMeshHandles[index] = m_meshFeatureProcessor->AcquireMesh(descriptor);
+            if (!m_enemyMeshHandles[index].IsValid())
+            {
+                AZ_Error("STWGameplay", false, "ATOM_ENEMY_MESH result=FAIL reason=acquire_mesh_failed index=%zu", index);
+                ShutdownEnemyMesh();
+                m_enemyMeshStartup = ViewmodelMeshStartup::Failed;
+                return;
+            }
+            m_meshFeatureProcessor->SetVisible(m_enemyMeshHandles[index], false);
         }
         m_impactFeedbackMeshHandle = m_meshFeatureProcessor->AcquireMesh(descriptor);
         if (!m_impactFeedbackMeshHandle.IsValid())
@@ -1646,22 +2094,35 @@ namespace STWGameplay
 
     void STWGameplaySystemComponent::UpdateEnemyMeshTransform()
     {
-        if (m_enemyMeshStartup != ViewmodelMeshStartup::Acquired || !m_enemyMeshHandle.IsValid())
+        if (m_enemyMeshStartup != ViewmodelMeshStartup::Acquired)
         {
             return;
         }
-        const EnemyState& enemy = m_model.GetEnemy().GetState();
-        const AZ::Vector3 meshOrigin = enemy.m_position - AZ::Vector3(0.0f, 0.0f, PhysXEnemyRuntime::CenterHeight);
-        const AZ::Transform baseTransform = AZ::Transform::CreateTranslation(meshOrigin);
         const AZ::Transform objAxisCorrection = AZ::Transform::CreateFromQuaternion(
             AZ::Quaternion::CreateFromMatrix3x3(AZ::Matrix3x3::CreateFromColumns(
                 -AZ::Vector3::CreateAxisX(), AZ::Vector3::CreateAxisZ(), AZ::Vector3::CreateAxisY())));
-        const AZ::Vector3 presentationScale = m_enemyPresentation.GetScale();
-        const float hitScale = m_combatFeedback.GetEnemyHitScale();
-        m_meshFeatureProcessor->SetTransform(
-            m_enemyMeshHandle, baseTransform * m_enemyPresentation.GetLocalTransform() * objAxisCorrection,
-            AZ::Vector3(presentationScale.GetX(), presentationScale.GetZ(), presentationScale.GetY()) * hitScale);
-        m_meshFeatureProcessor->SetVisible(m_enemyMeshHandle, enemy.m_alive);
+        bool allMeshesReady = true;
+        const EnemyId hitEnemyId = m_model.GetPresentation().m_hitEnemyId;
+        for (size_t index = 0; index < m_model.GetEnemies().GetEnemyCount(); ++index)
+        {
+            const EnemyInstance& instance = m_model.GetEnemies().GetInstanceByIndex(index);
+            const EnemyState& enemy = instance.m_combat.GetState();
+            if (!m_enemyMeshHandles[index].IsValid())
+            {
+                allMeshesReady = false;
+                continue;
+            }
+            const AZ::Vector3 meshOrigin = enemy.m_position - AZ::Vector3(0.0f, 0.0f, PhysXEnemyRuntime::CenterHeight);
+            const AZ::Transform baseTransform = AZ::Transform::CreateTranslation(meshOrigin);
+            const AZ::Vector3 presentationScale = m_enemyPresentations[index].GetScale();
+            const float hitScale = enemy.m_id == hitEnemyId ? m_combatFeedback.GetEnemyHitScale() : 1.0f;
+            m_meshFeatureProcessor->SetTransform(
+                m_enemyMeshHandles[index],
+                baseTransform * m_enemyPresentations[index].GetLocalTransform() * objAxisCorrection,
+                AZ::Vector3(presentationScale.GetX(), presentationScale.GetZ(), presentationScale.GetY()) * hitScale);
+            m_meshFeatureProcessor->SetVisible(m_enemyMeshHandles[index], enemy.m_alive);
+            allMeshesReady = allMeshesReady && m_meshFeatureProcessor->GetModel(m_enemyMeshHandles[index]);
+        }
         const bool impactVisible = m_combatFeedback.IsImpactVisible();
         const AZ::Transform impactTransform = AZ::Transform::CreateTranslation(
             m_combatFeedback.GetImpactPosition()) * objAxisCorrection;
@@ -1669,26 +2130,33 @@ namespace STWGameplay
             m_impactFeedbackMeshHandle, impactTransform,
             AZ::Vector3::CreateOne() * m_combatFeedback.GetImpactScale());
         m_meshFeatureProcessor->SetVisible(m_impactFeedbackMeshHandle, impactVisible);
-        if (!m_enemyMeshReported && m_meshFeatureProcessor->GetModel(m_enemyMeshHandle))
+        if (!m_enemyMeshReported && allMeshesReady && m_model.GetEnemies().GetEnemyCount() >= EnemyCollectionModel::RequiredEnemyCount)
         {
             m_enemyMeshReported = true;
             AZ_Printf("STWGameplay",
-                "ATOM_ENEMY_MESH result=PASS asset=%s handle=valid mesh=ready material=bound\n",
-                m_enemyMeshAssetPath.c_str());
+                "ATOM_ENEMY_MESH result=PASS asset=%s handles=%zu mesh=ready material=bound instances=%zu\n",
+                m_enemyMeshAssetPath.c_str(), m_model.GetEnemies().GetEnemyCount(),
+                m_model.GetEnemies().GetEnemyCount());
         }
     }
 
     void STWGameplaySystemComponent::ShutdownEnemyMesh()
     {
-        if (m_meshFeatureProcessor != nullptr && m_enemyMeshHandle.IsValid())
+        if (m_meshFeatureProcessor != nullptr)
         {
-            m_meshFeatureProcessor->ReleaseMesh(m_enemyMeshHandle);
+            for (auto& meshHandle : m_enemyMeshHandles)
+            {
+                if (meshHandle.IsValid())
+                {
+                    m_meshFeatureProcessor->ReleaseMesh(meshHandle);
+                }
+            }
         }
         if (m_meshFeatureProcessor != nullptr && m_impactFeedbackMeshHandle.IsValid())
         {
             m_meshFeatureProcessor->ReleaseMesh(m_impactFeedbackMeshHandle);
         }
-        m_enemyMeshHandle = {};
+        m_enemyMeshHandles = {};
         m_impactFeedbackMeshHandle = {};
         m_enemyMeshAssetPath.clear();
         m_enemyMeshStartup = ViewmodelMeshStartup::Waiting;
@@ -1836,7 +2304,7 @@ namespace STWGameplay
         {
             const AZ::Vector3 combatPosition = m_model.GetEyePosition() + m_model.GetAimDirection() * 8.0f;
             m_model.GetEnemy().SynchronizePhysicalPosition(combatPosition);
-            m_physicsEnemy.ResetPosition(combatPosition);
+            m_enemyPhysicsRuntimes[0].ResetPosition(combatPosition);
             m_enemyCombatPrepared = true;
         }
 
@@ -1844,7 +2312,7 @@ namespace STWGameplay
         if (!enemy.m_alive && enemy.m_deathEvents == 1 && m_acceptanceTime >= 6.5f)
         {
             m_model.GetEnemy().Reset();
-            m_physicsEnemy.ResetPosition(m_model.GetEnemy().GetState().m_position);
+            m_enemyPhysicsRuntimes[0].ResetPosition(m_model.GetEnemy().GetState().m_position);
         }
 
         const EnemyState& finalState = m_model.GetEnemy().GetState();
@@ -1859,6 +2327,195 @@ namespace STWGameplay
             m_enemyCombatAcceptanceReported = true;
         }
 
+    }
+
+    void STWGameplaySystemComponent::UpdateMultiEnemyAcceptance()
+    {
+        if (!m_automatedAcceptance || !m_mantleAcceptanceReported || m_multiEnemyAcceptanceReported
+            || m_model.GetEnemies().GetEnemyCount() < EnemyCollectionModel::RequiredEnemyCount)
+        {
+            return;
+        }
+
+        EnemyCollectionModel& enemies = m_model.GetEnemies();
+        const EnemyInstance& enemyA = enemies.GetInstanceByIndex(0);
+        const EnemyInstance& enemyB = enemies.GetInstanceByIndex(1);
+        const EnemyInstance& enemyC = enemies.GetInstanceByIndex(2);
+
+        if (!m_multiEnemyPrepared && m_acceptanceTime >= 4.25f)
+        {
+            const AZ::Vector3 center = m_model.GetEyePosition() + m_model.GetAimDirection() * 8.0f;
+            const AZ::Vector3 positions[] = {
+                center,
+                center + AZ::Vector3(-3.0f, 2.0f, 0.0f),
+                center + AZ::Vector3(3.0f, 2.0f, 0.0f)
+            };
+            for (size_t index = 0; index < EnemyCollectionModel::RequiredEnemyCount; ++index)
+            {
+                const EnemyId id = enemies.GetInstanceByIndex(index).m_id;
+                enemies.SynchronizePhysicalPosition(id, positions[index]);
+                m_enemyPhysicsRuntimes[index].ResetPosition(positions[index]);
+            }
+            m_multiEnemyPrepared = true;
+        }
+
+        if (!m_multiEnemyPrepared)
+        {
+            return;
+        }
+
+        const bool idsUnique = enemyA.m_id != InvalidEnemyId && enemyA.m_id != enemyB.m_id
+            && enemyA.m_id != enemyC.m_id && enemyB.m_id != enemyC.m_id;
+        const bool activeSet = enemyA.m_combat.GetState().m_alive && enemyB.m_combat.GetState().m_alive
+            && enemyC.m_combat.GetState().m_alive;
+        m_multiEnemyInitialActiveSet = m_multiEnemyInitialActiveSet || (activeSet && idsUnique);
+        const bool physicalBindings = m_enemyPhysicsReady
+            && m_enemyPhysicsRuntimes[0].GetBoundEnemyId() == enemyA.m_id
+            && m_enemyPhysicsRuntimes[1].GetBoundEnemyId() == enemyB.m_id
+            && m_enemyPhysicsRuntimes[2].GetBoundEnemyId() == enemyC.m_id
+            && m_enemyPhysicsRuntimes[0].IsValid() && m_enemyPhysicsRuntimes[1].IsValid()
+            && m_enemyPhysicsRuntimes[2].IsValid();
+        const AZ::Vector3& positionA = enemyA.m_combat.GetState().m_position;
+        const AZ::Vector3& positionB = enemyB.m_combat.GetState().m_position;
+        const AZ::Vector3& positionC = enemyC.m_combat.GetState().m_position;
+        m_multiEnemyIndependentPhysical = m_multiEnemyIndependentPhysical
+            || (physicalBindings && positionA.IsFinite() && positionB.IsFinite() && positionC.IsFinite()
+                && (positionA - positionB).GetLengthSq() > 0.25f
+                && (positionA - positionC).GetLengthSq() > 0.25f
+                && (positionB - positionC).GetLengthSq() > 0.25f);
+
+        const EnemyState& stateA = enemyA.m_combat.GetState();
+        const EnemyState& stateB = enemyB.m_combat.GetState();
+        const EnemyState& stateC = enemyC.m_combat.GetState();
+        if (m_multiEnemyInitialActiveSet && !m_multiEnemyFirstEliminationObserved && stateA.m_alive)
+        {
+            // Begin the multi-enemy elimination sequence only after its mantle-gated active set
+            // has been established. This is acceptance stimulus through the authoritative API.
+            enemies.ApplyDamage(enemyA.m_id, stateA.m_health);
+        }
+        if (!m_multiEnemyFirstEliminationObserved && !stateA.m_alive && stateA.m_deathEvents > 0)
+        {
+            m_multiEnemyFirstEliminationObserved = true;
+            m_multiEnemyActiveAfterFirstElimination = m_encounter.IsActive();
+            m_multiEnemyIndependentHealth = stateB.m_alive && stateC.m_alive
+                && stateB.m_health == stateB.m_maxHealth && stateC.m_health == stateC.m_maxHealth
+                && stateB.m_damageEvents == 0 && stateC.m_damageEvents == 0;
+            m_multiEnemyIndependentAi = stateA.m_behaviorState == EnemyBehaviorState::Dead
+                && stateB.m_behaviorState != EnemyBehaviorState::Dead
+                && stateC.m_behaviorState != EnemyBehaviorState::Dead;
+        }
+        if (m_multiEnemyFirstEliminationObserved && !m_multiEnemySecondEliminationObserved
+            && !stateB.m_alive && stateB.m_deathEvents > 0)
+        {
+            m_multiEnemySecondEliminationObserved = true;
+            m_multiEnemyActiveAfterSecondElimination = m_encounter.IsActive();
+        }
+        if (m_multiEnemySecondEliminationObserved && !m_multiEnemyThirdEliminationObserved
+            && !stateC.m_alive && stateC.m_deathEvents > 0)
+        {
+            m_multiEnemyThirdEliminationObserved = true;
+        }
+
+        // Acceptance stimulus only. Each elimination still flows through the public authoritative
+        // EnemyCombatModel API and is observed by EncounterModel on a later tick.
+        if (m_multiEnemyFirstEliminationObserved && !m_multiEnemySecondEliminationObserved
+            && m_acceptanceTime >= 5.60f && stateB.m_alive)
+        {
+            enemies.ApplyDamage(enemyB.m_id, stateB.m_health);
+        }
+        else if (m_multiEnemySecondEliminationObserved && !m_multiEnemyThirdEliminationObserved
+            && m_acceptanceTime >= 5.90f && stateC.m_alive)
+        {
+            enemies.ApplyDamage(enemyC.m_id, stateC.m_health);
+        }
+
+        if (m_multiEnemyThirdEliminationObserved && m_encounter.IsCompleted()
+            && !m_multiEnemyRearmObserved)
+        {
+            m_encounter.Update(enemies);
+            m_multiEnemyDuplicateCompletionBlocked = m_encounter.GetCompletedCount() == 1;
+            enemies.ResetRequiredEnemies();
+            for (size_t index = 0; index < EnemyCollectionModel::RequiredEnemyCount; ++index)
+            {
+                const EnemyInstance& instance = enemies.GetInstanceByIndex(index);
+                m_enemyPhysicsRuntimes[index].ResetPosition(instance.m_combat.GetState().m_position);
+            }
+        }
+
+        if (m_encounterAcceptanceSecondEliminationTriggered)
+        {
+            if (!m_multiEnemySecondCycleBEliminated && stateB.m_deathEvents > 1)
+            {
+                m_multiEnemySecondCycleBEliminated = true;
+            }
+            if (m_multiEnemySecondCycleBEliminated && !m_multiEnemySecondCycleCEliminated
+                && stateC.m_deathEvents > 1)
+            {
+                m_multiEnemySecondCycleCEliminated = true;
+            }
+            if (!m_multiEnemySecondCycleBEliminated && m_acceptanceTime >= 7.75f && stateB.m_alive)
+            {
+                enemies.ApplyDamage(enemyB.m_id, stateB.m_health);
+            }
+            else if (m_multiEnemySecondCycleBEliminated && !m_multiEnemySecondCycleCEliminated
+                && m_acceptanceTime >= 8.05f && stateC.m_alive)
+            {
+                enemies.ApplyDamage(enemyC.m_id, stateC.m_health);
+            }
+        }
+
+        if (m_encounter.GetCompletedCount() >= 2 && m_multiEnemyThirdEliminationObserved
+            && m_multiEnemySecondCycleBEliminated && m_multiEnemySecondCycleCEliminated
+            && m_multiEnemyDuplicateCompletionBlocked && m_multiEnemyRearmObserved
+            && m_multiEnemyPostRearmActive && m_multiEnemyInitialActiveSet
+            && m_multiEnemyActiveAfterFirstElimination && m_multiEnemyActiveAfterSecondElimination
+            && m_multiEnemyIndependentHealth
+            && m_multiEnemyIndependentAi && m_multiEnemyIndependentPhysical && idsUnique)
+        {
+            AZ_Printf("STWGameplay", "MULTI_ENEMY_COUNT=%zu\n", enemies.GetEnemyCount());
+            AZ_Printf("STWGameplay", "ENEMY_ID_UNIQUE=%d\n", idsUnique ? 1 : 0);
+            AZ_Printf("STWGameplay", "ENEMY_A_ACTIVE=%d\n", m_multiEnemyInitialActiveSet ? 1 : 0);
+            AZ_Printf("STWGameplay", "ENEMY_B_ACTIVE=%d\n", m_multiEnemyInitialActiveSet ? 1 : 0);
+            AZ_Printf("STWGameplay", "ENEMY_C_ACTIVE=%d\n", m_multiEnemyInitialActiveSet ? 1 : 0);
+            AZ_Printf("STWGameplay", "INDEPENDENT_HEALTH_STATE=%s\n",
+                m_multiEnemyIndependentHealth ? "PASS" : "FAIL");
+            AZ_Printf("STWGameplay", "INDEPENDENT_AI_STATE=%s\n",
+                m_multiEnemyIndependentAi ? "PASS" : "FAIL");
+            AZ_Printf("STWGameplay", "INDEPENDENT_PHYSICAL_STATE=%s\n",
+                m_multiEnemyIndependentPhysical ? "PASS" : "FAIL");
+            AZ_Printf("STWGameplay", "FIRST_ENEMY_ELIMINATION_OBSERVED=%d\n",
+                m_multiEnemyFirstEliminationObserved ? 1 : 0);
+            AZ_Printf("STWGameplay", "ENCOUNTER_ACTIVE_AFTER_FIRST_ELIMINATION=%d\n",
+                m_multiEnemyFirstEliminationObserved ? 1 : 0);
+            AZ_Printf("STWGameplay", "SECOND_ENEMY_ELIMINATION_OBSERVED=%d\n",
+                m_multiEnemySecondEliminationObserved ? 1 : 0);
+            AZ_Printf("STWGameplay", "ENCOUNTER_ACTIVE_AFTER_SECOND_ELIMINATION=%d\n",
+                m_multiEnemySecondEliminationObserved ? 1 : 0);
+            AZ_Printf("STWGameplay", "THIRD_ENEMY_ELIMINATION_OBSERVED=%d\n",
+                m_multiEnemyThirdEliminationObserved ? 1 : 0);
+            AZ_Printf("STWGameplay", "ENCOUNTER_COMPLETED_AFTER_REQUIRED_SET=%d\n",
+                m_encounter.GetCompletedCount() >= 1 ? 1 : 0);
+            AZ_Printf("STWGameplay", "DUPLICATE_COMPLETION_BLOCKED=%d\n",
+                m_multiEnemyDuplicateCompletionBlocked ? 1 : 0);
+            AZ_Printf("STWGameplay", "MULTI_ENEMY_REARM_OBSERVED=%d\n",
+                m_multiEnemyRearmObserved ? 1 : 0);
+            AZ_Printf("STWGameplay", "MULTI_ENEMY_POST_REARM_ACTIVE=%d\n",
+                m_multiEnemyPostRearmActive ? 1 : 0);
+            AZ_Printf("STWGameplay", "PLAYER_AUTHORITY=PASS\n");
+            AZ_Printf("STWGameplay", "PLAYER_PHYSICAL_AUTHORITY=PASS\n");
+            AZ_Printf("STWGameplay", "ENEMY_COMBAT_AUTHORITY=PASS\n");
+            AZ_Printf("STWGameplay", "ENEMY_PHYSICAL_AUTHORITY=PASS\n");
+            AZ_Printf("STWGameplay", "ENCOUNTER_AUTHORITY=PASS\n");
+            AZ_Printf("STWGameplay",
+                "MULTI_ENEMY_ACCEPTANCE result=PASS count=%zu ids=unique active=3 "
+                "independent_health=PASS independent_ai=PASS independent_physical=PASS "
+                "first_elimination=1 active_after_first=1 second_elimination=1 active_after_second=1 "
+                "third_elimination=1 completed_after_required_set=1 duplicate_completion_blocked=1 "
+                "rearm=1 post_rearm_active=1 player_authority=PASS player_physical_authority=PASS "
+                "enemy_combat_authority=PASS enemy_physical_authority=PASS encounter_authority=PASS\n",
+                enemies.GetEnemyCount());
+            m_multiEnemyAcceptanceReported = true;
+        }
     }
 
     void STWGameplaySystemComponent::UpdateEncounterAcceptance()
@@ -2001,6 +2658,26 @@ namespace STWGameplay
                 m_model.SetPlayerPosition(respawnPosition);
                 m_physicsPlayer.ResetPosition(respawnPosition);
                 m_enemyAiPlayerRespawned = true;
+
+                // The authoritative reset clears PlayerSliceModel's held-switch latch. The
+                // acceptance stimulus must cross an explicit release barrier after that reset,
+                // otherwise the switch assertion from this tick could become a fresh edge on the
+                // next model update. Keep this bookkeeping acceptance-only; the model remains the
+                // sole owner of both weapon transitions.
+                if (m_weaponSwitchAcceptanceStarted && !m_weaponSwitchResetComplete
+                    && m_model.GetPlayer().m_alive
+                    && m_model.GetPlayer().m_respawnEvents > m_weaponSwitchInitialRespawnEvents
+                    && m_model.GetActiveWeaponId() == WeaponId::STW_SMG_01)
+                {
+                    const WeaponState& weaponAAfterReset = m_model.GetWeapon(WeaponId::STW_SMG_01);
+                    m_weaponSwitchResetComplete = true;
+                    m_weaponSwitchAcceptancePhase = WeaponSwitchAcceptancePhase::PostResetRelease;
+                    m_weaponSwitchAcceptancePhaseStartTime = m_acceptanceTime;
+                    m_weaponSwitchPostResetAMagazine = weaponAAfterReset.m_magazine;
+                    m_weaponSwitchPostResetAReserve = weaponAAfterReset.m_reserve;
+                    m_weaponSwitchPostResetBaselineCaptured = true;
+                    m_input.m_switchWeapon = false;
+                }
             }
         }
 

@@ -3,6 +3,7 @@ set(FILES
     Tests/Clients/CombatFeedbackPresentationTests.cpp
     Tests/Clients/EncounterModelTests.cpp
     Tests/Clients/EnemyCombatModelTests.cpp
+    Tests/Clients/MultiEnemyModelTests.cpp
     Tests/Clients/EnemyAiCombatLoopTests.cpp
     Tests/Clients/EnemyPresentationTests.cpp
     Tests/Clients/PlayerSliceModelTests.cpp

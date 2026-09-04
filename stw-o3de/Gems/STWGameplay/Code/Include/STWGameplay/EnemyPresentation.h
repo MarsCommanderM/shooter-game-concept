@@ -5,7 +5,7 @@
 
 namespace STWGameplay
 {
-    //! Gameplay-free visual adapter for STW_ENEMY_01. It consumes an immutable snapshot and
+    //! Gameplay-free visual adapter for one enemy. It consumes an immutable snapshot and
     //! produces only a local Atom transform; it cannot mutate model or PhysX authority.
     class EnemyPresentation
     {

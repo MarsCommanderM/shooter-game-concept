@@ -12,12 +12,18 @@
 
 namespace STWGameplay
 {
+    PhysXEnemyRuntime::PhysXEnemyRuntime() = default;
     PhysXEnemyRuntime::~PhysXEnemyRuntime() { Shutdown(); }
 
     bool PhysXEnemyRuntime::Initialize(const AZ::Vector3& centerPosition)
     {
+        return Initialize(PrimaryEnemyId, centerPosition);
+    }
+
+    bool PhysXEnemyRuntime::Initialize(EnemyId enemyId, const AZ::Vector3& centerPosition)
+    {
         Shutdown();
-        if (!centerPosition.IsFinite())
+        if (enemyId == InvalidEnemyId || !centerPosition.IsFinite())
         {
             return false;
         }
@@ -46,6 +52,7 @@ namespace STWGameplay
             Shutdown();
             return false;
         }
+        m_enemyId = enemyId;
         return true;
     }
 
@@ -56,6 +63,7 @@ namespace STWGameplay
             m_enemyEntity->Deactivate();
         }
         m_enemyEntity.reset();
+        m_enemyId = InvalidEnemyId;
     }
 
     bool PhysXEnemyRuntime::QueueVelocity(const AZ::Vector3& velocity)

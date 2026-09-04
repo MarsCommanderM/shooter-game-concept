@@ -140,6 +140,7 @@ namespace STWGameplay
         const EquipmentProfileId profileBeforeInput = GetActiveEquipmentProfileId();
         m_presentation.m_shotFired = false;
         m_presentation.m_hit = false;
+        m_presentation.m_hitEnemyId = InvalidEnemyId;
         m_presentation.m_equipmentUsed = false;
         m_presentation.m_equipmentChanged = false;
         m_presentation.m_activeEquipmentProfile = profileBeforeInput;
@@ -149,10 +150,17 @@ namespace STWGameplay
         m_presentation.m_hitCueRemaining = AZStd::max(0.0f, m_presentation.m_hitCueRemaining - deltaTime);
         WeaponState& activeWeapon = m_equipment[GetActiveEquipmentIndex()];
         activeWeapon.m_cooldownRemaining = AZStd::max(0.0f, activeWeapon.m_cooldownRemaining - deltaTime);
-        m_enemy.Update(deltaTime, m_player.m_position, m_player.m_alive);
-        if (m_player.m_alive && m_enemy.TryAttackPlayer())
+        m_enemies.Update(deltaTime, m_player.m_position, m_player.m_alive);
+        if (m_player.m_alive)
         {
-            ApplyDamage(EnemyCombatModel::AttackDamage);
+            for (size_t index = 0; index < m_enemies.GetEnemyCount(); ++index)
+            {
+                EnemyCombatModel& enemy = m_enemies.GetInstanceByIndex(index).m_combat;
+                if (enemy.TryAttackPlayer())
+                {
+                    ApplyDamage(enemy.GetProfile().m_attackDamage);
+                }
+            }
         }
 
         if (activeWeapon.m_reloading)
@@ -333,10 +341,23 @@ namespace STWGameplay
         equipment.m_cooldownRemaining = profile.m_fireInterval;
         m_presentation.m_equipmentUsed = true;
         m_presentation.m_fireCueRemaining = 0.06f;
-        if (m_enemy.GetState().m_alive && RayHitsTarget(GetEyePosition(), GetAimDirection()))
+        EnemyId hitEnemyId = InvalidEnemyId;
+        float hitDistance = profile.m_range;
+        for (size_t index = 0; index < m_enemies.GetEnemyCount(); ++index)
         {
-            m_enemy.ApplyDamage(profile.m_damage);
+            const EnemyState& enemy = m_enemies.GetInstanceByIndex(index).m_combat.GetState();
+            float projectedDistance = 0.0f;
+            if (enemy.m_alive && RayHitsEnemy(enemy, GetEyePosition(), GetAimDirection(), projectedDistance)
+                && projectedDistance < hitDistance)
+            {
+                hitEnemyId = enemy.m_id;
+                hitDistance = projectedDistance;
+            }
+        }
+        if (hitEnemyId != InvalidEnemyId && m_enemies.ApplyDamage(hitEnemyId, profile.m_damage))
+        {
             m_presentation.m_hit = true;
+            m_presentation.m_hitEnemyId = hitEnemyId;
             m_presentation.m_hitCueRemaining = 0.12f;
         }
         return true;
@@ -484,15 +505,16 @@ namespace STWGameplay
         }
     }
 
-    bool PlayerSliceModel::RayHitsTarget(const AZ::Vector3& origin, const AZ::Vector3& direction) const
+    bool PlayerSliceModel::RayHitsEnemy(const EnemyState& target, const AZ::Vector3& origin,
+        const AZ::Vector3& direction, float& projectedDistance) const
     {
-        const EnemyState& target = m_enemy.GetState();
         const AZ::Vector3 toTarget = target.m_position - origin;
         const float projected = toTarget.Dot(direction);
         if (projected < 0.0f || projected > GetActiveEquipmentProfile().m_range)
         {
             return false;
         }
+        projectedDistance = projected;
         const AZ::Vector3 closest = origin + direction * projected;
         return (closest - target.m_position).GetLengthSq() <= target.m_radius * target.m_radius;
     }

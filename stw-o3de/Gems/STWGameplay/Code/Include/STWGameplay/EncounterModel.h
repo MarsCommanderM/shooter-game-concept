@@ -1,6 +1,7 @@
 #pragma once
 
-#include <STWGameplay/EnemyCombatModel.h>
+#include <AzCore/std/containers/array.h>
+#include <STWGameplay/EnemyCollectionModel.h>
 
 namespace STWGameplay
 {
@@ -17,6 +18,8 @@ namespace STWGameplay
     public:
         bool Update(const EnemyState& enemyState);
         bool Rearm(const EnemyState& enemyState);
+        bool Update(const EnemyCollectionModel& enemies);
+        bool Rearm(const EnemyCollectionModel& enemies);
 
         EncounterPhase GetPhase() const { return m_phase; }
         bool IsActive() const { return m_phase == EncounterPhase::Active; }
@@ -26,6 +29,7 @@ namespace STWGameplay
     private:
         EncounterPhase m_phase = EncounterPhase::Active;
         int m_completedCount = 0;
-        int m_observedDeathEvents = 0;
+        int m_legacyObservedDeathEvents = 0;
+        AZStd::array<int, EnemyCollectionModel::MaxEnemyCount> m_observedDeathEvents{};
     };
 }

@@ -53,7 +53,7 @@ namespace STWGameplay
         m_pitch = (m_state == EnemyBehaviorState::Chase ? -0.12f : 0.0f)
             + m_attackImpulse * 0.18f + m_deathBlend * 1.35f;
         const float breathe = 1.0f + idleLift * 0.35f;
-        m_scale = AZ::Vector3(breathe, breathe, 1.0f - m_deathBlend * 0.18f);
+        m_scale = AZ::Vector3(breathe, breathe, 1.0f - m_deathBlend * 0.18f) * state.m_presentationScale;
         return true;
     }
 

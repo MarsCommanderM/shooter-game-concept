@@ -6,7 +6,54 @@
 
 namespace STWGameplay
 {
+    namespace
+    {
+        const AZStd::array<EnemyProfile, EnemyProfileCount> s_enemyProfiles = {
+            EnemyProfile{ EnemyArchetype::Assault, "ASSAULT", 100.0f, 1.5f, 20.0f, 2.5f, 1.0f, 20.0f, 1.0f },
+            EnemyProfile{ EnemyArchetype::Heavy, "HEAVY", 180.0f, 1.0f, 18.0f, 2.8f, 1.4f, 28.0f, 1.20f },
+            EnemyProfile{ EnemyArchetype::Skirmisher, "SKIRMISHER", 75.0f, 2.2f, 20.0f, 2.0f, 0.65f, 12.0f, 0.90f }
+        };
+    }
+
     const AZ::Vector3 EnemyCombatModel::SpawnPosition = ArenaLayout::EnemySpawn;
+
+    const EnemyProfile& GetEnemyProfile(EnemyArchetype archetype)
+    {
+        const size_t index = static_cast<size_t>(archetype);
+        return s_enemyProfiles[index < EnemyProfileCount ? index : 0];
+    }
+
+    EnemyCombatModel::EnemyCombatModel()
+    {
+        Configure(PrimaryEnemyId, GetEnemyProfile(EnemyArchetype::Assault), SpawnPosition);
+    }
+
+    bool EnemyCombatModel::Configure(EnemyId id, const EnemyProfile& profile, const AZ::Vector3& spawnPosition)
+    {
+        if (id == InvalidEnemyId || !spawnPosition.IsFinite()
+            || !std::isfinite(profile.m_maxHealth) || profile.m_maxHealth <= 0.0f
+            || !std::isfinite(profile.m_moveSpeed) || profile.m_moveSpeed < 0.0f
+            || !std::isfinite(profile.m_detectionRadius) || profile.m_detectionRadius <= 0.0f
+            || !std::isfinite(profile.m_attackRange) || profile.m_attackRange <= 0.0f
+            || !std::isfinite(profile.m_attackCooldown) || profile.m_attackCooldown < 0.0f
+            || !std::isfinite(profile.m_attackDamage) || profile.m_attackDamage <= 0.0f
+            || !std::isfinite(profile.m_presentationScale) || profile.m_presentationScale <= 0.0f)
+        {
+            return false;
+        }
+
+        m_profile = profile;
+        m_spawnPosition = spawnPosition;
+        m_state = {};
+        m_state.m_id = id;
+        m_state.m_archetype = profile.m_archetype;
+        m_state.m_position = spawnPosition;
+        m_state.m_maxHealth = profile.m_maxHealth;
+        m_state.m_health = profile.m_maxHealth;
+        m_state.m_presentationScale = profile.m_presentationScale;
+        m_attackCooldownRemaining = 0.0f;
+        return true;
+    }
 
     bool EnemyCombatModel::Update(float deltaTime, const AZ::Vector3& playerPosition, bool playerAlive)
     {
@@ -22,7 +69,7 @@ namespace STWGameplay
         }
 
         const float distance = DistanceToPlayer(playerPosition);
-        if (!playerAlive || distance > DetectionRadius)
+        if (!playerAlive || distance > m_profile.m_detectionRadius)
         {
             EnterState(EnemyBehaviorState::Idle);
             return true;
@@ -34,16 +81,16 @@ namespace STWGameplay
             EnterState(EnemyBehaviorState::Detect);
             break;
         case EnemyBehaviorState::Detect:
-            EnterState(distance <= AttackRange ? EnemyBehaviorState::Attack : EnemyBehaviorState::Chase);
+            EnterState(distance <= m_profile.m_attackRange ? EnemyBehaviorState::Attack : EnemyBehaviorState::Chase);
             break;
         case EnemyBehaviorState::Chase:
-            if (distance <= AttackRange)
+            if (distance <= m_profile.m_attackRange)
             {
                 EnterState(EnemyBehaviorState::Attack);
             }
             break;
         case EnemyBehaviorState::Attack:
-            if (distance > AttackRange)
+            if (distance > m_profile.m_attackRange)
             {
                 EnterState(EnemyBehaviorState::Chase);
             }
@@ -61,7 +108,7 @@ namespace STWGameplay
         {
             return false;
         }
-        m_attackCooldownRemaining = AttackCooldown;
+        m_attackCooldownRemaining = m_profile.m_attackCooldown;
         ++m_state.m_attackEvents;
         return true;
     }
@@ -85,6 +132,8 @@ namespace STWGameplay
 
     void EnemyCombatModel::Reset()
     {
+        const EnemyId id = m_state.m_id;
+        const EnemyArchetype archetype = m_state.m_archetype;
         const int damageEvents = m_state.m_damageEvents;
         const int deathEvents = m_state.m_deathEvents;
         const int respawnEvents = m_state.m_respawnEvents + 1;
@@ -92,7 +141,12 @@ namespace STWGameplay
         const int chaseEvents = m_state.m_chaseEvents;
         const int attackEvents = m_state.m_attackEvents;
         m_state = {};
-        m_state.m_position = SpawnPosition;
+        m_state.m_id = id;
+        m_state.m_archetype = archetype;
+        m_state.m_position = m_spawnPosition;
+        m_state.m_maxHealth = m_profile.m_maxHealth;
+        m_state.m_health = m_profile.m_maxHealth;
+        m_state.m_presentationScale = m_profile.m_presentationScale;
         m_state.m_damageEvents = damageEvents;
         m_state.m_deathEvents = deathEvents;
         m_state.m_respawnEvents = respawnEvents;
@@ -119,11 +173,11 @@ namespace STWGameplay
         AZ::Vector3 offset = playerPosition - m_state.m_position;
         offset.SetZ(0.0f);
         const float distance = offset.GetLength();
-        if (distance <= AttackRange || distance > DetectionRadius || distance <= 0.001f)
+        if (distance <= m_profile.m_attackRange || distance > m_profile.m_detectionRadius || distance <= 0.001f)
         {
             return AZ::Vector3::CreateZero();
         }
-        return offset / distance * MoveSpeed;
+        return offset / distance * m_profile.m_moveSpeed;
     }
 
     void EnemyCombatModel::EnterState(EnemyBehaviorState state)

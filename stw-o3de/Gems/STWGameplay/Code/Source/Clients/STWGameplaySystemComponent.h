@@ -46,6 +46,7 @@ namespace STWGameplay
         void UpdateSwayAcceptanceMarkers();
         // Attempts to create the PhysX controller once the O3DE default physics scene exists.
         void TryStartPhysics();
+        void ShutdownEnemyPhysics();
         // Attempts to acquire the real Atom viewmodel mesh once the render scene exists.
         void TryStartViewmodelMesh();
         // Drives the Atom mesh from the same first-person basis the presentation computes.
@@ -59,6 +60,7 @@ namespace STWGameplay
         void ShutdownArenaMesh();
         void UpdateArenaAcceptance();
         void UpdateEnemyCombatAcceptance();
+        void UpdateMultiEnemyAcceptance();
         void UpdateEnemyAiAcceptance(float deltaTime);
         void UpdateEnemyPresentationAcceptance();
         void UpdateCombatFeedbackAcceptance();
@@ -104,7 +106,8 @@ namespace STWGameplay
         size_t m_visibleViewmodelSlot = PlayerSliceModel::EquipmentProfileCount;
         bool m_viewmodelMeshReported = false;
         ViewmodelMeshStartup m_enemyMeshStartup = ViewmodelMeshStartup::Waiting;
-        AZ::Render::MeshFeatureProcessorInterface::MeshHandle m_enemyMeshHandle;
+        AZStd::array<AZ::Render::MeshFeatureProcessorInterface::MeshHandle, EnemyCollectionModel::MaxEnemyCount>
+            m_enemyMeshHandles;
         AZ::Render::MeshFeatureProcessorInterface::MeshHandle m_impactFeedbackMeshHandle;
         AZStd::string m_enemyMeshAssetPath;
         bool m_enemyMeshReported = false;
@@ -115,13 +118,13 @@ namespace STWGameplay
         bool m_arenaAcceptanceReported = false;
 
         PlayerSliceModel m_model;
-        EnemyPresentation m_enemyPresentation;
+        AZStd::array<EnemyPresentation, EnemyCollectionModel::MaxEnemyCount> m_enemyPresentations;
         ViewmodelPresentation m_viewmodel;
         CombatFeedbackPresentation m_combatFeedback;
         EncounterModel m_encounter;
         SpawnCheckpointModel m_spawnCheckpoint;
         PhysXPlayerRuntime m_physicsPlayer;
-        PhysXEnemyRuntime m_physicsEnemy;
+        AZStd::array<PhysXEnemyRuntime, EnemyCollectionModel::MaxEnemyCount> m_enemyPhysicsRuntimes;
         PlayerInput m_input;
         bool m_adsHeld = false;
         AZStd::string m_nativeCapturePath;
@@ -165,6 +168,22 @@ namespace STWGameplay
         bool m_enemyPresentationResetObserved = false;
         bool m_enemyPresentationAuthoritySeparated = true;
         bool m_enemyPresentationAcceptanceReported = false;
+        bool m_multiEnemyPrepared = false;
+        bool m_multiEnemyInitialActiveSet = false;
+        bool m_multiEnemyFirstEliminationObserved = false;
+        bool m_multiEnemySecondEliminationObserved = false;
+        bool m_multiEnemyThirdEliminationObserved = false;
+        bool m_multiEnemyActiveAfterFirstElimination = false;
+        bool m_multiEnemyActiveAfterSecondElimination = false;
+        bool m_multiEnemyDuplicateCompletionBlocked = false;
+        bool m_multiEnemyRearmObserved = false;
+        bool m_multiEnemyPostRearmActive = false;
+        bool m_multiEnemyIndependentHealth = false;
+        bool m_multiEnemyIndependentAi = false;
+        bool m_multiEnemyIndependentPhysical = false;
+        bool m_multiEnemySecondCycleBEliminated = false;
+        bool m_multiEnemySecondCycleCEliminated = false;
+        bool m_multiEnemyAcceptanceReported = false;
         bool m_combatFeedbackAuthoritySeparated = true;
         bool m_combatFeedbackAcceptanceReported = false;
         bool m_encounterAcceptanceReported = false;
@@ -175,6 +194,19 @@ namespace STWGameplay
         bool m_encounterAcceptanceSecondCompletion = false;
         bool m_encounterAcceptanceSecondEliminationTriggered = false;
         int m_encounterAcceptanceLastRespawnEvents = 0;
+        enum class WeaponSwitchAcceptancePhase
+        {
+            WaitingForReset,
+            InitialSwitch,
+            InitialSwitchRelease,
+            PostResetRelease,
+            EnsureSecondary,
+            EnsureSecondaryRelease,
+            SecondSwitch,
+            Complete
+        };
+        WeaponSwitchAcceptancePhase m_weaponSwitchAcceptancePhase = WeaponSwitchAcceptancePhase::WaitingForReset;
+        float m_weaponSwitchAcceptancePhaseStartTime = 0.0f;
         bool m_weaponSwitchAcceptanceStarted = false;
         bool m_weaponSwitchFirstSwitchObserved = false;
         bool m_weaponSwitchFirstWeaponVisible = false;
@@ -184,11 +216,51 @@ namespace STWGameplay
         bool m_weaponSwitchSecondSwitchObserved = false;
         bool m_weaponSwitchAAmmoPreserved = false;
         bool m_weaponSwitchAcceptanceReported = false;
+        bool m_weaponSwitchDiagnosticReported = false;
+        bool m_weaponSwitchPostResetDiagnosticReported = false;
+        bool m_weaponSwitchResetComplete = false;
+        int m_weaponSwitchInitialRespawnEvents = 0;
+        bool m_weaponSwitchPostResetReleaseObserved = false;
+        bool m_weaponSwitchEnsureSecondaryInputAsserted = false;
+        bool m_weaponSwitchEnsureSecondaryEdge = false;
+        int m_weaponSwitchEnsureSecondarySlotBefore = -1;
+        int m_weaponSwitchEnsureSecondarySlotAfter = -1;
+        bool m_weaponSwitchPreSecondSwitchReleaseObserved = false;
+        bool m_weaponSwitchSecondSwitchInputAsserted = false;
+        bool m_weaponSwitchSecondSwitchEdge = false;
+        int m_weaponSwitchSecondSwitchSlotBefore = -1;
+        int m_weaponSwitchSecondSwitchSlotAfter = -1;
+        int m_weaponSwitchSecondSwitchTransitionEventDelta = 0;
+        int m_weaponSwitchSecondSwitchObservationCount = 0;
+        bool m_weaponSwitchPostResetBaselineCaptured = false;
+        int m_weaponSwitchPostResetAMagazine = 0;
+        int m_weaponSwitchPostResetAReserve = 0;
+        bool m_weaponBFireDiagnosticStarted = false;
+        bool m_weaponBFireDiagnosticReported = false;
+        int m_weaponBFireSlotBefore = -1;
+        bool m_weaponBFireSelectedBefore = false;
+        bool m_weaponBFirePlayerAliveBefore = false;
+        float m_weaponBFireHealthBefore = 0.0f;
+        int m_weaponBFireDamageEventsBefore = 0;
+        int m_weaponBFireDeathEventsBefore = 0;
+        int m_weaponBFireRespawnEventsBefore = 0;
+        int m_weaponBFireAmmoBefore = 0;
+        bool m_weaponBFireInputAsserted = false;
+        bool m_weaponBFireInputHeld = false;
+        bool m_weaponBFireInputEdge = false;
+        bool m_weaponBFireRequestReachedModel = false;
+        bool m_weaponBFireAcceptedByModel = false;
+        bool m_weaponBFireRejectedByModel = false;
+        bool m_weaponBFireSelectedDuringWindow = false;
+        bool m_weaponBFirePreviousInput = false;
+        int m_weaponBFireEventCount = 0;
         int m_weaponSwitchInitialSlot = -1;
         int m_weaponSwitchInitialAMagazine = 0;
         int m_weaponSwitchInitialAReserve = 0;
         int m_weaponSwitchInitialBMagazine = 0;
         int m_weaponSwitchInitialBReserve = 0;
+        int m_weaponSwitchInactiveAAmmoAfterBFire = 0;
+        bool m_weaponSwitchInactiveAAmmoAfterBFireCaptured = false;
         bool m_loadoutAcceptanceReported = false;
         bool m_spawnCheckpointAcceptanceStarted = false;
         bool m_spawnCheckpointDefaultRespawnObserved = false;
@@ -205,6 +277,7 @@ namespace STWGameplay
         int m_spawnCheckpointInitialActivationCount = 0;
         int m_spawnCheckpointInitialDeathEvents = 0;
         bool m_jumpAcceptanceStarted = false;
+        bool m_jumpAcceptanceSingleEventObserved = false;
         bool m_jumpAcceptanceAirborne = false;
         bool m_jumpAcceptanceRose = false;
         bool m_jumpAcceptanceLanded = false;

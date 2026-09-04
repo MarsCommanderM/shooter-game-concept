@@ -3,6 +3,7 @@ set(FILES
     Source/CombatFeedbackPresentation.cpp
     Source/EncounterModel.cpp
     Source/EnemyCombatModel.cpp
+    Source/EnemyCollectionModel.cpp
     Source/EnemyPresentation.cpp
     Source/PlayerSliceModel.cpp
     Source/SpawnCheckpointModel.cpp
