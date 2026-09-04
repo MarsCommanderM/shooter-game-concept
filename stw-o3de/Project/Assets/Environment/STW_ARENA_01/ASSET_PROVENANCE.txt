@@ -1,0 +1,3 @@
+STW_ARENA_01 is original STW production geometry.
+Generated deterministically by tools/assets/generate_stw_arena.py.
+No external, copyrighted, downloaded, or paid asset was used.

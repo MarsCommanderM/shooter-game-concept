@@ -1,0 +1,9 @@
+STW ASSET PROVENANCE
+====================
+
+Asset name: STW_MELEE_01
+Asset kind: original fictional sci-fi Melee presentation mesh
+
+Locally authored minimal geometry and text material only. No external download,
+real-world model, manufacturer data, or combat mechanics are represented. The
+mesh is presentation-only; melee use eligibility remains in PlayerSliceModel.

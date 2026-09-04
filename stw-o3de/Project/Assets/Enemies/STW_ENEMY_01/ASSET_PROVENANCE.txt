@@ -1,0 +1,9 @@
+STW_ENEMY_01 ASSET PROVENANCE
+=============================
+
+STW_ENEMY_01 is an original fictional robotic/alien combat unit generated
+deterministically by tools/assets/create_stw_enemy_01.py. No external, downloaded,
+paid, copyrighted third-party, real-person, or real-world military asset is used.
+The static OBJ uses a text-authored Atom StandardPBR material and no textures.
+Gameplay health, movement, damage, death and respawn remain in EnemyCombatModel;
+the mesh and material are presentation-only.

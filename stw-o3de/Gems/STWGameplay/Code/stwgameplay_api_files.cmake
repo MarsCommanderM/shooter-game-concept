@@ -1,0 +1,11 @@
+set(FILES
+    Include/STWGameplay/ArenaLayout.h
+    Include/STWGameplay/CombatFeedbackPresentation.h
+    Include/STWGameplay/EncounterModel.h
+    Include/STWGameplay/EnemyCombatModel.h
+    Include/STWGameplay/EnemyCollectionModel.h
+    Include/STWGameplay/EnemyPresentation.h
+    Include/STWGameplay/STWGameplayTypeIds.h
+    Include/STWGameplay/PlayerSliceModel.h
+    Include/STWGameplay/SpawnCheckpointModel.h
+    Include/STWGameplay/ViewmodelPresentation.h)

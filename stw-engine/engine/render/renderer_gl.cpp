@@ -1,7 +1,10 @@
 // STW-ENGINE: OpenGL-4.5-Backend (Forward+, PBR metallic/roughness, ACES)
 // Phase 2+: Render-Paesse getrennt (Shadow-Depth -> Main), Frustum-Culling, PCF-Shadows
 #include "renderer.h"
+#include "render/FrameCapture.hpp"
 #include "render/IBL.hpp"
+#include "render/Vertex.hpp"
+#include "animation/SkinningPalette.hpp"
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
@@ -10,8 +13,14 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <cstdio>
 #include <cstring>
+#include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace stw {
@@ -30,6 +39,7 @@ PFNGLBINDBUFFERPROC glBindBuffer_ = nullptr;
 PFNGLBUFFERDATAPROC glBufferData_ = nullptr;
 PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray_ = nullptr;
 PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer_ = nullptr;
+PFNGLVERTEXATTRIBIPOINTERPROC glVertexAttribIPointer_ = nullptr;
 PFNGLCREATESHADERPROC glCreateShader_ = nullptr;
 PFNGLSHADERSOURCEPROC glShaderSource_ = nullptr;
 PFNGLCOMPILESHADERPROC glCompileShader_ = nullptr;
@@ -62,6 +72,7 @@ bool LoadGL() {
   glBufferData_ = Load<PFNGLBUFFERDATAPROC>("glBufferData");
   glEnableVertexAttribArray_ = Load<PFNGLENABLEVERTEXATTRIBARRAYPROC>("glEnableVertexAttribArray");
   glVertexAttribPointer_ = Load<PFNGLVERTEXATTRIBPOINTERPROC>("glVertexAttribPointer");
+  glVertexAttribIPointer_ = Load<PFNGLVERTEXATTRIBIPOINTERPROC>("glVertexAttribIPointer");
   glCreateShader_ = Load<PFNGLCREATESHADERPROC>("glCreateShader");
   glShaderSource_ = Load<PFNGLSHADERSOURCEPROC>("glShaderSource");
   glCompileShader_ = Load<PFNGLCOMPILESHADERPROC>("glCompileShader");
@@ -85,32 +96,72 @@ bool LoadGL() {
   glDeleteBuffers_ = Load<PFNGLDELETEBUFFERSPROC>("glDeleteBuffers");
   glDeleteVertexArrays_ = Load<PFNGLDELETEVERTEXARRAYSPROC>("glDeleteVertexArrays");
   glGenerateMipmap_ = Load<PFNGLGENERATEMIPMAPPROC>("glGenerateMipmap");
-  return glGenVertexArrays_ && glBindVertexArray_ && glGenBuffers_ && glBufferData_ &&
-         glVertexAttribPointer_ && glCreateShader_ && glCreateProgram_ && glGenFramebuffers_;
+  return glGenVertexArrays_ && glBindVertexArray_ && glGenBuffers_ &&
+         glBindBuffer_ && glBufferData_ && glEnableVertexAttribArray_ &&
+         glVertexAttribPointer_ && glVertexAttribIPointer_ &&
+         glCreateShader_ && glShaderSource_ && glCompileShader_ &&
+         glGetShaderiv_ && glGetShaderInfoLog_ && glCreateProgram_ &&
+         glAttachShader_ && glLinkProgram_ && glGetProgramiv_ &&
+         glGetProgramInfoLog_ && glUseProgram_ && glGetUniformLocation_ &&
+         glUniform1i_ && glUniform1f_ && glUniform3f_ &&
+         glUniformMatrix4fv_ && glGenFramebuffers_ && glBindFramebuffer_ &&
+         glFramebufferTexture2D_ && glDeleteFramebuffers_ &&
+         glDeleteBuffers_ && glDeleteVertexArrays_ && glGenerateMipmap_;
 }
 
 /* ---------------- Shaders ---------------- */
-const char* kVS = R"(
+std::string BuildVertexShaderSource() {
+  return std::string(R"(
 #version 330 core
 layout(location=0) in vec3 aPos;
 layout(location=1) in vec3 aNrm;
 layout(location=2) in vec2 aUV;
 layout(location=3) in vec4 aTan;
+layout(location=4) in uvec4 aJoints;
+layout(location=5) in vec4 aWeights;
 uniform mat4 uM;
 uniform mat4 uVP;
+uniform bool uHasSkin;
+uniform mat4 uJoints[)") + std::to_string(kMaxSkinJoints) + R"(];
 out vec3 vN; out vec3 vW; out vec2 vUV; out vec3 vT; out float vTS;
+
+vec3 safeNormalize(vec3 value, vec3 fallbackValue) {
+  float lengthSquared = dot(value, value);
+  return lengthSquared > 1e-12 ? value * inversesqrt(lengthSquared) : fallbackValue;
+}
+
 void main() {
-  vec4 w = uM * vec4(aPos, 1.0);
+  vec4 localPosition = vec4(aPos, 1.0);
+  vec3 localNormal = aNrm;
+  vec3 localTangent = aTan.xyz;
+  if (uHasSkin) {
+    mat4 skin =
+        aWeights.x * uJoints[aJoints.x] +
+        aWeights.y * uJoints[aJoints.y] +
+        aWeights.z * uJoints[aJoints.z] +
+        aWeights.w * uJoints[aJoints.w];
+    localPosition = skin * localPosition;
+    // T3-A assumes rigid/uniform-scale joints for direction transforms.
+    mat3 skinDirection = mat3(skin);
+    localNormal = skinDirection * localNormal;
+    localTangent = skinDirection * localTangent;
+  }
+
+  vec4 w = uM * localPosition;
   vW = w.xyz;
   mat3 nm = mat3(uM);
-  vec3 N = normalize(nm * aNrm);
-  vec3 T = normalize(nm * aTan.xyz);
-  T = normalize(T - N * dot(N, T));
+  vec3 N = safeNormalize(nm * localNormal, vec3(0.0, 1.0, 0.0));
+  vec3 fallbackT = abs(N.y) < 0.999
+      ? safeNormalize(cross(vec3(0.0, 1.0, 0.0), N), vec3(1.0, 0.0, 0.0))
+      : safeNormalize(cross(vec3(1.0, 0.0, 0.0), N), vec3(0.0, 0.0, 1.0));
+  vec3 T = nm * localTangent;
+  T = safeNormalize(T - N * dot(N, T), fallbackT);
   vN = N; vT = T; vTS = aTan.w;
   vUV = aUV;
   gl_Position = uVP * w;
 }
 )";
+}
 
 const char* kFS = R"(
 #version 330 core
@@ -200,13 +251,30 @@ void main() {
 }
 )";
 
-const char* kShadowVS = R"(
+std::string BuildShadowVertexShaderSource() {
+  return std::string(R"(
 #version 330 core
 layout(location=0) in vec3 aPos;
+layout(location=4) in uvec4 aJoints;
+layout(location=5) in vec4 aWeights;
 uniform mat4 uM;
 uniform mat4 uLVP;
-void main() { gl_Position = uLVP * uM * vec4(aPos, 1.0); }
+uniform bool uHasSkin;
+uniform mat4 uJoints[)") + std::to_string(kMaxSkinJoints) + R"(];
+void main() {
+  vec4 localPosition = vec4(aPos, 1.0);
+  if (uHasSkin) {
+    mat4 skin =
+        aWeights.x * uJoints[aJoints.x] +
+        aWeights.y * uJoints[aJoints.y] +
+        aWeights.z * uJoints[aJoints.z] +
+        aWeights.w * uJoints[aJoints.w];
+    localPosition = skin * localPosition;
+  }
+  gl_Position = uLVP * uM * localPosition;
+}
 )";
+}
 
 const char* kShadowFS = R"(
 #version 330 core
@@ -238,16 +306,118 @@ bool SphereVisible(const Plane p[6], const glm::vec3& c, float r) {
   return true;
 }
 
+bool Fail(std::string* error, const std::string& message) {
+  if (error) *error = message;
+  return false;
+}
+
+bool IsFinite(const glm::mat4& matrix) {
+  for (int column = 0; column < 4; ++column) {
+    for (int row = 0; row < 4; ++row) {
+      if (!std::isfinite(static_cast<double>(matrix[column][row]))) return false;
+    }
+  }
+  return true;
+}
+
+bool BuildGpuVertices(const StwMesh& mesh,
+                      std::vector<GpuVertex>& output,
+                      std::size_t& requiredJointCount,
+                      std::string* error) {
+  if (mesh.pos.empty() || mesh.pos.size() % 3 != 0) {
+    return Fail(error, "mesh positions must contain complete vec3 vertices");
+  }
+
+  const std::size_t vertexCount = mesh.pos.size() / 3;
+  const bool hasSkin = !mesh.skinInfluences.empty();
+  if (hasSkin && mesh.skinInfluences.size() != vertexCount) {
+    return Fail(error, "skin influence count must match vertex count");
+  }
+  for (std::uint32_t index : mesh.idx) {
+    if (index >= vertexCount) return Fail(error, "mesh index is out of range");
+  }
+
+  std::vector<GpuVertex> candidate(vertexCount);
+  std::size_t candidateRequiredJointCount = 0;
+  for (std::size_t vertexIndex = 0; vertexIndex < vertexCount; ++vertexIndex) {
+    GpuVertex& vertex = candidate[vertexIndex];
+    for (std::size_t component = 0; component < 3; ++component) {
+      vertex.position[component] = mesh.pos[vertexIndex * 3 + component];
+      if (mesh.nrm.size() >= (vertexIndex + 1) * 3) {
+        vertex.normal[component] = mesh.nrm[vertexIndex * 3 + component];
+      }
+    }
+    if (mesh.uv.size() >= (vertexIndex + 1) * 2) {
+      vertex.texCoord[0] = mesh.uv[vertexIndex * 2];
+      vertex.texCoord[1] = mesh.uv[vertexIndex * 2 + 1];
+    }
+    if (mesh.tan.size() >= (vertexIndex + 1) * 4) {
+      for (std::size_t component = 0; component < 4; ++component) {
+        vertex.tangent[component] = mesh.tan[vertexIndex * 4 + component];
+      }
+    }
+
+    if (!hasSkin) continue;
+    const SkinInfluence4& influence = mesh.skinInfluences[vertexIndex];
+    const float inputWeights[4] = {
+        influence.weights.x,
+        influence.weights.y,
+        influence.weights.z,
+        influence.weights.w,
+    };
+    double weightSum = 0.0;
+    for (std::size_t component = 0; component < 4; ++component) {
+      const float weight = inputWeights[component];
+      if (!std::isfinite(static_cast<double>(weight)) || weight < 0.0f) {
+        return Fail(error, "skin weights must be finite and non-negative");
+      }
+      if (weight > 0.0f) {
+        const std::uint32_t joint = influence.joints[component];
+        if (joint >= kMaxSkinJoints) {
+          return Fail(error, "skin influence exceeds the GPU joint limit");
+        }
+        vertex.joints[component] = joint;
+        candidateRequiredJointCount = std::max(
+            candidateRequiredJointCount, static_cast<std::size_t>(joint) + 1);
+      } else {
+        // Auch Nullgewicht-Slots werden im GLSL-Ausdruck indiziert. Index 0
+        // verhindert daher undefinierten Array-Zugriff trotz Gewicht 0.
+        vertex.joints[component] = 0;
+      }
+      weightSum += static_cast<double>(weight);
+    }
+    if (!std::isfinite(weightSum) || weightSum <= 1.0e-8) {
+      return Fail(error, "skin weights must have a positive finite sum");
+    }
+    for (std::size_t component = 0; component < 4; ++component) {
+      vertex.weights[component] =
+          static_cast<float>(static_cast<double>(inputWeights[component]) / weightSum);
+      if (!std::isfinite(static_cast<double>(vertex.weights[component]))) {
+        return Fail(error, "normalized GPU skin weight must be finite");
+      }
+    }
+  }
+
+  output = std::move(candidate);
+  requiredJointCount = candidateRequiredJointCount;
+  return true;
+}
+
 struct GLMesh {
   GLuint vao = 0, vbo = 0, ibo = 0;
   GLsizei count = 0;
   glm::vec3 bmin{0}, bmax{0};
+  bool hasSkin = false;
+  std::size_t requiredJointCount = 0;
+  bool missingPaletteWarningIssued = false;
 };
 
 struct DrawCmd {
   uint32_t mesh;
   StwMaterial mat;
   float model[16];
+  bool hasSkin = false;
+  std::vector<glm::mat4> joints;
 };
 
 class GLRenderer : public IRenderer {
@@ -258,8 +428,10 @@ class GLRenderer : public IRenderer {
     if (!ctx_) return false;
     SDL_GL_MakeCurrent(win_, ctx_);
     if (!LoadGL()) return false;
-    prog_ = BuildProgram(kVS, kFS);
-    shadowProg_ = BuildProgram(kShadowVS, kShadowFS);
+    const std::string vertexShader = BuildVertexShaderSource();
+    const std::string shadowVertexShader = BuildShadowVertexShaderSource();
+    prog_ = BuildProgram(vertexShader.c_str(), kFS);
+    shadowProg_ = BuildProgram(shadowVertexShader.c_str(), kShadowFS);
     if (!prog_ || !shadowProg_) return false;
     uM_ = glGetUniformLocation_(prog_, "uM");
     uVP_ = glGetUniformLocation_(prog_, "uVP");
@@ -280,6 +452,8 @@ class GLRenderer : public IRenderer {
     uIrr_ = glGetUniformLocation_(prog_, "uIrradiance");
     uPre_ = glGetUniformLocation_(prog_, "uPrefilter");
     uBrdf_ = glGetUniformLocation_(prog_, "uBrdfLut");
+    uHasSkin_ = glGetUniformLocation_(prog_, "uHasSkin");
+    uJoints_ = glGetUniformLocation_(prog_, "uJoints[0]");
     // 1x1 weiße Default-Normalmap
     glGenTextures(1, &whiteTex_);
     glBindTexture(GL_TEXTURE_2D, whiteTex_);
@@ -289,6 +463,12 @@ class GLRenderer : public IRenderer {
     uLVP_ = glGetUniformLocation_(prog_, "uLightVP");
     sM_ = glGetUniformLocation_(shadowProg_, "uM");
     sLVP_ = glGetUniformLocation_(shadowProg_, "uLVP");
+    sHasSkin_ = glGetUniformLocation_(shadowProg_, "uHasSkin");
+    sJoints_ = glGetUniformLocation_(shadowProg_, "uJoints[0]");
+    if (uHasSkin_ < 0 || uJoints_ < 0 || sHasSkin_ < 0 || sJoints_ < 0) {
+      SDL_Log("Skinning-Uniforms konnten nicht gebunden werden");
+      return false;
+    }
 
     // Shadow-Map-FBO (2048, Depth-only)
     glGenTextures(1, &shadowTex_);
@@ -326,58 +506,161 @@ class GLRenderer : public IRenderer {
   }
   void SetCameraPos(float x, float y, float z) override { cam_ = glm::vec3(x, y, z); }
   void SetLight(const Light& l) override { light_ = l; }
+  void SetClearColor(float red, float green, float blue) override {
+    clearColor_ = glm::clamp(glm::vec3(red, green, blue),
+                            glm::vec3(0.0f), glm::vec3(1.0f));
+  }
 
   uint32_t UploadMesh(const StwMesh& m) override {
+    std::uint32_t handle = kInvalidMeshHandle;
+    std::string error;
+    if (!UploadMeshChecked(m, handle, &error)) {
+      SDL_Log("Mesh-Upload abgelehnt: %s", error.c_str());
+      return kInvalidMeshHandle;
+    }
+    return handle;
+  }
+
+  bool UploadMeshChecked(const StwMesh& m, uint32_t& handle,
+                         std::string* error) override {
+    if (error) error->clear();
+    std::vector<GpuVertex> vertices;
+    std::size_t requiredJointCount = 0;
+    if (!BuildGpuVertices(m, vertices, requiredJointCount, error)) return false;
+    if (meshes_.size() >= static_cast<std::size_t>(kInvalidMeshHandle)) {
+      return Fail(error, "renderer mesh handle space is exhausted");
+    }
+    const std::size_t vertexBytes = vertices.size() * sizeof(GpuVertex);
+    const std::size_t indexBytes = m.idx.size() * sizeof(std::uint32_t);
+    if (vertexBytes > static_cast<std::size_t>(
+                          std::numeric_limits<GLsizeiptr>::max()) ||
+        indexBytes > static_cast<std::size_t>(
+                         std::numeric_limits<GLsizeiptr>::max()) ||
+        m.idx.size() > static_cast<std::size_t>(
+                           std::numeric_limits<GLsizei>::max())) {
+      return Fail(error, "mesh buffer is too large for OpenGL");
+    }
+
     GLMesh g;
     g.bmin = glm::vec3(m.bmin[0], m.bmin[1], m.bmin[2]);
     g.bmax = glm::vec3(m.bmax[0], m.bmax[1], m.bmax[2]);
+    g.hasSkin = !m.skinInfluences.empty();
+    g.requiredJointCount = requiredJointCount;
     glGenVertexArrays_(1, &g.vao);
     glGenBuffers_(1, &g.vbo);
     glGenBuffers_(1, &g.ibo);
     glBindVertexArray_(g.vao);
     glBindBuffer_(GL_ARRAY_BUFFER, g.vbo);
-    const size_t n = m.pos.size() / 3;
-    std::vector<float> blk;
-    blk.reserve(n * 8);
-    for (size_t i = 0; i < n; i++) {
-      blk.insert(blk.end(), {m.pos[i * 3], m.pos[i * 3 + 1], m.pos[i * 3 + 2]});
-      if (m.nrm.size() >= (i + 1) * 3)
-        blk.insert(blk.end(), {m.nrm[i * 3], m.nrm[i * 3 + 1], m.nrm[i * 3 + 2]});
-      else
-        blk.insert(blk.end(), {0, 1, 0});
-      if (m.uv.size() >= (i + 1) * 2)
-        blk.insert(blk.end(), {m.uv[i * 2], m.uv[i * 2 + 1]});
-      else
-        blk.insert(blk.end(), {0, 0});
-      if (m.tan.size() >= (i + 1) * 4)
-        blk.insert(blk.end(), {m.tan[i * 4], m.tan[i * 4 + 1], m.tan[i * 4 + 2], m.tan[i * 4 + 3]});
-      else
-        blk.insert(blk.end(), {1, 0, 0, 1});
-    }
-    glBufferData_(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(blk.size() * 4), blk.data(), GL_STATIC_DRAW);
+    glBufferData_(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(vertexBytes),
+                  vertices.data(), GL_STATIC_DRAW);
+    const GLsizei stride = static_cast<GLsizei>(sizeof(GpuVertex));
     glEnableVertexAttribArray_(0);
-    glVertexAttribPointer_(0, 3, GL_FLOAT, GL_FALSE, 12 * 4, (void*)0);
+    glVertexAttribPointer_(0, 3, GL_FLOAT, GL_FALSE, stride,
+                           reinterpret_cast<const void*>(offsetof(GpuVertex, position)));
     glEnableVertexAttribArray_(1);
-    glVertexAttribPointer_(1, 3, GL_FLOAT, GL_FALSE, 12 * 4, (void*)(3 * 4));
+    glVertexAttribPointer_(1, 3, GL_FLOAT, GL_FALSE, stride,
+                           reinterpret_cast<const void*>(offsetof(GpuVertex, normal)));
     glEnableVertexAttribArray_(2);
-    glVertexAttribPointer_(2, 2, GL_FLOAT, GL_FALSE, 12 * 4, (void*)(6 * 4));
+    glVertexAttribPointer_(2, 2, GL_FLOAT, GL_FALSE, stride,
+                           reinterpret_cast<const void*>(offsetof(GpuVertex, texCoord)));
     glEnableVertexAttribArray_(3);
-    glVertexAttribPointer_(3, 4, GL_FLOAT, GL_FALSE, 12 * 4, (void*)(8 * 4));
+    glVertexAttribPointer_(3, 4, GL_FLOAT, GL_FALSE, stride,
+                           reinterpret_cast<const void*>(offsetof(GpuVertex, tangent)));
+    glEnableVertexAttribArray_(4);
+    glVertexAttribIPointer_(4, 4, GL_UNSIGNED_INT, stride,
+                            reinterpret_cast<const void*>(offsetof(GpuVertex, joints)));
+    glEnableVertexAttribArray_(5);
+    glVertexAttribPointer_(5, 4, GL_FLOAT, GL_FALSE, stride,
+                           reinterpret_cast<const void*>(offsetof(GpuVertex, weights)));
     glBindBuffer_(GL_ELEMENT_ARRAY_BUFFER, g.ibo);
-    glBufferData_(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(m.idx.size() * 4), m.idx.data(), GL_STATIC_DRAW);
+    glBufferData_(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(indexBytes),
+                  m.idx.data(), GL_STATIC_DRAW);
     g.count = static_cast<GLsizei>(m.idx.size());
     meshes_.push_back(g);
-    return static_cast<uint32_t>(meshes_.size() - 1);
+    handle = static_cast<uint32_t>(meshes_.size() - 1);
+    return true;
   }
 
   void Draw(uint32_t h, const StwMaterial& mat, const float model[16]) override {
-    glUniform1f_(uHasNormal_, mat.hasNormal ? 1.0f : 0.0f);
-    glUniform1f_(uNormalScale_, mat.normalScale);
-    glActiveTexture(GL_TEXTURE4);
-    glBindTexture(GL_TEXTURE_2D, mat.hasNormal ? normalTex_ : whiteTex_);
-    glUniform1i_(uNormalTex_, 4);
-    cmds_.push_back({h, mat, {}});
-    std::memcpy(cmds_.back().model, model, sizeof(float) * 16);
+    std::string error;
+    if (!DrawWithSkinning(h, mat, model, nullptr, &error)) {
+      bool shouldLog = true;
+      if (h < meshes_.size() && meshes_[h].hasSkin) {
+        shouldLog = !meshes_[h].missingPaletteWarningIssued;
+        meshes_[h].missingPaletteWarningIssued = true;
+      }
+      if (shouldLog) SDL_Log("Draw abgelehnt: %s", error.c_str());
+    }
+  }
+
+  bool DrawWithSkinning(uint32_t h, const StwMaterial& mat,
+                        const float model[16],
+                        const SkinningPalette* palette,
+                        std::string* error) override {
+    if (error) error->clear();
+    if (h >= meshes_.size()) return Fail(error, "mesh handle is invalid");
+    if (!model) return Fail(error, "model matrix pointer must not be null");
+    for (std::size_t component = 0; component < 16; ++component) {
+      if (!std::isfinite(static_cast<double>(model[component]))) {
+        return Fail(error, "model matrix must be finite");
+      }
+    }
+
+    const GLMesh& mesh = meshes_[h];
+    const bool hasPalette = palette && !palette->empty();
+    if (mesh.hasSkin && !hasPalette) {
+      return Fail(error, "skinned mesh requires a non-empty skinning palette");
+    }
+    if (!mesh.hasSkin && hasPalette) {
+      return Fail(error, "skinning palette cannot be applied to an unskinned mesh");
+    }
+
+    DrawCmd command{};
+    command.mesh = h;
+    command.mat = mat;
+    std::memcpy(command.model, model, sizeof(command.model));
+    if (hasPalette) {
+      if (palette->size() > kMaxSkinJoints) {
+        return Fail(error, "skinning palette exceeds the GPU joint limit");
+      }
+      if (palette->size() < mesh.requiredJointCount) {
+        return Fail(error, "skinning palette does not cover all mesh joint indices");
+      }
+      for (const glm::mat4& matrix : palette->matrices()) {
+        if (!IsFinite(matrix)) {
+          return Fail(error, "skinning palette matrix must be finite");
+        }
+      }
+      command.hasSkin = true;
+      command.joints = palette->matrices();
+    }
+    cmds_.push_back(std::move(command));
+    return true;
+  }
+
+  bool RequestFrameCapture(const std::string& path,
+                           std::string* error) override {
+    if (error) error->clear();
+    if (path.empty()) return Fail(error, "frame capture path must not be empty");
+    // One slot is intentional: remote streaming always wants the newest frame.
+    pendingCapturePath_ = path;
+    captureResultReady_ = false;
+    captureSucceeded_ = false;
+    captureError_.clear();
+    return true;
+  }
+
+  bool ConsumeFrameCaptureResult(std::string* error) override {
+    if (error) error->clear();
+    if (!captureResultReady_) {
+      return Fail(error, "frame capture result is not ready");
+    }
+    captureResultReady_ = false;
+    if (!captureSucceeded_) {
+      if (error) *error = captureError_;
+      return false;
+    }
+    return true;
   }
 
   void EndFrame() override {
@@ -398,6 +681,11 @@ class GLRenderer : public IRenderer {
     for (const auto& c : cmds_) {
       if (c.mesh >= meshes_.size()) continue;
       glUniformMatrix4fv_(sM_, 1, GL_FALSE, c.model);
+      glUniform1i_(sHasSkin_, c.hasSkin ? 1 : 0);
+      if (c.hasSkin) {
+        glUniformMatrix4fv_(sJoints_, static_cast<GLsizei>(c.joints.size()),
+                            GL_FALSE, glm::value_ptr(c.joints.front()));
+      }
       glBindVertexArray_(meshes_[c.mesh].vao);
       glDrawElements(GL_TRIANGLES, meshes_[c.mesh].count, GL_UNSIGNED_INT, nullptr);
     }
@@ -408,7 +696,7 @@ class GLRenderer : public IRenderer {
     int w = 0, h = 0;
     SDL_GL_GetDrawableSize(win_, &w, &h);
     glViewport(0, 0, w, h);
-    glClearColor(0.012f, 0.02f, 0.012f, 1.f);
+    glClearColor(clearColor_.r, clearColor_.g, clearColor_.b, 1.f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glUseProgram_(prog_);
     glUniformMatrix4fv_(uVP_, 1, GL_FALSE, vp_);
@@ -445,13 +733,67 @@ class GLRenderer : public IRenderer {
       float r = glm::length(g.bmax - g.bmin) * 0.5f;
       glm::vec4 cw = M * glm::vec4(cLocal, 1.f);
       r *= glm::max(1e-3f, glm::max(glm::length(glm::vec3(M[0])), glm::max(glm::length(glm::vec3(M[1])), glm::length(glm::vec3(M[2])))));
-      if (!SphereVisible(planes_, glm::vec3(cw), r)) continue;
+      // Bind-Pose-Bounds sind fuer animierte Vertices nicht konservativ.
+      if (!c.hasSkin && !SphereVisible(planes_, glm::vec3(cw), r)) continue;
       glUniformMatrix4fv_(uM_, 1, GL_FALSE, c.model);
+      glUniform1i_(uHasSkin_, c.hasSkin ? 1 : 0);
+      if (c.hasSkin) {
+        glUniformMatrix4fv_(uJoints_, static_cast<GLsizei>(c.joints.size()),
+                            GL_FALSE, glm::value_ptr(c.joints.front()));
+      }
       glUniform3f_(uBase_, c.mat.base[0], c.mat.base[1], c.mat.base[2]);
       glUniform1f_(uMetal_, c.mat.metallic);
       glUniform1f_(uRough_, c.mat.roughness);
+      glUniform1f_(uHasNormal_, c.mat.hasNormal ? 1.0f : 0.0f);
+      glUniform1f_(uNormalScale_, c.mat.normalScale);
+      glActiveTexture(GL_TEXTURE4);
+      glBindTexture(GL_TEXTURE_2D, c.mat.hasNormal ? normalTex_ : whiteTex_);
+      glUniform1i_(uNormalTex_, 4);
       glBindVertexArray_(g.vao);
       glDrawElements(GL_TRIANGLES, g.count, GL_UNSIGNED_INT, nullptr);
+    }
+
+    if (!pendingCapturePath_.empty()) {
+      captureResultReady_ = true;
+      captureSucceeded_ = false;
+      captureError_.clear();
+
+      const std::size_t captureWidth = w > 0 ? static_cast<std::size_t>(w) : 0u;
+      const std::size_t captureHeight = h > 0 ? static_cast<std::size_t>(h) : 0u;
+      if (captureWidth == 0u || captureHeight == 0u ||
+          captureWidth > std::numeric_limits<std::size_t>::max() / 3u ||
+          captureWidth * 3u >
+              std::numeric_limits<std::size_t>::max() / captureHeight) {
+        captureError_ = "frame capture dimensions are invalid";
+      } else {
+        const std::size_t pixelBytes = captureWidth * captureHeight * 3u;
+        constexpr std::size_t kMaxCaptureBytes = 64u * 1024u * 1024u;
+        if (pixelBytes > kMaxCaptureBytes) {
+          captureError_ = "frame capture exceeds the 64 MiB safety limit";
+        } else {
+          std::vector<std::uint8_t> pixels(pixelBytes);
+          GLint previousPackAlignment = 4;
+          glGetIntegerv(GL_PACK_ALIGNMENT, &previousPackAlignment);
+          glPixelStorei(GL_PACK_ALIGNMENT, 1);
+          while (glGetError() != GL_NO_ERROR) {
+          }
+          glReadBuffer(GL_BACK);
+          glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE,
+                       pixels.data());
+          const GLenum readError = glGetError();
+          glPixelStorei(GL_PACK_ALIGNMENT, previousPackAlignment);
+          if (readError != GL_NO_ERROR) {
+            captureError_ = "OpenGL backbuffer readback failed";
+          } else {
+            captureSucceeded_ = WriteRgb8PngAtomic(
+                pendingCapturePath_, w, h, pixels, true, &captureError_);
+          }
+        }
+      }
+      if (!captureSucceeded_) {
+        SDL_Log("Frame-Capture fehlgeschlagen: %s", captureError_.c_str());
+      }
+      pendingCapturePath_.clear();
     }
     SDL_GL_SwapWindow(win_);
   }
@@ -509,6 +851,7 @@ class GLRenderer : public IRenderer {
   GLuint shadowFbo_ = 0, shadowTex_ = 0;
   GLint uM_ = 0, uVP_ = 0, uCam_ = 0, uBase_ = 0, uMetal_ = 0, uRough_ = 0, uLD_ = 0, uLC_ = 0, uAmb_ = 0, uStr_ = 0, uShadow_ = 0, uLVP_ = 0;
   GLint uHasNormal_ = 0, uNormalScale_ = 0, uNormalTex_ = 0, uHasIBL_ = 0, uMaxLod_ = 0, uIrr_ = 0, uPre_ = 0, uBrdf_ = 0;
+  GLint uHasSkin_ = 0, uJoints_ = 0;
   GLuint whiteTex_ = 0, normalTex_ = 0;
   IBLResources ibl_;
 
@@ -527,14 +870,19 @@ class GLRenderer : public IRenderer {
   void SetNormalTexture(uint32_t t) override { normalTex_ = t ? t : whiteTex_; }
 
  private:
-  GLint sM_ = 0, sLVP_ = 0;
+  GLint sM_ = 0, sLVP_ = 0, sHasSkin_ = 0, sJoints_ = 0;
   float vp_[16] = {};
   bool vpDirty_ = false;
   Plane planes_[6];
   glm::vec3 cam_{0, 1.7f, 4};
+  glm::vec3 clearColor_{0.012f, 0.02f, 0.012f};
   Light light_;
   std::vector<GLMesh> meshes_;
   std::vector<DrawCmd> cmds_;
+  std::string pendingCapturePath_;
+  std::string captureError_;
+  bool captureResultReady_ = false;
+  bool captureSucceeded_ = false;
 };
 
 }  // namespace
