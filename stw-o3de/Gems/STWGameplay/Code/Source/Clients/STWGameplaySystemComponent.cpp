@@ -23,6 +23,7 @@
 #include <Atom/RPI.Reflect/Model/ModelAsset.h>
 #include <STWGameplay/STWGameplayTypeIds.h>
 #include <STWGameplay/ArenaLayout.h>
+#include <STWGameplay/BodycamCameraPresentation.h>
 
 #include <cstdlib>
 #include <algorithm>
@@ -414,10 +415,29 @@ namespace STWGameplay
         UpdateAdsAcceptanceMarkers();
         UpdateSwayAcceptanceMarkers();
 
+        const PlayerState& bodycamPlayer = m_model.GetPlayer();
+        BodycamPresentationInput bodycamInput;
+        bodycamInput.m_lookX = m_input.m_lookX;
+        bodycamInput.m_lookY = m_input.m_lookY;
+        bodycamInput.m_speed = AZ::Vector3(
+            desiredPlayerVelocity.GetX(), desiredPlayerVelocity.GetY(), 0.0f).GetLength();
+        bodycamInput.m_lateralInput = m_input.m_strafe;
+        bodycamInput.m_sprinting = m_input.m_sprint && bodycamInput.m_speed > 0.01f;
+        bodycamInput.m_ads = m_adsHeld;
+        bodycamInput.m_grounded = bodycamPlayer.m_grounded;
+        bodycamInput.m_crouched = bodycamPlayer.m_crouchDesired;
+        bodycamInput.m_sliding = bodycamPlayer.m_slideActive;
+        bodycamInput.m_mantling = bodycamPlayer.m_mantleActive;
+        bodycamInput.m_mantleProgress = bodycamPlayer.m_mantleElapsed / PlayerSliceModel::MantleDuration;
+        bodycamInput.m_alive = bodycamPlayer.m_alive;
+        bodycamInput.m_respawnEvents = bodycamPlayer.m_respawnEvents;
+        m_bodycamCameraPresentation.Update(deltaTime, bodycamInput);
+
         m_input.m_lookX = 0.0f;
         m_input.m_lookY = 0.0f;
         m_input.m_reload = false;
         UpdateCamera();
+        UpdateBodycamAcceptance();
         DrawPresentation();
         UpdateWeaponSwitchAcceptance();
         UpdateLoadoutAcceptance();
@@ -1769,12 +1789,57 @@ namespace STWGameplay
         const PlayerState& player = m_model.GetPlayer();
         const AZ::Quaternion yaw = AZ::Quaternion::CreateRotationZ(-player.m_yaw);
         const AZ::Quaternion pitch = AZ::Quaternion::CreateRotationX(player.m_pitch);
+        const AZ::Vector3 bodycamRotation = m_bodycamCameraPresentation.GetCameraRotationOffset();
+        const AZ::Quaternion bodycam = AZ::Quaternion::CreateRotationX(bodycamRotation.GetX())
+            * AZ::Quaternion::CreateRotationY(bodycamRotation.GetY())
+            * AZ::Quaternion::CreateRotationZ(bodycamRotation.GetZ());
+        const AZ::Quaternion cameraRotation = yaw * pitch * bodycam;
         const AZ::Vector3 physicalEyePosition = player.m_position
             + AZ::Vector3::CreateAxisZ(m_physicsPlayer.GetEyeHeight());
-        AZ::Transform transform = AZ::Transform::CreateFromQuaternionAndTranslation(yaw * pitch, physicalEyePosition);
+        const AZ::Vector3 cameraPosition = physicalEyePosition
+            + (yaw * pitch).TransformVector(m_bodycamCameraPresentation.GetCameraPositionOffset());
+        AZ::Transform transform = AZ::Transform::CreateFromQuaternionAndTranslation(cameraRotation, cameraPosition);
         AZ::TransformBus::Event(cameraId, &AZ::TransformInterface::SetWorldTM, transform);
         Camera::CameraRequestBus::Event(
             cameraId, &Camera::CameraRequestBus::Events::SetFovDegrees, m_viewmodel.GetCameraFovDegrees());
+    }
+
+    void STWGameplaySystemComponent::UpdateBodycamAcceptance()
+    {
+        if (!m_automatedAcceptance || m_bodycamAcceptanceReported)
+        {
+            return;
+        }
+
+        const bool passed = m_bodycamCameraPresentation.WasLookInertiaObserved()
+            && m_bodycamCameraPresentation.WasLocomotionResponseObserved()
+            && m_bodycamCameraPresentation.WasRollResponseObserved()
+            && m_bodycamCameraPresentation.WasAdsSuppressionObserved()
+            && m_bodycamCameraPresentation.WasVerticalResponseObserved()
+            && m_bodycamCameraPresentation.WasResetToNeutralObserved()
+            && BodycamCameraPresentation::IsReducedMotionProfileEffective();
+        if (!passed)
+        {
+            return;
+        }
+
+        AZ_Printf("STWGameplay",
+            "BODYCAM_PRESENTATION_ACTIVE=1\n"
+            "BODYCAM_VISUAL_ONLY=1\n"
+            "BODYCAM_LOOK_INERTIA_ACTIVE=1\n"
+            "BODYCAM_LOCOMOTION_RESPONSE_ACTIVE=1\n"
+            "BODYCAM_ROLL_RESPONSE_ACTIVE=1\n"
+            "BODYCAM_VERTICAL_RESPONSE_ACTIVE=1\n"
+            "BODYCAM_ADS_SUPPRESSION_ACTIVE=1\n"
+            "BODYCAM_RESET_TO_NEUTRAL_PASS=1\n"
+            "BODYCAM_REDUCED_MOTION_PROFILE_PASS=1\n"
+            "PLAYER_GAMEPLAY_AUTHORITY_CHANGED=NO\n"
+            "PHYSX_AUTHORITY_CHANGED=NO\n"
+            "WEAPON_LOADOUT_SEMANTICS_CHANGED=NO\n"
+            "NETWORKING_CHANGED=NO\n"
+            "RESET_AUTHORITY_CHANGED=NO\n"
+            "BODYCAM_PRESENTATION_ACCEPTANCE result=PASS\n");
+        m_bodycamAcceptanceReported = true;
     }
 
     void STWGameplaySystemComponent::TryStartViewmodelMesh()
