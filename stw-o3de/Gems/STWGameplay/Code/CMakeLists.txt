@@ -22,6 +22,8 @@ ly_add_target(
         AZ::AzCore
         AZ::AzFramework
         Gem::Atom_Feature_Common.Public
+        Gem::EMotionFX.Static
+        Gem::EMotionFX_Atom.Static
         Gem::PhysX5.Static)
 
 ly_add_target(

@@ -1,0 +1,13 @@
+{
+    "values": [
+        {
+            "$type": "MotionGroup",
+            "name": "STW_CHARACTER_01_LOCOMOTION",
+            "selectedRootBone": "STW_CHARACTER_01_ARMATURE.root",
+            "id": "{B0D6A38E-7C5D-4EFA-9D3B-9D87E7D9B603}",
+            "rules": {
+                "rules": []
+            }
+        }
+    ]
+}

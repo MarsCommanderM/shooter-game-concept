@@ -1,0 +1,25 @@
+STW_CHARACTER_01 is an original STW repository-owned fictional character
+authored by the controlled Blender 4.5.13 headless toolchain.
+
+Source format: GLB (glTF 2.0 binary)
+Authoring tool: /teamspace/studios/this_studio/tools/blender/4.5.13/blender
+External assets: none
+Third-party assets: none
+Copyrighted game characters: none
+
+The source set contains one skinned mesh and the same deterministic 18-joint
+armature in each file. Motions are intentionally in-place:
+  STW_CHARACTER_01.glb                 IDLE
+  STW_CHARACTER_01_IDLE.glb            IDLE motion product
+  STW_CHARACTER_01_LOCOMOTION.glb      LOCOMOTION
+  STW_CHARACTER_01_DEATH.glb            DEATH
+
+Stable joint contract:
+  root, pelvis, spine, upper_spine, neck, head
+  upper_arm.L, lower_arm.L, hand.L
+  upper_arm.R, lower_arm.R, hand.R
+  upper_leg.L, lower_leg.L, foot.L
+  upper_leg.R, lower_leg.R, foot.R
+
+The EMotionFX joint hierarchy is presentation data only. Future PhysX
+ragdoll node indices must remain a separate mapping from these joint names.

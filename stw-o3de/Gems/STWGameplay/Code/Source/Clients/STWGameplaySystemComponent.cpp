@@ -147,6 +147,7 @@ namespace STWGameplay
         m_adsHeld = false;
         AZ::TickBus::Handler::BusDisconnect();
         AzFramework::InputChannelEventListener::Disconnect();
+        m_skeletalCharacterPresentation.Shutdown();
         ShutdownEnemyMesh();
         ShutdownArenaMesh();
         ShutdownViewmodelMesh();
@@ -361,6 +362,13 @@ namespace STWGameplay
         for (size_t index = 0; index < enemies.GetEnemyCount(); ++index)
         {
             const EnemyState presentationInput = enemies.GetInstanceByIndex(index).m_combat.GetState();
+            if (index == 0)
+            {
+                m_skeletalCharacterPresentation.Update(deltaTime, presentationInput);
+                const EnemyState& skeletalStateAfter = enemies.GetInstanceByIndex(index).m_combat.GetState();
+                m_skeletalPresentationAuthoritySeparated = m_skeletalPresentationAuthoritySeparated
+                    && STWSkeletalCharacterPresentation::IsGameplayStateUnchanged(presentationInput, skeletalStateAfter);
+            }
             m_enemyPresentations[index].Update(deltaTime, presentationInput);
             const EnemyState& presentationAfter = enemies.GetInstanceByIndex(index).m_combat.GetState();
             m_enemyPresentationAuthoritySeparated = m_enemyPresentationAuthoritySeparated
@@ -424,6 +432,7 @@ namespace STWGameplay
         UpdateSpawnCheckpointAcceptance();
         UpdateEnemyAiAcceptance(deltaTime);
         UpdateEnemyPresentationAcceptance();
+        UpdateSkeletalCharacterAcceptance();
         UpdateCombatFeedbackAcceptance();
         UpdateArenaAcceptance();
         RecordPerformance(deltaTime);
@@ -2120,7 +2129,8 @@ namespace STWGameplay
                 m_enemyMeshHandles[index],
                 baseTransform * m_enemyPresentations[index].GetLocalTransform() * objAxisCorrection,
                 AZ::Vector3(presentationScale.GetX(), presentationScale.GetZ(), presentationScale.GetY()) * hitScale);
-            m_meshFeatureProcessor->SetVisible(m_enemyMeshHandles[index], enemy.m_alive);
+            const bool skeletalPrimaryVisible = index == 0 && m_skeletalCharacterPresentation.IsSkinnedMeshVisible();
+            m_meshFeatureProcessor->SetVisible(m_enemyMeshHandles[index], enemy.m_alive && !skeletalPrimaryVisible);
             allMeshesReady = allMeshesReady && m_meshFeatureProcessor->GetModel(m_enemyMeshHandles[index]);
         }
         const bool impactVisible = m_combatFeedback.IsImpactVisible();
@@ -2725,6 +2735,76 @@ namespace STWGameplay
                 "reset=PASS authority_separation=PASS\n");
             m_enemyPresentationAcceptanceReported = true;
         }
+    }
+
+    void STWGameplaySystemComponent::UpdateSkeletalCharacterAcceptance()
+    {
+        if (!m_automatedAcceptance || m_skeletalCharacterAcceptanceReported)
+        {
+            return;
+        }
+
+        const bool actorAssetReady = m_skeletalCharacterPresentation.IsActorAssetReady();
+        const bool actorInstanceReady = m_skeletalCharacterPresentation.IsActorInstanceReady();
+        const bool skinnedMeshVisible = m_skeletalCharacterPresentation.IsSkinnedMeshVisible();
+        const bool motionAssetReady = m_skeletalCharacterPresentation.IsMotionAssetReady();
+        if (!STWSkeletalCharacterPresentation::IsAssetLifecycleComplete(
+                actorAssetReady, actorInstanceReady, skinnedMeshVisible, motionAssetReady))
+        {
+            return;
+        }
+
+        const bool passed = m_skeletalCharacterPresentation.GetSkeletonNodeCount() > 1
+            && m_skeletalCharacterPresentation.IsAnimationActive()
+            && m_skeletalCharacterPresentation.IsAnimationTimeAdvancing()
+            && m_skeletalCharacterPresentation.IsBoneTransformDeltaPositive()
+            && m_skeletalCharacterPresentation.IsEntityContextCorrect()
+            && m_skeletalCharacterPresentation.IsMainSceneResolved()
+            && m_skeletalCharacterPresentation.IsSkinnedFeatureProcessorAvailable()
+            && m_skeletalCharacterPresentation.IsMeshFeatureProcessorAvailable()
+            && m_skeletalCharacterPresentation.WasIdleObserved()
+            && m_skeletalCharacterPresentation.WasLocomotionObserved()
+            && m_skeletalCharacterPresentation.WasDeathObserved()
+            && m_skeletalCharacterPresentation.WasResetToIdleObserved()
+            && m_skeletalPresentationAuthoritySeparated;
+
+        AZ_Printf("STWGameplay",
+            "SKELETAL_CHARACTER_DIAGNOSTICS actor_asset_ready=%d actor_instance_ready=%d skeleton_node_count=%zu "
+            "skinned_mesh_visible=%d motion_asset_ready=%d animation_active=%d animation_time=%.6f "
+            "animation_time_advancing=%d bone_transform_delta_positive=%d presentation_state=%s "
+            "idle=%d locomotion=%d death=%d reset_to_idle=%d authority_separation=%d\n",
+            actorAssetReady ? 1 : 0, actorInstanceReady ? 1 : 0,
+            m_skeletalCharacterPresentation.GetSkeletonNodeCount(), skinnedMeshVisible ? 1 : 0,
+            motionAssetReady ? 1 : 0, m_skeletalCharacterPresentation.IsAnimationActive() ? 1 : 0,
+            m_skeletalCharacterPresentation.GetAnimationTime(),
+            m_skeletalCharacterPresentation.IsAnimationTimeAdvancing() ? 1 : 0,
+            m_skeletalCharacterPresentation.IsBoneTransformDeltaPositive() ? 1 : 0,
+            m_skeletalCharacterPresentation.GetStateName(),
+            m_skeletalCharacterPresentation.WasIdleObserved() ? 1 : 0,
+            m_skeletalCharacterPresentation.WasLocomotionObserved() ? 1 : 0,
+            m_skeletalCharacterPresentation.WasDeathObserved() ? 1 : 0,
+            m_skeletalCharacterPresentation.WasResetToIdleObserved() ? 1 : 0,
+            m_skeletalPresentationAuthoritySeparated ? 1 : 0);
+
+        if (!passed)
+        {
+            return;
+        }
+
+        AZ_Printf("STWGameplay",
+            "ENTITY_CONTEXT_CORRECT=%d\nMAIN_SCENE_RESOLVED=%d\nSKINNED_FP_AVAILABLE=%d\nMESH_FP_AVAILABLE=%d\n"
+            "ACTOR_ASSET_READY=1\nMOTION_ASSET_READY=1\nACTOR_INSTANCE_READY=1\n"
+            "SKELETON_NODE_COUNT=%zu\nSKINNED_MESH_VISIBLE=1\nANIMATION_ACTIVE=1\n"
+            "ANIMATION_TIME_ADVANCING=1\nBONE_TRANSFORM_DELTA_POSITIVE=1\n"
+            "IDLE_PRESENTATION=PASS\nLOCOMOTION_PRESENTATION=PASS\nDEATH_PRESENTATION=PASS\n"
+            "RESET_TO_IDLE_PRESENTATION=PASS\nAUTHORITY_SEPARATION=PASS\n"
+            "BLOCK_22_ANIMATION_ACCEPTANCE=PASS\n",
+            m_skeletalCharacterPresentation.IsEntityContextCorrect() ? 1 : 0,
+            m_skeletalCharacterPresentation.IsMainSceneResolved() ? 1 : 0,
+            m_skeletalCharacterPresentation.IsSkinnedFeatureProcessorAvailable() ? 1 : 0,
+            m_skeletalCharacterPresentation.IsMeshFeatureProcessorAvailable() ? 1 : 0,
+            m_skeletalCharacterPresentation.GetSkeletonNodeCount());
+        m_skeletalCharacterAcceptanceReported = true;
     }
 
     void STWGameplaySystemComponent::DrawPresentation()

@@ -1,0 +1,34 @@
+{
+    "values": [
+        {
+            "$type": "ActorGroup",
+            "name": "STW_CHARACTER_01",
+            "selectedRootBone": "STW_CHARACTER_01_ARMATURE.root",
+            "id": "{4D1C0E93-1A56-4C4F-B1A8-96D0F5795D01}",
+            "rules": {
+                "rules": []
+            }
+        },
+        {
+            "$type": "{07B356B7-3635-40B5-878A-FAC4EFD5AD86} MeshGroup",
+            "name": "STW_CHARACTER_01",
+            "nodeSelectionList": {
+                "selectedNodes": [
+                    "STW_CHARACTER_01_ARMATURE.STW_CHARACTER_01_MESH"
+                ],
+                "unselectedNodes": []
+            },
+            "id": "{7E772E5A-B277-4931-87B6-4A76E3E9B602}",
+            "rules": {
+                "rules": [
+                    {
+                        "$type": "SkinRule"
+                    },
+                    {
+                        "$type": "MaterialRule"
+                    }
+                ]
+            }
+        }
+    ]
+}

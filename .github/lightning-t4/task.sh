@@ -640,6 +640,28 @@ echo "STW_ENEMY_ASSET_SOURCE=${enemy_asset_source}"
 echo "STW_ENEMY_MODEL_PRODUCT=${enemy_model_product}"
 echo "STW_ENEMY_MATERIAL_PRODUCT=${enemy_material_product}"
 [[ -s "${enemy_asset_source}" && -s "${enemy_model_product}" && -s "${enemy_material_product}" ]]
+
+# Block 22C skeletal products. These checks are deliberately against the actual
+# Asset Processor cache, not the source GLBs, so Actor/Motion/skin products are
+# proven before the native runtime is launched.
+character_asset_source="${PROJECT}/Assets/Characters/STW_CHARACTER_01/STW_CHARACTER_01.glb"
+[[ -s "${character_asset_source}" ]]
+mapfile -t character_actor_products < <(find "${PROJECT}/Cache/linux" -type f -iname '*.actor' -path '*stw_character_01*' -print 2>/dev/null | sort)
+mapfile -t character_motion_products < <(find "${PROJECT}/Cache/linux" -type f -iname '*.motion' -path '*stw_character_01*' -print 2>/dev/null | sort)
+mapfile -t character_skin_products < <(find "${PROJECT}/Cache/linux" -type f \( -iname '*.azmodel' -o -iname '*.skinmeta' -o -iname '*.morphmeta' \) -path '*stw_character_01*' -print 2>/dev/null | sort)
+echo "STW_CHARACTER_SOURCE=${character_asset_source}"
+echo "STW_CHARACTER_ACTOR_PRODUCT_COUNT=${#character_actor_products[@]}"
+printf 'STW_CHARACTER_ACTOR_PRODUCT=%s\n' "${character_actor_products[@]}"
+echo "STW_CHARACTER_MOTION_PRODUCT_COUNT=${#character_motion_products[@]}"
+printf 'STW_CHARACTER_MOTION_PRODUCT=%s\n' "${character_motion_products[@]}"
+echo "STW_CHARACTER_SKIN_PRODUCT_COUNT=${#character_skin_products[@]}"
+printf 'STW_CHARACTER_SKIN_PRODUCT=%s\n' "${character_skin_products[@]}"
+[[ "${#character_actor_products[@]}" -ge 1 ]]
+[[ "${#character_motion_products[@]}" -ge 3 ]]
+[[ "${#character_skin_products[@]}" -ge 1 ]]
+echo "ACTOR_ASSET_READY=1"
+echo "MOTION_ASSET_READY=1"
+echo "SKINNING_PRODUCTS_READY=1"
 # Read-only probe only: never starts, reuses or kills anything on the GUI AP port.
 # NO is the expected and accepted answer now that the launcher is AP-independent.
 gui_ap_listener="NO"
@@ -745,7 +767,7 @@ for _ in $(seq 1 45); do
 done
 [[ -s "${FRAME_NATIVE}" ]]
 for _ in $(seq 1 30); do
-  runtime_grep -q 'PERFORMANCE_BASELINE' && runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS' && runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS' && runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS' && runtime_grep -q 'ENEMY_AI_ACCEPTANCE result=PASS' && runtime_grep -q 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'COMBAT_FEEDBACK_ACCEPTANCE result=PASS' && runtime_grep -q 'JUMP_ACCEPTANCE result=PASS' && runtime_grep -q 'CROUCH_ACCEPTANCE result=PASS' && runtime_grep -q 'SLIDE_ACCEPTANCE result=PASS' && runtime_grep -q 'MANTLE_ACCEPTANCE result=PASS' && runtime_grep -q 'TRAVERSAL_ARBITRATION_ACCEPTANCE result=PASS' && runtime_grep -q 'ENCOUNTER_ACCEPTANCE result=PASS' && runtime_grep -q 'MULTI_ENEMY_ACCEPTANCE result=PASS' && runtime_grep -q 'SPAWN_CHECKPOINT_ACCEPTANCE result=PASS' && runtime_grep -q 'WEAPON_SWITCH_ACCEPTANCE result=PASS' && runtime_grep -q 'LOADOUT_ACCEPTANCE result=PASS' && break
+  runtime_grep -q 'PERFORMANCE_BASELINE' && runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS' && runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS' && runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS' && runtime_grep -q 'ENEMY_AI_ACCEPTANCE result=PASS' && runtime_grep -q 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'COMBAT_FEEDBACK_ACCEPTANCE result=PASS' && runtime_grep -q 'JUMP_ACCEPTANCE result=PASS' && runtime_grep -q 'CROUCH_ACCEPTANCE result=PASS' && runtime_grep -q 'SLIDE_ACCEPTANCE result=PASS' && runtime_grep -q 'MANTLE_ACCEPTANCE result=PASS' && runtime_grep -q 'TRAVERSAL_ARBITRATION_ACCEPTANCE result=PASS' && runtime_grep -q 'ENCOUNTER_ACCEPTANCE result=PASS' && runtime_grep -q 'MULTI_ENEMY_ACCEPTANCE result=PASS' && runtime_grep -q 'SPAWN_CHECKPOINT_ACCEPTANCE result=PASS' && runtime_grep -q 'WEAPON_SWITCH_ACCEPTANCE result=PASS' && runtime_grep -q 'LOADOUT_ACCEPTANCE result=PASS' && runtime_grep -q 'BLOCK_22_ANIMATION_ACCEPTANCE=PASS' && break
   kill -0 "${launcher_pid}" 2>/dev/null || { tail -n 200 "${LAUNCH_LOG}"; exit 1; }
   sleep 1
 done
@@ -756,6 +778,20 @@ runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS'
 runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS'
 runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS .*material=bound'
 runtime_grep -q 'ATOM_ENEMY_MESH result=PASS .*material=bound'
+runtime_grep -q 'ACTOR_ASSET_READY=1'
+runtime_grep -q 'MOTION_ASSET_READY=1'
+runtime_grep -q 'ACTOR_INSTANCE_READY=1'
+runtime_grep -Eq 'SKELETON_NODE_COUNT=[2-9][0-9]*'
+runtime_grep -q 'SKINNED_MESH_VISIBLE=1'
+runtime_grep -q 'ANIMATION_ACTIVE=1'
+runtime_grep -q 'ANIMATION_TIME_ADVANCING=1'
+runtime_grep -q 'BONE_TRANSFORM_DELTA_POSITIVE=1'
+runtime_grep -q 'IDLE_PRESENTATION=PASS'
+runtime_grep -q 'LOCOMOTION_PRESENTATION=PASS'
+runtime_grep -q 'DEATH_PRESENTATION=PASS'
+runtime_grep -q 'RESET_TO_IDLE_PRESENTATION=PASS'
+runtime_grep -q 'AUTHORITY_SEPARATION=PASS'
+runtime_grep -q 'BLOCK_22_ANIMATION_ACCEPTANCE=PASS'
 runtime_grep -q 'ENEMY_COMBAT_ACCEPTANCE result=PASS spawned=1 mesh=ready physics=ready moved=1 .*deaths=1 respawns=1'
 runtime_grep -q 'ENEMY_AI_ACCEPTANCE result=PASS detected=1 chased=1 enemy_attacks=[1-9][0-9]* player_damage=[1-9][0-9]* player_death=[1-9][0-9]* player_respawn=[1-9][0-9]* enemy_death=[1-9][0-9]* enemy_reset=[1-9][0-9]* loop_active=1'
 runtime_grep -q 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS idle=PASS chase=PASS attack=PASS death=PASS reset=PASS authority_separation=PASS'
@@ -834,6 +870,9 @@ echo "ENEMY_AI_EVIDENCE:"
 runtime_grep -n 'ENEMY_AI_ACCEPTANCE result=PASS'
 echo "ENEMY_PRESENTATION_EVIDENCE:"
 runtime_grep -n 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS'
+echo "SKELETAL_CHARACTER_EVIDENCE:"
+runtime_grep -n 'SKELETAL_CHARACTER_DIAGNOSTICS'
+runtime_grep -n 'BLOCK_22_ANIMATION_ACCEPTANCE=PASS'
 echo "MULTI_ENEMY_EVIDENCE:"
 runtime_grep -n 'MULTI_ENEMY_ACCEPTANCE result=PASS'
 echo "ARENA_EVIDENCE:"

@@ -11,6 +11,7 @@
 #include <STWGameplay/EncounterModel.h>
 #include <STWGameplay/EnemyPresentation.h>
 #include <STWGameplay/SpawnCheckpointModel.h>
+#include <STWGameplay/STWSkeletalCharacterPresentation.h>
 #include <STWGameplay/ViewmodelPresentation.h>
 #include "PhysXPlayerRuntime.h"
 #include "PhysXEnemyRuntime.h"
@@ -63,6 +64,7 @@ namespace STWGameplay
         void UpdateMultiEnemyAcceptance();
         void UpdateEnemyAiAcceptance(float deltaTime);
         void UpdateEnemyPresentationAcceptance();
+        void UpdateSkeletalCharacterAcceptance();
         void UpdateCombatFeedbackAcceptance();
         void UpdateEncounterAcceptance();
         void UpdateSpawnCheckpointAcceptance();
@@ -119,6 +121,7 @@ namespace STWGameplay
 
         PlayerSliceModel m_model;
         AZStd::array<EnemyPresentation, EnemyCollectionModel::MaxEnemyCount> m_enemyPresentations;
+        STWSkeletalCharacterPresentation m_skeletalCharacterPresentation;
         ViewmodelPresentation m_viewmodel;
         CombatFeedbackPresentation m_combatFeedback;
         EncounterModel m_encounter;
@@ -168,6 +171,8 @@ namespace STWGameplay
         bool m_enemyPresentationResetObserved = false;
         bool m_enemyPresentationAuthoritySeparated = true;
         bool m_enemyPresentationAcceptanceReported = false;
+        bool m_skeletalCharacterAcceptanceReported = false;
+        bool m_skeletalPresentationAuthoritySeparated = true;
         bool m_multiEnemyPrepared = false;
         bool m_multiEnemyInitialActiveSet = false;
         bool m_multiEnemyFirstEliminationObserved = false;
