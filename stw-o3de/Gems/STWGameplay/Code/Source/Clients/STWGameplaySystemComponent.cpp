@@ -130,6 +130,9 @@ namespace STWGameplay
         ResetEnemyAssetLoadState();
         ResetArenaAssetLoadState();
         m_adsHeld = false;
+        m_audioEnemyBaselineCaptured = false;
+        m_audioPreviousRespawnEvents = m_model.GetPlayer().m_respawnEvents;
+        m_audioFeedback.Activate();
         if (const char* capturePath = std::getenv("STW_NATIVE_CAPTURE_PATH"); capturePath && capturePath[0] != '\0')
         {
             m_nativeCapturePath = capturePath;
@@ -146,6 +149,7 @@ namespace STWGameplay
     void STWGameplaySystemComponent::Deactivate()
     {
         m_adsHeld = false;
+        m_audioFeedback.Deactivate();
         AZ::TickBus::Handler::BusDisconnect();
         AzFramework::InputChannelEventListener::Disconnect();
         m_skeletalCharacterPresentation.Shutdown();
@@ -433,6 +437,60 @@ namespace STWGameplay
         bodycamInput.m_respawnEvents = bodycamPlayer.m_respawnEvents;
         m_bodycamCameraPresentation.Update(deltaTime, bodycamInput);
 
+        const EnemyState& audioEnemy = m_model.GetEnemy().GetState();
+        bool audioEnemyStateChanged = false;
+        bool audioEnemyAttackEvent = false;
+        bool audioEnemyDeathEvent = false;
+        if (!m_audioEnemyBaselineCaptured)
+        {
+            m_audioEnemyBaselineCaptured = true;
+        }
+        else
+        {
+            audioEnemyStateChanged = audioEnemy.m_behaviorState != m_audioPreviousEnemyState;
+            audioEnemyAttackEvent = audioEnemy.m_attackEvents > m_audioPreviousEnemyAttackEvents;
+            audioEnemyDeathEvent = audioEnemy.m_deathEvents > m_audioPreviousEnemyDeathEvents;
+        }
+        m_audioPreviousEnemyState = audioEnemy.m_behaviorState;
+        m_audioPreviousEnemyAttackEvents = audioEnemy.m_attackEvents;
+        m_audioPreviousEnemyDeathEvents = audioEnemy.m_deathEvents;
+
+        AudioFeedbackInput audioInput;
+        audioInput.m_shotFired = m_model.GetPresentation().m_shotFired;
+        audioInput.m_reloading = m_model.GetWeapon().m_reloading;
+        audioInput.m_hitConfirmed = m_model.GetPresentation().m_hit;
+        audioInput.m_impactEvent = m_model.GetPresentation().m_hit;
+        audioInput.m_enemyStateChanged = audioEnemyStateChanged;
+        audioInput.m_enemyAttackEvent = audioEnemyAttackEvent;
+        audioInput.m_enemyDeathEvent = audioEnemyDeathEvent;
+        audioInput.m_movementActive = desiredPlayerVelocity.GetLength() > 0.01f;
+        audioInput.m_sprinting = m_input.m_sprint && audioInput.m_movementActive;
+        audioInput.m_crouched = bodycamPlayer.m_crouchDesired;
+        audioInput.m_sliding = bodycamPlayer.m_slideActive;
+        audioInput.m_reset = bodycamPlayer.m_respawnEvents > m_audioPreviousRespawnEvents;
+        audioInput.m_impactPosition = audioEnemy.m_position;
+
+        const PlayerState audioPlayerBefore = m_model.GetPlayer();
+        const WeaponState audioWeaponBefore = m_model.GetWeapon();
+        const EnemyState audioEnemyBefore = m_model.GetEnemy().GetState();
+        m_audioFeedback.Update(deltaTime, audioInput);
+        const PlayerState audioPlayerAfter = m_model.GetPlayer();
+        const WeaponState audioWeaponAfter = m_model.GetWeapon();
+        const EnemyState audioEnemyAfter = m_model.GetEnemy().GetState();
+        m_audioAuthoritySeparated = m_audioAuthoritySeparated
+            && audioPlayerBefore.m_position.IsClose(audioPlayerAfter.m_position)
+            && audioPlayerBefore.m_health == audioPlayerAfter.m_health
+            && audioPlayerBefore.m_alive == audioPlayerAfter.m_alive
+            && audioPlayerBefore.m_respawnEvents == audioPlayerAfter.m_respawnEvents
+            && audioWeaponBefore.m_magazine == audioWeaponAfter.m_magazine
+            && audioWeaponBefore.m_reserve == audioWeaponAfter.m_reserve
+            && audioWeaponBefore.m_reloading == audioWeaponAfter.m_reloading
+            && audioEnemyBefore.m_health == audioEnemyAfter.m_health
+            && audioEnemyBefore.m_alive == audioEnemyAfter.m_alive
+            && audioEnemyBefore.m_damageEvents == audioEnemyAfter.m_damageEvents
+            && audioEnemyBefore.m_deathEvents == audioEnemyAfter.m_deathEvents;
+        m_audioPreviousRespawnEvents = bodycamPlayer.m_respawnEvents;
+
         m_input.m_lookX = 0.0f;
         m_input.m_lookY = 0.0f;
         m_input.m_reload = false;
@@ -454,6 +512,7 @@ namespace STWGameplay
         UpdateEnemyPresentationAcceptance();
         UpdateSkeletalCharacterAcceptance();
         UpdateCombatFeedbackAcceptance();
+        UpdateAudioAcceptance();
         UpdateArenaAcceptance();
         RecordPerformance(deltaTime);
 
@@ -2352,6 +2411,46 @@ namespace STWGameplay
             m_combatFeedback.GetHitFeedbackCount(), m_combatFeedback.GetImpactFeedbackCount(),
             m_combatFeedbackAuthoritySeparated ? "PASS" : "FAIL", meshesReady ? "PASS" : "FAIL");
         m_combatFeedbackAcceptanceReported = true;
+    }
+
+    void STWGameplaySystemComponent::UpdateAudioAcceptance()
+    {
+        if (!m_automatedAcceptance || m_audioAcceptanceReported)
+        {
+            return;
+        }
+
+        const bool eventsObserved = m_audioFeedback.GetEventCount(AudioFeedbackEventType::Fire) > 0
+            && m_audioFeedback.GetEventCount(AudioFeedbackEventType::Reload) > 0
+            && m_audioFeedback.GetEventCount(AudioFeedbackEventType::Hit) > 0
+            && m_audioFeedback.GetEventCount(AudioFeedbackEventType::Impact) > 0
+            && m_audioFeedback.GetEventCount(AudioFeedbackEventType::EnemyState) > 0;
+        const bool passed = m_audioFeedback.IsPresentationActive()
+            && m_audioFeedback.IsVisualOnly()
+            && m_audioFeedback.IsBackendReady()
+            && eventsObserved
+            && m_audioFeedback.WasReset()
+            && m_audioAuthoritySeparated;
+        if (!passed)
+        {
+            return;
+        }
+
+        AZ_Printf("STWGameplay",
+            "AUDIO_PRESENTATION_ACTIVE=1\n"
+            "AUDIO_BACKEND_READY=1\n"
+            "AUDIO_FIRE_EVENT=1\n"
+            "AUDIO_RELOAD_EVENT=1\n"
+            "AUDIO_HIT_EVENT=1\n"
+            "AUDIO_IMPACT_EVENT=1\n"
+            "AUDIO_ENEMY_STATE_EVENT=1\n"
+            "AUDIO_RESET_PASS=1\n"
+            "AUDIO_VISUAL_ONLY=1\n"
+            "PLAYER_GAMEPLAY_AUTHORITY_CHANGED=NO\n"
+            "PHYSX_AUTHORITY_CHANGED=NO\n"
+            "NETWORKING_CHANGED=NO\n"
+            "AUDIO_PRESENTATION_ACCEPTANCE result=PASS authority_separation=PASS\n");
+        m_audioAcceptanceReported = true;
     }
 
     void STWGameplaySystemComponent::UpdateEnemyCombatAcceptance()

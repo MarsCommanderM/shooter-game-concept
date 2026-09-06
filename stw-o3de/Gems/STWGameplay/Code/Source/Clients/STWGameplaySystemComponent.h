@@ -12,6 +12,7 @@
 #include <STWGameplay/EnemyPresentation.h>
 #include <STWGameplay/SpawnCheckpointModel.h>
 #include <STWGameplay/BodycamCameraPresentation.h>
+#include <STWGameplay/AudioFeedbackPresentation.h>
 #include <STWGameplay/STWSkeletalCharacterPresentation.h>
 #include <STWGameplay/ViewmodelPresentation.h>
 #include "PhysXPlayerRuntime.h"
@@ -68,6 +69,7 @@ namespace STWGameplay
         void UpdateSkeletalCharacterAcceptance();
         void UpdateBodycamAcceptance();
         void UpdateCombatFeedbackAcceptance();
+        void UpdateAudioAcceptance();
         void UpdateEncounterAcceptance();
         void UpdateSpawnCheckpointAcceptance();
         void UpdateWeaponSwitchAcceptance();
@@ -127,6 +129,7 @@ namespace STWGameplay
         STWSkeletalCharacterPresentation m_skeletalCharacterPresentation;
         ViewmodelPresentation m_viewmodel;
         CombatFeedbackPresentation m_combatFeedback;
+        AudioFeedbackPresentation m_audioFeedback;
         EncounterModel m_encounter;
         SpawnCheckpointModel m_spawnCheckpoint;
         PhysXPlayerRuntime m_physicsPlayer;
@@ -195,6 +198,13 @@ namespace STWGameplay
         bool m_multiEnemyAcceptanceReported = false;
         bool m_combatFeedbackAuthoritySeparated = true;
         bool m_combatFeedbackAcceptanceReported = false;
+        bool m_audioAuthoritySeparated = true;
+        bool m_audioAcceptanceReported = false;
+        bool m_audioEnemyBaselineCaptured = false;
+        EnemyBehaviorState m_audioPreviousEnemyState = EnemyBehaviorState::Idle;
+        int m_audioPreviousEnemyAttackEvents = 0;
+        int m_audioPreviousEnemyDeathEvents = 0;
+        int m_audioPreviousRespawnEvents = 0;
         bool m_encounterAcceptanceReported = false;
         bool m_encounterAcceptanceFirstCompletion = false;
         bool m_encounterAcceptanceDuplicateBlocked = false;
