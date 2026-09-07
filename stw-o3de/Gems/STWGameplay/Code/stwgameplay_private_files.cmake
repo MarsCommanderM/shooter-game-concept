@@ -1,5 +1,6 @@
 set(FILES
     Source/ArenaLayout.cpp
+    Source/ArenaPresentation.cpp
     Source/AudioFeedbackPresentation.cpp
     Source/CombatFeedbackPresentation.cpp
     Source/EncounterModel.cpp

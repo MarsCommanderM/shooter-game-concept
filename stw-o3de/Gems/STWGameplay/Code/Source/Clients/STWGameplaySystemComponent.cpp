@@ -18,6 +18,9 @@
 #include <AzFramework/Entity/GameEntityContextBus.h>
 #include <Atom/Feature/Utils/FrameCaptureBus.h>
 #include <Atom/RPI.Public/Material/Material.h>
+#include <Atom/RPI.Public/MeshDrawPacket.h>
+#include <Atom/RPI.Public/Model/Model.h>
+#include <Atom/RPI.Public/Model/ModelLod.h>
 #include <Atom/RPI.Public/Scene.h>
 #include <Atom/RPI.Reflect/Material/MaterialAsset.h>
 #include <Atom/RPI.Reflect/Model/ModelAsset.h>
@@ -45,7 +48,6 @@ namespace STWGameplay
 
         AZStd::array<ViewmodelAssetLoadState, PlayerSliceModel::EquipmentProfileCount> s_viewmodelAssetLoadStates;
         ViewmodelAssetLoadState s_enemyAssetLoadState;
-        ViewmodelAssetLoadState s_arenaAssetLoadState;
 
         struct JumpDiagnosticState
         {
@@ -95,7 +97,6 @@ namespace STWGameplay
             s_enemyAssetLoadState = {};
         }
 
-        void ResetArenaAssetLoadState() { s_arenaAssetLoadState = {}; }
     }
 
     AZ_COMPONENT_IMPL(STWGameplaySystemComponent, "STWGameplaySystemComponent", STWGameplaySystemComponentTypeId);
@@ -128,7 +129,6 @@ namespace STWGameplay
     {
         ResetViewmodelAssetLoadState();
         ResetEnemyAssetLoadState();
-        ResetArenaAssetLoadState();
         m_adsHeld = false;
         m_audioEnemyBaselineCaptured = false;
         m_audioPreviousRespawnEvents = m_model.GetPlayer().m_respawnEvents;
@@ -2075,6 +2075,19 @@ namespace STWGameplay
             return;
         }
 
+        for (size_t slot = 0; slot < PlayerSliceModel::EquipmentProfileCount; ++slot)
+        {
+            if (!m_viewmodelMaterialsApplied[slot] && m_viewmodelMeshHandles[slot].IsValid()
+                && m_meshFeatureProcessor->GetModel(m_viewmodelMeshHandles[slot]) != nullptr)
+            {
+                // Re-apply once the live model exists so the material is present in the
+                // draw-packet rebuild, not only in the pre-load mesh descriptor.
+                m_meshFeatureProcessor->SetCustomMaterials(
+                    m_viewmodelMeshHandles[slot], s_viewmodelAssetLoadStates[slot].m_material);
+                m_viewmodelMaterialsApplied[slot] = true;
+            }
+        }
+
         // Assimp imports OBJ coordinates as (-X, Z, Y). Map those product axes back to
         // the authored STW convention (+X right, +Y aim, +Z up) at presentation time.
         const AZ::Quaternion orientation =
@@ -2096,6 +2109,26 @@ namespace STWGameplay
                 * m_combatFeedback.GetFireIntensity()));
         m_meshFeatureProcessor->SetVisible(m_fireFeedbackMeshHandle, fireVisible);
 
+        const AZ::Data::Instance<AZ::RPI::Model> activeModel =
+            m_meshFeatureProcessor->GetModel(m_viewmodelMeshHandles[activeSlot]);
+        if (activeModel != nullptr && !m_viewmodelRuntimeDiagnosticReported
+            && m_viewmodelRuntimeDiagnosticAttempts < 20)
+        {
+            ++m_viewmodelRuntimeDiagnosticAttempts;
+            const AZ::RPI::MeshDrawPacketLods& packets =
+                m_meshFeatureProcessor->GetDrawPackets(m_viewmodelMeshHandles[activeSlot]);
+            size_t packetCount = 0;
+            for (const auto& lodPackets : packets)
+            {
+                packetCount += lodPackets.size();
+            }
+            if (packetCount > 0 || m_viewmodelRuntimeDiagnosticAttempts == 20)
+            {
+                ReportViewmodelRuntimeIdentity(activeSlot, m_model.GetEyePosition(), right, aim, up);
+                m_viewmodelRuntimeDiagnosticReported = true;
+            }
+        }
+
         // PASS is only reported once the model instance actually exists, i.e. the asset really
         // loaded and the mesh is renderable - never merely because the handle was acquired.
         bool meshesReady = true;
@@ -2111,6 +2144,75 @@ namespace STWGameplay
                 m_viewmodelMeshAssetPaths[0].c_str(), m_viewmodelMeshAssetPaths[1].c_str(),
                 PlayerSliceModel::EquipmentProfileCount);
         }
+    }
+
+    void STWGameplaySystemComponent::ReportViewmodelRuntimeIdentity(
+        size_t slot, const AZ::Vector3& cameraPosition, const AZ::Vector3& right, const AZ::Vector3& aim,
+        const AZ::Vector3& up)
+    {
+        if (m_meshFeatureProcessor == nullptr || slot >= PlayerSliceModel::EquipmentProfileCount
+            || !m_viewmodelMeshHandles[slot].IsValid())
+        {
+            return;
+        }
+
+        const AZ::Render::MeshFeatureProcessorInterface::MeshHandle& handle = m_viewmodelMeshHandles[slot];
+        const AZ::Data::Instance<AZ::RPI::Model> model = m_meshFeatureProcessor->GetModel(handle);
+        const AZ::RPI::MeshDrawPacketLods& drawPackets = m_meshFeatureProcessor->GetDrawPackets(handle);
+        size_t packetCount = 0;
+        size_t packetMaterialMatches = 0;
+        AZStd::string packetMaterials;
+        for (const auto& lodPackets : drawPackets)
+        {
+            for (const AZ::RPI::MeshDrawPacket& packet : lodPackets)
+            {
+                const AZ::Data::Instance<AZ::RPI::Material> packetMaterial = packet.GetMaterial();
+                if (packetCount++ != 0)
+                {
+                    packetMaterials += ",";
+                }
+                if (packetMaterial)
+                {
+                    packetMaterials += packetMaterial->GetAsset().GetHint();
+                    if (packetMaterial == s_viewmodelAssetLoadStates[slot].m_material)
+                    {
+                        ++packetMaterialMatches;
+                    }
+                }
+                else
+                {
+                    packetMaterials += "INVALID";
+                }
+            }
+        }
+
+        const AZ::Transform finalTransform = m_meshFeatureProcessor->GetTransform(handle);
+        const AZ::Vector3 finalScale = m_meshFeatureProcessor->GetNonUniformScale(handle);
+        const AZ::Vector3 relativePosition = finalTransform.GetTranslation() - cameraPosition;
+        const bool finite = cameraPosition.IsFinite() && right.IsFinite() && aim.IsFinite() && up.IsFinite()
+            && finalTransform.GetTranslation().IsFinite() && finalScale.IsFinite();
+        const bool inFrontOfCamera = finite && relativePosition.Dot(aim) > 0.0f;
+        const bool nonZeroScale = finite && finalScale.GetMinElement() > 0.0f;
+        const bool packetMaterialMatchesExpected = packetCount > 0 && packetMaterialMatches == packetCount;
+        const ViewmodelAssetLoadState& loadState = s_viewmodelAssetLoadStates[slot];
+        AZ_Printf(
+            "STWGameplay",
+            "STW_VIEWMODEL_IDENTITY_DIAG slot=%zu model_path=%s model_id=%s model_ready=%d mesh_handle_valid=%d "
+            "material_path=%s material_id=%s material_instance_valid=%d packet_count=%zu packet_materials=%s "
+            "packet_material_matches=%d final_transform_translation=(%.3f,%.3f,%.3f) "
+            "final_scale=(%.3f,%.3f,%.3f) camera_position=(%.3f,%.3f,%.3f) camera_right=(%.3f,%.3f,%.3f) "
+            "camera_aim=(%.3f,%.3f,%.3f) camera_up=(%.3f,%.3f,%.3f) relative_position=(%.3f,%.3f,%.3f) "
+            "finite=%d nonzero_scale=%d in_front_of_camera=%d visible=%d material_applied=%d\n",
+            slot, m_viewmodelMeshAssetPaths[slot].c_str(), loadState.m_enumeratedModelAssetId.ToString<AZStd::string>().c_str(),
+            model != nullptr, handle.IsValid(), loadState.m_materialAsset.GetHint().c_str(),
+            loadState.m_materialAsset.GetId().ToString<AZStd::string>().c_str(), loadState.m_material != nullptr,
+            packetCount, packetMaterials.c_str(), packetMaterialMatchesExpected,
+            finalTransform.GetTranslation().GetX(), finalTransform.GetTranslation().GetY(),
+            finalTransform.GetTranslation().GetZ(), finalScale.GetX(), finalScale.GetY(), finalScale.GetZ(),
+            cameraPosition.GetX(), cameraPosition.GetY(), cameraPosition.GetZ(), right.GetX(), right.GetY(), right.GetZ(),
+            aim.GetX(), aim.GetY(), aim.GetZ(), up.GetX(), up.GetY(), up.GetZ(), relativePosition.GetX(),
+            relativePosition.GetY(), relativePosition.GetZ(), finite, nonZeroScale, inFrontOfCamera,
+            m_meshFeatureProcessor->GetVisible(handle), m_viewmodelMaterialsApplied[slot] ? 1 : 0);
     }
 
     void STWGameplaySystemComponent::ShutdownViewmodelMesh()
@@ -2131,6 +2233,9 @@ namespace STWGameplay
         }
         m_meshFeatureProcessor = nullptr;
         m_viewmodelMeshHandles = {};
+        m_viewmodelMaterialsApplied = {};
+        m_viewmodelRuntimeDiagnosticAttempts = 0;
+        m_viewmodelRuntimeDiagnosticReported = false;
         m_fireFeedbackMeshHandle = {};
         m_viewmodelMeshAssetPaths = {};
         m_visibleViewmodelSlot = PlayerSliceModel::EquipmentProfileCount;
@@ -2300,88 +2405,45 @@ namespace STWGameplay
 
     void STWGameplaySystemComponent::TryStartArenaMesh()
     {
-        if (m_meshFeatureProcessor == nullptr)
+        AzFramework::EntityContextId contextId = AzFramework::EntityContextId::CreateNull();
+        AzFramework::GameEntityContextRequestBus::BroadcastResult(
+            contextId, &AzFramework::GameEntityContextRequests::GetGameEntityContextId);
+        if (contextId.IsNull())
         {
             return;
         }
-        if (!s_arenaAssetLoadState.m_enumerated)
+        m_arenaPresentation.Initialize(contextId);
+        m_arenaPresentation.Update();
+        if (m_arenaPresentation.IsReady())
         {
-            s_arenaAssetLoadState.m_enumerated = true;
-            AZStd::vector<ViewmodelAssetCandidate> models;
-            AZStd::vector<ViewmodelAssetCandidate> materials;
-            AZ::Data::AssetCatalogRequestBus::Broadcast(
-                &AZ::Data::AssetCatalogRequests::EnumerateAssets, []() {},
-                [&models, &materials](const AZ::Data::AssetId id, const AZ::Data::AssetInfo& info)
-                {
-                    const AZStd::string path = LowercaseAssetPath(info.m_relativePath);
-                    if (path == "assets/environment/stw_arena_01/stw_arena_01.obj.azmodel")
-                    {
-                        models.push_back({ id, info.m_relativePath });
-                    }
-                    else if (path == "assets/environment/stw_arena_01/stw_arena_01.azmaterial")
-                    {
-                        materials.push_back({ id, info.m_relativePath });
-                    }
-                }, []() {});
-            if (models.size() != 1 || materials.size() != 1)
-            {
-                AZ_Error("STWGameplay", false, "ATOM_ARENA result=FAIL reason=asset_candidate_count model=%zu material=%zu",
-                    models.size(), materials.size());
-                m_arenaMeshStartup = ViewmodelMeshStartup::Failed;
-                return;
-            }
-            s_arenaAssetLoadState.m_enumeratedModelAssetId = models[0].m_assetId;
-            s_arenaAssetLoadState.m_enumeratedMaterialAssetId = materials[0].m_assetId;
-            m_arenaMeshAssetPath = models[0].m_relativePath;
-            s_arenaAssetLoadState.m_materialAsset = AZ::Data::Asset<AZ::RPI::MaterialAsset>(
-                materials[0].m_assetId, azrtti_typeid<AZ::RPI::MaterialAsset>(), materials[0].m_relativePath.c_str());
-            s_arenaAssetLoadState.m_materialAsset.QueueLoad();
+            m_arenaMeshStartup = ViewmodelMeshStartup::Acquired;
         }
-        if (!s_arenaAssetLoadState.m_materialAsset.IsReady())
-        {
-            if (s_arenaAssetLoadState.m_materialAsset.IsError())
-            {
-                m_arenaMeshStartup = ViewmodelMeshStartup::Failed;
-            }
-            return;
-        }
-        s_arenaAssetLoadState.m_material = AZ::RPI::Material::FindOrCreate(s_arenaAssetLoadState.m_materialAsset);
-        AZ::Data::Asset<AZ::RPI::ModelAsset> modelAsset(
-            s_arenaAssetLoadState.m_enumeratedModelAssetId, azrtti_typeid<AZ::RPI::ModelAsset>(), m_arenaMeshAssetPath.c_str());
-        modelAsset.QueueLoad();
-        AZ::Render::MeshHandleDescriptor descriptor(modelAsset, s_arenaAssetLoadState.m_material);
-        m_arenaMeshHandle = m_meshFeatureProcessor->AcquireMesh(descriptor);
-        if (!m_arenaMeshHandle.IsValid())
-        {
-            m_arenaMeshStartup = ViewmodelMeshStartup::Failed;
-            return;
-        }
-        m_meshFeatureProcessor->SetTransform(
-            m_arenaMeshHandle, AZ::Transform::CreateIdentity(), AZ::Vector3::CreateOne());
-        m_arenaMeshStartup = ViewmodelMeshStartup::Acquired;
     }
 
     void STWGameplaySystemComponent::ShutdownArenaMesh()
     {
-        if (m_meshFeatureProcessor != nullptr && m_arenaMeshHandle.IsValid())
-        {
-            m_meshFeatureProcessor->ReleaseMesh(m_arenaMeshHandle);
-        }
-        m_arenaMeshHandle = {};
-        m_arenaMeshAssetPath.clear();
+        m_arenaPresentation.Shutdown();
         m_arenaMeshStartup = ViewmodelMeshStartup::Waiting;
         m_arenaMeshReported = false;
-        ResetArenaAssetLoadState();
+        m_arenaAcceptanceReported = false;
     }
 
     void STWGameplaySystemComponent::UpdateArenaAcceptance()
     {
+        m_arenaPresentation.Update();
+        if (m_arenaMeshStartup == ViewmodelMeshStartup::Waiting && m_arenaPresentation.IsReady())
+        {
+            m_arenaMeshStartup = ViewmodelMeshStartup::Acquired;
+        }
         if (m_arenaMeshStartup == ViewmodelMeshStartup::Acquired && !m_arenaMeshReported
-            && m_meshFeatureProcessor->GetModel(m_arenaMeshHandle))
+            && m_arenaPresentation.IsReady())
         {
             m_arenaMeshReported = true;
-            AZ_Printf("STWGameplay", "ATOM_ARENA result=PASS asset=%s mesh=ready material=bound lighting=native_environment\n",
-                m_arenaMeshAssetPath.c_str());
+            AZ_Printf("STWGameplay", "ATOM_ARENA result=PASS asset=visual_set mesh=ready material=bound lighting=native_environment geometry=4\n");
+            AZ_Printf("STWGameplay", "ARENA_PRESENTATION_ACTIVE=1\n");
+            AZ_Printf("STWGameplay", "ARENA_VISUAL_GEOMETRY_READY=1\n");
+            AZ_Printf("STWGameplay", "ARENA_MATERIAL_SET_READY=1\n");
+            AZ_Printf("STWGameplay", "ARENA_ENVIRONMENT_PRESENTATION_READY=1\n");
         }
         if (m_automatedAcceptance && !m_arenaAcceptanceReported && m_arenaMeshReported && ArenaLayout::Validate())
         {

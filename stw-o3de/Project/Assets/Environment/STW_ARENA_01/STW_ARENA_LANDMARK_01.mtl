@@ -1,0 +1,6 @@
+newmtl STW_ARENA_LANDMARK_01
+Kd 0.04 0.62 0.68
+Ka 0.01 0.08 0.10
+Ks 0.30 0.80 0.85
+Ns 128.0
+illum 2

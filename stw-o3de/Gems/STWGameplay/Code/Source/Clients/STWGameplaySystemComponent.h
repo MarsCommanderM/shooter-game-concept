@@ -13,6 +13,7 @@
 #include <STWGameplay/SpawnCheckpointModel.h>
 #include <STWGameplay/BodycamCameraPresentation.h>
 #include <STWGameplay/AudioFeedbackPresentation.h>
+#include <STWGameplay/ArenaPresentation.h>
 #include <STWGameplay/STWSkeletalCharacterPresentation.h>
 #include <STWGameplay/ViewmodelPresentation.h>
 #include "PhysXPlayerRuntime.h"
@@ -55,6 +56,9 @@ namespace STWGameplay
         // Drives the Atom mesh from the same first-person basis the presentation computes.
         void UpdateViewmodelMeshTransform(
             const AZ::Vector3& center, const AZ::Vector3& right, const AZ::Vector3& aim, const AZ::Vector3& up);
+        void ReportViewmodelRuntimeIdentity(
+            size_t slot, const AZ::Vector3& cameraPosition, const AZ::Vector3& right, const AZ::Vector3& aim,
+            const AZ::Vector3& up);
         void ShutdownViewmodelMesh();
         void TryStartEnemyMesh();
         void UpdateEnemyMeshTransform();
@@ -107,6 +111,9 @@ namespace STWGameplay
         AZ::Render::MeshFeatureProcessorInterface* m_meshFeatureProcessor = nullptr;
         AZStd::array<AZ::Render::MeshFeatureProcessorInterface::MeshHandle, PlayerSliceModel::EquipmentProfileCount>
             m_viewmodelMeshHandles;
+        AZStd::array<bool, PlayerSliceModel::EquipmentProfileCount> m_viewmodelMaterialsApplied{};
+        uint32_t m_viewmodelRuntimeDiagnosticAttempts = 0;
+        bool m_viewmodelRuntimeDiagnosticReported = false;
         AZ::Render::MeshFeatureProcessorInterface::MeshHandle m_fireFeedbackMeshHandle;
         AZStd::array<AZStd::string, PlayerSliceModel::EquipmentProfileCount> m_viewmodelMeshAssetPaths;
         size_t m_visibleViewmodelSlot = PlayerSliceModel::EquipmentProfileCount;
@@ -118,10 +125,9 @@ namespace STWGameplay
         AZStd::string m_enemyMeshAssetPath;
         bool m_enemyMeshReported = false;
         ViewmodelMeshStartup m_arenaMeshStartup = ViewmodelMeshStartup::Waiting;
-        AZ::Render::MeshFeatureProcessorInterface::MeshHandle m_arenaMeshHandle;
-        AZStd::string m_arenaMeshAssetPath;
         bool m_arenaMeshReported = false;
         bool m_arenaAcceptanceReported = false;
+        ArenaPresentation m_arenaPresentation;
 
         PlayerSliceModel m_model;
         BodycamCameraPresentation m_bodycamCameraPresentation;
