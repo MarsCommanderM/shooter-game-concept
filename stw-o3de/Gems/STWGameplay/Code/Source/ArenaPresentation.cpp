@@ -5,6 +5,7 @@
 #include <AzCore/Component/Entity.h>
 #include <AzCore/Math/Color.h>
 #include <AzCore/Math/Frustum.h>
+#include <AzCore/Math/Matrix3x3.h>
 #include <AzCore/Math/ShapeIntersection.h>
 #include <AzFramework/Components/CameraBus.h>
 #include <Atom/Feature/CoreLights/PhotometricValue.h>
@@ -689,8 +690,18 @@ namespace STWGameplay
         {
             return;
         }
+        // O3DE imports OBJ vertices as (-x, z, y); the arena OBJ set is authored raw Z-up,
+        // so the imported model arrives rotated. Compensate with the proper rotation whose
+        // basis columns are (-WorldX, WorldZ, WorldY), mapping imported (-ax, az, ay) back to
+        // world (ax, ay, az). This is the world-static form of the same (-X, Z, Y) correction
+        // the viewmodel and enemy presentations already apply. Determinant +1 (pure rotation);
+        // scale stays Vector3::CreateOne().
+        const AZ::Quaternion importOrientationCompensation = AZ::Quaternion::CreateFromMatrix3x3(
+            AZ::Matrix3x3::CreateFromColumns(
+                -AZ::Vector3::CreateAxisX(), AZ::Vector3::CreateAxisZ(), AZ::Vector3::CreateAxisY()));
         m_meshFeatureProcessor->SetTransform(
-            state.m_meshHandle, AZ::Transform::CreateIdentity(), AZ::Vector3::CreateOne());
+            state.m_meshHandle, AZ::Transform::CreateFromQuaternion(importOrientationCompensation),
+            AZ::Vector3::CreateOne());
         m_meshFeatureProcessor->SetCustomMaterials(state.m_meshHandle, state.m_material);
         ++state.m_materialRebindCount;
         state.m_meshAcquired = true;
