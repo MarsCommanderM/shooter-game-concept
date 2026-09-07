@@ -1,9 +1,26 @@
 {
-  "materialType": "Materials/Types/StandardPBR.materialtype",
-  "materialTypeVersion": 5,
-  "propertyValues": {
-    "baseColor.color": [0.78, 0.28, 0.06, 1.0],
-    "metallic.factor": 0.72,
-    "roughness.factor": 0.30
-  }
+    "description": "STW arena production PBR - hazard trim family (procedural, original).",
+    "materialType": "Materials/Types/StandardPBR.materialtype",
+    "materialTypeVersion": 5,
+    "properties": {
+        "baseColor": {
+            "textureMap": "Textures/STW_ARENA_TRIM_01_basecolor.png"
+        },
+        "metallic": {
+            "textureMap": "Textures/STW_ARENA_TRIM_01_metallic.png"
+        },
+        "roughness": {
+            "textureMap": "Textures/STW_ARENA_TRIM_01_roughness.png"
+        },
+        "normal": {
+            "textureMap": "Textures/STW_ARENA_TRIM_01_normal.png",
+            "factor": 1.0
+        },
+        "occlusion": {
+            "diffuseTextureMap": "Textures/STW_ARENA_TRIM_01_ao.png"
+        },
+        "specularF0": {
+            "factor": 0.5
+        }
+    }
 }

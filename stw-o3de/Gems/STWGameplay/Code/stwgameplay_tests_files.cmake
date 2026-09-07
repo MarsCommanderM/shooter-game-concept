@@ -8,6 +8,7 @@ set(FILES
     Tests/Clients/MultiEnemyModelTests.cpp
     Tests/Clients/EnemyAiCombatLoopTests.cpp
     Tests/Clients/EnemyPresentationTests.cpp
+    Tests/Clients/EnvironmentPresentationTests.cpp
     Tests/Clients/PlayerSliceModelTests.cpp
     Tests/Clients/SpawnCheckpointModelTests.cpp
     Tests/Clients/BodycamCameraPresentationTests.cpp

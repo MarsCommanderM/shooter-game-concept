@@ -14,6 +14,7 @@
 #include <STWGameplay/BodycamCameraPresentation.h>
 #include <STWGameplay/AudioFeedbackPresentation.h>
 #include <STWGameplay/ArenaPresentation.h>
+#include <STWGameplay/EnvironmentPresentation.h>
 #include <STWGameplay/STWSkeletalCharacterPresentation.h>
 #include <STWGameplay/ViewmodelPresentation.h>
 #include "PhysXPlayerRuntime.h"
@@ -128,6 +129,7 @@ namespace STWGameplay
         bool m_arenaMeshReported = false;
         bool m_arenaAcceptanceReported = false;
         ArenaPresentation m_arenaPresentation;
+        EnvironmentPresentation m_environmentPresentation;
 
         PlayerSliceModel m_model;
         BodycamCameraPresentation m_bodycamCameraPresentation;

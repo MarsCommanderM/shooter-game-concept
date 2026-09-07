@@ -153,6 +153,7 @@ namespace STWGameplay
         AZ::TickBus::Handler::BusDisconnect();
         AzFramework::InputChannelEventListener::Disconnect();
         m_skeletalCharacterPresentation.Shutdown();
+        m_environmentPresentation.Shutdown();
         ShutdownEnemyMesh();
         ShutdownArenaMesh();
         ShutdownViewmodelMesh();
@@ -2414,6 +2415,8 @@ namespace STWGameplay
         }
         m_arenaPresentation.Initialize(contextId);
         m_arenaPresentation.Update();
+        m_environmentPresentation.Initialize(contextId);
+        m_environmentPresentation.Update();
         if (m_arenaPresentation.IsReady())
         {
             m_arenaMeshStartup = ViewmodelMeshStartup::Acquired;
@@ -2431,6 +2434,7 @@ namespace STWGameplay
     void STWGameplaySystemComponent::UpdateArenaAcceptance()
     {
         m_arenaPresentation.Update();
+        m_environmentPresentation.Update();
         if (m_arenaMeshStartup == ViewmodelMeshStartup::Waiting && m_arenaPresentation.IsReady())
         {
             m_arenaMeshStartup = ViewmodelMeshStartup::Acquired;
