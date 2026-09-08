@@ -29,7 +29,7 @@ fn main() {
             // Richtung zu B:
             let dx = -80.0f32; let dz = -8.0;
             let l = (dx * dx + dz * dz).sqrt();
-            send(&ClientMsg::Fire { id: 1, seq: 1, dir: [dx / l, 0.0, dz / l] });
+            send(&ClientMsg::Fire { id: 1, seq: 1, dir: [dx / l, 0.0, dz / l], weapon: 0 });
         }
         let mut buf = [0u8; 8192];
         if let Ok(n) = sock.recv(&mut buf) {

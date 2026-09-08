@@ -1,0 +1,39 @@
+{
+    "description": "STW arena production PBR - emissive beacon family (procedural, original).",
+    "materialType": "Materials/Types/StandardPBR.materialtype",
+    "materialTypeVersion": 5,
+    "properties": {
+        "baseColor": {
+            "textureMap": "Textures/STW_ARENA_LANDMARK_01_basecolor.png"
+        },
+        "metallic": {
+            "textureMap": "Textures/STW_ARENA_LANDMARK_01_metallic.png"
+        },
+        "roughness": {
+            "textureMap": "Textures/STW_ARENA_LANDMARK_01_roughness.png"
+        },
+        "normal": {
+            "textureMap": "Textures/STW_ARENA_LANDMARK_01_normal.png",
+            "factor": 1.0
+        },
+        "occlusion": {
+            "diffuseTextureMap": "Textures/STW_ARENA_LANDMARK_01_ao.png"
+        },
+        "specularF0": {
+            "factor": 0.5
+        },
+        "emissive": {
+            "enable": true,
+            "unit": "Ev100",
+            "intensity": 4.0,
+            "color": [
+                0.05,
+                0.85,
+                0.95,
+                1.0
+            ],
+            "textureMap": "Textures/STW_ARENA_LANDMARK_01_emissive.png",
+            "useTexture": true
+        }
+    }
+}

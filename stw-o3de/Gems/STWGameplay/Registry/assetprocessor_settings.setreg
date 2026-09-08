@@ -1,0 +1,13 @@
+{
+    "Amazon": {
+        "AssetProcessor": {
+            "Settings": {
+                "ScanFolder STWGameplay Registry": {
+                    "watch": "@GEMROOT:STWGameplay@/Registry",
+                    "recursive": 1,
+                    "order": 102
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,9 @@
+STW ASSET PROVENANCE
+====================
+
+Asset name: STW_TACTICAL_SMOKE_01
+Asset kind: original fictional sci-fi Tactical presentation mesh
+
+Locally authored minimal geometry and text material only. No external download,
+real-world model, manufacturer data, or smoke simulation is represented. The
+mesh is presentation-only; charges remain authoritative in PlayerSliceModel.

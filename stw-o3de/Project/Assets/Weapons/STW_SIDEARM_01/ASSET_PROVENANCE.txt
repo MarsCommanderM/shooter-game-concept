@@ -1,0 +1,9 @@
+STW ASSET PROVENANCE
+====================
+
+Asset name: STW_SIDEARM_01
+Asset kind: original fictional sci-fi first-person presentation mesh
+
+This compact local mesh and text-authored Atom StandardPBR material are a
+fictional Secondary presentation asset. No external downloads, real-world
+models, manufacturer data, or gameplay state are used.

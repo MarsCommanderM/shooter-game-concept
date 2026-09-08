@@ -1,0 +1,118 @@
+#pragma once
+
+#include <AzCore/Math/Vector3.h>
+#include <AzCore/base.h>
+
+namespace STWGameplay
+{
+    //! Read-only authoritative signals the first-person presentation reacts to.
+    //! Every field is derived from PlayerSliceModel / WeaponState / PlayerInput; the
+    //! presentation only consumes them and never writes gameplay state back. A rejected
+    //! shot never sets m_shotFired, so it can never produce a fire presentation event.
+    struct PresentationInput
+    {
+        bool m_shotFired = false;  //!< exactly one authoritative valid shot occurred this tick
+        bool m_hit = false;        //!< an authoritative hit was registered this tick
+        bool m_reloading = false;  //!< authoritative reload is in progress
+        bool m_moving = false;     //!< player has locomotion intent
+        bool m_sprinting = false;  //!< player is sprinting (implies moving)
+        bool m_adsRequested = false; //!< presentation blend request; no gameplay effects
+        AZ::u8 m_activeEquipmentSlot = 0; //!< immutable slot identity for presentation selection
+        AZ::u8 m_activeEquipmentCategory = 0;
+        AZ::u8 m_activeEquipmentProfile = 0;
+        bool m_equipmentChanged = false;
+        bool m_equipmentUsed = false;
+        float m_lookX = 0.0f;      //!< presentation-only look delta for transient sway
+        float m_lookY = 0.0f;
+    };
+
+    enum class ViewmodelState
+    {
+        Idle,
+        Move,
+        Sprint,
+        Fire,
+        Reload
+    };
+
+    //! Deterministic first-person viewmodel presentation model. Pure gameplay-free logic:
+    //! it owns only visual/feel state (locomotion state, bounded recoil, sway/bob, muzzle and
+    //! hit cue timers) and reacts to authoritative events. It contains no ammo, magazine,
+    //! reserve, target or health data and therefore structurally cannot alter gameplay.
+    class ViewmodelPresentation
+    {
+    public:
+        // Presentation-only tunables (no gameplay authority).
+        static constexpr float FireCueDuration = 0.09f;    //!< s the Fire state overrides locomotion
+        static constexpr float MuzzleFlashDuration = 0.05f; //!< s muzzle flash stays lit
+        static constexpr float HitFeedbackDuration = 0.10f; //!< s hit marker stays lit
+        static constexpr float RecoilKick = 0.05f;          //!< m local viewmodel kick per shot
+        static constexpr float RecoilPitchKick = 0.06f;     //!< rad visual pitch kick per shot
+        static constexpr float RecoilRecovery = 14.0f;      //!< 1/s recovery rate toward neutral
+        static constexpr float MaxRecoil = 0.18f;           //!< m / rad recoil magnitude bound
+        static constexpr float HipPoseRight = 0.24f;        //!< m camera-local stable hip pose
+        static constexpr float HipPoseForward = 0.62f;
+        static constexpr float HipPoseUp = -0.20f;
+        static constexpr float AdsPoseRight = 0.02f;        //!< future presentation-only ADS pose
+        static constexpr float AdsPoseForward = 0.66f;
+        static constexpr float AdsPoseUp = -0.12f;
+        static constexpr float AdsBlendRate = 12.0f;        //!< 1/s deterministic blend rate
+        static constexpr float AdsEndpointEpsilon = 0.0001f;
+        static constexpr float HipCameraFovDegrees = 60.0f;
+        static constexpr float AdsCameraFovDegrees = 52.0f;
+        static constexpr float BobAmplitudeMove = 0.020f;   //!< m walk bob amplitude
+        static constexpr float BobAmplitudeSprint = 0.045f; //!< m sprint bob amplitude
+        static constexpr float BobFrequencyMove = 8.0f;     //!< rad/s walk bob frequency
+        static constexpr float BobFrequencySprint = 12.0f;  //!< rad/s sprint bob frequency
+        static constexpr float SwayReturn = 10.0f;          //!< 1/s sway blend rate
+        static constexpr float BobReturn = 12.0f;           //!< 1/s bob amplitude recovery
+        static constexpr float LookSwayScale = 0.0025f;     //!< m per look-unit
+        static constexpr float MaxSway = 0.06f;             //!< m presentation-only sway bound
+        static constexpr float AdsBobMultiplier = 0.20f;
+        static constexpr float AdsSwayMultiplier = 0.25f;
+        static constexpr float SprintPoseRight = 0.30f;
+        static constexpr float SprintPoseForward = 0.46f;
+        static constexpr float SprintPoseUp = -0.32f;
+        static constexpr float SprintBlendRate = 10.0f;
+
+        //! Advance the presentation by one frame. Returns false and leaves state untouched on
+        //! an invalid delta (transactional), matching PlayerSliceModel's contract.
+        bool Update(float deltaTime, const PresentationInput& input);
+
+        ViewmodelState GetState() const { return m_state; }
+        const AZ::Vector3& GetRecoilOffset() const { return m_recoilOffset; }
+        float GetRecoilPitch() const { return m_recoilPitch; }
+        const AZ::Vector3& GetSwayOffset() const { return m_swayOffset; }
+        const AZ::Vector3& GetBobOffset() const { return m_bobOffset; }
+        AZ::Vector3 GetPoseOffset() const;
+        float GetCameraFovDegrees() const;
+        float GetAdsBlend() const { return m_adsBlend; }
+        bool IsMuzzleFlashActive() const { return m_muzzleFlash > 0.0f; }
+        float GetMuzzleFlashRemaining() const { return m_muzzleFlash; }
+        bool IsHitFeedbackActive() const { return m_hitFeedback > 0.0f; }
+        AZ::u32 GetFireEventCount() const { return m_fireEvents; }
+        AZ::u32 GetReloadStartCount() const { return m_reloadStarts; }
+        AZ::u8 GetActiveEquipmentSlot() const { return m_activeEquipmentSlot; }
+        AZ::u8 GetActiveEquipmentCategory() const { return m_activeEquipmentCategory; }
+        AZ::u8 GetActiveEquipmentProfile() const { return m_activeEquipmentProfile; }
+
+    private:
+        ViewmodelState m_state = ViewmodelState::Idle;
+        AZ::Vector3 m_recoilOffset = AZ::Vector3::CreateZero();
+        AZ::Vector3 m_bobOffset = AZ::Vector3::CreateZero();
+        AZ::Vector3 m_swayOffset = AZ::Vector3::CreateZero();
+        float m_recoilPitch = 0.0f;
+        float m_bobPhase = 0.0f;
+        float m_fireCue = 0.0f;
+        float m_muzzleFlash = 0.0f;
+        float m_hitFeedback = 0.0f;
+        float m_adsBlend = 0.0f;
+        float m_sprintBlend = 0.0f;
+        bool m_wasReloading = false;
+        AZ::u8 m_activeEquipmentSlot = 0;
+        AZ::u8 m_activeEquipmentCategory = 0;
+        AZ::u8 m_activeEquipmentProfile = 0;
+        AZ::u32 m_fireEvents = 0;
+        AZ::u32 m_reloadStarts = 0;
+    };
+}

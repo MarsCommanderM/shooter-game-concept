@@ -1,0 +1,23 @@
+set(FILES
+    Source/ArenaLayout.cpp
+    Source/ArenaPresentation.cpp
+    Source/AudioFeedbackPresentation.cpp
+    Source/CombatFeedbackPresentation.cpp
+    Source/EncounterModel.cpp
+    Source/EnemyCombatModel.cpp
+    Source/EnemyCollectionModel.cpp
+    Source/EnemyPresentation.cpp
+    Source/EnvironmentPresentation.cpp
+    Source/PlayerSliceModel.cpp
+    Source/SpawnCheckpointModel.cpp
+    Source/BodycamCameraPresentation.cpp
+    Source/STWSkeletalCharacterPresentation.cpp
+    Source/ViewmodelPresentation.cpp
+    Source/STWGameplayModuleInterface.cpp
+    Source/STWGameplayModuleInterface.h
+    Source/Clients/STWGameplaySystemComponent.cpp
+    Source/Clients/STWGameplaySystemComponent.h
+    Source/Clients/PhysXEnemyRuntime.cpp
+    Source/Clients/PhysXEnemyRuntime.h
+    Source/Clients/PhysXPlayerRuntime.cpp
+    Source/Clients/PhysXPlayerRuntime.h)

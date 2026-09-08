@@ -1,0 +1,1048 @@
+#include <AzTest/AzTest.h>
+#include <AzCore/Math/MathUtils.h>
+#include <STWGameplay/PlayerSliceModel.h>
+#include <cmath>
+
+AZ_UNIT_TEST_HOOK(DEFAULT_UNIT_TEST_ENV);
+
+namespace STWGameplay
+{
+    namespace
+    {
+        void Advance(PlayerSliceModel& model, float seconds, PlayerInput input = {})
+        {
+            constexpr float step = 1.0f / 120.0f;
+            for (float elapsed = 0.0f; elapsed < seconds; elapsed += step)
+            {
+                ASSERT_TRUE(model.Update(AZStd::min(step, seconds - elapsed), input));
+            }
+        }
+    }
+
+    TEST(PlayerSliceModelTests, PlayerStartsHealthyAliveAwaitingPhysicalGroundState)
+    {
+        PlayerSliceModel model;
+        EXPECT_FLOAT_EQ(model.GetPlayer().m_health, 100.0f);
+        EXPECT_FLOAT_EQ(model.GetPlayer().m_maxHealth, 100.0f);
+        EXPECT_TRUE(model.GetPlayer().m_alive);
+        EXPECT_FALSE(model.GetPlayer().m_grounded);
+    }
+
+    TEST(PlayerSliceModelTests, ForwardInputProducesCameraRelativeVelocity)
+    {
+        PlayerSliceModel model;
+        PlayerInput input; input.m_forward = 1.0f;
+        const AZ::Vector3 velocity = model.GetDesiredVelocity(input);
+        EXPECT_NEAR(velocity.GetX(), 0.0f, 0.001f);
+        EXPECT_NEAR(velocity.GetY(), PlayerSliceModel::WalkSpeed, 0.001f);
+        EXPECT_NEAR(velocity.GetZ(), 0.0f, 0.001f);
+    }
+
+    TEST(PlayerSliceModelTests, LookChangesAuthoritativeOrientation)
+    {
+        PlayerSliceModel model;
+        PlayerInput input; input.m_lookX = 40.0f; input.m_lookY = -20.0f;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_NE(model.GetPlayer().m_yaw, 0.0f);
+        EXPECT_NE(model.GetPlayer().m_pitch, 0.0f);
+        EXPECT_LE(std::abs(model.GetPlayer().m_pitch), PlayerSliceModel::PitchLimit);
+    }
+
+    TEST(PlayerSliceModelTests, MovementAndLookShareOneUpdate)
+    {
+        PlayerSliceModel model;
+        PlayerInput input; input.m_forward = 1.0f; input.m_lookX = 25.0f;
+        ASSERT_TRUE(model.Update(0.25f, input));
+        EXPECT_GT(model.GetDesiredVelocity(input).GetX(), 0.0f);
+        EXPECT_NE(model.GetPlayer().m_yaw, 0.0f);
+    }
+
+    TEST(PlayerSliceModelTests, SprintIsFasterButBounded)
+    {
+        PlayerInput walk; walk.m_forward = 1.0f;
+        PlayerInput sprint = walk; sprint.m_sprint = true;
+        PlayerSliceModel model;
+        const float walkSpeed = model.GetDesiredVelocity(walk).GetLength();
+        const float sprintSpeed = model.GetDesiredVelocity(sprint).GetLength();
+        EXPECT_GT(sprintSpeed, walkSpeed);
+        EXPECT_NEAR(sprintSpeed, PlayerSliceModel::SprintSpeed, 0.001f);
+    }
+
+    TEST(PlayerSliceModelTests, DiagonalVelocityIsNormalized)
+    {
+        PlayerSliceModel model;
+        PlayerInput input; input.m_forward = 1.0f; input.m_strafe = 1.0f;
+        EXPECT_NEAR(model.GetDesiredVelocity(input).GetLength(), PlayerSliceModel::WalkSpeed, 0.001f);
+    }
+
+    TEST(PlayerSliceModelTests, PhysicalSynchronizationOwnsPositionGroundingAndHeight)
+    {
+        PlayerSliceModel model;
+        const AZ::Vector3 physicalPosition(3.0f, 4.0f, 0.27f);
+        model.SynchronizePhysicalState(physicalPosition, true);
+        EXPECT_TRUE(model.GetPlayer().m_position.IsClose(physicalPosition));
+        EXPECT_TRUE(model.GetPlayer().m_grounded);
+        EXPECT_FLOAT_EQ(model.GetPlayer().m_position.GetZ(), 0.27f);
+    }
+
+    TEST(PlayerSliceModelTests, CameraYawRotatesMovementDirection)
+    {
+        PlayerSliceModel model;
+        PlayerInput look; look.m_lookX = (AZ::Constants::HalfPi / PlayerSliceModel::LookSensitivity);
+        ASSERT_TRUE(model.Update(0.016f, look));
+        PlayerInput move; move.m_forward = 1.0f;
+        const AZ::Vector3 velocity = model.GetDesiredVelocity(move);
+        EXPECT_GT(velocity.GetX(), PlayerSliceModel::WalkSpeed - 0.01f);
+        EXPECT_NEAR(velocity.GetY(), 0.0f, 0.01f);
+    }
+
+    TEST(PlayerSliceModelTests, CameraPitchIsBoundedForExtremeInput)
+    {
+        PlayerSliceModel model;
+        PlayerInput input; input.m_lookY = 100000.0f;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FLOAT_EQ(model.GetPlayer().m_pitch, -PlayerSliceModel::PitchLimit);
+    }
+
+    TEST(PlayerSliceModelTests, GroundedJumpPressProducesBoundedVerticalImpulse)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_jump = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FLOAT_EQ(model.GetDesiredVelocity(input).GetZ(), PlayerSliceModel::JumpImpulseSpeed);
+        EXPECT_EQ(model.GetPlayer().m_jumpEvents, 1);
+    }
+
+    TEST(PlayerSliceModelTests, JumpImpulseLastsExactlyOneModelUpdate)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_jump = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        ASSERT_GT(model.GetDesiredVelocity(input).GetZ(), 0.0f);
+        input.m_jump = false;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FLOAT_EQ(model.GetDesiredVelocity(input).GetZ(), 0.0f);
+    }
+
+    TEST(PlayerSliceModelTests, HeldJumpDoesNotRetriggerWhileGrounded)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_jump = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FLOAT_EQ(model.GetDesiredVelocity(input).GetZ(), 0.0f);
+        EXPECT_EQ(model.GetPlayer().m_jumpEvents, 1);
+    }
+
+    TEST(PlayerSliceModelTests, AirborneJumpPressIsRejected)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3(0.0f, 0.0f, 1.0f), false);
+        PlayerInput input; input.m_jump = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FLOAT_EQ(model.GetDesiredVelocity(input).GetZ(), 0.0f);
+        EXPECT_EQ(model.GetPlayer().m_jumpEvents, 0);
+    }
+
+    TEST(PlayerSliceModelTests, DeadPlayerJumpPressIsRejected)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        ASSERT_TRUE(model.ApplyDamage(model.GetPlayer().m_maxHealth));
+        PlayerInput input; input.m_jump = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_TRUE(model.GetDesiredVelocity(input).IsZero());
+        EXPECT_EQ(model.GetPlayer().m_jumpEvents, 0);
+    }
+
+    TEST(PlayerSliceModelTests, ReleaseAndRenewedGroundingRearmJumpWithPlanarMovement)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_jump = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        model.SynchronizePhysicalState(AZ::Vector3(0.0f, 0.0f, 1.0f), false);
+        input.m_jump = false;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        input.m_jump = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        const AZ::Vector3 velocity = model.GetDesiredVelocity(input);
+        EXPECT_NEAR(AZ::Vector3(velocity.GetX(), velocity.GetY(), 0.0f).GetLength(), PlayerSliceModel::WalkSpeed, 0.001f);
+        EXPECT_FLOAT_EQ(velocity.GetZ(), PlayerSliceModel::JumpImpulseSpeed);
+        EXPECT_EQ(model.GetPlayer().m_jumpEvents, 2);
+    }
+
+    TEST(PlayerSliceModelTests, GroundedCrouchRequestIsAccepted)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_TRUE(model.GetPlayer().m_crouchDesired);
+    }
+
+    TEST(PlayerSliceModelTests, CrouchReleaseRequestsStanding)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        input.m_crouch = false;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FALSE(model.GetPlayer().m_crouchDesired);
+    }
+
+    TEST(PlayerSliceModelTests, DeadPlayerCannotBeginCrouch)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        ASSERT_TRUE(model.ApplyDamage(model.GetPlayer().m_maxHealth));
+        PlayerInput input; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FALSE(model.GetPlayer().m_crouchDesired);
+    }
+
+    TEST(PlayerSliceModelTests, CrouchPreservesPlanarDesiredVelocity)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        input.m_forward = 1.0f;
+        input.m_strafe = 1.0f;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        const AZ::Vector3 velocity = model.GetDesiredVelocity(input);
+        EXPECT_NEAR(AZ::Vector3(velocity.GetX(), velocity.GetY(), 0.0f).GetLength(), PlayerSliceModel::WalkSpeed, 0.001f);
+    }
+
+    TEST(PlayerSliceModelTests, HeldCrouchRemainsDeterministic)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_TRUE(model.GetPlayer().m_crouchDesired);
+    }
+
+    TEST(PlayerSliceModelTests, CrouchDoesNotChangeGroundedJumpImpulse)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_crouch = true; input.m_jump = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FLOAT_EQ(model.GetDesiredVelocity(input).GetZ(), PlayerSliceModel::JumpImpulseSpeed);
+        EXPECT_EQ(model.GetPlayer().m_jumpEvents, 1);
+    }
+
+    TEST(PlayerSliceModelTests, GroundedMovingFreshCrouchPressStartsSlide)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.0f, input));
+        EXPECT_TRUE(model.GetPlayer().m_slideActive);
+        EXPECT_EQ(model.GetPlayer().m_slideEvents, 1);
+        EXPECT_FLOAT_EQ(model.GetPlayer().m_slideSpeed, PlayerSliceModel::SlideStartSpeed);
+    }
+
+    TEST(PlayerSliceModelTests, StationaryCrouchDoesNotStartSlide)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FALSE(model.GetPlayer().m_slideActive);
+        EXPECT_TRUE(model.GetPlayer().m_crouchDesired);
+    }
+
+    TEST(PlayerSliceModelTests, AirbornePlayerCannotStartSlide)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateAxisZ(1.0f), false);
+        PlayerInput input; input.m_forward = 1.0f; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FALSE(model.GetPlayer().m_slideActive);
+        EXPECT_EQ(model.GetPlayer().m_slideEvents, 0);
+    }
+
+    TEST(PlayerSliceModelTests, DeadPlayerCannotStartSlide)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        ASSERT_TRUE(model.ApplyDamage(model.GetPlayer().m_maxHealth));
+        PlayerInput input; input.m_forward = 1.0f; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FALSE(model.GetPlayer().m_slideActive);
+        EXPECT_EQ(model.GetPlayer().m_slideEvents, 0);
+    }
+
+    TEST(PlayerSliceModelTests, SlideSpeedDecaysDeterministically)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.0f, input));
+        ASSERT_TRUE(model.Update(PlayerSliceModel::SlideDuration * 0.5f, input));
+        EXPECT_NEAR(
+            model.GetPlayer().m_slideSpeed,
+            0.5f * (PlayerSliceModel::SlideStartSpeed + PlayerSliceModel::SlideEndSpeed),
+            0.001f);
+    }
+
+    TEST(PlayerSliceModelTests, SlideTerminatesAfterBoundedDuration)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.0f, input));
+        ASSERT_TRUE(model.Update(PlayerSliceModel::SlideDuration, input));
+        EXPECT_FALSE(model.GetPlayer().m_slideActive);
+        EXPECT_FLOAT_EQ(model.GetPlayer().m_slideSpeed, 0.0f);
+    }
+
+    TEST(PlayerSliceModelTests, SlidePreservesCapturedPlanarDirection)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_strafe = 1.0f; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.0f, input));
+        const AZ::Vector3 initialDirection = model.GetDesiredVelocity(input).GetNormalized();
+        input.m_forward = 0.2f;
+        input.m_strafe = 1.0f;
+        ASSERT_TRUE(model.Update(0.1f, input));
+        EXPECT_TRUE(model.GetDesiredVelocity(input).GetNormalized().IsClose(initialDirection, 0.001f));
+        EXPECT_NEAR(model.GetDesiredVelocity(input).GetZ(), 0.0f, 0.001f);
+    }
+
+    TEST(PlayerSliceModelTests, HeldCrouchDoesNotRetriggerSlide)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.0f, input));
+        Advance(model, PlayerSliceModel::SlideDuration + 0.1f, input);
+        EXPECT_FALSE(model.GetPlayer().m_slideActive);
+        EXPECT_EQ(model.GetPlayer().m_slideEvents, 1);
+    }
+
+    TEST(PlayerSliceModelTests, SlideExitCanRemainCrouched)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.0f, input));
+        ASSERT_TRUE(model.Update(PlayerSliceModel::SlideDuration, input));
+        EXPECT_FALSE(model.GetPlayer().m_slideActive);
+        EXPECT_TRUE(model.GetPlayer().m_crouchDesired);
+    }
+
+    TEST(PlayerSliceModelTests, GroundedJumpRemainsValidAfterSlideEnds)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.0f, input));
+        ASSERT_TRUE(model.Update(PlayerSliceModel::SlideDuration, input));
+        input.m_crouch = false;
+        input.m_jump = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FLOAT_EQ(model.GetDesiredVelocity(input).GetZ(), PlayerSliceModel::JumpImpulseSpeed);
+        EXPECT_EQ(model.GetPlayer().m_jumpEvents, 1);
+    }
+
+    TEST(PlayerSliceModelTests, MantleRequestIsRaisedForGroundedMovingFreshPress)
+    {
+        PlayerSliceModel model; model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_TRUE(model.IsMantleRequested());
+    }
+
+    TEST(PlayerSliceModelTests, MantleRequestRequiresGroundedMovement)
+    {
+        PlayerSliceModel model; model.SynchronizePhysicalState(AZ::Vector3::CreateAxisZ(1.0f), false);
+        PlayerInput input; input.m_forward = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FALSE(model.IsMantleRequested());
+    }
+
+    TEST(PlayerSliceModelTests, HeldMantleDoesNotRaiseRepeatedRequests)
+    {
+        PlayerSliceModel model; model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        model.BeginMantle(AZ::Vector3::CreateAxisY());
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FALSE(model.IsMantleRequested());
+        EXPECT_EQ(model.GetPlayer().m_mantleEvents, 1);
+    }
+
+    TEST(PlayerSliceModelTests, DeadPlayerCannotRequestMantle)
+    {
+        PlayerSliceModel model; model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        ASSERT_TRUE(model.ApplyDamage(model.GetPlayer().m_maxHealth));
+        PlayerInput input; input.m_forward = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FALSE(model.IsMantleRequested());
+    }
+
+    TEST(PlayerSliceModelTests, MantleCompletesAfterBoundedDuration)
+    {
+        PlayerSliceModel model; model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.0f, input)); model.BeginMantle(AZ::Vector3::CreateAxisY());
+        ASSERT_TRUE(model.Update(PlayerSliceModel::MantleDuration, input));
+        EXPECT_FALSE(model.GetPlayer().m_mantleActive);
+    }
+
+    TEST(PlayerSliceModelTests, MantlePreservesPlanarDirection)
+    {
+        PlayerSliceModel model; model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_strafe = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.0f, input)); model.BeginMantle(AZ::Vector3(1.0f, 1.0f, 0.0f));
+        const AZ::Vector3 velocity = model.GetDesiredVelocity(input);
+        EXPECT_NEAR(AZ::Vector3(velocity.GetX(), velocity.GetY(), 0.0f).GetLength(), PlayerSliceModel::MantleSpeed, 0.001f);
+        EXPECT_NEAR(velocity.GetZ(), 0.0f, 0.001f);
+    }
+
+    TEST(PlayerSliceModelTests, MantleDoesNotAlterJumpImpulseWhenInactive)
+    {
+        PlayerSliceModel model; model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput mantle; mantle.m_forward = 1.0f; mantle.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, mantle));
+        PlayerInput jump; jump.m_forward = 1.0f; jump.m_jump = true;
+        ASSERT_TRUE(model.Update(0.016f, jump));
+        EXPECT_FLOAT_EQ(model.GetDesiredVelocity(jump).GetZ(), PlayerSliceModel::JumpImpulseSpeed);
+    }
+
+    TEST(PlayerSliceModelTests, MantleRequestIsIndependentOfCrouchState)
+    {
+        PlayerSliceModel model; model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        input.m_crouch = false; input.m_forward = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_TRUE(model.IsMantleRequested());
+    }
+
+    TEST(PlayerSliceModelTests, MantleStateClearsWhenAirborne)
+    {
+        PlayerSliceModel model; model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.0f, input)); model.BeginMantle(AZ::Vector3::CreateAxisY());
+        model.SynchronizePhysicalState(AZ::Vector3::CreateAxisZ(1.0f), false);
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FALSE(model.GetPlayer().m_mantleActive);
+    }
+
+    TEST(PlayerSliceModelTests, MantleStateDoesNotChangeCombatAuthority)
+    {
+        PlayerSliceModel model; model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        const int magazine = model.GetWeapon().m_magazine;
+        PlayerInput input; input.m_forward = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_EQ(model.GetWeapon().m_magazine, magazine);
+        EXPECT_EQ(model.GetPlayer().m_health, model.GetPlayer().m_maxHealth);
+    }
+
+    TEST(PlayerSliceModelTests, ValidShotConsumesExactlyOneRound)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.TryFire());
+        EXPECT_EQ(model.GetWeapon().m_magazine, 29);
+        EXPECT_TRUE(model.GetPresentation().m_shotFired);
+    }
+
+    TEST(PlayerSliceModelTests, ShotDuringCooldownIsRejected)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.TryFire());
+        EXPECT_FALSE(model.TryFire());
+        EXPECT_EQ(model.GetWeapon().m_magazine, 29);
+    }
+
+    TEST(PlayerSliceModelTests, ReloadConservesTotalAmmo)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.TryFire());
+        Advance(model, PlayerSliceModel::FireInterval);
+        ASSERT_TRUE(model.StartReload());
+        Advance(model, PlayerSliceModel::ReloadDuration + 0.01f);
+        EXPECT_EQ(model.GetWeapon().m_magazine, 30);
+        EXPECT_EQ(model.GetWeapon().m_reserve, 149);
+        EXPECT_EQ(model.GetWeapon().m_magazine + model.GetWeapon().m_reserve, 179);
+    }
+
+    TEST(PlayerSliceModelTests, RepeatedReloadCannotDuplicateAmmo)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.TryFire());
+        ASSERT_TRUE(model.StartReload());
+        EXPECT_FALSE(model.StartReload());
+        Advance(model, PlayerSliceModel::ReloadDuration + 0.01f);
+        EXPECT_FALSE(model.StartReload());
+        EXPECT_EQ(model.GetWeapon().m_magazine + model.GetWeapon().m_reserve, 179);
+    }
+
+    TEST(PlayerSliceModelTests, FiringWhileReloadingIsRejected)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.TryFire());
+        Advance(model, PlayerSliceModel::FireInterval);
+        ASSERT_TRUE(model.StartReload());
+        EXPECT_FALSE(model.TryFire());
+        EXPECT_EQ(model.GetWeapon().m_magazine, 29);
+    }
+
+    TEST(PlayerSliceModelTests, ValidHitDamagesTarget)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.TryFire());
+        EXPECT_FLOAT_EQ(model.GetTarget().m_health, 84.0f);
+        EXPECT_TRUE(model.GetPresentation().m_hit);
+    }
+
+    TEST(PlayerSliceModelTests, MissDoesNotDamageTarget)
+    {
+        PlayerSliceModel model;
+        model.SetTargetPosition(AZ::Vector3(8.0f, 0.0f, 1.2f));
+        ASSERT_TRUE(model.TryFire());
+        EXPECT_FLOAT_EQ(model.GetTarget().m_health, 100.0f);
+        EXPECT_FALSE(model.GetPresentation().m_hit);
+    }
+
+    TEST(PlayerSliceModelTests, TargetDeathTriggersExactlyOnce)
+    {
+        PlayerSliceModel model;
+        for (int shot = 0; shot < 8; ++shot)
+        {
+            if (model.GetWeapon().m_cooldownRemaining > 0.0f)
+            {
+                Advance(model, PlayerSliceModel::FireInterval + 0.001f);
+            }
+            ASSERT_TRUE(model.TryFire());
+        }
+        EXPECT_FALSE(model.GetTarget().m_alive);
+        EXPECT_EQ(model.GetTarget().m_deathEvents, 1);
+        EXPECT_FLOAT_EQ(model.GetTarget().m_health, 0.0f);
+    }
+
+    TEST(PlayerSliceModelTests, InitialActiveWeaponIsFirstSlot)
+    {
+        PlayerSliceModel model;
+        EXPECT_EQ(model.GetActiveWeaponId(), WeaponId::STW_SMG_01);
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_SMG_01).m_magazine, 30);
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_RIFLE_02).m_magazine, 12);
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_RIFLE_02).m_reserve, 48);
+    }
+
+    TEST(PlayerSliceModelTests, SwitchChangesActiveWeaponExactlyOnce)
+    {
+        PlayerSliceModel model;
+        PlayerInput switchInput;
+        switchInput.m_switchWeapon = true;
+        ASSERT_TRUE(model.Update(0.016f, switchInput));
+        EXPECT_EQ(model.GetActiveWeaponId(), WeaponId::STW_RIFLE_02);
+        ASSERT_TRUE(model.Update(0.016f, PlayerInput{}));
+        EXPECT_EQ(model.GetActiveWeaponId(), WeaponId::STW_RIFLE_02);
+    }
+
+    TEST(PlayerSliceModelTests, HeldSwitchDoesNotToggleEveryTick)
+    {
+        PlayerSliceModel model;
+        PlayerInput heldSwitch;
+        heldSwitch.m_switchWeapon = true;
+        ASSERT_TRUE(model.Update(0.016f, heldSwitch));
+        ASSERT_TRUE(model.Update(0.016f, heldSwitch));
+        ASSERT_TRUE(model.Update(0.016f, heldSwitch));
+        EXPECT_EQ(model.GetActiveWeaponId(), WeaponId::STW_RIFLE_02);
+
+        ASSERT_TRUE(model.Update(0.016f, PlayerInput{}));
+        ASSERT_TRUE(model.Update(0.016f, heldSwitch));
+        EXPECT_EQ(model.GetActiveWeaponId(), WeaponId::STW_SMG_01);
+    }
+
+    TEST(PlayerSliceModelTests, EachWeaponPreservesIndependentAmmoAcrossSwitches)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.TryFire());
+        const WeaponState weaponABeforeSwitch = model.GetWeapon(WeaponId::STW_SMG_01);
+        ASSERT_TRUE(model.Update(0.016f, PlayerInput{}));
+
+        PlayerInput switchInput;
+        switchInput.m_switchWeapon = true;
+        ASSERT_TRUE(model.Update(0.016f, switchInput));
+        const WeaponState weaponBBeforeFire = model.GetWeapon(WeaponId::STW_RIFLE_02);
+        ASSERT_TRUE(model.TryFire());
+        const WeaponState weaponBAfterFire = model.GetWeapon(WeaponId::STW_RIFLE_02);
+        EXPECT_EQ(weaponBAfterFire.m_magazine, weaponBBeforeFire.m_magazine - 1);
+
+        ASSERT_TRUE(model.RequestWeaponSwitch());
+        const WeaponState weaponAAfterSwitchBack = model.GetWeapon(WeaponId::STW_SMG_01);
+        EXPECT_EQ(weaponAAfterSwitchBack.m_magazine, weaponABeforeSwitch.m_magazine);
+        EXPECT_EQ(weaponAAfterSwitchBack.m_reserve, weaponABeforeSwitch.m_reserve);
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_RIFLE_02).m_magazine, weaponBAfterFire.m_magazine);
+    }
+
+    TEST(PlayerSliceModelTests, FireAffectsOnlyActiveWeaponAmmo)
+    {
+        PlayerSliceModel model;
+        const int weaponAMagazine = model.GetWeapon(WeaponId::STW_SMG_01).m_magazine;
+        const int weaponBMagazine = model.GetWeapon(WeaponId::STW_RIFLE_02).m_magazine;
+        ASSERT_TRUE(model.TryFire());
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_SMG_01).m_magazine, weaponAMagazine - 1);
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_RIFLE_02).m_magazine, weaponBMagazine);
+
+        Advance(model, PlayerSliceModel::FireInterval);
+        ASSERT_TRUE(model.RequestWeaponSwitch());
+        ASSERT_TRUE(model.TryFire());
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_SMG_01).m_magazine, weaponAMagazine - 1);
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_RIFLE_02).m_magazine, weaponBMagazine - 1);
+    }
+
+    TEST(PlayerSliceModelTests, ReloadAffectsOnlyActiveWeaponAmmo)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.TryFire());
+        Advance(model, PlayerSliceModel::FireInterval);
+        ASSERT_TRUE(model.StartReload());
+        const WeaponState weaponBBeforeReload = model.GetWeapon(WeaponId::STW_RIFLE_02);
+        EXPECT_FALSE(model.RequestWeaponSwitch());
+        EXPECT_EQ(model.GetActiveWeaponId(), WeaponId::STW_SMG_01);
+        Advance(model, PlayerSliceModel::ReloadDuration + 0.01f);
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_SMG_01).m_magazine, 30);
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_SMG_01).m_reserve, 149);
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_RIFLE_02).m_magazine, weaponBBeforeReload.m_magazine);
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_RIFLE_02).m_reserve, weaponBBeforeReload.m_reserve);
+    }
+
+    TEST(PlayerSliceModelTests, SwitchDoesNotDuplicateAmmo)
+    {
+        PlayerSliceModel model;
+        const WeaponState weaponABefore = model.GetWeapon(WeaponId::STW_SMG_01);
+        const WeaponState weaponBBefore = model.GetWeapon(WeaponId::STW_RIFLE_02);
+        ASSERT_TRUE(model.RequestWeaponSwitch());
+        ASSERT_TRUE(model.RequestWeaponSwitch());
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_SMG_01).m_magazine, weaponABefore.m_magazine);
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_SMG_01).m_reserve, weaponABefore.m_reserve);
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_RIFLE_02).m_magazine, weaponBBefore.m_magazine);
+        EXPECT_EQ(model.GetWeapon(WeaponId::STW_RIFLE_02).m_reserve, weaponBBefore.m_reserve);
+    }
+
+    TEST(PlayerSliceModelTests, SwitchCannotBypassReloadOrCooldownPolicy)
+    {
+        PlayerSliceModel cooldownModel;
+        ASSERT_TRUE(cooldownModel.TryFire());
+        ASSERT_TRUE(cooldownModel.RequestWeaponSwitch());
+        ASSERT_TRUE(cooldownModel.RequestWeaponSwitch());
+        EXPECT_FALSE(cooldownModel.TryFire());
+        EXPECT_GT(cooldownModel.GetWeapon().m_cooldownRemaining, 0.0f);
+
+        PlayerSliceModel reloadModel;
+        ASSERT_TRUE(reloadModel.TryFire());
+        Advance(reloadModel, PlayerSliceModel::FireInterval);
+        ASSERT_TRUE(reloadModel.StartReload());
+        EXPECT_FALSE(reloadModel.RequestWeaponSwitch());
+        EXPECT_EQ(reloadModel.GetActiveWeaponId(), WeaponId::STW_SMG_01);
+    }
+
+    TEST(PlayerSliceModelTests, PresentationCannotMutateWeaponOrTargetState)
+    {
+        PlayerSliceModel model;
+        const WeaponState weaponBefore = model.GetWeapon();
+        const TargetState targetBefore = model.GetTarget();
+        const PresentationState presentation = model.GetPresentation();
+        (void)presentation;
+        EXPECT_EQ(model.GetWeapon().m_magazine, weaponBefore.m_magazine);
+        EXPECT_FLOAT_EQ(model.GetTarget().m_health, targetBefore.m_health);
+    }
+
+    TEST(PlayerSliceModelTests, InvalidDeltaIsTransactional)
+    {
+        PlayerSliceModel model;
+        const PlayerState before = model.GetPlayer();
+        PlayerInput input; input.m_forward = 1.0f;
+        EXPECT_FALSE(model.Update(-0.1f, input));
+        EXPECT_TRUE(model.GetPlayer().m_position.IsClose(before.m_position));
+        EXPECT_FLOAT_EQ(model.GetPlayer().m_yaw, before.m_yaw);
+    }
+
+    TEST(PlayerSliceModelTests, InvalidPhysicalSynchronizationIsTransactional)
+    {
+        PlayerSliceModel model;
+        const PlayerState before = model.GetPlayer();
+        model.SynchronizePhysicalState(AZ::Vector3(NAN, 0.0f, 0.0f), true);
+        EXPECT_TRUE(model.GetPlayer().m_position.IsClose(before.m_position));
+        EXPECT_EQ(model.GetPlayer().m_grounded, before.m_grounded);
+    }
+
+    TEST(PlayerSliceModelTests, MantleBlocksDuplicateActivation)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        model.BeginMantle(model.GetDesiredVelocity(input));
+        ASSERT_TRUE(model.GetPlayer().m_mantleActive);
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_EQ(model.GetPlayer().m_mantleEvents, 1);
+    }
+
+    TEST(PlayerSliceModelTests, SameTickMantleHasPriorityOverSlideAndJump)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input;
+        input.m_forward = 1.0f;
+        input.m_mantle = true;
+        input.m_crouch = true;
+        input.m_jump = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_TRUE(model.IsMantleRequested());
+        EXPECT_EQ(model.GetPlayer().m_slideEvents, 0);
+        EXPECT_EQ(model.GetPlayer().m_jumpEvents, 0);
+    }
+
+    TEST(PlayerSliceModelTests, MantleBlocksJumpActivation)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput mantle; mantle.m_forward = 1.0f; mantle.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, mantle));
+        model.BeginMantle(model.GetDesiredVelocity(mantle));
+        PlayerInput jump = mantle; jump.m_mantle = false; jump.m_jump = true;
+        ASSERT_TRUE(model.Update(0.016f, jump));
+        EXPECT_EQ(model.GetPlayer().m_jumpEvents, 0);
+    }
+
+    TEST(PlayerSliceModelTests, MantleBlocksSlideActivation)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput mantle; mantle.m_forward = 1.0f; mantle.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, mantle));
+        model.BeginMantle(model.GetDesiredVelocity(mantle));
+        PlayerInput crouch = mantle; crouch.m_mantle = false; crouch.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.016f, crouch));
+        EXPECT_FALSE(model.GetPlayer().m_slideActive);
+    }
+
+    TEST(PlayerSliceModelTests, HeldMantleDoesNotRetrigger)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        model.BeginMantle(model.GetDesiredVelocity(input));
+        Advance(model, PlayerSliceModel::MantleDuration, input);
+        EXPECT_EQ(model.GetPlayer().m_mantleEvents, 1);
+    }
+
+    TEST(PlayerSliceModelTests, MantleCompletionRestoresJumpEligibility)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput mantle; mantle.m_forward = 1.0f; mantle.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, mantle));
+        model.BeginMantle(model.GetDesiredVelocity(mantle));
+        Advance(model, PlayerSliceModel::MantleDuration, mantle);
+        PlayerInput jump; jump.m_jump = true;
+        ASSERT_TRUE(model.Update(0.016f, jump));
+        EXPECT_EQ(model.GetPlayer().m_jumpEvents, 1);
+    }
+
+    TEST(PlayerSliceModelTests, MantleCompletionRestoresSlideEligibility)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput mantle; mantle.m_forward = 1.0f; mantle.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, mantle));
+        model.BeginMantle(model.GetDesiredVelocity(mantle));
+        Advance(model, PlayerSliceModel::MantleDuration, mantle);
+        PlayerInput crouch; crouch.m_forward = 1.0f; crouch.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.016f, crouch));
+        EXPECT_TRUE(model.GetPlayer().m_slideActive);
+    }
+
+    TEST(PlayerSliceModelTests, AirborneMantleRequestIsRejected)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3(0.0f, 0.0f, 1.0f), false);
+        PlayerInput input; input.m_forward = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FALSE(model.IsMantleRequested());
+    }
+
+    TEST(PlayerSliceModelTests, DeadPlayerMantleRequestIsRejected)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        ASSERT_TRUE(model.ApplyDamage(model.GetPlayer().m_maxHealth));
+        PlayerInput input; input.m_forward = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_FALSE(model.IsMantleRequested());
+    }
+
+    TEST(PlayerSliceModelTests, CrouchDuringMantlePreservesMantleState)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput mantle; mantle.m_forward = 1.0f; mantle.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, mantle));
+        model.BeginMantle(model.GetDesiredVelocity(mantle));
+        PlayerInput crouch = mantle; crouch.m_mantle = false; crouch.m_crouch = true;
+        ASSERT_TRUE(model.Update(0.016f, crouch));
+        EXPECT_TRUE(model.GetPlayer().m_mantleActive);
+        EXPECT_FALSE(model.GetPlayer().m_slideActive);
+    }
+
+    TEST(PlayerSliceModelTests, MantlePreservesPlanarTraversalVelocity)
+    {
+        PlayerSliceModel model;
+        model.SynchronizePhysicalState(AZ::Vector3::CreateZero(), true);
+        PlayerInput input; input.m_forward = 1.0f; input.m_strafe = 1.0f; input.m_mantle = true;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        model.BeginMantle(model.GetDesiredVelocity(input));
+        const AZ::Vector3 velocity = model.GetDesiredVelocity(input);
+        EXPECT_NEAR(AZ::Vector3(velocity.GetX(), velocity.GetY(), 0.0f).GetLength(), PlayerSliceModel::MantleSpeed, 0.001f);
+        EXPECT_FLOAT_EQ(velocity.GetZ(), 0.0f);
+    }
+
+    TEST(PlayerSliceModelTests, DefaultLoadoutIsValid)
+    {
+        PlayerSliceModel model;
+        EXPECT_EQ(PlayerSliceModel::EquipmentSlotCount, 5u);
+        EXPECT_EQ(model.GetLoadoutProfile(EquipmentSlot::Primary), EquipmentProfileId::STW_SMG_01);
+        EXPECT_EQ(model.GetLoadoutProfile(EquipmentSlot::Secondary), EquipmentProfileId::STW_RIFLE_02);
+        EXPECT_EQ(model.GetLoadoutProfile(EquipmentSlot::Tactical), EquipmentProfileId::STW_TACTICAL_FLASH_01);
+        EXPECT_EQ(model.GetLoadoutProfile(EquipmentSlot::Lethal), EquipmentProfileId::STW_LETHAL_FRAG_01);
+        EXPECT_EQ(model.GetLoadoutProfile(EquipmentSlot::Melee), EquipmentProfileId::STW_MELEE_01);
+        EXPECT_TRUE(PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Primary,
+            model.GetLoadoutProfile(EquipmentSlot::Primary)));
+        EXPECT_TRUE(PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Secondary,
+            model.GetLoadoutProfile(EquipmentSlot::Secondary)));
+        EXPECT_TRUE(PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Tactical,
+            model.GetLoadoutProfile(EquipmentSlot::Tactical)));
+        EXPECT_TRUE(PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Lethal,
+            model.GetLoadoutProfile(EquipmentSlot::Lethal)));
+        EXPECT_TRUE(PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Melee,
+            model.GetLoadoutProfile(EquipmentSlot::Melee)));
+    }
+
+    TEST(PlayerSliceModelTests, PrimarySlotActivatesCorrectly)
+    {
+        PlayerSliceModel model;
+        EXPECT_EQ(model.GetActiveEquipmentSlot(), EquipmentSlot::Primary);
+        EXPECT_EQ(model.GetActiveEquipmentProfileId(), EquipmentProfileId::STW_SMG_01);
+    }
+
+    TEST(PlayerSliceModelTests, SecondarySlotActivatesCorrectly)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Secondary));
+        EXPECT_EQ(model.GetActiveEquipmentSlot(), EquipmentSlot::Secondary);
+        EXPECT_EQ(model.GetActiveEquipmentProfileId(), EquipmentProfileId::STW_RIFLE_02);
+    }
+
+    TEST(PlayerSliceModelTests, TacticalSlotActivatesCorrectly)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Tactical));
+        EXPECT_EQ(model.GetActiveEquipmentSlot(), EquipmentSlot::Tactical);
+        EXPECT_EQ(model.GetActiveEquipmentProfileId(), EquipmentProfileId::STW_TACTICAL_FLASH_01);
+    }
+
+    TEST(PlayerSliceModelTests, LethalSlotActivatesCorrectly)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Lethal));
+        EXPECT_EQ(model.GetActiveEquipmentSlot(), EquipmentSlot::Lethal);
+        EXPECT_EQ(model.GetActiveEquipmentProfileId(), EquipmentProfileId::STW_LETHAL_FRAG_01);
+    }
+
+    TEST(PlayerSliceModelTests, MeleeSlotActivatesCorrectly)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Melee));
+        EXPECT_EQ(model.GetActiveEquipmentSlot(), EquipmentSlot::Melee);
+        EXPECT_EQ(model.GetActiveEquipmentProfileId(), EquipmentProfileId::STW_MELEE_01);
+    }
+
+    TEST(PlayerSliceModelTests, PrimaryAmmoRemainsIndependent)
+    {
+        PlayerSliceModel model;
+        const int primaryBefore = model.GetEquipment(EquipmentSlot::Primary).m_magazine;
+        ASSERT_TRUE(model.TryFire());
+        const int primaryAfter = model.GetEquipment(EquipmentSlot::Primary).m_magazine;
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Secondary));
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Primary).m_magazine, primaryAfter);
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Primary).m_reserve, 150);
+        EXPECT_EQ(primaryAfter, primaryBefore - 1);
+    }
+
+    TEST(PlayerSliceModelTests, SecondaryAmmoRemainsIndependent)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Secondary));
+        const int secondaryBefore = model.GetEquipment(EquipmentSlot::Secondary).m_magazine;
+        ASSERT_TRUE(model.TryFire());
+        const int secondaryAfter = model.GetEquipment(EquipmentSlot::Secondary).m_magazine;
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Primary));
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Secondary).m_magazine, secondaryAfter);
+        EXPECT_EQ(secondaryAfter, secondaryBefore - 1);
+    }
+
+    TEST(PlayerSliceModelTests, TacticalChargeStateRemainsIndependent)
+    {
+        PlayerSliceModel model;
+        const int tacticalBefore = model.GetEquipment(EquipmentSlot::Tactical).m_charges;
+        const int lethalBefore = model.GetEquipment(EquipmentSlot::Lethal).m_charges;
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Tactical));
+        ASSERT_TRUE(model.TryFire());
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Primary));
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Tactical).m_charges, tacticalBefore - 1);
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Lethal).m_charges, lethalBefore);
+    }
+
+    TEST(PlayerSliceModelTests, LethalChargeStateRemainsIndependent)
+    {
+        PlayerSliceModel model;
+        const int tacticalBefore = model.GetEquipment(EquipmentSlot::Tactical).m_charges;
+        const int lethalBefore = model.GetEquipment(EquipmentSlot::Lethal).m_charges;
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Lethal));
+        ASSERT_TRUE(model.TryFire());
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Primary));
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Lethal).m_charges, lethalBefore - 1);
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Tactical).m_charges, tacticalBefore);
+    }
+
+    TEST(PlayerSliceModelTests, InactiveWeaponCannotConsumeAmmo)
+    {
+        PlayerSliceModel model;
+        const WeaponState secondaryBefore = model.GetEquipment(EquipmentSlot::Secondary);
+        ASSERT_TRUE(model.TryFire());
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Secondary).m_magazine, secondaryBefore.m_magazine);
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Secondary).m_reserve, secondaryBefore.m_reserve);
+    }
+
+    TEST(PlayerSliceModelTests, InactiveEquipmentCannotConsumeCharges)
+    {
+        PlayerSliceModel model;
+        const int tacticalBefore = model.GetEquipment(EquipmentSlot::Tactical).m_charges;
+        const int lethalBefore = model.GetEquipment(EquipmentSlot::Lethal).m_charges;
+        ASSERT_TRUE(model.TryFire());
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Tactical).m_charges, tacticalBefore);
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Lethal).m_charges, lethalBefore);
+    }
+
+    TEST(PlayerSliceModelTests, InvalidSlotProfileCombinationIsRejected)
+    {
+        PlayerSliceModel model;
+        EXPECT_FALSE(model.SetLoadoutProfile(EquipmentSlot::Tactical, EquipmentProfileId::STW_RIFLE_03));
+        EXPECT_FALSE(model.SetLoadoutProfile(EquipmentSlot::Secondary, EquipmentProfileId::STW_LMG_04));
+        EXPECT_FALSE(model.RequestEquipmentSwitch(static_cast<EquipmentSlot>(255)));
+        EXPECT_EQ(model.GetLoadoutProfile(EquipmentSlot::Tactical), EquipmentProfileId::STW_TACTICAL_FLASH_01);
+    }
+
+    TEST(PlayerSliceModelTests, HeldEquipmentSwitchDoesNotRetrigger)
+    {
+        PlayerSliceModel model;
+        PlayerInput held;
+        held.m_switchWeapon = true;
+        ASSERT_TRUE(model.Update(0.016f, held));
+        ASSERT_TRUE(model.Update(0.016f, held));
+        ASSERT_TRUE(model.Update(0.016f, held));
+        EXPECT_EQ(model.GetActiveEquipmentSlot(), EquipmentSlot::Secondary);
+        ASSERT_TRUE(model.Update(0.016f, PlayerInput{}));
+        ASSERT_TRUE(model.Update(0.016f, held));
+        EXPECT_EQ(model.GetActiveEquipmentSlot(), EquipmentSlot::Primary);
+    }
+
+    TEST(PlayerSliceModelTests, PrimarySecondaryPrimaryPreservesState)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.TryFire());
+        const WeaponState primaryAfterFire = model.GetEquipment(EquipmentSlot::Primary);
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Secondary));
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Primary));
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Primary).m_magazine, primaryAfterFire.m_magazine);
+        EXPECT_GT(model.GetEquipment(EquipmentSlot::Primary).m_cooldownRemaining, 0.0f);
+    }
+
+    TEST(PlayerSliceModelTests, PrimaryMeleePrimaryPreservesState)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.TryFire());
+        const WeaponState primaryBefore = model.GetEquipment(EquipmentSlot::Primary);
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Melee));
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Primary));
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Primary).m_magazine, primaryBefore.m_magazine);
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Primary).m_reserve, primaryBefore.m_reserve);
+    }
+
+    TEST(PlayerSliceModelTests, PrimaryTacticalPrimaryPreservesState)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.TryFire());
+        const WeaponState primaryBefore = model.GetEquipment(EquipmentSlot::Primary);
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Tactical));
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Primary));
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Primary).m_magazine, primaryBefore.m_magazine);
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Primary).m_cooldownRemaining, primaryBefore.m_cooldownRemaining);
+    }
+
+    TEST(PlayerSliceModelTests, ReloadAndCooldownSwitchingObeysExistingPolicy)
+    {
+        PlayerSliceModel reloadModel;
+        ASSERT_TRUE(reloadModel.TryFire());
+        Advance(reloadModel, PlayerSliceModel::FireInterval);
+        ASSERT_TRUE(reloadModel.StartReload());
+        EXPECT_FALSE(reloadModel.RequestEquipmentSwitch(EquipmentSlot::Secondary));
+        EXPECT_TRUE(reloadModel.GetEquipment(EquipmentSlot::Primary).m_reloading);
+
+        PlayerSliceModel cooldownModel;
+        ASSERT_TRUE(cooldownModel.TryFire());
+        ASSERT_TRUE(cooldownModel.RequestEquipmentSwitch(EquipmentSlot::Secondary));
+        ASSERT_TRUE(cooldownModel.RequestEquipmentSwitch(EquipmentSlot::Primary));
+        EXPECT_FALSE(cooldownModel.TryFire());
+        EXPECT_GT(cooldownModel.GetEquipment(EquipmentSlot::Primary).m_cooldownRemaining, 0.0f);
+    }
+
+    TEST(PlayerSliceModelTests, AdditionalPrimaryProfileReplacesDefaultDeterministically)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.SetLoadoutProfile(EquipmentSlot::Primary, EquipmentProfileId::STW_RIFLE_03));
+        EXPECT_EQ(model.GetActiveEquipmentProfileId(), EquipmentProfileId::STW_RIFLE_03);
+        EXPECT_EQ(model.GetWeapon().m_magazine, 20);
+        ASSERT_TRUE(model.TryFire());
+        EXPECT_EQ(model.GetWeapon().m_magazine, 19);
+    }
+
+    TEST(PlayerSliceModelTests, AdditionalTacticalProfileReplacesDefaultDeterministically)
+    {
+        PlayerSliceModel model;
+        ASSERT_TRUE(model.SetLoadoutProfile(EquipmentSlot::Tactical, EquipmentProfileId::STW_TACTICAL_SMOKE_01));
+        EXPECT_EQ(model.GetLoadoutProfile(EquipmentSlot::Tactical), EquipmentProfileId::STW_TACTICAL_SMOKE_01);
+        ASSERT_TRUE(model.RequestEquipmentSwitch(EquipmentSlot::Tactical));
+        ASSERT_TRUE(model.TryFire());
+        EXPECT_EQ(model.GetEquipment(EquipmentSlot::Tactical).m_charges, 1);
+    }
+
+    TEST(PlayerSliceModelTests, AdditionalProfilesExposeExplicitSlotPolicies)
+    {
+        EXPECT_TRUE(PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Primary, EquipmentProfileId::STW_LMG_04));
+        EXPECT_TRUE(PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Secondary, EquipmentProfileId::STW_SIDEARM_01));
+        // Launcher is intentionally a Primary profile in this bounded architecture.
+        EXPECT_TRUE(PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Primary, EquipmentProfileId::STW_LAUNCHER_01));
+        EXPECT_TRUE(PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Tactical,
+            EquipmentProfileId::STW_TACTICAL_SMOKE_01));
+        EXPECT_TRUE(PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Lethal,
+            EquipmentProfileId::STW_LETHAL_FRAG_01));
+        EXPECT_TRUE(PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Melee, EquipmentProfileId::STW_MELEE_01));
+    }
+}
