@@ -1,5 +1,5 @@
 {
-    "description": "STW arena production PBR - structural deck family (procedural, original).",
+    "description": "STW arena production PBR - coated structural deck family (procedural, original).",
     "materialType": "Materials/Types/StandardPBR.materialtype",
     "materialTypeVersion": 5,
     "properties": {

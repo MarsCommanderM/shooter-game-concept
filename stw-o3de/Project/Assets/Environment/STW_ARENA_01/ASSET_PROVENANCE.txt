@@ -1,3 +1,40 @@
-STW_ARENA_01 is original STW production geometry.
-Generated deterministically by tools/assets/generate_stw_arena.py.
+The STW_ARENA_01 modular kit is original STW production geometry.
+
+Geometry generated deterministically by tools/assets/generate_stw_arena_kit.py:
+  STW_ARENA_DECK_01.obj      segmented deck plates, channels, hatches, framing
+  STW_ARENA_WALL_01.obj      framed wall modules, ribs, rails, bays, vents
+  STW_ARENA_STRUCT_01.obj    wall pilasters, roof trusses, tie beams
+  STW_ARENA_COVERMOD_01.obj  cover modules and the step platform
+  STW_ARENA_ARCH_01.obj      suspended hero gate structure
+  STW_ARENA_BEACON_01.obj    landmark tower and the arena's emissive channels
+  STW_ARENA_TRIMKIT_01.obj   kick plates, cap bands, hazard trim
+  STW_ARENA_PROP_01.obj      set dressing: crates, barricades, conduit, housings
+  STW_ARENA_MARK_01.obj      painted marking planes
+
+Block 26E-R1 made the presentation coherent with the gameplay collision world.
+Gameplay owns collision: PhysXPlayerRuntime builds exactly eight static boxes
+(floor, four perimeter walls, two covers, one step) and this kit adds none. Block
+26E had authored free-standing pylons, hero-arch legs and deck crates in open
+floor, where no collider exists, so the player walked through them. In R1 every
+solid component either sits on one of those eight colliders, stays behind the
+wall plane, clears the standing capsule, or is flush enough to walk over:
+  pylons  -> engaged pilasters standing in the wall relief
+  arch    -> suspended from the roof trusses, underside at 1.95 m
+  props   -> perimeter equipment lines, cover-top dressing, flush deck pads
+tools/assets/validate_stw_obj.py enforces this per component, purely by
+position, deriving the collider list and the player capsule from
+PhysXPlayerRuntime rather than keeping an editable copy.
+
+Materials and textures generated deterministically by
+tools/assets/generate_stw_materials.py (eight StandardPBR families).
+
+Geometry is authored raw Z-up, +Y forward, in metres, unrotated. O3DE imports
+OBJ vertices as (-x, z, y) and the runtime applies the compensating rotation
+Matrix3x3::CreateFromColumns(-X, Z, Y) at bind time.
+
+This kit supersedes the Block 26D blockout meshes (STW_ARENA_01.obj,
+STW_ARENA_COVER_01.obj, STW_ARENA_LANDMARK_01.obj, STW_ARENA_TRIM_01.obj) and
+their unreferenced .mtl sidecars, all removed in Block 26E along with the
+superseded tools/assets/generate_stw_arena.py.
+
 No external, copyrighted, downloaded, or paid asset was used.

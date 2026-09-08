@@ -2443,7 +2443,7 @@ namespace STWGameplay
             && m_arenaPresentation.IsReady())
         {
             m_arenaMeshReported = true;
-            AZ_Printf("STWGameplay", "ATOM_ARENA result=PASS asset=visual_set mesh=ready material=bound lighting=native_environment geometry=4\n");
+            AZ_Printf("STWGameplay", "ATOM_ARENA result=PASS asset=visual_set mesh=ready material=bound lighting=native_environment geometry=9\n");
             AZ_Printf("STWGameplay", "ARENA_PRESENTATION_ACTIVE=1\n");
             AZ_Printf("STWGameplay", "ARENA_VISUAL_GEOMETRY_READY=1\n");
             AZ_Printf("STWGameplay", "ARENA_MATERIAL_SET_READY=1\n");

@@ -1,0 +1,26 @@
+{
+    "description": "STW arena production PBR - equipment and set dressing family (procedural, original).",
+    "materialType": "Materials/Types/StandardPBR.materialtype",
+    "materialTypeVersion": 5,
+    "properties": {
+        "baseColor": {
+            "textureMap": "Textures/STW_ARENA_PROP_01_basecolor.png"
+        },
+        "metallic": {
+            "textureMap": "Textures/STW_ARENA_PROP_01_metallic.png"
+        },
+        "roughness": {
+            "textureMap": "Textures/STW_ARENA_PROP_01_roughness.png"
+        },
+        "normal": {
+            "textureMap": "Textures/STW_ARENA_PROP_01_normal.png",
+            "factor": 1.0
+        },
+        "occlusion": {
+            "diffuseTextureMap": "Textures/STW_ARENA_PROP_01_ao.png"
+        },
+        "specularF0": {
+            "factor": 0.5
+        }
+    }
+}

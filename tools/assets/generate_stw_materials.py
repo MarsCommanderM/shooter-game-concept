@@ -4,11 +4,16 @@
 Authors, deterministically and with zero external assets, a set of tiling
 StandardPBR texture maps (baseColor / normal / roughness / metallic / AO, plus
 emissive and height where the family calls for it) and the matching `.material`
-definitions. The four existing arena materials are rewritten in place so the
-runtime picks them up unchanged; two extra families are authored for the P3
-modular kit.
+definitions. One family per material the arena kit binds; every `.material` file
+in the arena directory is rewritten in place, and because every field is seeded
+only the families whose parameters actually changed produce a diff.
 
-Requires only the already-installed Python + Pillow + numpy toolchain.
+UV note: the kit meshes now carry world-planar UVs scaled in metres per tile
+(deck 2 m, walls 1.5 m, structure 1 m), so these maps tile across the surface
+instead of being stretched once across a whole 24 m face. Panel rows/cols are
+tuned for that tile size.
+
+Requires only numpy - PNG writing is a dependency-free zlib/struct writer below.
 """
 
 import json
@@ -128,35 +133,48 @@ def _rgb(r, g, b):
 # --------------------------------------------------------------------------- #
 # family authoring
 # --------------------------------------------------------------------------- #
+# metal_coat is the coated/painted value that covers most of the surface;
+# metal_bare is the value reached only where fasteners and worn seams expose raw
+# metal. Block 26D shipped these inverted - the deck read 0.69 mean metallic at
+# 0.42 roughness, which under the HDRI plus a 25000 lux key is a mirror, and it
+# clipped to white across the largest surface in the frame.
 FAMILIES = [
     # R1: parallax/POM removed from every family. Per-pixel POM on the base deck+wall mesh
     # (largest screen coverage) was a primary cost in the Block 26D fps collapse. normal +
     # roughness + metallic + AO carry the surface detail.
-    dict(key="STW_ARENA_01", name="structural deck", seed=101,
-         tint=(0.20, 0.23, 0.27), accent=(0.32, 0.30, 0.24),
-         rows=4, cols=4, seam=0.05, metal_base=0.85, metal_paint=0.15,
-         rough_lo=0.28, rough_hi=0.62, emissive=None, height=False),
+    dict(key="STW_ARENA_01", name="coated structural deck", seed=101,
+         tint=(0.21, 0.23, 0.26), accent=(0.34, 0.31, 0.25),
+         rows=2, cols=2, seam=0.04, metal_bare=0.35, metal_coat=0.02,
+         rough_lo=0.46, rough_hi=0.84, emissive=None, height=False),
     dict(key="STW_ARENA_COVER_01", name="cover composite", seed=202,
          tint=(0.14, 0.15, 0.17), accent=(0.45, 0.13, 0.05),
-         rows=2, cols=3, seam=0.09, metal_base=0.30, metal_paint=0.05,
+         rows=2, cols=3, seam=0.09, metal_bare=0.45, metal_coat=0.05,
          rough_lo=0.42, rough_hi=0.78, emissive=None, height=False),
     dict(key="STW_ARENA_LANDMARK_01", name="emissive beacon", seed=303,
          tint=(0.09, 0.10, 0.12), accent=(0.05, 0.55, 0.62),
-         rows=8, cols=2, seam=0.06, metal_base=0.90, metal_paint=0.20,
-         rough_lo=0.20, rough_hi=0.45,
+         rows=8, cols=2, seam=0.06, metal_bare=0.70, metal_coat=0.12,
+         rough_lo=0.28, rough_hi=0.55,
          emissive=(0.05, 0.85, 0.95), height=False),
     dict(key="STW_ARENA_TRIM_01", name="hazard trim", seed=404,
          tint=(0.62, 0.50, 0.06), accent=(0.05, 0.05, 0.05),
-         rows=1, cols=6, seam=0.12, metal_base=0.75, metal_paint=0.10,
-         rough_lo=0.30, rough_hi=0.66, emissive=None, height=False),
+         rows=1, cols=6, seam=0.12, metal_bare=0.55, metal_coat=0.06,
+         rough_lo=0.34, rough_hi=0.70, emissive=None, height=False),
     dict(key="STW_ARENA_WALLPANEL_01", name="wall panel", seed=505,
          tint=(0.24, 0.26, 0.30), accent=(0.30, 0.33, 0.38),
-         rows=3, cols=2, seam=0.05, metal_base=0.80, metal_paint=0.20,
-         rough_lo=0.32, rough_hi=0.60, emissive=None, height=False),
+         rows=3, cols=2, seam=0.05, metal_bare=0.55, metal_coat=0.08,
+         rough_lo=0.38, rough_hi=0.72, emissive=None, height=False),
     dict(key="STW_ARENA_STRUCT_01", name="structural metal", seed=606,
          tint=(0.16, 0.17, 0.19), accent=(0.22, 0.20, 0.18),
-         rows=2, cols=2, seam=0.07, metal_base=0.92, metal_paint=0.30,
-         rough_lo=0.24, rough_hi=0.52, emissive=None, height=False),
+         rows=2, cols=2, seam=0.07, metal_bare=0.85, metal_coat=0.18,
+         rough_lo=0.30, rough_hi=0.62, emissive=None, height=False),
+    dict(key="STW_ARENA_PROP_01", name="equipment and set dressing", seed=707,
+         tint=(0.30, 0.28, 0.24), accent=(0.44, 0.31, 0.10),
+         rows=2, cols=2, seam=0.08, metal_bare=0.55, metal_coat=0.10,
+         rough_lo=0.40, rough_hi=0.78, emissive=None, height=False),
+    dict(key="STW_ARENA_MARK_01", name="painted markings", seed=808,
+         tint=(0.72, 0.62, 0.10), accent=(0.86, 0.86, 0.83),
+         rows=1, cols=1, seam=0.20, metal_bare=0.10, metal_coat=0.00,
+         rough_lo=0.55, rough_hi=0.80, emissive=None, height=False),
 ]
 
 
@@ -190,11 +208,14 @@ def author_family(fam):
     rough = np.clip(rough + 0.10 * edges, 0.05, 0.98)
     rough_map = _u8(rough)
 
-    # ---- metallic (base metal with painted / composite patches) ----
-    paint = (grime > 0.63).astype(np.float64)
-    paint = np.clip(paint + 0.4 * (fine > 0.72), 0.0, 1.0)
-    metal = fam["metal_base"] * (1.0 - paint) + fam["metal_paint"] * paint
-    metal = np.clip(metal - 0.25 * edges, 0.0, 1.0)
+    # ---- metallic (coated surface, bare metal only where it is believable) ----
+    # Driven by fasteners and worn panel edges rather than by a binary grime
+    # threshold: a painted structural surface is dielectric almost everywhere,
+    # and reads as metal only where the coating has actually been broken.
+    wear = np.clip((grime - 0.58) / 0.32, 0.0, 1.0)
+    exposed = np.clip(bolts * 1.10 + edges * 0.85 * wear + 0.25 * wear * fine, 0.0, 1.0)
+    metal = fam["metal_coat"] + (fam["metal_bare"] - fam["metal_coat"]) * exposed
+    metal = np.clip(metal, 0.0, 1.0)
     metal_map = _u8(metal)
 
     # ---- AO ----

@@ -8,6 +8,7 @@ on:
       - .github/lightning-t4/**
       - .github/workflows/stw-lightning-t4.yml
       - stw-o3de/Gems/STWGameplay/**
+      - stw-o3de/Project/Assets/**
       - runner.sh
 
 permissions:

@@ -289,17 +289,149 @@ echo "=================================================="
 echo "STW_PERSISTENT_RECOVERY_BEGIN"
 echo "=================================================="
 
-# Synchronize tracked production inputs additively.  The persistent checkout is a
-# build input, not the Git source of truth; files present only on the host are not
-# deleted.  Every tracked Project/Assets file is byte-checked after synchronization.
+# Synchronize tracked production inputs from the pushed GitHub checkout into the
+# persistent derived O3DE worktree.  The persistent checkout is a build input, not
+# the Git source of truth.  Each authoritative subtree is mirrored: additions and
+# modifications are copied in, and any file that no longer exists in the pushed
+# source is removed from the destination so inputs deleted upstream cannot survive
+# from a previous T4 run.  Deletion is hard-scoped to the explicit destination
+# subtree, which must resolve strictly inside the persistent worktree and can never
+# be the worktree root itself.  Every tracked Project/Assets file is additionally
+# byte-checked after synchronization.
 copy_file_if_changed(){
   mkdir -p "$(dirname "$2")"
   cmp -s "$1" "$2" || cp -a "$1" "$2"
 }
-copy_tree_if_changed(){
-  mkdir -p "$2"
-  diff -qr "$1" "$2" >/dev/null 2>&1 || cp -a "$1/." "$2/"
+
+# >>> STW_SYNC_MIRROR_TREE (kept verbatim between these markers; mirror_tree_selftest.sh extracts this block) >>>
+mirror_tree(){
+  # Exact regular-file mirror of one authoritative subtree into the persistent
+  # derived worktree. Every structural safety check runs BEFORE the destination
+  # is touched, and the function fails closed on anything it cannot reason about
+  # rather than deleting its way to a successful sync.
+  local src="$1" dst="$2" boundary="$3"
+  [[ -n "${src}" && -n "${dst}" && -n "${boundary}" ]] || { echo "MIRROR_TREE_BAD_ARGS"; return 1; }
+
+  # ---- structural safety, all before any destination mutation ---------------
+  [[ -e "${src}" ]] || { echo "MIRROR_TREE_SRC_MISSING=${src}"; return 1; }
+  [[ -d "${src}" && ! -L "${src}" ]] || { echo "MIRROR_TREE_SRC_NOT_DIRECTORY=${src}"; return 1; }
+  [[ -e "${boundary}" ]] || { echo "MIRROR_TREE_BOUNDARY_MISSING=${boundary}"; return 1; }
+  [[ -d "${boundary}" ]] || { echo "MIRROR_TREE_BOUNDARY_NOT_DIRECTORY=${boundary}"; return 1; }
+  case "${dst}" in
+    ".."|*"/.."|*"/../"*) echo "MIRROR_TREE_DEST_HAS_DOTDOT=${dst}"; return 1;;
+  esac
+  [[ "${dst}" == /* ]] || { echo "MIRROR_TREE_DEST_NOT_ABSOLUTE=${dst}"; return 1; }
+  [[ "${dst}" != "/" ]] || { echo "MIRROR_TREE_DEST_IS_ROOT"; return 1; }
+  [[ ! -L "${dst}" ]] || { echo "MIRROR_TREE_DEST_IS_SYMLINK=${dst}"; return 1; }
+  [[ ! -e "${dst}" || -d "${dst}" ]] || { echo "MIRROR_TREE_DEST_NOT_DIRECTORY=${dst}"; return 1; }
+
+  local src_real boundary_real dst_real probe tail
+  src_real="$(cd "${src}" && pwd -P)"           || { echo "MIRROR_TREE_SRC_UNRESOLVABLE=${src}"; return 1; }
+  boundary_real="$(cd "${boundary}" && pwd -P)" || { echo "MIRROR_TREE_BOUNDARY_UNRESOLVABLE=${boundary}"; return 1; }
+
+  # Canonicalise the destination WITHOUT creating it: walk up to the deepest
+  # existing ancestor, resolve that, then re-append the missing tail. A first run
+  # legitimately has no destination yet, and creating it before the boundary
+  # check would be the one mutation that could land outside the boundary.
+  probe="${dst}"
+  tail=""
+  while [[ ! -d "${probe}" ]]; do
+    if [[ -e "${probe}" || -L "${probe}" ]]; then
+      echo "MIRROR_TREE_DEST_PATH_NOT_DIRECTORY=${probe}"; return 1
+    fi
+    tail="$(basename "${probe}")${tail:+/}${tail}"
+    probe="$(dirname "${probe}")"
+    [[ "${probe}" != "/" && -n "${probe}" ]] || { echo "MIRROR_TREE_DEST_UNRESOLVABLE=${dst}"; return 1; }
+  done
+  dst_real="$(cd "${probe}" && pwd -P)" || { echo "MIRROR_TREE_DEST_UNRESOLVABLE=${dst}"; return 1; }
+  dst_real="${dst_real%/}${tail:+/${tail}}"
+
+  [[ "${dst_real}" != "/" ]] || { echo "MIRROR_TREE_DEST_IS_ROOT"; return 1; }
+  [[ "${dst_real}" != "${boundary_real}" ]] || { echo "MIRROR_TREE_DEST_IS_BOUNDARY=${dst_real}"; return 1; }
+  case "${dst_real}/" in
+    "${boundary_real}/"*) : ;;
+    *) echo "MIRROR_TREE_DEST_ESCAPES_BOUNDARY=${dst_real}"; return 1;;
+  esac
+  # Overlap: a sync where either tree contains the other would copy files into
+  # the set it is still walking, then delete "stale" files that are their own
+  # source. Reject all three shapes outright.
+  [[ "${src_real}" != "${dst_real}" ]] || { echo "MIRROR_TREE_SRC_EQUALS_DEST=${src_real}"; return 1; }
+  case "${dst_real}/" in
+    "${src_real}/"*) echo "MIRROR_TREE_SRC_CONTAINS_DEST src=${src_real} dst=${dst_real}"; return 1;;
+  esac
+  case "${src_real}/" in
+    "${dst_real}/"*) echo "MIRROR_TREE_DEST_CONTAINS_SRC src=${src_real} dst=${dst_real}"; return 1;;
+  esac
+
+  # ---- symlink policy: reject any symlink in either synchronized tree -------
+  # A descendant symlink can redirect cp or rm outside the boundary, and a stale
+  # destination symlink is not something an exact regular-file mirror can reason
+  # about. find is used without -L so nothing here follows a link.
+  local link symlinks=0
+  while IFS= read -r -d '' link; do
+    echo "MIRROR_TREE_SRC_SYMLINK=${link}"
+    symlinks=$((symlinks + 1))
+  done < <(find "${src}" -type l -print0)
+  if [[ -d "${dst}" ]]; then
+    while IFS= read -r -d '' link; do
+      echo "MIRROR_TREE_DEST_SYMLINK=${link}"
+      symlinks=$((symlinks + 1))
+    done < <(find "${dst}" -type l -print0)
+  fi
+  [[ "${symlinks}" -eq 0 ]] || { echo "MIRROR_TREE_SYMLINKS_REJECTED=${symlinks}"; return 1; }
+
+  # ---- file/directory type conflicts: detect before mutation ---------------
+  # Never recursively remove an unknown host directory just to make the sync
+  # succeed; a type conflict is a fact about the destination that a human has to
+  # resolve.
+  local rel s d conflicts=0
+  if [[ -d "${dst}" ]]; then
+    while IFS= read -r -d '' s; do
+      rel="${s#"${src}"/}"
+      if [[ -d "${dst}/${rel}" ]]; then
+        echo "MIRROR_TREE_TYPE_CONFLICT_FILE_OVER_DIR=${dst}/${rel}"
+        conflicts=$((conflicts + 1))
+      fi
+    done < <(find "${src}" -type f -print0)
+    while IFS= read -r -d '' s; do
+      rel="${s#"${src}"}"; rel="${rel#/}"
+      [[ -n "${rel}" ]] || continue
+      if [[ -e "${dst}/${rel}" && ! -d "${dst}/${rel}" ]]; then
+        echo "MIRROR_TREE_TYPE_CONFLICT_DIR_OVER_FILE=${dst}/${rel}"
+        conflicts=$((conflicts + 1))
+      fi
+    done < <(find "${src}" -type d -print0)
+  fi
+  [[ "${conflicts}" -eq 0 ]] || { echo "MIRROR_TREE_TYPE_CONFLICTS=${conflicts}"; return 1; }
+
+  # ---- mutation: from here on the destination subtree is written -----------
+  mkdir -p "${dst}"
+
+  local copied=0 removed=0
+  # additions + modifications: source determines destination
+  while IFS= read -r -d '' s; do
+    rel="${s#"${src}"/}"
+    d="${dst}/${rel}"
+    if ! cmp -s "${s}" "${d}"; then
+      mkdir -p "$(dirname "${d}")"
+      cp -a "${s}" "${d}"
+      copied=$((copied + 1))
+    fi
+  done < <(find "${src}" -type f -print0)
+
+  # deletions: a destination regular file with no source counterpart is stale
+  while IFS= read -r -d '' d; do
+    rel="${d#"${dst}"/}"
+    if [[ ! -e "${src}/${rel}" ]]; then
+      rm -f "${d}"
+      echo "MIRROR_TREE_STALE_REMOVED=${dst}/${rel}"
+      removed=$((removed + 1))
+    fi
+  done < <(find "${dst}" -type f -print0)
+
+  echo "MIRROR_TREE_SYNCED src=${src} dst=${dst} copied=${copied} removed=${removed}"
 }
+# <<< STW_SYNC_MIRROR_TREE <<<
 
 tracked_gem="${GITHUB_WORKSPACE}/stw-o3de/Gems/STWGameplay"
 tracked_project_assets="${GITHUB_WORKSPACE}/stw-o3de/Project/Assets"
@@ -307,8 +439,8 @@ tracked_project_assets="${GITHUB_WORKSPACE}/stw-o3de/Project/Assets"
 echo "SYNCING_TRACKED_PRODUCTION_GEM=${GEM}"
 copy_file_if_changed "${tracked_gem}/gem.json" "${GEM}/gem.json"
 copy_file_if_changed "${tracked_gem}/CMakeLists.txt" "${GEM}/CMakeLists.txt"
-copy_tree_if_changed "${tracked_gem}/Code" "${GEM}/Code"
-copy_tree_if_changed "${tracked_gem}/Registry" "${GEM}/Registry"
+mirror_tree "${tracked_gem}/Code" "${GEM}/Code" "${O3DE_ROOT}"
+mirror_tree "${tracked_gem}/Registry" "${GEM}/Registry" "${O3DE_ROOT}"
 
 # The pinned DefaultProject template is generated away from the persistent Project
 # first.  A partial scaffold is an error: it is never overwritten with --force.
@@ -342,7 +474,7 @@ for scaffold_file in project.json CMakeLists.txt CMakePresets.json; do
   [[ -f "${PROJECT}/${scaffold_file}" ]]
 done
 
-copy_tree_if_changed "${tracked_project_assets}" "${PROJECT}/Assets"
+mirror_tree "${tracked_project_assets}" "${PROJECT}/Assets" "${O3DE_ROOT}"
 tracked_asset_count=0
 while IFS= read -r -d '' tracked_asset; do
   relative_asset="${tracked_asset#${tracked_project_assets}/}"
