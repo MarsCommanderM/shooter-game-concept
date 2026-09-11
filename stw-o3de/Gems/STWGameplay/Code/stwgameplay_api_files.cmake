@@ -9,6 +9,8 @@ set(FILES
     Include/STWGameplay/EnemyPresentation.h
     Include/STWGameplay/EnvironmentPresentation.h
     Include/STWGameplay/PlayerMovementModel.h
+    Include/STWGameplay/PlayerCommand.h
+    Include/STWGameplay/PlayerSimulationTypes.h
     Include/STWGameplay/WeaponModel.h
     Include/STWGameplay/STWGameplayTypeIds.h
     Include/STWGameplay/PlayerSliceModel.h

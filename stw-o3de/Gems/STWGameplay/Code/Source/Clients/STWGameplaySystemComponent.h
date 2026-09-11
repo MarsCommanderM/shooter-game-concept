@@ -6,6 +6,7 @@
 #include <AzCore/std/string/string.h>
 #include <AzFramework/Input/Events/InputChannelEventListener.h>
 #include <Atom/Feature/Mesh/MeshFeatureProcessorInterface.h>
+#include <STWGameplay/PlayerSimulationTypes.h>
 #include <STWGameplay/PlayerSliceModel.h>
 #include <STWGameplay/CombatFeedbackPresentation.h>
 #include <STWGameplay/EncounterModel.h>
@@ -41,6 +42,11 @@ namespace STWGameplay
         void Deactivate() override;
         void OnTick(float deltaTime, AZ::ScriptTimePoint time) override;
 
+        const AuthoritativePlayerSnapshot& GetAuthoritativeSnapshot() const
+        {
+            return m_authoritativeSnapshot;
+        }
+
     private:
         bool OnInputChannelEventFiltered(const AzFramework::InputChannel& inputChannel) override;
         void UpdateCamera();
@@ -53,6 +59,8 @@ namespace STWGameplay
         // Attempts to create the PhysX controller once the O3DE default physics scene exists.
         void TryStartPhysics();
         void ShutdownEnemyPhysics();
+        PlayerCommand BuildPlayerCommand();
+        void CaptureAuthoritativeSnapshot(PlayerCommandSequence acknowledgedCommandSequence);
         // Attempts to acquire the real Atom viewmodel mesh once the render scene exists.
         void TryStartViewmodelMesh();
         // Drives the Atom mesh from the same first-person basis the presentation computes.
@@ -145,6 +153,10 @@ namespace STWGameplay
         PhysXPlayerRuntime m_physicsPlayer;
         AZStd::array<PhysXEnemyRuntime, EnemyCollectionModel::MaxEnemyCount> m_enemyPhysicsRuntimes;
         PlayerInput m_input;
+        AuthoritativePlayerSnapshot m_authoritativeSnapshot;
+        PlayerCommandSequence m_nextCommandSequence = InvalidPlayerSimulationSequence;
+        PlayerSnapshotSequence m_nextSnapshotSequence = InvalidPlayerSimulationSequence;
+        PlayerSnapshotSequence m_physicalReadbackSequence = InvalidPlayerSimulationSequence;
         bool m_adsHeld = false;
         AZStd::string m_nativeCapturePath;
         float m_nativeCaptureDelay = 0.0f;

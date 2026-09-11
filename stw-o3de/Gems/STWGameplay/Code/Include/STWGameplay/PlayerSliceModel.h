@@ -5,28 +5,11 @@
 #include <STWGameplay/ArenaLayout.h>
 #include <STWGameplay/EnemyCollectionModel.h>
 #include <STWGameplay/PlayerMovementModel.h>
+#include <STWGameplay/PlayerCommand.h>
 #include <STWGameplay/WeaponModel.h>
 
 namespace STWGameplay
 {
-    struct PlayerInput
-    {
-        float m_forward = 0.0f;
-        float m_strafe = 0.0f;
-        float m_lookX = 0.0f;
-        float m_lookY = 0.0f;
-        bool m_sprint = false;
-        bool m_jump = false;
-        bool m_crouch = false;
-        bool m_mantle = false;
-        bool m_fire = false;
-        bool m_reload = false;
-        bool m_switchWeapon = false;
-        // -1 means no direct slot request. The native adapter uses this only for the
-        // proven-unused number-row slot keys; the model validates the request.
-        int m_requestedEquipmentSlot = -1;
-    };
-
     struct PlayerState
     {
         AZ::Vector3 m_position = ArenaLayout::PlayerSpawn;
@@ -138,6 +121,7 @@ namespace STWGameplay
         {
             return m_weapons.GetLoadoutProfile(slot);
         }
+        WeaponEventId GetLastAcceptedUseEventId() const { return m_weapons.GetLastAcceptedUseEventId(); }
         const TargetState& GetTarget() const { return GetEnemy().GetState(); }
         const EnemyCombatModel& GetEnemy() const { return *m_enemies.GetEnemy(PrimaryEnemyId); }
         EnemyCombatModel& GetEnemy() { return *m_enemies.GetEnemy(PrimaryEnemyId); }

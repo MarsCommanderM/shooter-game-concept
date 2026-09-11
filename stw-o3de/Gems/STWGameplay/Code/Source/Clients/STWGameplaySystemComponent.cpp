@@ -221,6 +221,50 @@ namespace STWGameplay
         m_enemyPhysicsReady = false;
     }
 
+    PlayerCommand STWGameplaySystemComponent::BuildPlayerCommand()
+    {
+        m_nextCommandSequence = AdvancePlayerSimulationSequence(m_nextCommandSequence);
+        return MakePlayerCommand(m_input, m_nextCommandSequence);
+    }
+
+    void STWGameplaySystemComponent::CaptureAuthoritativeSnapshot(
+        PlayerCommandSequence acknowledgedCommandSequence)
+    {
+        m_nextSnapshotSequence = AdvancePlayerSimulationSequence(m_nextSnapshotSequence);
+        m_physicalReadbackSequence = AdvancePlayerSimulationSequence(m_physicalReadbackSequence);
+
+        const PlayerState& player = m_model.GetPlayer();
+        const WeaponState& weapon = m_model.GetWeapon();
+        AuthoritativePlayerSnapshot snapshot;
+        snapshot.m_snapshotSequence = m_nextSnapshotSequence;
+        snapshot.m_acknowledgedCommandSequence = acknowledgedCommandSequence;
+        snapshot.m_physicalReadbackSequence = m_physicalReadbackSequence;
+        snapshot.m_physicalStateSynchronized = true;
+        snapshot.m_position = player.m_position;
+        snapshot.m_grounded = player.m_grounded;
+        snapshot.m_requestedSimulationVelocity = m_model.GetMovementVelocity();
+        snapshot.m_yaw = player.m_yaw;
+        snapshot.m_pitch = player.m_pitch;
+        snapshot.m_health = player.m_health;
+        snapshot.m_alive = player.m_alive;
+        snapshot.m_crouchDesired = player.m_crouchDesired;
+        snapshot.m_slideActive = player.m_slideActive;
+        snapshot.m_mantleRequested = player.m_mantleRequested;
+        snapshot.m_mantleActive = player.m_mantleActive;
+        snapshot.m_activeEquipmentSlot = m_model.GetActiveEquipmentSlot();
+        snapshot.m_activeEquipmentProfile = m_model.GetActiveEquipmentProfileId();
+        snapshot.m_magazine = weapon.m_magazine;
+        snapshot.m_reserve = weapon.m_reserve;
+        snapshot.m_charges = weapon.m_charges;
+        snapshot.m_cooldownRemaining = weapon.m_cooldownRemaining;
+        snapshot.m_reloadRemaining = weapon.m_reloadRemaining;
+        snapshot.m_reloading = weapon.m_reloading;
+        snapshot.m_deathEvents = player.m_deathEvents;
+        snapshot.m_respawnEvents = player.m_respawnEvents;
+        snapshot.m_lastAcceptedUseEventId = m_model.GetLastAcceptedUseEventId();
+        m_authoritativeSnapshot = snapshot;
+    }
+
     void STWGameplaySystemComponent::OnTick(float deltaTime, AZ::ScriptTimePoint)
     {
         if (m_physicsStartup != PhysicsStartup::Ready)
@@ -246,7 +290,8 @@ namespace STWGameplay
         }
 
         UpdateAutomatedAcceptance(deltaTime);
-        m_model.Update(deltaTime, m_input);
+        const PlayerCommand command = BuildPlayerCommand();
+        const bool gameplayUpdated = m_model.Update(deltaTime, command);
         const EnemyCollectionModel& enemies = m_model.GetEnemies();
         m_encounter.Update(enemies);
         if (m_encounter.IsCompleted() && enemies.AreRequiredEnemiesAlive()
@@ -352,6 +397,13 @@ namespace STWGameplay
         if (playerPhysicalStateSynchronized)
         {
             m_model.SynchronizePhysicalState(physicalPosition, grounded);
+            if (gameplayUpdated)
+            {
+                // The command is acknowledged as gameplay-processed here. The immediate
+                // readback is the newest known physical sample, not proof that this command
+                // has completed in the PhysX scene.
+                CaptureAuthoritativeSnapshot(command.m_sequence);
+            }
             if (m_automatedAcceptance)
             {
                 m_spawnCheckpointLastPhysicalPosition = physicalPosition;
