@@ -3,6 +3,7 @@ set(FILES
     Tests/Clients/ArenaPresentationTests.cpp
     Tests/Clients/AudioFeedbackPresentationTests.cpp
     Tests/Clients/CombatFeedbackPresentationTests.cpp
+    Tests/Clients/CharacterPhysicalStateTests.cpp
     Tests/Clients/EncounterModelTests.cpp
     Tests/Clients/EnemyCombatModelTests.cpp
     Tests/Clients/MultiEnemyModelTests.cpp

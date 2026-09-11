@@ -2,6 +2,7 @@ set(FILES
     Include/STWGameplay/ArenaLayout.h
     Include/STWGameplay/ArenaPresentation.h
     Include/STWGameplay/CombatFeedbackPresentation.h
+    Include/STWGameplay/CharacterPhysicalState.h
     Include/STWGameplay/EncounterModel.h
     Include/STWGameplay/EnemyCombatModel.h
     Include/STWGameplay/EnemyCollectionModel.h
