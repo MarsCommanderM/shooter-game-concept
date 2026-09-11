@@ -1,9 +1,26 @@
 {
-  "materialType": "Materials/Types/StandardPBR.materialtype",
-  "materialTypeVersion": 5,
-  "propertyValues": {
-    "baseColor.color": [0.08, 0.32, 0.48, 1.0],
-    "metallic.factor": 0.55,
-    "roughness.factor": 0.42
-  }
+    "description": "STW arena production PBR - structural deck family (procedural, original).",
+    "materialType": "Materials/Types/StandardPBR.materialtype",
+    "materialTypeVersion": 5,
+    "properties": {
+        "baseColor": {
+            "textureMap": "Textures/STW_ARENA_01_basecolor.png"
+        },
+        "metallic": {
+            "textureMap": "Textures/STW_ARENA_01_metallic.png"
+        },
+        "roughness": {
+            "textureMap": "Textures/STW_ARENA_01_roughness.png"
+        },
+        "normal": {
+            "textureMap": "Textures/STW_ARENA_01_normal.png",
+            "factor": 1.0
+        },
+        "occlusion": {
+            "diffuseTextureMap": "Textures/STW_ARENA_01_ao.png"
+        },
+        "specularF0": {
+            "factor": 0.5
+        }
+    }
 }
