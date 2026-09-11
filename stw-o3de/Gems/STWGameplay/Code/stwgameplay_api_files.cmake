@@ -10,6 +10,8 @@ set(FILES
     Include/STWGameplay/EnvironmentPresentation.h
     Include/STWGameplay/PlayerMovementModel.h
     Include/STWGameplay/PlayerCommand.h
+    Include/STWGameplay/PlayerCommandHistory.h
+    Include/STWGameplay/PlayerPrediction.h
     Include/STWGameplay/PlayerSimulationTypes.h
     Include/STWGameplay/WeaponModel.h
     Include/STWGameplay/STWGameplayTypeIds.h

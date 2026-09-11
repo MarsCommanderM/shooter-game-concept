@@ -292,6 +292,10 @@ namespace STWGameplay
         UpdateAutomatedAcceptance(deltaTime);
         const PlayerCommand command = BuildPlayerCommand();
         const bool gameplayUpdated = m_model.Update(deltaTime, command);
+        if (gameplayUpdated)
+        {
+            m_commandHistory.Push(command);
+        }
         const EnemyCollectionModel& enemies = m_model.GetEnemies();
         m_encounter.Update(enemies);
         if (m_encounter.IsCompleted() && enemies.AreRequiredEnemiesAlive()
@@ -2973,6 +2977,7 @@ namespace STWGameplay
             if (m_enemyAiRespawnDelay >= 0.5f)
             {
                 m_model.ResetPlayer();
+                m_commandHistory.Clear();
                 const AZ::Vector3 respawnPosition = m_spawnCheckpoint.ResolveRespawnPosition();
                 m_model.SetPlayerPosition(respawnPosition);
                 m_physicsPlayer.ResetPosition(respawnPosition);
