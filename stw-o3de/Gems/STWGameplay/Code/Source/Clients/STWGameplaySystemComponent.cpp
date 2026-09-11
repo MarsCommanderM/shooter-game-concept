@@ -299,7 +299,7 @@ namespace STWGameplay
             && m_model.GetWeapon().m_magazine == feedbackWeaponBefore.m_magazine
             && m_model.GetWeapon().m_cooldownRemaining == feedbackWeaponBefore.m_cooldownRemaining
             && feedbackEnemyAuthorityUnchanged;
-        const AZ::Vector3 desiredPlayerVelocity = m_model.GetDesiredVelocity(m_input);
+        const AZ::Vector3 desiredPlayerVelocity = m_model.GetMovementVelocity();
         if (m_automatedAcceptance && m_jumpAcceptanceStarted
             && m_model.GetPlayer().m_jumpEvents > m_jumpAcceptanceInitialEvents)
         {
@@ -436,6 +436,14 @@ namespace STWGameplay
         bodycamInput.m_mantleProgress = bodycamPlayer.m_mantleElapsed / PlayerSliceModel::MantleDuration;
         bodycamInput.m_alive = bodycamPlayer.m_alive;
         bodycamInput.m_respawnEvents = bodycamPlayer.m_respawnEvents;
+        bodycamInput.m_shotFired = m_model.GetPresentation().m_shotFired;
+        bodycamInput.m_adsBlend = m_viewmodel.GetAdsBlend();
+        const AZ::Vector3 worldAcceleration = m_model.GetMovementState().m_planarAcceleration;
+        const float bodyYaw = bodycamPlayer.m_yaw;
+        const AZ::Vector3 bodyRight(std::cos(bodyYaw), -std::sin(bodyYaw), 0.0f);
+        const AZ::Vector3 bodyForward(std::sin(bodyYaw), std::cos(bodyYaw), 0.0f);
+        bodycamInput.m_planarAcceleration = AZ::Vector3(
+            worldAcceleration.Dot(bodyRight), worldAcceleration.Dot(bodyForward), 0.0f);
         m_bodycamCameraPresentation.Update(deltaTime, bodycamInput);
 
         const EnemyState& audioEnemy = m_model.GetEnemy().GetState();
@@ -1525,7 +1533,7 @@ namespace STWGameplay
 
         const PlayerState& player = m_model.GetPlayer();
         const int accepted = player.m_jumpEvents - m_jumpAcceptanceInitialEvents;
-        const float modelDesiredZ = m_model.GetDesiredVelocity(m_input).GetZ();
+        const float modelDesiredZ = m_model.GetMovementVelocity().GetZ();
         m_jumpAcceptanceSingleEventObserved = m_jumpAcceptanceSingleEventObserved || accepted == 1;
         if (!s_jumpDiagnostic.m_started && accepted > 0)
         {
@@ -1861,7 +1869,8 @@ namespace STWGameplay
         AZ::Transform transform = AZ::Transform::CreateFromQuaternionAndTranslation(cameraRotation, cameraPosition);
         AZ::TransformBus::Event(cameraId, &AZ::TransformInterface::SetWorldTM, transform);
         Camera::CameraRequestBus::Event(
-            cameraId, &Camera::CameraRequestBus::Events::SetFovDegrees, m_viewmodel.GetCameraFovDegrees());
+            cameraId, &Camera::CameraRequestBus::Events::SetFovDegrees,
+            m_bodycamCameraPresentation.GetCameraFovDegrees());
     }
 
     void STWGameplaySystemComponent::UpdateBodycamAcceptance()
@@ -1877,6 +1886,8 @@ namespace STWGameplay
             && m_bodycamCameraPresentation.WasAdsSuppressionObserved()
             && m_bodycamCameraPresentation.WasVerticalResponseObserved()
             && m_bodycamCameraPresentation.WasResetToNeutralObserved()
+            && m_bodycamCameraPresentation.WasAccelerationResponseObserved()
+            && m_bodycamCameraPresentation.WasRecoilResponseObserved()
             && BodycamCameraPresentation::IsReducedMotionProfileEffective();
         if (!passed)
         {
@@ -1891,9 +1902,13 @@ namespace STWGameplay
             "BODYCAM_ROLL_RESPONSE_ACTIVE=1\n"
             "BODYCAM_VERTICAL_RESPONSE_ACTIVE=1\n"
             "BODYCAM_ADS_SUPPRESSION_ACTIVE=1\n"
+            "BODYCAM_ACCELERATION_RESPONSE_ACTIVE=1\n"
+            "BODYCAM_ACCEPTED_SHOT_RECOIL_ACTIVE=1\n"
+            "BODYCAM_FOV_AUTHORITY=PRESENTATION_CAMERA\n"
             "BODYCAM_RESET_TO_NEUTRAL_PASS=1\n"
             "BODYCAM_REDUCED_MOTION_PROFILE_PASS=1\n"
             "PLAYER_GAMEPLAY_AUTHORITY_CHANGED=NO\n"
+            "AIM_AUTHORITY_CHANGED=NO\n"
             "PHYSX_AUTHORITY_CHANGED=NO\n"
             "WEAPON_LOADOUT_SEMANTICS_CHANGED=NO\n"
             "NETWORKING_CHANGED=NO\n"

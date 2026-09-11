@@ -34,6 +34,12 @@ namespace STWGameplay
         tuning.m_airborneVerticalMeters = 0.007f;
         tuning.m_mantleVerticalMeters = 0.022f;
         tuning.m_adsMotionScale = 0.20f;
+        tuning.m_accelerationLagMeters = 0.006f;
+        tuning.m_accelerationVerticalMeters = 0.002f;
+        tuning.m_recoilPitchRadians = 0.005f;
+        tuning.m_recoilBackMeters = 0.004f;
+        tuning.m_recoilMaximumPitchRadians = 0.014f;
+        tuning.m_recoilMaximumBackMeters = 0.010f;
         return tuning;
     }
 
@@ -44,7 +50,9 @@ namespace STWGameplay
         return reduced.m_lookInertiaScale < standard.m_lookInertiaScale * 0.5f
             && reduced.m_rollLimitRadians < standard.m_rollLimitRadians * 0.5f
             && reduced.m_locomotionVerticalMeters < standard.m_locomotionVerticalMeters * 0.5f
-            && reduced.m_landingVerticalMeters < standard.m_landingVerticalMeters * 0.5f;
+            && reduced.m_landingVerticalMeters < standard.m_landingVerticalMeters * 0.5f
+            && reduced.m_accelerationLagMeters < standard.m_accelerationLagMeters * 0.5f
+            && reduced.m_recoilPitchRadians < standard.m_recoilPitchRadians * 0.5f;
     }
 
     void BodycamCameraPresentation::SetProfile(BodycamPresentationProfile profile)
@@ -79,8 +87,12 @@ namespace STWGameplay
     void BodycamCameraPresentation::ResetToNeutral()
     {
         m_lookOffset = AZ::Vector3::CreateZero();
+        m_accelerationOffset = AZ::Vector3::CreateZero();
         m_cameraPositionOffset = AZ::Vector3::CreateZero();
         m_cameraRotationOffset = AZ::Vector3::CreateZero();
+        m_recoilPitch = 0.0f;
+        m_recoilBack = 0.0f;
+        m_cameraFovDegrees = GetTuning().m_hipFovDegrees;
         m_roll = 0.0f;
         m_locomotionBlend = 0.0f;
         m_locomotionPhase = 0.0f;
@@ -137,6 +149,49 @@ namespace STWGameplay
         const float lookX = std::clamp(input.m_lookX, -MaximumLookInput, MaximumLookInput);
         const float lookY = std::clamp(input.m_lookY, -MaximumLookInput, MaximumLookInput);
         const float adsScale = input.m_ads ? tuning.m_adsMotionScale : 1.0f;
+        AZ::Vector3 acceleration(
+            input.m_planarAcceleration.GetX(), input.m_planarAcceleration.GetY(), 0.0f);
+        if (!acceleration.IsFinite())
+        {
+            acceleration = AZ::Vector3::CreateZero();
+        }
+        const float accelerationLength = acceleration.GetLength();
+        if (accelerationLength > tuning.m_accelerationMaximum)
+        {
+            acceleration *= tuning.m_accelerationMaximum / accelerationLength;
+        }
+        const float accelerationNormalization = tuning.m_accelerationMaximum > 0.0f
+            ? 1.0f / tuning.m_accelerationMaximum : 0.0f;
+        const AZ::Vector3 normalizedAcceleration = acceleration * accelerationNormalization;
+        const AZ::Vector3 accelerationTarget(
+            -normalizedAcceleration.GetX() * tuning.m_accelerationLagMeters * adsScale,
+            -normalizedAcceleration.GetY() * tuning.m_accelerationLagMeters * adsScale,
+            -std::abs(normalizedAcceleration.GetY()) * tuning.m_accelerationVerticalMeters * adsScale);
+        m_accelerationOffset = AZ::Vector3(
+            ExponentialApproach(
+                m_accelerationOffset.GetX(), accelerationTarget.GetX(), tuning.m_accelerationResponse, safeDeltaTime),
+            ExponentialApproach(
+                m_accelerationOffset.GetY(), accelerationTarget.GetY(), tuning.m_accelerationResponse, safeDeltaTime),
+            ExponentialApproach(
+                m_accelerationOffset.GetZ(), accelerationTarget.GetZ(), tuning.m_accelerationResponse, safeDeltaTime));
+        m_accelerationResponseObserved = m_accelerationResponseObserved
+            || m_accelerationOffset.GetLength() > MotionEpsilon;
+
+        const float recoilRecoveryWeight = 1.0f - std::exp(-tuning.m_recoilRecovery * safeDeltaTime);
+        m_recoilPitch -= m_recoilPitch * recoilRecoveryWeight;
+        m_recoilBack -= m_recoilBack * recoilRecoveryWeight;
+        if (input.m_shotFired)
+        {
+            m_recoilPitch = std::min(
+                m_recoilPitch + tuning.m_recoilPitchRadians, tuning.m_recoilMaximumPitchRadians);
+            m_recoilBack = std::min(
+                m_recoilBack + tuning.m_recoilBackMeters, tuning.m_recoilMaximumBackMeters);
+            m_recoilResponseObserved = true;
+        }
+
+        const float adsBlend = std::clamp(input.m_adsBlend, 0.0f, 1.0f);
+        m_cameraFovDegrees = tuning.m_hipFovDegrees
+            + (tuning.m_adsFovDegrees - tuning.m_hipFovDegrees) * adsBlend;
         const float speedBlend = ClampUnit(std::max(input.m_speed, 0.0f) / MaximumSpeed);
         const float locomotionScale = input.m_sliding ? tuning.m_slideMotionScale
             : (input.m_crouched ? tuning.m_crouchMotionScale : 1.0f);
@@ -195,8 +250,8 @@ namespace STWGameplay
                     : 0.0f)
             + (input.m_crouched ? -0.012f * adsScale : 0.0f);
         const float lateralOffset = lateralWave * tuning.m_locomotionLateralMeters * m_locomotionBlend * adsScale;
-        m_cameraPositionOffset = AZ::Vector3(lateralOffset, 0.0f, verticalOffset);
-        m_cameraRotationOffset = AZ::Vector3(m_lookOffset.GetX(), m_lookOffset.GetY(), m_roll);
+        m_cameraPositionOffset = AZ::Vector3(lateralOffset, -m_recoilBack, verticalOffset) + m_accelerationOffset;
+        m_cameraRotationOffset = AZ::Vector3(m_lookOffset.GetX() - m_recoilPitch, m_lookOffset.GetY(), m_roll);
 
         if (input.m_ads && adsScale < 1.0f)
         {

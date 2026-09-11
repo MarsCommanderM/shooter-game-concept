@@ -8,6 +8,8 @@ set(FILES
     Source/EnemyCollectionModel.cpp
     Source/EnemyPresentation.cpp
     Source/EnvironmentPresentation.cpp
+    Source/PlayerMovementModel.cpp
+    Source/WeaponModel.cpp
     Source/PlayerSliceModel.cpp
     Source/SpawnCheckpointModel.cpp
     Source/BodycamCameraPresentation.cpp

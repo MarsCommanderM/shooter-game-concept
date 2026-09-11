@@ -109,15 +109,124 @@ namespace STWGameplay
         EXPECT_LT(reduced.m_landingVerticalMeters, standard.m_landingVerticalMeters);
     }
 
+    TEST(BodycamCameraPresentationTests, AccelerationProducesBoundedCameraLag)
+    {
+        BodycamCameraPresentation bodycam;
+        BodycamPresentationInput input;
+        input.m_planarAcceleration = AZ::Vector3(0.0f, 34.0f, 0.0f);
+        bodycam.Update(1.0f / 60.0f, input);
+        EXPECT_TRUE(bodycam.WasAccelerationResponseObserved());
+        EXPECT_LT(bodycam.GetAccelerationOffset().GetY(), 0.0f);
+        const BodycamPresentationTuning tuning = BodycamCameraPresentation::GetStandardTuning();
+        EXPECT_LE(
+            bodycam.GetAccelerationOffset().GetLength(),
+            tuning.m_accelerationLagMeters + tuning.m_accelerationVerticalMeters + 0.001f);
+    }
+
+    TEST(BodycamCameraPresentationTests, AccelerationReturnsTowardNeutral)
+    {
+        BodycamCameraPresentation bodycam;
+        BodycamPresentationInput input;
+        input.m_planarAcceleration = AZ::Vector3(0.0f, 30.0f, 0.0f);
+        for (int index = 0; index < 10; ++index)
+        {
+            bodycam.Update(1.0f / 60.0f, input);
+        }
+        const float displaced = bodycam.GetAccelerationOffset().GetLength();
+        ASSERT_GT(displaced, 0.0f);
+        input.m_planarAcceleration = AZ::Vector3::CreateZero();
+        for (int index = 0; index < 180; ++index)
+        {
+            bodycam.Update(1.0f / 60.0f, input);
+        }
+        EXPECT_LT(bodycam.GetAccelerationOffset().GetLength(), displaced);
+        EXPECT_LT(bodycam.GetAccelerationOffset().GetLength(), 0.001f);
+    }
+
+    TEST(BodycamCameraPresentationTests, AcceptedShotSignalProducesPresentationRecoil)
+    {
+        BodycamCameraPresentation bodycam;
+        BodycamPresentationInput input;
+        input.m_shotFired = true;
+        bodycam.Update(1.0f / 60.0f, input);
+        EXPECT_TRUE(bodycam.WasRecoilResponseObserved());
+        EXPECT_GT(bodycam.GetRecoilPitchRadians(), 0.0f);
+        EXPECT_GT(bodycam.GetRecoilBackMeters(), 0.0f);
+    }
+
+    TEST(BodycamCameraPresentationTests, NoShotSignalProducesNoRecoil)
+    {
+        BodycamCameraPresentation bodycam;
+        BodycamPresentationInput input;
+        input.m_shotFired = false;
+        bodycam.Update(1.0f / 60.0f, input);
+        EXPECT_FLOAT_EQ(bodycam.GetRecoilPitchRadians(), 0.0f);
+        EXPECT_FLOAT_EQ(bodycam.GetRecoilBackMeters(), 0.0f);
+    }
+
+    TEST(BodycamCameraPresentationTests, RecoilRecoversWithoutAdditionalShot)
+    {
+        BodycamCameraPresentation bodycam;
+        BodycamPresentationInput input;
+        input.m_shotFired = true;
+        bodycam.Update(1.0f / 60.0f, input);
+        const float kicked = bodycam.GetRecoilPitchRadians();
+        ASSERT_GT(kicked, 0.0f);
+        input.m_shotFired = false;
+        for (int index = 0; index < 180; ++index)
+        {
+            bodycam.Update(1.0f / 60.0f, input);
+        }
+        EXPECT_LT(bodycam.GetRecoilPitchRadians(), kicked);
+        EXPECT_LT(bodycam.GetRecoilPitchRadians(), 0.001f);
+    }
+
+    TEST(BodycamCameraPresentationTests, CameraFovTracksAdsBlend)
+    {
+        BodycamCameraPresentation bodycam;
+        BodycamPresentationInput hip;
+        hip.m_adsBlend = 0.0f;
+        bodycam.Update(0.0f, hip);
+        EXPECT_NEAR(bodycam.GetCameraFovDegrees(), 60.0f, 0.001f);
+
+        BodycamPresentationInput ads;
+        ads.m_ads = true;
+        ads.m_adsBlend = 1.0f;
+        bodycam.Update(0.0f, ads);
+        EXPECT_NEAR(bodycam.GetCameraFovDegrees(), 52.0f, 0.001f);
+    }
+
+    TEST(BodycamCameraPresentationTests, ReducedMotionReducesAccelerationAndRecoil)
+    {
+        BodycamCameraPresentation standard;
+        BodycamCameraPresentation reduced;
+        reduced.SetProfile(BodycamPresentationProfile::ReducedMotion);
+        BodycamPresentationInput input;
+        input.m_planarAcceleration = AZ::Vector3(20.0f, 30.0f, 0.0f);
+        input.m_shotFired = true;
+        standard.Update(1.0f / 60.0f, input);
+        reduced.Update(1.0f / 60.0f, input);
+        EXPECT_LT(reduced.GetAccelerationOffset().GetLength(), standard.GetAccelerationOffset().GetLength());
+        EXPECT_LT(reduced.GetRecoilPitchRadians(), standard.GetRecoilPitchRadians());
+    }
+
     TEST(BodycamCameraPresentationTests, ResetClearsAccumulatedPresentationState)
     {
         BodycamCameraPresentation bodycam;
         BodycamPresentationInput input = MovingInput();
         input.m_lookX = 12.0f;
+        input.m_ads = true;
+        input.m_adsBlend = 1.0f;
+        input.m_planarAcceleration = AZ::Vector3(0.0f, 30.0f, 0.0f);
+        input.m_shotFired = true;
         bodycam.Update(1.0f / 60.0f, input);
         EXPECT_FALSE(bodycam.IsNearNeutral());
         bodycam.ResetToNeutral();
         EXPECT_TRUE(bodycam.IsNearNeutral());
+        EXPECT_TRUE(bodycam.GetAccelerationOffset().IsZero());
+        EXPECT_FLOAT_EQ(bodycam.GetRecoilPitchRadians(), 0.0f);
+        EXPECT_FLOAT_EQ(bodycam.GetRecoilBackMeters(), 0.0f);
+        EXPECT_FLOAT_EQ(bodycam.GetCameraFovDegrees(), 60.0f);
         EXPECT_TRUE(bodycam.WasResetToNeutralObserved());
     }
 

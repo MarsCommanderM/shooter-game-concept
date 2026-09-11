@@ -8,49 +8,6 @@ namespace STWGameplay
 {
     namespace
     {
-        const AZStd::array<EquipmentProfile, PlayerSliceModel::EquipmentProfileCount> s_equipmentProfiles = {
-            EquipmentProfile{ EquipmentProfileId::STW_SMG_01, EquipmentCategory::Smg, EquipmentSlot::Primary,
-                30, 150, 0, 0, 0.075f, 1.75f, 60.0f, 16.0f, "STW_SMG_01",
-                "assets/weapons/stw_smg_01/stw_smg_01.obj.azmodel",
-                "assets/weapons/stw_smg_01/stw_smg_01.azmaterial" },
-            EquipmentProfile{ EquipmentProfileId::STW_RIFLE_02, EquipmentCategory::Rifle, EquipmentSlot::Secondary,
-                12, 48, 0, 0, 0.180f, 1.75f, 75.0f, 24.0f, "STW_RIFLE_02",
-                "assets/weapons/stw_rifle_02/stw_rifle_02.obj.azmodel",
-                "assets/weapons/stw_rifle_02/stw_rifle_02.azmaterial" },
-            EquipmentProfile{ EquipmentProfileId::STW_RIFLE_03, EquipmentCategory::Rifle, EquipmentSlot::Primary,
-                20, 100, 0, 0, 0.110f, 1.90f, 80.0f, 22.0f, "STW_RIFLE_03",
-                "assets/weapons/stw_rifle_03/stw_rifle_03.obj.azmodel",
-                "assets/weapons/stw_rifle_03/stw_rifle_03.azmaterial" },
-            EquipmentProfile{ EquipmentProfileId::STW_LMG_04, EquipmentCategory::Lmg, EquipmentSlot::Primary,
-                60, 180, 0, 0, 0.100f, 2.80f, 65.0f, 14.0f, "STW_LMG_04",
-                "assets/weapons/stw_lmg_04/stw_lmg_04.obj.azmodel",
-                "assets/weapons/stw_lmg_04/stw_lmg_04.azmaterial" },
-            EquipmentProfile{ EquipmentProfileId::STW_SIDEARM_01, EquipmentCategory::Sidearm, EquipmentSlot::Secondary,
-                15, 90, 0, 0, 0.140f, 1.35f, 55.0f, 20.0f, "STW_SIDEARM_01",
-                "assets/weapons/stw_sidearm_01/stw_sidearm_01.obj.azmodel",
-                "assets/weapons/stw_sidearm_01/stw_sidearm_01.azmaterial" },
-            EquipmentProfile{ EquipmentProfileId::STW_LAUNCHER_01, EquipmentCategory::Launcher, EquipmentSlot::Primary,
-                1, 4, 0, 0, 0.900f, 2.40f, 90.0f, 80.0f, "STW_LAUNCHER_01",
-                "assets/weapons/stw_launcher_01/stw_launcher_01.obj.azmodel",
-                "assets/weapons/stw_launcher_01/stw_launcher_01.azmaterial" },
-            EquipmentProfile{ EquipmentProfileId::STW_TACTICAL_FLASH_01, EquipmentCategory::Flash, EquipmentSlot::Tactical,
-                0, 0, 2, 2, 0.500f, 0.0f, 0.0f, 0.0f, "STW_TACTICAL_FLASH_01",
-                "assets/weapons/stw_tactical_flash_01/stw_tactical_flash_01.obj.azmodel",
-                "assets/weapons/stw_tactical_flash_01/stw_tactical_flash_01.azmaterial" },
-            EquipmentProfile{ EquipmentProfileId::STW_TACTICAL_SMOKE_01, EquipmentCategory::Smoke, EquipmentSlot::Tactical,
-                0, 0, 2, 2, 0.500f, 0.0f, 0.0f, 0.0f, "STW_TACTICAL_SMOKE_01",
-                "assets/weapons/stw_tactical_smoke_01/stw_tactical_smoke_01.obj.azmodel",
-                "assets/weapons/stw_tactical_smoke_01/stw_tactical_smoke_01.azmaterial" },
-            EquipmentProfile{ EquipmentProfileId::STW_LETHAL_FRAG_01, EquipmentCategory::Frag, EquipmentSlot::Lethal,
-                0, 0, 2, 2, 0.750f, 0.0f, 0.0f, 0.0f, "STW_LETHAL_FRAG_01",
-                "assets/weapons/stw_lethal_frag_01/stw_lethal_frag_01.obj.azmodel",
-                "assets/weapons/stw_lethal_frag_01/stw_lethal_frag_01.azmaterial" },
-            EquipmentProfile{ EquipmentProfileId::STW_MELEE_01, EquipmentCategory::Melee, EquipmentSlot::Melee,
-                0, 0, 0, 0, 0.450f, 0.0f, 2.5f, 50.0f, "STW_MELEE_01",
-                "assets/weapons/stw_melee_01/stw_melee_01.obj.azmodel",
-                "assets/weapons/stw_melee_01/stw_melee_01.azmaterial" }
-        };
-
         bool IsFinite(float value) { return std::isfinite(value); }
 
         AZ::Vector3 GetPlanarDirection(float yaw, const PlayerInput& input)
@@ -69,65 +26,7 @@ namespace STWGameplay
         }
     }
 
-    PlayerSliceModel::PlayerSliceModel()
-    {
-        ResetWeapons();
-    }
-
-    const EquipmentProfile& PlayerSliceModel::GetEquipmentProfile(EquipmentProfileId profileId)
-    {
-        const size_t index = static_cast<size_t>(profileId);
-        return s_equipmentProfiles[index < EquipmentProfileCount ? index : 0];
-    }
-
-    const WeaponProfile& PlayerSliceModel::GetWeaponProfile(WeaponId weaponId)
-    {
-        return GetEquipmentProfile(weaponId);
-    }
-
-    bool PlayerSliceModel::IsValidEquipmentSlot(EquipmentSlot slot)
-    {
-        return static_cast<size_t>(slot) < EquipmentSlotCount;
-    }
-
-    bool PlayerSliceModel::IsSlotCompatible(EquipmentSlot slot, EquipmentProfileId profileId)
-    {
-        const size_t profileIndex = static_cast<size_t>(profileId);
-        return IsValidEquipmentSlot(slot) && profileIndex < EquipmentProfileCount
-            && GetEquipmentProfile(profileId).m_allowedSlot == slot;
-    }
-
-    size_t PlayerSliceModel::GetActiveEquipmentIndex() const
-    {
-        return static_cast<size_t>(m_loadoutProfiles[static_cast<size_t>(m_activeEquipmentSlot)]);
-    }
-
-    const EquipmentState& PlayerSliceModel::GetEquipment(EquipmentSlot slot) const
-    {
-        if (!IsValidEquipmentSlot(slot))
-        {
-            return m_equipment[GetActiveEquipmentIndex()];
-        }
-        const size_t profileIndex = static_cast<size_t>(m_loadoutProfiles[static_cast<size_t>(slot)]);
-        return m_equipment[profileIndex < EquipmentProfileCount ? profileIndex : 0];
-    }
-
-    EquipmentProfileId PlayerSliceModel::GetLoadoutProfile(EquipmentSlot slot) const
-    {
-        return IsValidEquipmentSlot(slot)
-            ? m_loadoutProfiles[static_cast<size_t>(slot)]
-            : m_loadoutProfiles[static_cast<size_t>(EquipmentSlot::Primary)];
-    }
-
-    EquipmentProfileId PlayerSliceModel::GetActiveEquipmentProfileId() const
-    {
-        return GetLoadoutProfile(m_activeEquipmentSlot);
-    }
-
-    const EquipmentProfile& PlayerSliceModel::GetActiveEquipmentProfile() const
-    {
-        return GetEquipmentProfile(GetActiveEquipmentProfileId());
-    }
+    PlayerSliceModel::PlayerSliceModel() = default;
 
     bool PlayerSliceModel::Update(float deltaTime, const PlayerInput& input)
     {
@@ -148,8 +47,10 @@ namespace STWGameplay
         m_player.m_mantleRequested = false;
         m_presentation.m_fireCueRemaining = AZStd::max(0.0f, m_presentation.m_fireCueRemaining - deltaTime);
         m_presentation.m_hitCueRemaining = AZStd::max(0.0f, m_presentation.m_hitCueRemaining - deltaTime);
-        WeaponState& activeWeapon = m_equipment[GetActiveEquipmentIndex()];
-        activeWeapon.m_cooldownRemaining = AZStd::max(0.0f, activeWeapon.m_cooldownRemaining - deltaTime);
+        if (!m_weapons.Update(deltaTime))
+        {
+            return false;
+        }
         m_enemies.Update(deltaTime, m_player.m_position, m_player.m_alive);
         if (m_player.m_alive)
         {
@@ -160,15 +61,6 @@ namespace STWGameplay
                 {
                     ApplyDamage(enemy.GetProfile().m_attackDamage);
                 }
-            }
-        }
-
-        if (activeWeapon.m_reloading)
-        {
-            activeWeapon.m_reloadRemaining -= deltaTime;
-            if (activeWeapon.m_reloadRemaining <= 0.0f)
-            {
-                FinishReload();
             }
         }
 
@@ -186,6 +78,7 @@ namespace STWGameplay
 
         if (!m_player.m_alive)
         {
+            m_movement.Reset();
             m_player.m_slideActive = false;
             m_player.m_slideElapsed = 0.0f;
             m_player.m_slideSpeed = 0.0f;
@@ -266,6 +159,13 @@ namespace STWGameplay
             m_player.m_crouchDesired = input.m_crouch || m_player.m_slideActive || m_player.m_mantleActive;
         }
 
+        PlayerMovementInput movementInput;
+        movementInput.m_direction = planarDirection;
+        movementInput.m_sprint = input.m_sprint;
+        movementInput.m_grounded = m_player.m_grounded;
+        movementInput.m_alive = m_player.m_alive;
+        m_movement.Update(deltaTime, movementInput);
+
         if (newJumpPress && m_player.m_grounded && !m_player.m_slideActive && !m_player.m_mantleActive
             && !mantleOwnsTick)
         {
@@ -319,42 +219,35 @@ namespace STWGameplay
 
     bool PlayerSliceModel::TryFire()
     {
-        WeaponState& equipment = m_equipment[GetActiveEquipmentIndex()];
-        const WeaponProfile& profile = GetActiveEquipmentProfile();
-        const bool hasMagazineResource = profile.m_magazineCapacity > 0;
-        const bool hasChargeResource = profile.m_chargeCapacity > 0;
-        if (!m_player.m_alive || equipment.m_reloading || equipment.m_cooldownRemaining > 0.0f
-            || (hasMagazineResource && equipment.m_magazine <= 0)
-            || (hasChargeResource && equipment.m_charges <= 0))
+        WeaponUseResult use;
+        if (!m_weapons.TryUse(m_player.m_alive, use))
         {
             return false;
         }
-        if (hasMagazineResource)
+
+        // Update() owns per-tick presentation clearing. Do not clear an earlier
+        // accepted event here when a caller invokes TryFire directly.
+        if (use.m_shotFired)
         {
-            --equipment.m_magazine;
             m_presentation.m_shotFired = true;
         }
-        if (hasChargeResource)
-        {
-            --equipment.m_charges;
-        }
-        equipment.m_cooldownRemaining = profile.m_fireInterval;
         m_presentation.m_equipmentUsed = true;
         m_presentation.m_fireCueRemaining = 0.06f;
         EnemyId hitEnemyId = InvalidEnemyId;
-        float hitDistance = profile.m_range;
+        float hitDistance = use.m_range;
         for (size_t index = 0; index < m_enemies.GetEnemyCount(); ++index)
         {
             const EnemyState& enemy = m_enemies.GetInstanceByIndex(index).m_combat.GetState();
             float projectedDistance = 0.0f;
-            if (enemy.m_alive && RayHitsEnemy(enemy, GetEyePosition(), GetAimDirection(), projectedDistance)
+            if (enemy.m_alive
+                && RayHitsEnemy(enemy, GetEyePosition(), GetAimDirection(), use.m_range, projectedDistance)
                 && projectedDistance < hitDistance)
             {
                 hitEnemyId = enemy.m_id;
                 hitDistance = projectedDistance;
             }
         }
-        if (hitEnemyId != InvalidEnemyId && m_enemies.ApplyDamage(hitEnemyId, profile.m_damage))
+        if (hitEnemyId != InvalidEnemyId && m_enemies.ApplyDamage(hitEnemyId, use.m_damage))
         {
             m_presentation.m_hit = true;
             m_presentation.m_hitEnemyId = hitEnemyId;
@@ -365,57 +258,22 @@ namespace STWGameplay
 
     bool PlayerSliceModel::StartReload()
     {
-        WeaponState& equipment = m_equipment[GetActiveEquipmentIndex()];
-        const WeaponProfile& profile = GetActiveEquipmentProfile();
-        if (!m_player.m_alive || profile.m_magazineCapacity <= 0 || equipment.m_reloading
-            || equipment.m_magazine >= profile.m_magazineCapacity || equipment.m_reserve <= 0)
-        {
-            return false;
-        }
-        equipment.m_reloading = true;
-        equipment.m_reloadRemaining = profile.m_reloadDuration;
-        return true;
+        return m_weapons.StartReload(m_player.m_alive);
     }
 
     bool PlayerSliceModel::RequestWeaponSwitch()
     {
-        const EquipmentSlot targetSlot = m_activeEquipmentSlot == EquipmentSlot::Primary
-            ? EquipmentSlot::Secondary : EquipmentSlot::Primary;
-        return RequestEquipmentSwitch(targetSlot);
+        return m_weapons.RequestWeaponSwitch(m_player.m_alive);
     }
 
     bool PlayerSliceModel::RequestEquipmentSwitch(EquipmentSlot slot)
     {
-        if (!m_player.m_alive || !IsValidEquipmentSlot(slot) || slot == m_activeEquipmentSlot)
-        {
-            return false;
-        }
-        const WeaponState& activeEquipment = m_equipment[GetActiveEquipmentIndex()];
-        if (activeEquipment.m_reloading)
-        {
-            return false;
-        }
-        m_activeEquipmentSlot = slot;
-        return true;
+        return m_weapons.RequestEquipmentSwitch(slot, m_player.m_alive);
     }
 
     bool PlayerSliceModel::SetLoadoutProfile(EquipmentSlot slot, EquipmentProfileId profileId)
     {
-        const size_t profileIndex = static_cast<size_t>(profileId);
-        if (!IsSlotCompatible(slot, profileId))
-        {
-            return false;
-        }
-        for (size_t index = 0; index < EquipmentSlotCount; ++index)
-        {
-            if (static_cast<EquipmentSlot>(index) != slot && m_loadoutProfiles[index] == profileId)
-            {
-                return false;
-            }
-        }
-        m_loadoutProfiles[static_cast<size_t>(slot)] = profileId;
-        m_equipment[profileIndex].m_profileId = profileId;
-        return true;
+        return m_weapons.SetLoadoutProfile(slot, profileId);
     }
 
     bool PlayerSliceModel::ApplyDamage(float damage)
@@ -443,10 +301,10 @@ namespace STWGameplay
         m_player.m_damageEvents = damageEvents;
         m_player.m_deathEvents = deathEvents;
         m_player.m_respawnEvents = respawnEvents;
-        ResetWeapons();
-        m_activeEquipmentSlot = EquipmentSlot::Primary;
+        m_weapons.ResetLoadout();
         m_weaponSwitchWasHeld = false;
         m_requestedEquipmentSlotWasHeld = -1;
+        m_movement.Reset();
         m_presentation = {};
     }
 
@@ -488,6 +346,30 @@ namespace STWGameplay
         return velocity;
     }
 
+    AZ::Vector3 PlayerSliceModel::GetMovementVelocity() const
+    {
+        if (!m_player.m_alive)
+        {
+            return AZ::Vector3::CreateZero();
+        }
+
+        AZ::Vector3 velocity;
+        if (m_player.m_mantleActive)
+        {
+            velocity = m_player.m_mantleDirection * MantleSpeed;
+        }
+        else if (m_player.m_slideActive)
+        {
+            velocity = m_player.m_slideDirection * m_player.m_slideSpeed;
+        }
+        else
+        {
+            velocity = m_movement.GetVelocity();
+        }
+        velocity.SetZ(m_jumpImpulseThisTick);
+        return velocity;
+    }
+
     void PlayerSliceModel::SetPlayerPosition(const AZ::Vector3& position)
     {
         if (position.IsFinite())
@@ -506,11 +388,11 @@ namespace STWGameplay
     }
 
     bool PlayerSliceModel::RayHitsEnemy(const EnemyState& target, const AZ::Vector3& origin,
-        const AZ::Vector3& direction, float& projectedDistance) const
+        const AZ::Vector3& direction, float maximumRange, float& projectedDistance) const
     {
         const AZ::Vector3 toTarget = target.m_position - origin;
         const float projected = toTarget.Dot(direction);
-        if (projected < 0.0f || projected > GetActiveEquipmentProfile().m_range)
+        if (projected < 0.0f || projected > maximumRange)
         {
             return false;
         }
@@ -519,37 +401,4 @@ namespace STWGameplay
         return (closest - target.m_position).GetLengthSq() <= target.m_radius * target.m_radius;
     }
 
-    void PlayerSliceModel::FinishReload()
-    {
-        WeaponState& weapon = m_equipment[GetActiveEquipmentIndex()];
-        const WeaponProfile& profile = GetActiveEquipmentProfile();
-        const int needed = profile.m_magazineCapacity - weapon.m_magazine;
-        const int transferred = AZStd::min(needed, weapon.m_reserve);
-        weapon.m_magazine += transferred;
-        weapon.m_reserve -= transferred;
-        weapon.m_reloading = false;
-        weapon.m_reloadRemaining = 0.0f;
-    }
-
-    void PlayerSliceModel::ResetWeapons()
-    {
-        m_equipment = {};
-        m_loadoutProfiles = {
-            EquipmentProfileId::STW_SMG_01,
-            EquipmentProfileId::STW_RIFLE_02,
-            EquipmentProfileId::STW_TACTICAL_FLASH_01,
-            EquipmentProfileId::STW_LETHAL_FRAG_01,
-            EquipmentProfileId::STW_MELEE_01
-        };
-        for (size_t index = 0; index < EquipmentProfileCount; ++index)
-        {
-            const EquipmentProfileId profileId = static_cast<EquipmentProfileId>(index);
-            const EquipmentProfile& profile = GetEquipmentProfile(profileId);
-            m_equipment[index].m_profileId = profileId;
-            m_equipment[index].m_magazine = profile.m_magazineCapacity;
-            m_equipment[index].m_reserve = profile.m_initialReserve;
-            m_equipment[index].m_charges = profile.m_initialCharges;
-        }
-        m_activeEquipmentSlot = EquipmentSlot::Primary;
-    }
 }

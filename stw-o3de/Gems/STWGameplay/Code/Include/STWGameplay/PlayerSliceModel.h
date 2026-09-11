@@ -2,9 +2,10 @@
 
 #include <cstddef>
 #include <AzCore/Math/Vector3.h>
-#include <AzCore/std/containers/array.h>
-#include <STWGameplay/EnemyCollectionModel.h>
 #include <STWGameplay/ArenaLayout.h>
+#include <STWGameplay/EnemyCollectionModel.h>
+#include <STWGameplay/PlayerMovementModel.h>
+#include <STWGameplay/WeaponModel.h>
 
 namespace STWGameplay
 {
@@ -52,77 +53,6 @@ namespace STWGameplay
         int m_mantleEvents = 0;
     };
 
-    enum class EquipmentSlot : AZ::u8
-    {
-        Primary = 0,
-        Secondary,
-        Tactical,
-        Lethal,
-        Melee
-    };
-
-    enum class EquipmentCategory : AZ::u8
-    {
-        Rifle = 0,
-        Smg,
-        Lmg,
-        Marksman,
-        Sidearm,
-        Launcher,
-        Flash,
-        Smoke,
-        Frag,
-        Melee
-    };
-
-    enum class EquipmentProfileId : AZ::u8
-    {
-        STW_SMG_01 = 0,
-        STW_RIFLE_02 = 1, // Block 19B compatibility profile
-        STW_RIFLE_03,
-        STW_LMG_04,
-        STW_SIDEARM_01,
-        STW_LAUNCHER_01,
-        STW_TACTICAL_FLASH_01,
-        STW_TACTICAL_SMOKE_01,
-        STW_LETHAL_FRAG_01,
-        STW_MELEE_01
-    };
-
-    struct EquipmentState
-    {
-        EquipmentProfileId m_profileId = EquipmentProfileId::STW_SMG_01;
-        int m_magazine = 0;
-        int m_reserve = 0;
-        int m_charges = 0;
-        float m_cooldownRemaining = 0.0f;
-        float m_reloadRemaining = 0.0f;
-        bool m_reloading = false;
-    };
-
-    struct EquipmentProfile
-    {
-        EquipmentProfileId m_profileId = EquipmentProfileId::STW_SMG_01;
-        EquipmentCategory m_category = EquipmentCategory::Smg;
-        EquipmentSlot m_allowedSlot = EquipmentSlot::Primary;
-        int m_magazineCapacity = 0;
-        int m_initialReserve = 0;
-        int m_chargeCapacity = 0;
-        int m_initialCharges = 0;
-        float m_fireInterval = 0.075f;
-        float m_reloadDuration = 1.75f;
-        float m_range = 60.0f;
-        float m_damage = 16.0f;
-        const char* m_displayName = "STW_SMG_01";
-        const char* m_presentationAssetPath = nullptr;
-        const char* m_presentationMaterialPath = nullptr;
-    };
-
-    // Compatibility names retained for the verified Block 19B public surface.
-    using WeaponId = EquipmentProfileId;
-    using WeaponState = EquipmentState;
-    using WeaponProfile = EquipmentProfile;
-
     using TargetState = EnemyState; // compatibility name for existing presentation/tests
 
     struct PresentationState
@@ -156,9 +86,9 @@ namespace STWGameplay
         static constexpr float ReloadDuration = 1.75f;
         static constexpr float WeaponRange = 60.0f;
         static constexpr float WeaponDamage = 16.0f;
-        static constexpr size_t EquipmentSlotCount = 5;
-        static constexpr size_t EquipmentProfileCount = 10;
-        static constexpr size_t WeaponCount = 2; // legacy two-weapon gate compatibility
+        static constexpr size_t EquipmentSlotCount = WeaponModel::EquipmentSlotCount;
+        static constexpr size_t EquipmentProfileCount = WeaponModel::EquipmentProfileCount;
+        static constexpr size_t WeaponCount = WeaponModel::WeaponCount; // legacy two-weapon gate compatibility
 
         PlayerSliceModel();
         bool Update(float deltaTime, const PlayerInput& input);
@@ -171,35 +101,58 @@ namespace STWGameplay
         void ResetPlayer();
 
         const PlayerState& GetPlayer() const { return m_player; }
-        const WeaponState& GetWeapon() const { return GetEquipment(m_activeEquipmentSlot); }
-        const WeaponState& GetWeapon(WeaponId weaponId) const
-        {
-            return m_equipment[static_cast<size_t>(weaponId) < EquipmentProfileCount
-                    ? static_cast<size_t>(weaponId) : 0];
-        }
-        const EquipmentState& GetEquipment(EquipmentSlot slot) const;
+        const WeaponState& GetWeapon() const { return m_weapons.GetWeapon(); }
+        const WeaponState& GetWeapon(WeaponId weaponId) const { return m_weapons.GetWeapon(weaponId); }
+        const EquipmentState& GetEquipment(EquipmentSlot slot) const { return m_weapons.GetEquipment(slot); }
         const EquipmentState& GetEquipment(EquipmentProfileId profileId) const
         {
-            return GetWeapon(profileId);
+            return m_weapons.GetEquipment(profileId);
         }
-        WeaponId GetActiveWeaponId() const { return GetActiveEquipmentProfileId(); }
-        EquipmentSlot GetActiveEquipmentSlot() const { return m_activeEquipmentSlot; }
-        EquipmentProfileId GetActiveEquipmentProfileId() const;
-        const EquipmentProfile& GetActiveEquipmentProfile() const;
-        static const EquipmentProfile& GetEquipmentProfile(EquipmentProfileId profileId);
-        static const WeaponProfile& GetWeaponProfile(WeaponId weaponId);
-        static bool IsValidEquipmentSlot(EquipmentSlot slot);
-        static bool IsSlotCompatible(EquipmentSlot slot, EquipmentProfileId profileId);
-        EquipmentProfileId GetLoadoutProfile(EquipmentSlot slot) const;
+        WeaponId GetActiveWeaponId() const { return m_weapons.GetActiveEquipmentProfileId(); }
+        EquipmentSlot GetActiveEquipmentSlot() const { return m_weapons.GetActiveEquipmentSlot(); }
+        EquipmentProfileId GetActiveEquipmentProfileId() const
+        {
+            return m_weapons.GetActiveEquipmentProfileId();
+        }
+        const EquipmentProfile& GetActiveEquipmentProfile() const
+        {
+            return m_weapons.GetActiveEquipmentProfile();
+        }
+        static const EquipmentProfile& GetEquipmentProfile(EquipmentProfileId profileId)
+        {
+            return WeaponModel::GetEquipmentProfile(profileId);
+        }
+        static const WeaponProfile& GetWeaponProfile(WeaponId weaponId)
+        {
+            return WeaponModel::GetWeaponProfile(weaponId);
+        }
+        static bool IsValidEquipmentSlot(EquipmentSlot slot)
+        {
+            return WeaponModel::IsValidEquipmentSlot(slot);
+        }
+        static bool IsSlotCompatible(EquipmentSlot slot, EquipmentProfileId profileId)
+        {
+            return WeaponModel::IsSlotCompatible(slot, profileId);
+        }
+        EquipmentProfileId GetLoadoutProfile(EquipmentSlot slot) const
+        {
+            return m_weapons.GetLoadoutProfile(slot);
+        }
         const TargetState& GetTarget() const { return GetEnemy().GetState(); }
         const EnemyCombatModel& GetEnemy() const { return *m_enemies.GetEnemy(PrimaryEnemyId); }
         EnemyCombatModel& GetEnemy() { return *m_enemies.GetEnemy(PrimaryEnemyId); }
         const EnemyCollectionModel& GetEnemies() const { return m_enemies; }
         EnemyCollectionModel& GetEnemies() { return m_enemies; }
         const PresentationState& GetPresentation() const { return m_presentation; }
+        const PlayerMovementState& GetMovementState() const { return m_movement.GetMovementState(); }
         AZ::Vector3 GetEyePosition() const;
         AZ::Vector3 GetAimDirection() const;
+        //! Compatibility facade: returns the immediate requested velocity used by existing
+        //! traversal callers. Runtime physics consumes GetMovementVelocity().
         AZ::Vector3 GetDesiredVelocity(const PlayerInput& input) const;
+        //! Stateful horizontal velocity produced by PlayerMovementModel, with existing
+        //! slide/mantle/jump overrides applied after it.
+        AZ::Vector3 GetMovementVelocity() const;
         bool IsMantleRequested() const { return m_player.m_mantleRequested; }
         void BeginMantle(const AZ::Vector3& direction);
 
@@ -209,15 +162,10 @@ namespace STWGameplay
 
     private:
         bool RayHitsEnemy(const EnemyState& target, const AZ::Vector3& origin, const AZ::Vector3& direction,
-            float& projectedDistance) const;
-        void FinishReload();
-        void ResetWeapons();
-        size_t GetActiveEquipmentIndex() const;
+            float maximumRange, float& projectedDistance) const;
 
         PlayerState m_player;
-        AZStd::array<WeaponState, EquipmentProfileCount> m_equipment;
-        AZStd::array<EquipmentProfileId, EquipmentSlotCount> m_loadoutProfiles;
-        EquipmentSlot m_activeEquipmentSlot = EquipmentSlot::Primary;
+        WeaponModel m_weapons;
         EnemyCollectionModel m_enemies;
         PresentationState m_presentation;
         bool m_jumpWasHeld = false;
@@ -226,5 +174,6 @@ namespace STWGameplay
         bool m_weaponSwitchWasHeld = false;
         int m_requestedEquipmentSlotWasHeld = -1;
         float m_jumpImpulseThisTick = 0.0f;
+        PlayerMovementModel m_movement;
     };
 }
