@@ -8,6 +8,7 @@ set(FILES
     Include/STWGameplay/EnemyCollectionModel.h
     Include/STWGameplay/EnemyPresentation.h
     Include/STWGameplay/EnvironmentPresentation.h
+    Include/STWGameplay/FixedSimulationClock.h
     Include/STWGameplay/PlayerMovementModel.h
     Include/STWGameplay/PlayerCommand.h
     Include/STWGameplay/PlayerCommandHistory.h
