@@ -7,6 +7,7 @@
 #include <AzFramework/Input/Events/InputChannelEventListener.h>
 #include <Atom/Feature/Mesh/MeshFeatureProcessorInterface.h>
 #include <STWGameplay/PlayerSimulationTypes.h>
+#include <STWGameplay/PlayerCommandHistory.h>
 #include <STWGameplay/PlayerSliceModel.h>
 #include <STWGameplay/CombatFeedbackPresentation.h>
 #include <STWGameplay/EncounterModel.h>
@@ -45,6 +46,11 @@ namespace STWGameplay
         const AuthoritativePlayerSnapshot& GetAuthoritativeSnapshot() const
         {
             return m_authoritativeSnapshot;
+        }
+
+        const PlayerCommandHistory& GetPlayerCommandHistory() const
+        {
+            return m_commandHistory;
         }
 
     private:
@@ -153,6 +159,7 @@ namespace STWGameplay
         PhysXPlayerRuntime m_physicsPlayer;
         AZStd::array<PhysXEnemyRuntime, EnemyCollectionModel::MaxEnemyCount> m_enemyPhysicsRuntimes;
         PlayerInput m_input;
+        PlayerCommandHistory m_commandHistory;
         AuthoritativePlayerSnapshot m_authoritativeSnapshot;
         PlayerCommandSequence m_nextCommandSequence = InvalidPlayerSimulationSequence;
         PlayerSnapshotSequence m_nextSnapshotSequence = InvalidPlayerSimulationSequence;
