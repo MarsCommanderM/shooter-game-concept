@@ -1,7 +1,6 @@
 #pragma once
 
 #include <AzCore/Math/Vector3.h>
-#include <AzCore/std/containers/vector.h>
 #include <AzCore/std/smart_ptr/unique_ptr.h>
 
 namespace AZ
@@ -36,11 +35,9 @@ namespace STWGameplay
         float GetEyeHeight() const;
 
     private:
-        bool CreateStaticBox(const char* name, const AZ::Vector3& center, const AZ::Vector3& dimensions);
         bool CanRestoreStandingHeight() const;
 
         AZStd::unique_ptr<AZ::Entity> m_playerEntity;
-        AZStd::vector<AZStd::unique_ptr<AZ::Entity>> m_environmentEntities;
         bool m_crouched = false;
         float m_pendingJumpSpeed = 0.0f;
     };
