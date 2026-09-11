@@ -11,6 +11,7 @@ set(FILES
     Tests/Clients/EnemyPresentationTests.cpp
     Tests/Clients/EnvironmentPresentationTests.cpp
     Tests/Clients/PlayerMovementModelTests.cpp
+    Tests/Clients/PlayerSimulationBoundaryTests.cpp
     Tests/Clients/WeaponModelTests.cpp
     Tests/Clients/PlayerSliceModelTests.cpp
     Tests/Clients/SpawnCheckpointModelTests.cpp
