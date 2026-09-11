@@ -7,6 +7,7 @@
 #include <AzFramework/Input/Events/InputChannelEventListener.h>
 #include <Atom/Feature/Mesh/MeshFeatureProcessorInterface.h>
 #include <STWGameplay/PlayerSimulationTypes.h>
+#include <STWGameplay/FixedSimulationClock.h>
 #include <STWGameplay/PlayerCommandHistory.h>
 #include <STWGameplay/PlayerSliceModel.h>
 #include <STWGameplay/CombatFeedbackPresentation.h>
@@ -65,7 +66,22 @@ namespace STWGameplay
         // Attempts to create the PhysX controller once the O3DE default physics scene exists.
         void TryStartPhysics();
         void ShutdownEnemyPhysics();
-        PlayerCommand BuildPlayerCommand();
+        PlayerCommand BuildPlayerCommand(const PlayerInput& input);
+        void TryBeginMantle(const PlayerInput& input);
+        struct FixedSimulationFrameResult
+        {
+            PlayerCommand m_lastCommand;
+            AZ::Vector3 m_requestedVelocity = AZ::Vector3::CreateZero();
+            bool m_gameplayUpdated = false;
+            bool m_jumpImpulseObserved = false;
+            float m_jumpImpulse = 0.0f;
+            bool m_shotFired = false;
+            bool m_hit = false;
+            EnemyId m_hitEnemyId = InvalidEnemyId;
+            bool m_equipmentUsed = false;
+            bool m_equipmentChanged = false;
+        };
+        FixedSimulationFrameResult RunFixedGameplaySteps(float frameDelta);
         void CaptureAuthoritativeSnapshot(PlayerCommandSequence acknowledgedCommandSequence);
         // Attempts to acquire the real Atom viewmodel mesh once the render scene exists.
         void TryStartViewmodelMesh();
@@ -158,7 +174,11 @@ namespace STWGameplay
         PhysXArenaRuntime m_physicsArena;
         PhysXPlayerRuntime m_physicsPlayer;
         AZStd::array<PhysXEnemyRuntime, EnemyCollectionModel::MaxEnemyCount> m_enemyPhysicsRuntimes;
+        FixedSimulationClock m_fixedSimulationClock;
         PlayerInput m_input;
+        float m_pendingLookX = 0.0f;
+        float m_pendingLookY = 0.0f;
+        bool m_pendingReload = false;
         PlayerCommandHistory m_commandHistory;
         AuthoritativePlayerSnapshot m_authoritativeSnapshot;
         PlayerCommandSequence m_nextCommandSequence = InvalidPlayerSimulationSequence;

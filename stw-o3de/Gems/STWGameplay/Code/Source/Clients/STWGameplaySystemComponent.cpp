@@ -129,6 +129,10 @@ namespace STWGameplay
     {
         ResetViewmodelAssetLoadState();
         ResetEnemyAssetLoadState();
+        m_fixedSimulationClock.Reset();
+        m_pendingLookX = 0.0f;
+        m_pendingLookY = 0.0f;
+        m_pendingReload = false;
         m_adsHeld = false;
         m_audioEnemyBaselineCaptured = false;
         m_audioPreviousRespawnEvents = m_model.GetPlayer().m_respawnEvents;
@@ -149,6 +153,10 @@ namespace STWGameplay
     void STWGameplaySystemComponent::Deactivate()
     {
         m_adsHeld = false;
+        m_fixedSimulationClock.Reset();
+        m_pendingLookX = 0.0f;
+        m_pendingLookY = 0.0f;
+        m_pendingReload = false;
         m_audioFeedback.Deactivate();
         AZ::TickBus::Handler::BusDisconnect();
         AzFramework::InputChannelEventListener::Disconnect();
@@ -221,10 +229,111 @@ namespace STWGameplay
         m_enemyPhysicsReady = false;
     }
 
-    PlayerCommand STWGameplaySystemComponent::BuildPlayerCommand()
+    PlayerCommand STWGameplaySystemComponent::BuildPlayerCommand(const PlayerInput& input)
     {
         m_nextCommandSequence = AdvancePlayerSimulationSequence(m_nextCommandSequence);
-        return MakePlayerCommand(m_input, m_nextCommandSequence);
+        return MakePlayerCommand(input, m_nextCommandSequence);
+    }
+
+    void STWGameplaySystemComponent::TryBeginMantle(const PlayerInput& input)
+    {
+        if (m_automatedAcceptance && m_model.IsMantleRequested())
+        {
+            AZ_Printf("STWGameplay", "MANTLE_DIAG request=RAISED\n");
+        }
+        if (!m_model.IsMantleRequested())
+        {
+            return;
+        }
+
+        const AZ::Vector3 requestedVelocity = m_model.GetDesiredVelocity(input);
+        const AZ::Vector3 direction(requestedVelocity.GetX(), requestedVelocity.GetY(), 0.0f);
+        if (m_automatedAcceptance)
+        {
+            AZ_Printf("STWGameplay", "MANTLE_DIAG forwarding=RECEIVED velocity=(%.3f,%.3f,%.3f)\n",
+                requestedVelocity.GetX(), requestedVelocity.GetY(), requestedVelocity.GetZ());
+        }
+        if (m_physicsPlayer.CanStartMantle(direction, m_model.GetPlayer().m_grounded))
+        {
+            m_model.BeginMantle(direction);
+            if (m_automatedAcceptance)
+            {
+                AZ_Printf("STWGameplay", "MANTLE_DIAG activation=PASS\n");
+            }
+        }
+        else if (m_automatedAcceptance)
+        {
+            AZ_Printf("STWGameplay", "MANTLE_DIAG activation=FAIL\n");
+            AZ_Printf("STWGameplay", "MANTLE_DIAG movement=NOT_OBSERVED\n");
+            AZ_Printf("STWGameplay", "MANTLE_DIAG completion=NOT_REACHED\n");
+        }
+    }
+
+    STWGameplaySystemComponent::FixedSimulationFrameResult
+    STWGameplaySystemComponent::RunFixedGameplaySteps(float frameDelta)
+    {
+        FixedSimulationFrameResult frame;
+        frame.m_requestedVelocity = m_model.GetMovementVelocity();
+
+        const FixedSimulationAdvanceResult advance = m_fixedSimulationClock.Advance(frameDelta);
+        if (!advance.m_inputValid)
+        {
+            return frame;
+        }
+
+        for (AZ::u32 step = 0; step < advance.m_stepCount; ++step)
+        {
+            PlayerInput simulationInput = m_input;
+            // Look and reload are transient samples. Consume them on the first fixed step only;
+            // held movement/action inputs remain sampled for every fixed gameplay step.
+            simulationInput.m_lookX = step == 0 ? m_pendingLookX : 0.0f;
+            simulationInput.m_lookY = step == 0 ? m_pendingLookY : 0.0f;
+            simulationInput.m_reload = step == 0 && m_pendingReload;
+
+            const PlayerCommand command = BuildPlayerCommand(simulationInput);
+            if (!m_model.Update(FixedSimulationClock::FixedDeltaTime, command))
+            {
+                continue;
+            }
+
+            frame.m_lastCommand = command;
+            frame.m_gameplayUpdated = true;
+            m_commandHistory.Push(command);
+
+            const PresentationState& presentation = m_model.GetPresentation();
+            frame.m_shotFired = frame.m_shotFired || presentation.m_shotFired;
+            if (presentation.m_hit)
+            {
+                frame.m_hit = true;
+                frame.m_hitEnemyId = presentation.m_hitEnemyId;
+            }
+            frame.m_equipmentUsed = frame.m_equipmentUsed || presentation.m_equipmentUsed;
+            frame.m_equipmentChanged = frame.m_equipmentChanged || presentation.m_equipmentChanged;
+
+            TryBeginMantle(simulationInput);
+            frame.m_requestedVelocity = m_model.GetMovementVelocity();
+            if (frame.m_requestedVelocity.GetZ() != 0.0f && frame.m_requestedVelocity.GetZ() > frame.m_jumpImpulse)
+            {
+                frame.m_jumpImpulseObserved = true;
+                frame.m_jumpImpulse = frame.m_requestedVelocity.GetZ();
+            }
+
+            if (step == 0)
+            {
+                m_pendingLookX = 0.0f;
+                m_pendingLookY = 0.0f;
+                m_pendingReload = false;
+            }
+        }
+
+        // PhysX's AddVelocityForTick contract accumulates all requests until the engine's
+        // physics tick. Keep one request per engine tick; a jump accepted in an earlier fixed
+        // gameplay step still contributes its one-shot vertical impulse to that request.
+        if (frame.m_gameplayUpdated && frame.m_jumpImpulseObserved && m_model.GetPlayer().m_alive)
+        {
+            frame.m_requestedVelocity.SetZ(frame.m_jumpImpulse);
+        }
+        return frame;
     }
 
     void STWGameplaySystemComponent::CaptureAuthoritativeSnapshot(
@@ -290,12 +399,9 @@ namespace STWGameplay
         }
 
         UpdateAutomatedAcceptance(deltaTime);
-        const PlayerCommand command = BuildPlayerCommand();
-        const bool gameplayUpdated = m_model.Update(deltaTime, command);
-        if (gameplayUpdated)
-        {
-            m_commandHistory.Push(command);
-        }
+        const FixedSimulationFrameResult simulation = RunFixedGameplaySteps(deltaTime);
+        const PlayerCommand& command = simulation.m_lastCommand;
+        const bool gameplayUpdated = simulation.m_gameplayUpdated;
         const EnemyCollectionModel& enemies = m_model.GetEnemies();
         m_encounter.Update(enemies);
         if (m_encounter.IsCompleted() && enemies.AreRequiredEnemiesAlive()
@@ -309,46 +415,18 @@ namespace STWGameplay
                 m_multiEnemyPostRearmActive = m_encounter.IsActive();
             }
         }
-        if (m_automatedAcceptance && m_model.IsMantleRequested())
-        {
-            AZ_Printf("STWGameplay", "MANTLE_DIAG request=RAISED\n");
-        }
-        if (m_model.IsMantleRequested())
-        {
-            const AZ::Vector3 requestedVelocity = m_model.GetDesiredVelocity(m_input);
-            const AZ::Vector3 direction(requestedVelocity.GetX(), requestedVelocity.GetY(), 0.0f);
-            if (m_automatedAcceptance)
-            {
-                AZ_Printf("STWGameplay", "MANTLE_DIAG forwarding=RECEIVED velocity=(%.3f,%.3f,%.3f)\n",
-                    requestedVelocity.GetX(), requestedVelocity.GetY(), requestedVelocity.GetZ());
-            }
-            if (m_physicsPlayer.CanStartMantle(direction, m_model.GetPlayer().m_grounded))
-            {
-                m_model.BeginMantle(direction);
-                if (m_automatedAcceptance)
-                {
-                    AZ_Printf("STWGameplay", "MANTLE_DIAG activation=PASS\n");
-                }
-            }
-            else if (m_automatedAcceptance)
-            {
-                AZ_Printf("STWGameplay", "MANTLE_DIAG activation=FAIL\n");
-                AZ_Printf("STWGameplay", "MANTLE_DIAG movement=NOT_OBSERVED\n");
-                AZ_Printf("STWGameplay", "MANTLE_DIAG completion=NOT_REACHED\n");
-            }
-        }
         if (!m_physicsPlayer.ApplyCrouchRequest(
                 m_model.GetPlayer().m_crouchDesired, m_model.GetPlayer().m_grounded))
         {
             AZ_Error("STWGameplay", false, "PhysX crouch controller resize failed");
         }
         const WeaponState feedbackWeaponBefore = m_model.GetWeapon();
-        const EnemyInstance* feedbackEnemyInstance = m_model.GetEnemies().Find(m_model.GetPresentation().m_hitEnemyId);
+        const EnemyInstance* feedbackEnemyInstance = m_model.GetEnemies().Find(simulation.m_hitEnemyId);
         const EnemyState& feedbackEnemyBefore = feedbackEnemyInstance != nullptr
             ? feedbackEnemyInstance->m_combat.GetState() : m_model.GetEnemy().GetState();
         CombatFeedbackInput feedbackInput;
-        feedbackInput.m_shotFired = m_model.GetPresentation().m_shotFired;
-        feedbackInput.m_hitConfirmed = m_model.GetPresentation().m_hit;
+        feedbackInput.m_shotFired = simulation.m_shotFired;
+        feedbackInput.m_hitConfirmed = simulation.m_hit;
         feedbackInput.m_impactPosition = feedbackEnemyBefore.m_position;
         m_combatFeedback.Update(deltaTime, feedbackInput);
         const bool feedbackEnemyAuthorityUnchanged = feedbackEnemyInstance != nullptr
@@ -360,7 +438,7 @@ namespace STWGameplay
             && m_model.GetWeapon().m_magazine == feedbackWeaponBefore.m_magazine
             && m_model.GetWeapon().m_cooldownRemaining == feedbackWeaponBefore.m_cooldownRemaining
             && feedbackEnemyAuthorityUnchanged;
-        const AZ::Vector3 desiredPlayerVelocity = m_model.GetMovementVelocity();
+        const AZ::Vector3 desiredPlayerVelocity = simulation.m_requestedVelocity;
         if (m_automatedAcceptance && m_jumpAcceptanceStarted
             && m_model.GetPlayer().m_jumpEvents > m_jumpAcceptanceInitialEvents)
         {
@@ -388,12 +466,18 @@ namespace STWGameplay
                 s_jumpDiagnostic.m_queueReported = true;
             }
         }
-        m_physicsPlayer.QueueVelocity(desiredPlayerVelocity);
-        for (size_t index = 0; index < enemies.GetEnemyCount(); ++index)
+        // The gameplay component ticks after the PhysX system. AddVelocityForTick accumulates
+        // requests until the next PhysX tick, so a render frame with no fixed gameplay step must
+        // not re-submit the previous request (and a catch-up frame submits only its final request).
+        if (gameplayUpdated)
         {
-            const EnemyInstance& instance = enemies.GetInstanceByIndex(index);
-            m_enemyPhysicsRuntimes[index].QueueVelocity(
-                instance.m_combat.GetMovementIntent(m_model.GetPlayer().m_position));
+            m_physicsPlayer.QueueVelocity(desiredPlayerVelocity);
+            for (size_t index = 0; index < enemies.GetEnemyCount(); ++index)
+            {
+                const EnemyInstance& instance = enemies.GetInstanceByIndex(index);
+                m_enemyPhysicsRuntimes[index].QueueVelocity(
+                    instance.m_combat.GetMovementIntent(m_model.GetPlayer().m_position));
+            }
         }
         AZ::Vector3 physicalPosition = AZ::Vector3::CreateZero();
         bool grounded = false;
@@ -471,14 +555,14 @@ namespace STWGameplay
         // Presentation reacts to authoritative events/state only (read-only). It never writes
         // ammo, damage, reload completion, target health or player movement back.
         PresentationInput vpInput;
-        vpInput.m_shotFired = m_model.GetPresentation().m_shotFired;
-        vpInput.m_hit = m_model.GetPresentation().m_hit;
+        vpInput.m_shotFired = simulation.m_shotFired;
+        vpInput.m_hit = simulation.m_hit;
         vpInput.m_reloading = m_model.GetWeapon().m_reloading;
         vpInput.m_activeEquipmentSlot = static_cast<AZ::u8>(m_model.GetActiveEquipmentSlot());
         vpInput.m_activeEquipmentCategory = static_cast<AZ::u8>(m_model.GetActiveEquipmentProfile().m_category);
         vpInput.m_activeEquipmentProfile = static_cast<AZ::u8>(m_model.GetActiveEquipmentProfileId());
-        vpInput.m_equipmentChanged = m_model.GetPresentation().m_equipmentChanged;
-        vpInput.m_equipmentUsed = m_model.GetPresentation().m_equipmentUsed;
+        vpInput.m_equipmentChanged = simulation.m_equipmentChanged;
+        vpInput.m_equipmentUsed = simulation.m_equipmentUsed;
         vpInput.m_moving = (std::abs(m_input.m_forward) > 0.01f) || (std::abs(m_input.m_strafe) > 0.01f);
         vpInput.m_sprinting = m_input.m_sprint && vpInput.m_moving;
         vpInput.m_adsRequested = m_adsHeld;
@@ -504,7 +588,7 @@ namespace STWGameplay
         bodycamInput.m_mantleProgress = bodycamPlayer.m_mantleElapsed / PlayerSliceModel::MantleDuration;
         bodycamInput.m_alive = bodycamPlayer.m_alive;
         bodycamInput.m_respawnEvents = bodycamPlayer.m_respawnEvents;
-        bodycamInput.m_shotFired = m_model.GetPresentation().m_shotFired;
+        bodycamInput.m_shotFired = simulation.m_shotFired;
         bodycamInput.m_adsBlend = m_viewmodel.GetAdsBlend();
         const AZ::Vector3 worldAcceleration = m_model.GetMovementState().m_planarAcceleration;
         const float bodyYaw = bodycamPlayer.m_yaw;
@@ -533,10 +617,10 @@ namespace STWGameplay
         m_audioPreviousEnemyDeathEvents = audioEnemy.m_deathEvents;
 
         AudioFeedbackInput audioInput;
-        audioInput.m_shotFired = m_model.GetPresentation().m_shotFired;
+        audioInput.m_shotFired = simulation.m_shotFired;
         audioInput.m_reloading = m_model.GetWeapon().m_reloading;
-        audioInput.m_hitConfirmed = m_model.GetPresentation().m_hit;
-        audioInput.m_impactEvent = m_model.GetPresentation().m_hit;
+        audioInput.m_hitConfirmed = simulation.m_hit;
+        audioInput.m_impactEvent = simulation.m_hit;
         audioInput.m_enemyStateChanged = audioEnemyStateChanged;
         audioInput.m_enemyAttackEvent = audioEnemyAttackEvent;
         audioInput.m_enemyDeathEvent = audioEnemyDeathEvent;
@@ -694,6 +778,8 @@ namespace STWGameplay
         m_input.m_requestedEquipmentSlot = -1;
         m_input.m_lookX = 0.0f;
         m_input.m_lookY = 0.0f;
+        m_pendingLookX = 0.0f;
+        m_pendingLookY = 0.0f;
 
         // Exercise the normal jump input/model/PhysX path after the established visual capture
         // and combat stimuli. Holding the request through landing proves edge-triggered behavior.
@@ -759,6 +845,7 @@ namespace STWGameplay
                 m_model.SetPlayerPosition(mantleFixturePosition);
                 m_physicsPlayer.ResetPosition(mantleFixturePosition);
                 m_input.m_lookX = (0.03f - m_model.GetPlayer().m_yaw) / PlayerSliceModel::LookSensitivity;
+                m_pendingLookX = m_input.m_lookX;
                 const PlayerState& player = m_model.GetPlayer();
                 if (player.m_alive && player.m_grounded && !m_physicsPlayer.IsCrouched())
                 {
@@ -785,10 +872,12 @@ namespace STWGameplay
         if (m_acceptanceTime >= 2.2f && m_acceptanceTime < 2.5f)
         {
             m_input.m_lookX = 12.0f;
+            m_pendingLookX = m_input.m_lookX;
         }
         else if (m_acceptanceTime >= 2.5f && m_acceptanceTime < 2.8f)
         {
             m_input.m_lookX = -12.0f;
+            m_pendingLookX = m_input.m_lookX;
         }
 
         if (m_acceptanceTime >= 2.0f && m_acceptanceTime < 3.0f)
@@ -835,6 +924,7 @@ namespace STWGameplay
             if (weapon.m_magazine < 30 && !weapon.m_reloading && weapon.m_reserve > 0)
             {
                 m_input.m_reload = true; // authoritative StartReload; self-limiting once reloading
+                m_pendingReload = true;
             }
         }
         else if (m_acceptanceTime >= 7.5f && !m_viewmodelAcceptanceReported)
@@ -1575,7 +1665,11 @@ namespace STWGameplay
         else if (id == Keyboard::Key::EditSpace) { m_input.m_jump = active; }
         else if (id == Keyboard::Key::ModifierCtrlL) { m_input.m_crouch = active; }
         else if (id == Keyboard::Key::AlphanumericE) { m_input.m_mantle = active; }
-        else if (id == Keyboard::Key::AlphanumericR && channel.IsStateBegan()) { m_input.m_reload = true; }
+        else if (id == Keyboard::Key::AlphanumericR && channel.IsStateBegan())
+        {
+            m_input.m_reload = true;
+            m_pendingReload = true;
+        }
         // The current callback has no number-row consumers. These proven O3DE key IDs
         // select slots through PlayerSliceModel; release clears the edge-trigger request.
         else if (id == Keyboard::Key::Alphanumeric1) { m_input.m_requestedEquipmentSlot = active ? static_cast<int>(EquipmentSlot::Primary) : -1; }
@@ -1586,8 +1680,18 @@ namespace STWGameplay
         else if (id == Keyboard::Key::AlphanumericQ) { m_input.m_switchWeapon = active; }
         else if (id == Mouse::Button::Left) { m_input.m_fire = active; }
         else if (id == Mouse::Button::Right) { m_adsHeld = active; }
-        else if (id == Mouse::Movement::X) { m_input.m_lookX += channel.GetValue(); }
-        else if (id == Mouse::Movement::Y) { m_input.m_lookY += channel.GetValue(); }
+        else if (id == Mouse::Movement::X)
+        {
+            const float lookDelta = channel.GetValue();
+            m_input.m_lookX += lookDelta;
+            m_pendingLookX += lookDelta;
+        }
+        else if (id == Mouse::Movement::Y)
+        {
+            const float lookDelta = channel.GetValue();
+            m_input.m_lookY += lookDelta;
+            m_pendingLookY += lookDelta;
+        }
         return false;
     }
 
