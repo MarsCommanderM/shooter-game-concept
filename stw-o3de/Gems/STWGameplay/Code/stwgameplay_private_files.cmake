@@ -19,6 +19,8 @@ set(FILES
     Source/STWGameplayModuleInterface.h
     Source/Clients/STWGameplaySystemComponent.cpp
     Source/Clients/STWGameplaySystemComponent.h
+    Source/Clients/PhysXArenaRuntime.cpp
+    Source/Clients/PhysXArenaRuntime.h
     Source/Clients/PhysXEnemyRuntime.cpp
     Source/Clients/PhysXEnemyRuntime.h
     Source/Clients/PhysXPlayerRuntime.cpp

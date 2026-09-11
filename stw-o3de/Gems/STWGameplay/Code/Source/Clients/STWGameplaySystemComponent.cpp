@@ -159,6 +159,7 @@ namespace STWGameplay
         ShutdownViewmodelMesh();
         ShutdownEnemyPhysics();
         m_physicsPlayer.Shutdown();
+        m_physicsArena.Shutdown();
     }
 
     void STWGameplaySystemComponent::TryStartPhysics()
@@ -172,9 +173,18 @@ namespace STWGameplay
             return; // default scene not created yet — keep waiting, this is not an error
         }
 
+        if (!m_physicsArena.Initialize())
+        {
+            AZ_Error("STWGameplay", false, "STW arena PhysX runtime could not create static collision");
+            m_physicsArena.Shutdown();
+            m_physicsStartup = PhysicsStartup::Failed;
+            return;
+        }
+
         if (!m_physicsPlayer.Initialize())
         {
             AZ_Error("STWGameplay", false, "Player Movement V2 could not create its PhysX controller");
+            m_physicsArena.Shutdown();
             m_physicsStartup = PhysicsStartup::Failed;
             return;
         }
@@ -190,6 +200,8 @@ namespace STWGameplay
             {
                 AZ_Error("STWGameplay", false, "Enemy %u PhysX controller failed to initialize", instance.m_id);
                 ShutdownEnemyPhysics();
+                m_physicsPlayer.Shutdown();
+                m_physicsArena.Shutdown();
                 m_physicsStartup = PhysicsStartup::Failed;
                 return;
             }

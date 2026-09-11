@@ -17,6 +17,7 @@
 #include <STWGameplay/EnvironmentPresentation.h>
 #include <STWGameplay/STWSkeletalCharacterPresentation.h>
 #include <STWGameplay/ViewmodelPresentation.h>
+#include "PhysXArenaRuntime.h"
 #include "PhysXPlayerRuntime.h"
 #include "PhysXEnemyRuntime.h"
 
@@ -140,6 +141,7 @@ namespace STWGameplay
         AudioFeedbackPresentation m_audioFeedback;
         EncounterModel m_encounter;
         SpawnCheckpointModel m_spawnCheckpoint;
+        PhysXArenaRuntime m_physicsArena;
         PhysXPlayerRuntime m_physicsPlayer;
         AZStd::array<PhysXEnemyRuntime, EnemyCollectionModel::MaxEnemyCount> m_enemyPhysicsRuntimes;
         PlayerInput m_input;
