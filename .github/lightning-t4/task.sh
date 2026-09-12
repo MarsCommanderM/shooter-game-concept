@@ -2,8 +2,8 @@
 set -Eeuo pipefail
 ROOT="/teamspace/studios/this_studio"
 ENGINE="${ROOT}/o3de-2605"
-O3DE_ROOT="${ROOT}/stw-o3de-worktree/stw-o3de"
-PROJECT="${O3DE_ROOT}/Project"
+O3DE_ROOT="${ROOT}/stw-production/stw-o3de"
+PROJECT="${ROOT}/stw-o3de-production-project"
 GEM="${O3DE_ROOT}/Gems/STWGameplay"
 BUILD="${ROOT}/stw-o3de-build/linux"
 BIN="${BUILD}/bin/profile"
@@ -289,9 +289,9 @@ echo "=================================================="
 echo "STW_PERSISTENT_RECOVERY_BEGIN"
 echo "=================================================="
 
-# Synchronize tracked production inputs additively.  The persistent checkout is a
-# build input, not the Git source of truth; files present only on the host are not
-# deleted.  Every tracked Project/Assets file is byte-checked after synchronization.
+# Use the checked-out Production inputs directly as the build source of truth. The
+# generated O3DE project shell remains outside the repository; every tracked
+# Project/Assets file is byte-checked after synchronization.
 copy_file_if_changed(){
   mkdir -p "$(dirname "$2")"
   cmp -s "$1" "$2" || cp -a "$1" "$2"

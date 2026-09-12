@@ -374,6 +374,29 @@ namespace STWGameplay
         m_authoritativeSnapshot = snapshot;
     }
 
+    ReconciliationEvaluation STWGameplaySystemComponent::ProcessAuthoritativeSnapshot(
+        const AuthoritativePlayerSnapshot& authoritativeSnapshot)
+    {
+        ReconciliationEvaluation evaluation = PlayerReconciliationPolicy::EvaluateIncoming(
+            m_authoritativeSnapshot,
+            authoritativeSnapshot,
+            m_nextCommandSequence,
+            m_lastAcceptedSnapshotSequence);
+
+        if (evaluation.m_snapshotStatus == ReconciliationSnapshotStatus::Accepted)
+        {
+            m_lastAcceptedSnapshotSequence = authoritativeSnapshot.m_snapshotSequence;
+            if (evaluation.m_acknowledgementUsable)
+            {
+                evaluation.m_discardedCommandCount = m_commandHistory.DiscardThrough(
+                    authoritativeSnapshot.m_acknowledgedCommandSequence);
+            }
+        }
+
+        m_lastReconciliationEvaluation = evaluation;
+        return evaluation;
+    }
+
     void STWGameplaySystemComponent::OnTick(float deltaTime, AZ::ScriptTimePoint)
     {
         if (m_physicsStartup != PhysicsStartup::Ready)

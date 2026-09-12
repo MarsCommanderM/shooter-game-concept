@@ -9,6 +9,7 @@
 #include <STWGameplay/PlayerSimulationTypes.h>
 #include <STWGameplay/FixedSimulationClock.h>
 #include <STWGameplay/PlayerCommandHistory.h>
+#include <STWGameplay/PlayerPrediction.h>
 #include <STWGameplay/PlayerSliceModel.h>
 #include <STWGameplay/CombatFeedbackPresentation.h>
 #include <STWGameplay/EncounterModel.h>
@@ -52,6 +53,16 @@ namespace STWGameplay
         const PlayerCommandHistory& GetPlayerCommandHistory() const
         {
             return m_commandHistory;
+        }
+
+        //! Evaluates an externally supplied authoritative snapshot and prunes only commands
+        //! explicitly acknowledged by it. This boundary never applies correction or replay.
+        ReconciliationEvaluation ProcessAuthoritativeSnapshot(
+            const AuthoritativePlayerSnapshot& authoritativeSnapshot);
+
+        const ReconciliationEvaluation& GetLastReconciliationEvaluation() const
+        {
+            return m_lastReconciliationEvaluation;
         }
 
     private:
@@ -184,6 +195,8 @@ namespace STWGameplay
         PlayerCommandSequence m_nextCommandSequence = InvalidPlayerSimulationSequence;
         PlayerSnapshotSequence m_nextSnapshotSequence = InvalidPlayerSimulationSequence;
         PlayerSnapshotSequence m_physicalReadbackSequence = InvalidPlayerSimulationSequence;
+        PlayerSnapshotSequence m_lastAcceptedSnapshotSequence = InvalidPlayerSimulationSequence;
+        ReconciliationEvaluation m_lastReconciliationEvaluation;
         bool m_adsHeld = false;
         AZStd::string m_nativeCapturePath;
         float m_nativeCaptureDelay = 0.0f;
