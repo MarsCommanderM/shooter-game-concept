@@ -1,0 +1,47 @@
+{
+    "ContainerEntity": {
+        "Id": "ContainerEntity",
+        "Name": "STW_Player",
+        "Components": {
+            "Component_[10000000000000000001]": {
+                "$type": "{27F1E1A1-8D9D-4C3B-BD3A-AFB9762449C0} TransformComponent",
+                "Id": 10000000000000000001,
+                "Parent Entity": ""
+            }
+        }
+    },
+    "Entities": {
+        "Entity_[10000000000000000002]": {
+            "Id": "Entity_[10000000000000000002]",
+            "Name": "STW_Player",
+            "Components": {
+                "Component_[10000000000000000003]": {
+                    "$type": "{27F1E1A1-8D9D-4C3B-BD3A-AFB9762449C0} TransformComponent",
+                    "Id": 10000000000000000003,
+                    "Parent Entity": "ContainerEntity"
+                },
+                "Component_[10000000000000000004]": {
+                    "$type": "GenericComponentWrapper",
+                    "Id": 10000000000000000004,
+                    "m_template": {
+                        "$type": "NetBindComponent"
+                    }
+                },
+                "Component_[10000000000000000005]": {
+                    "$type": "GenericComponentWrapper",
+                    "Id": 10000000000000000005,
+                    "m_template": {
+                        "$type": "STWGameplay::STWPlayerNetworkComponent"
+                    }
+                },
+                "Component_[10000000000000000006]": {
+                    "$type": "GenericComponentWrapper",
+                    "Id": 10000000000000000006,
+                    "m_template": {
+                        "$type": "Multiplayer::NetworkTransformComponent"
+                    }
+                }
+            }
+        }
+    }
+}
