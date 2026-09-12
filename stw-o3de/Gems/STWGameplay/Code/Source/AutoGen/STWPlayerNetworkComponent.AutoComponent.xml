@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<Component
+    Name="STWPlayerNetworkComponent"
+    Namespace="STWGameplay"
+    OverrideComponent="true"
+    OverrideController="true"
+    OverrideInclude="Network/STWPlayerNetworkComponent.h"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <NetworkInput Type="uint32_t" Name="CommandSequence" Init="0" />
+    <NetworkInput Type="float" Name="Forward" Init="0.0f" />
+    <NetworkInput Type="float" Name="Strafe" Init="0.0f" />
+    <NetworkInput Type="float" Name="LookX" Init="0.0f" />
+    <NetworkInput Type="float" Name="LookY" Init="0.0f" />
+    <NetworkInput Type="uint8_t" Name="ActionFlags" Init="0" />
+    <NetworkInput Type="int32_t" Name="RequestedEquipmentSlot" Init="-1" />
+</Component>

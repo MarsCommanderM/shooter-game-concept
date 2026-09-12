@@ -3,6 +3,7 @@
 #include <AzCore/Memory/Memory.h>
 #include <STWGameplay/STWGameplayTypeIds.h>
 #include <Clients/STWGameplaySystemComponent.h>
+#include <Source/AutoGen/AutoComponentTypes.h>
 
 namespace STWGameplay
 {
@@ -13,6 +14,7 @@ namespace STWGameplay
     STWGameplayModuleInterface::STWGameplayModuleInterface()
     {
         m_descriptors.insert(m_descriptors.end(), { STWGameplaySystemComponent::CreateDescriptor() });
+        CreateComponentDescriptors(m_descriptors);
     }
 
     AZ::ComponentTypeList STWGameplayModuleInterface::GetRequiredSystemComponents() const

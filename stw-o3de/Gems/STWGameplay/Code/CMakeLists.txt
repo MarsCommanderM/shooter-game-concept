@@ -28,7 +28,12 @@ ly_add_target(
         Gem::MiniAudio.API
         Gem::PhysX5.Static
     PRIVATE
-        Gem::Multiplayer.Client.Static)
+        Gem::Multiplayer.Client.Static
+    AUTOGEN_RULES
+        *.AutoComponent.xml,AutoComponent_Header.jinja,$path/$fileprefix.AutoComponent.h
+        *.AutoComponent.xml,AutoComponent_Source.jinja,$path/$fileprefix.AutoComponent.cpp
+        *.AutoComponent.xml,AutoComponentTypes_Header.jinja,$path/AutoComponentTypes.h
+        *.AutoComponent.xml,AutoComponentTypes_Source.jinja,$path/AutoComponentTypes.cpp)
 
 ly_add_target(
     NAME STWGameplay ${PAL_TRAIT_MONOLITHIC_DRIVEN_MODULE_TYPE}

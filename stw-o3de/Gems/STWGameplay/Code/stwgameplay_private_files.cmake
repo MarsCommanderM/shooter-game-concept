@@ -1,4 +1,8 @@
 set(FILES
+    ${LY_ROOT_FOLDER}/Gems/Multiplayer/Code/Include/Multiplayer/AutoGen/AutoComponentTypes_Header.jinja
+    ${LY_ROOT_FOLDER}/Gems/Multiplayer/Code/Include/Multiplayer/AutoGen/AutoComponentTypes_Source.jinja
+    ${LY_ROOT_FOLDER}/Gems/Multiplayer/Code/Include/Multiplayer/AutoGen/AutoComponent_Header.jinja
+    ${LY_ROOT_FOLDER}/Gems/Multiplayer/Code/Include/Multiplayer/AutoGen/AutoComponent_Source.jinja
     Source/ArenaLayout.cpp
     Source/ArenaPresentation.cpp
     Source/AudioFeedbackPresentation.cpp
@@ -26,4 +30,7 @@ set(FILES
     Source/Clients/PhysXPlayerRuntime.cpp
     Source/Clients/PhysXPlayerRuntime.h
     Source/Clients/STWMultiplayerRuntime.cpp
-    Source/Clients/STWMultiplayerRuntime.h)
+    Source/Clients/STWMultiplayerRuntime.h
+    Source/AutoGen/STWPlayerNetworkComponent.AutoComponent.xml
+    Source/Network/STWPlayerNetworkComponent.cpp
+    Source/Network/STWPlayerNetworkComponent.h)

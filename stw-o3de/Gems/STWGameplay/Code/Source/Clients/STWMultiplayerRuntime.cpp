@@ -1,6 +1,7 @@
 #include "STWMultiplayerRuntime.h"
 
 #include <AzNetworking/ConnectionLayer/IConnection.h>
+#include <Source/AutoGen/AutoComponentTypes.h>
 
 namespace STWGameplay
 {
@@ -30,6 +31,7 @@ namespace STWGameplay
             return false;
         }
 
+        RegisterMultiplayerComponents();
         m_multiplayer->AddEndpointDisconnectedHandler(m_endpointDisconnectedHandler);
         m_multiplayer->AddServerAcceptanceReceivedHandler(m_serverAcceptanceReceivedHandler);
         m_handlersConnected = true;
