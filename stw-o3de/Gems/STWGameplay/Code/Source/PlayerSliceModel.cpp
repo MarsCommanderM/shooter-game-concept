@@ -28,9 +28,28 @@ namespace STWGameplay
         }
     }
 
-    PlayerSliceModel::PlayerSliceModel() = default;
+    PlayerSliceModel::PlayerSliceModel()
+    {
+        m_ownedEnemyCollection.emplace();
+        m_enemyCollection = &m_ownedEnemyCollection.value();
+    }
+
+    PlayerSliceModel::PlayerSliceModel(EnemyCollectionModel& enemyCollection)
+        : m_enemyCollection(&enemyCollection)
+    {
+    }
 
     bool PlayerSliceModel::Update(float deltaTime, const PlayerInput& input)
+    {
+        return UpdateInternal(deltaTime, input, true);
+    }
+
+    bool PlayerSliceModel::UpdateNetworkPlayer(float deltaTime, const PlayerInput& input)
+    {
+        return UpdateInternal(deltaTime, input, false);
+    }
+
+    bool PlayerSliceModel::UpdateInternal(float deltaTime, const PlayerInput& input, bool updateEnemySimulation)
     {
         if (!IsFinite(deltaTime) || deltaTime < 0.0f || !IsFinite(input.m_forward) || !IsFinite(input.m_strafe)
             || !IsFinite(input.m_lookX) || !IsFinite(input.m_lookY))
@@ -53,15 +72,18 @@ namespace STWGameplay
         {
             return false;
         }
-        m_enemies.Update(deltaTime, m_player.m_position, m_player.m_alive);
-        if (m_player.m_alive)
+        if (updateEnemySimulation)
         {
-            for (size_t index = 0; index < m_enemies.GetEnemyCount(); ++index)
+            GetEnemies().Update(deltaTime, m_player.m_position, m_player.m_alive);
+            if (m_player.m_alive)
             {
-                EnemyCombatModel& enemy = m_enemies.GetInstanceByIndex(index).m_combat;
-                if (enemy.TryAttackPlayer())
+                for (size_t index = 0; index < GetEnemies().GetEnemyCount(); ++index)
                 {
-                    ApplyDamage(enemy.GetProfile().m_attackDamage);
+                    EnemyCombatModel& enemy = GetEnemies().GetInstanceByIndex(index).m_combat;
+                    if (enemy.TryAttackPlayer())
+                    {
+                        ApplyDamage(enemy.GetProfile().m_attackDamage);
+                    }
                 }
             }
         }
@@ -245,9 +267,9 @@ namespace STWGameplay
         m_presentation.m_fireCueRemaining = 0.06f;
         EnemyId hitEnemyId = InvalidEnemyId;
         float hitDistance = use.m_range;
-        for (size_t index = 0; index < m_enemies.GetEnemyCount(); ++index)
+        for (size_t index = 0; index < GetEnemies().GetEnemyCount(); ++index)
         {
-            const EnemyState& enemy = m_enemies.GetInstanceByIndex(index).m_combat.GetState();
+            const EnemyState& enemy = GetEnemies().GetInstanceByIndex(index).m_combat.GetState();
             float projectedDistance = 0.0f;
             if (enemy.m_alive
                 && RayHitsEnemy(enemy, GetEyePosition(), GetAimDirection(), use.m_range, projectedDistance)
@@ -257,7 +279,7 @@ namespace STWGameplay
                 hitDistance = projectedDistance;
             }
         }
-        if (hitEnemyId != InvalidEnemyId && m_enemies.ApplyDamage(hitEnemyId, use.m_damage))
+        if (hitEnemyId != InvalidEnemyId && GetEnemies().ApplyDamage(hitEnemyId, use.m_damage))
         {
             m_presentation.m_hit = true;
             m_presentation.m_hitEnemyId = hitEnemyId;

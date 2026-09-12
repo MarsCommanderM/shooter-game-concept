@@ -142,12 +142,7 @@ namespace STWGameplay
         m_physicalReadbackSequence = InvalidPlayerSimulationSequence;
         m_lastAcceptedSnapshotSequence = InvalidPlayerSimulationSequence;
         m_lastReconciliationEvaluation = {};
-        m_boundNetworkPlayerEntityId = AZ::EntityId();
-        m_networkCommand = {};
-        m_lastNetworkAppliedSequence = InvalidPlayerSimulationSequence;
-        m_lastNetworkCommandSequence = InvalidPlayerSimulationSequence;
-        m_networkCommandSourceActive = false;
-        m_networkCommandAvailable = false;
+        UnbindAllNetworkPlayers();
         ResetViewmodelAssetLoadState();
         ResetEnemyAssetLoadState();
         m_fixedSimulationClock.Reset();
@@ -194,6 +189,7 @@ namespace STWGameplay
 
     void STWGameplaySystemComponent::Deactivate()
     {
+        UnbindAllNetworkPlayers();
         m_multiplayer.Shutdown();
         m_adsHeld = false;
         m_physicsStartup = PhysicsStartup::Waiting;
@@ -219,12 +215,6 @@ namespace STWGameplay
         {
             AZ::Interface<STWGameplaySystemComponent>::Unregister(this);
         }
-        m_boundNetworkPlayerEntityId = AZ::EntityId();
-        m_networkCommand = {};
-        m_lastNetworkAppliedSequence = InvalidPlayerSimulationSequence;
-        m_lastNetworkCommandSequence = InvalidPlayerSimulationSequence;
-        m_networkCommandSourceActive = false;
-        m_networkCommandAvailable = false;
     }
 
     bool STWGameplaySystemComponent::BindNetworkPlayer(AZ::EntityId entityId)
@@ -233,42 +223,55 @@ namespace STWGameplay
         {
             return false;
         }
-        if (m_boundNetworkPlayerEntityId.IsValid())
+        if (FindNetworkPlayer(entityId) != nullptr)
         {
-            return m_boundNetworkPlayerEntityId == entityId;
+            return true;
         }
 
-        // A network-controlled player is a new input source for this existing gameplay session.
-        // Retained commands belong to the previous source and must not be replayed through the
-        // network binding. The simulation sequence itself is intentionally not reset here.
-        m_commandHistory.Reset();
-        m_boundNetworkPlayerEntityId = entityId;
-        m_networkCommand = {};
-        m_lastNetworkAppliedSequence = InvalidPlayerSimulationSequence;
-        m_lastNetworkCommandSequence = InvalidPlayerSimulationSequence;
-        m_networkCommandSourceActive = true;
-        m_networkCommandAvailable = false;
+        STWNetworkPlayerAuthority* freeAuthority = nullptr;
+        for (STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
+        {
+            if (!authority.IsBound())
+            {
+                freeAuthority = &authority;
+                break;
+            }
+        }
+        if (freeAuthority == nullptr)
+        {
+            return false;
+        }
+
+        const bool hasCompositionRootAuthority = FindCompositionRootNetworkPlayer() != nullptr;
+        const bool bound = hasCompositionRootAuthority
+            ? freeAuthority->BindAdditional(entityId, m_model.GetEnemies())
+            : freeAuthority->BindPrimary(entityId, m_model, m_physicsPlayer);
+        if (!bound)
+        {
+            return false;
+        }
+        if (m_physicsStartup == PhysicsStartup::Ready && !freeAuthority->InitializePhysics())
+        {
+            freeAuthority->Unbind();
+            return false;
+        }
         return true;
     }
 
     void STWGameplaySystemComponent::UnbindNetworkPlayer(AZ::EntityId entityId)
     {
-        if (!m_boundNetworkPlayerEntityId.IsValid() || m_boundNetworkPlayerEntityId != entityId)
+        STWNetworkPlayerAuthority* authority = FindNetworkPlayer(entityId);
+        if (authority == nullptr)
         {
             return;
         }
-
-        m_boundNetworkPlayerEntityId = AZ::EntityId();
-        m_networkCommand = {};
-        m_lastNetworkAppliedSequence = InvalidPlayerSimulationSequence;
-        m_lastNetworkCommandSequence = InvalidPlayerSimulationSequence;
-        m_networkCommandSourceActive = false;
-        m_networkCommandAvailable = false;
+        authority->Unbind();
     }
 
     bool STWGameplaySystemComponent::CreateNetworkCommand(AZ::EntityId entityId, PlayerCommand& command)
     {
-        if (!m_networkCommandSourceActive || m_boundNetworkPlayerEntityId != entityId)
+        STWNetworkPlayerAuthority* authority = FindNetworkPlayer(entityId);
+        if (authority == nullptr)
         {
             return false;
         }
@@ -277,54 +280,83 @@ namespace STWGameplay
         sampledInput.m_lookX = m_pendingLookX;
         sampledInput.m_lookY = m_pendingLookY;
         sampledInput.m_reload = m_pendingReload;
-        if (!PlayerCommand(sampledInput, 1u).IsFinite())
-        {
-            return false;
-        }
-
-        command = BuildPlayerCommand(sampledInput);
-        return command.IsFinite();
+        return authority->CreateCommand(sampledInput, command);
     }
 
     bool STWGameplaySystemComponent::SubmitNetworkCommand(
         AZ::EntityId entityId, const PlayerCommand& command)
     {
-        if (!m_networkCommandSourceActive || m_boundNetworkPlayerEntityId != entityId
-            || command.m_sequence == InvalidPlayerSimulationSequence || !command.IsFinite())
+        STWNetworkPlayerAuthority* authority = FindNetworkPlayer(entityId);
+        if (authority == nullptr)
         {
             return false;
         }
-        if (m_lastNetworkCommandSequence != InvalidPlayerSimulationSequence
-            && !IsNewerPlayerSimulationSequence(command.m_sequence, m_lastNetworkCommandSequence))
+        const bool submitted = authority->SubmitCommand(command);
+        if (submitted && authority->UsesCompositionRootRuntime())
         {
-            return false;
+            // The sampled one-shot input is now represented by the network command. Do not let
+            // the same raw sample be captured again before the next fixed simulation step.
+            m_pendingLookX = 0.0f;
+            m_pendingLookY = 0.0f;
+            m_pendingReload = false;
         }
-        if (!m_commandHistory.Push(command))
-        {
-            return false;
-        }
-
-        m_networkCommand = command;
-        m_lastNetworkCommandSequence = command.m_sequence;
-        m_networkCommandAvailable = true;
-        // The sampled one-shot input is now represented by the network command. Do not let the
-        // same raw sample be captured again before the next fixed simulation step.
-        m_pendingLookX = 0.0f;
-        m_pendingLookY = 0.0f;
-        m_pendingReload = false;
-        return true;
+        return submitted;
     }
 
     bool STWGameplaySystemComponent::ReceiveNetworkSnapshot(
         AZ::EntityId entityId, const AuthoritativePlayerSnapshot& snapshot)
     {
-        if (!m_networkCommandSourceActive || m_boundNetworkPlayerEntityId != entityId)
+        STWNetworkPlayerAuthority* authority = FindNetworkPlayer(entityId);
+        if (authority == nullptr)
         {
             return false;
         }
 
-        ProcessAuthoritativeSnapshot(snapshot);
+        authority->ProcessAuthoritativeSnapshot(snapshot);
         return true;
+    }
+
+    size_t STWGameplaySystemComponent::GetNetworkPlayerCount() const
+    {
+        size_t count = 0;
+        for (const STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
+        {
+            count += authority.IsBound() ? 1 : 0;
+        }
+        return count;
+    }
+
+    size_t STWGameplaySystemComponent::GetNetworkPlayerCommandHistorySize(AZ::EntityId entityId) const
+    {
+        const STWNetworkPlayerAuthority* authority = FindNetworkPlayer(entityId);
+        return authority != nullptr ? authority->GetCommandHistorySize() : 0;
+    }
+
+    const AuthoritativePlayerSnapshot& STWGameplaySystemComponent::GetAuthoritativeSnapshot() const
+    {
+        if (const STWNetworkPlayerAuthority* authority = FindCompositionRootNetworkPlayer())
+        {
+            return authority->GetAuthoritativeSnapshot();
+        }
+        return m_authoritativeSnapshot;
+    }
+
+    const PlayerCommandHistory& STWGameplaySystemComponent::GetPlayerCommandHistory() const
+    {
+        if (const STWNetworkPlayerAuthority* authority = FindCompositionRootNetworkPlayer())
+        {
+            return authority->GetCommandHistory();
+        }
+        return m_commandHistory;
+    }
+
+    const ReconciliationEvaluation& STWGameplaySystemComponent::GetLastReconciliationEvaluation() const
+    {
+        if (const STWNetworkPlayerAuthority* authority = FindCompositionRootNetworkPlayer())
+        {
+            return authority->GetLastReconciliationEvaluation();
+        }
+        return m_lastReconciliationEvaluation;
     }
 
     void STWGameplaySystemComponent::TryStartPhysics()
@@ -354,10 +386,36 @@ namespace STWGameplay
             return;
         }
 
+        for (STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
+        {
+            if (authority.IsBound() && !authority.InitializePhysics())
+            {
+                AZ_Error("STWGameplay", false, "Network player PhysX runtime could not initialize");
+                UnbindAllNetworkPlayers();
+                m_physicsPlayer.Shutdown();
+                m_physicsArena.Shutdown();
+                m_physicsStartup = PhysicsStartup::Failed;
+                return;
+            }
+        }
+
         AZ::Vector3 physicalPosition = AZ::Vector3::CreateZero();
         bool grounded = false;
         m_physicsPlayer.Synchronize(physicalPosition, grounded);
         m_model.SynchronizePhysicalState(physicalPosition, grounded);
+        for (STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
+        {
+            if (!authority.IsBound() || authority.UsesCompositionRootRuntime())
+            {
+                continue;
+            }
+            AZ::Vector3 networkPhysicalPosition = AZ::Vector3::CreateZero();
+            bool networkGrounded = false;
+            if (authority.GetPhysics().Synchronize(networkPhysicalPosition, networkGrounded))
+            {
+                authority.GetModel().SynchronizePhysicalState(networkPhysicalPosition, networkGrounded);
+            }
+        }
         for (size_t index = 0; index < m_model.GetEnemies().GetEnemyCount(); ++index)
         {
             const EnemyInstance& instance = m_model.GetEnemies().GetInstanceByIndex(index);
@@ -421,27 +479,28 @@ namespace STWGameplay
         return MakePlayerCommand(input, m_nextCommandSequence);
     }
 
-    void STWGameplaySystemComponent::TryBeginMantle(const PlayerInput& input)
+    void STWGameplaySystemComponent::TryBeginMantle(
+        PlayerSliceModel& model, PhysXPlayerRuntime& physics, const PlayerInput& input)
     {
-        if (m_automatedAcceptance && m_model.IsMantleRequested())
+        if (m_automatedAcceptance && model.IsMantleRequested())
         {
             AZ_Printf("STWGameplay", "MANTLE_DIAG request=RAISED\n");
         }
-        if (!m_model.IsMantleRequested())
+        if (!model.IsMantleRequested())
         {
             return;
         }
 
-        const AZ::Vector3 requestedVelocity = m_model.GetDesiredVelocity(input);
+        const AZ::Vector3 requestedVelocity = model.GetDesiredVelocity(input);
         const AZ::Vector3 direction(requestedVelocity.GetX(), requestedVelocity.GetY(), 0.0f);
         if (m_automatedAcceptance)
         {
             AZ_Printf("STWGameplay", "MANTLE_DIAG forwarding=RECEIVED velocity=(%.3f,%.3f,%.3f)\n",
                 requestedVelocity.GetX(), requestedVelocity.GetY(), requestedVelocity.GetZ());
         }
-        if (m_physicsPlayer.CanStartMantle(direction, m_model.GetPlayer().m_grounded))
+        if (physics.CanStartMantle(direction, model.GetPlayer().m_grounded))
         {
-            m_model.BeginMantle(direction);
+            model.BeginMantle(direction);
             if (m_automatedAcceptance)
             {
                 AZ_Printf("STWGameplay", "MANTLE_DIAG activation=PASS\n");
@@ -459,46 +518,39 @@ namespace STWGameplay
     STWGameplaySystemComponent::RunFixedGameplaySteps(float frameDelta)
     {
         FixedSimulationFrameResult frame;
-        frame.m_requestedVelocity = m_model.GetMovementVelocity();
+        STWNetworkPlayerAuthority* compositionRootAuthority = FindCompositionRootNetworkPlayer();
+        PlayerSliceModel& model = compositionRootAuthority != nullptr
+            ? compositionRootAuthority->GetModel() : m_model;
+        PhysXPlayerRuntime& physics = compositionRootAuthority != nullptr
+            ? compositionRootAuthority->GetPhysics() : m_physicsPlayer;
+        frame.m_requestedVelocity = model.GetMovementVelocity();
 
         const FixedSimulationAdvanceResult advance = m_fixedSimulationClock.Advance(frameDelta);
+        frame.m_fixedStepCount = advance.m_stepCount;
         if (!advance.m_inputValid)
         {
             return frame;
         }
 
-        if (m_networkCommandSourceActive && !m_networkCommandAvailable)
+        if (compositionRootAuthority != nullptr && compositionRootAuthority->GetCommandHistory().Empty())
         {
             return frame;
         }
 
         for (AZ::u32 step = 0; step < advance.m_stepCount; ++step)
         {
-            PlayerCommand networkCommand = m_networkCommand;
+            PlayerCommand networkCommand;
             bool networkCommandIsNew = false;
-            if (m_networkCommandSourceActive)
+            if (compositionRootAuthority != nullptr
+                && !compositionRootAuthority->GetCommandForFixedStep(networkCommand, networkCommandIsNew))
             {
-                for (size_t offset = 0; offset < m_commandHistory.Size(); ++offset)
-                {
-                    PlayerCommand candidate;
-                    if (!m_commandHistory.TryGetAt(offset, candidate))
-                    {
-                        break;
-                    }
-                    if (m_lastNetworkAppliedSequence == InvalidPlayerSimulationSequence
-                        || IsNewerPlayerSimulationSequence(candidate.m_sequence, m_lastNetworkAppliedSequence))
-                    {
-                        networkCommand = candidate;
-                        networkCommandIsNew = true;
-                        break;
-                    }
-                }
+                continue;
             }
 
-            PlayerInput simulationInput = m_networkCommandSourceActive ? networkCommand : m_input;
+            PlayerInput simulationInput = compositionRootAuthority != nullptr ? networkCommand : m_input;
             // Look and reload are transient samples. Consume them on the first fixed step only;
             // held movement/action inputs remain sampled for every fixed gameplay step.
-            if (m_networkCommandSourceActive)
+            if (compositionRootAuthority != nullptr)
             {
                 if (!networkCommandIsNew)
                 {
@@ -514,11 +566,11 @@ namespace STWGameplay
                 simulationInput.m_reload = step == 0 && m_pendingReload;
             }
 
-            const PlayerCommand command = m_networkCommandSourceActive
+            const PlayerCommand command = compositionRootAuthority != nullptr
                 ? MakePlayerCommand(simulationInput, networkCommand.m_sequence)
                 : BuildPlayerCommand(simulationInput);
-            const bool modelUpdated = m_model.Update(FixedSimulationClock::FixedDeltaTime, command);
-            if (!m_networkCommandSourceActive && step == 0)
+            const bool modelUpdated = model.Update(FixedSimulationClock::FixedDeltaTime, command);
+            if (compositionRootAuthority == nullptr && step == 0)
             {
                 m_pendingLookX = 0.0f;
                 m_pendingLookY = 0.0f;
@@ -531,11 +583,11 @@ namespace STWGameplay
 
             frame.m_lastCommand = command;
             frame.m_gameplayUpdated = true;
-            if (m_networkCommandSourceActive)
+            if (compositionRootAuthority != nullptr)
             {
                 if (networkCommandIsNew)
                 {
-                    m_lastNetworkAppliedSequence = networkCommand.m_sequence;
+                    compositionRootAuthority->MarkCommandApplied(networkCommand.m_sequence);
                 }
             }
             else
@@ -543,7 +595,7 @@ namespace STWGameplay
                 m_commandHistory.Push(command);
             }
 
-            const PresentationState& presentation = m_model.GetPresentation();
+            const PresentationState& presentation = model.GetPresentation();
             frame.m_shotFired = frame.m_shotFired || presentation.m_shotFired;
             if (presentation.m_hit)
             {
@@ -553,8 +605,8 @@ namespace STWGameplay
             frame.m_equipmentUsed = frame.m_equipmentUsed || presentation.m_equipmentUsed;
             frame.m_equipmentChanged = frame.m_equipmentChanged || presentation.m_equipmentChanged;
 
-            TryBeginMantle(simulationInput);
-            frame.m_requestedVelocity = m_model.GetMovementVelocity();
+            TryBeginMantle(model, physics, simulationInput);
+            frame.m_requestedVelocity = model.GetMovementVelocity();
             if (frame.m_requestedVelocity.GetZ() != 0.0f && frame.m_requestedVelocity.GetZ() > frame.m_jumpImpulse)
             {
                 frame.m_jumpImpulseObserved = true;
@@ -566,7 +618,7 @@ namespace STWGameplay
         // PhysX's AddVelocityForTick contract accumulates all requests until the engine's
         // physics tick. Keep one request per engine tick; a jump accepted in an earlier fixed
         // gameplay step still contributes its one-shot vertical impulse to that request.
-        if (frame.m_gameplayUpdated && frame.m_jumpImpulseObserved && m_model.GetPlayer().m_alive)
+        if (frame.m_gameplayUpdated && frame.m_jumpImpulseObserved && model.GetPlayer().m_alive)
         {
             frame.m_requestedVelocity.SetZ(frame.m_jumpImpulse);
         }
@@ -576,6 +628,15 @@ namespace STWGameplay
     void STWGameplaySystemComponent::CaptureAuthoritativeSnapshot(
         PlayerCommandSequence acknowledgedCommandSequence)
     {
+        if (STWNetworkPlayerAuthority* compositionRootAuthority = FindCompositionRootNetworkPlayer())
+        {
+            compositionRootAuthority->CaptureAuthoritativeSnapshot(acknowledgedCommandSequence);
+            m_authoritativeSnapshot = compositionRootAuthority->GetAuthoritativeSnapshot();
+            PublishNetworkPlayerSnapshot(
+                compositionRootAuthority->GetEntityId(), compositionRootAuthority->GetAuthoritativeSnapshot());
+            return;
+        }
+
         m_nextSnapshotSequence = AdvancePlayerSimulationSequence(m_nextSnapshotSequence);
         m_physicalReadbackSequence = AdvancePlayerSimulationSequence(m_physicalReadbackSequence);
 
@@ -609,27 +670,16 @@ namespace STWGameplay
         snapshot.m_respawnEvents = player.m_respawnEvents;
         snapshot.m_lastAcceptedUseEventId = m_model.GetLastAcceptedUseEventId();
         m_authoritativeSnapshot = snapshot;
-
-        if (m_boundNetworkPlayerEntityId.IsValid())
-        {
-            if (AZ::ComponentApplicationRequests* application =
-                    AZ::Interface<AZ::ComponentApplicationRequests>::Get())
-            {
-                if (AZ::Entity* networkEntity = application->FindEntity(m_boundNetworkPlayerEntityId))
-                {
-                    if (STWPlayerNetworkComponent* networkComponent =
-                            networkEntity->FindComponent<STWPlayerNetworkComponent>())
-                    {
-                        networkComponent->PublishAuthoritativeSnapshot(snapshot);
-                    }
-                }
-            }
-        }
     }
 
     ReconciliationEvaluation STWGameplaySystemComponent::ProcessAuthoritativeSnapshot(
         const AuthoritativePlayerSnapshot& authoritativeSnapshot)
     {
+        if (STWNetworkPlayerAuthority* authority = FindCompositionRootNetworkPlayer())
+        {
+            return authority->ProcessAuthoritativeSnapshot(authoritativeSnapshot);
+        }
+
         ReconciliationEvaluation evaluation = PlayerReconciliationPolicy::EvaluateIncoming(
             m_authoritativeSnapshot,
             authoritativeSnapshot,
@@ -648,6 +698,155 @@ namespace STWGameplay
 
         m_lastReconciliationEvaluation = evaluation;
         return evaluation;
+    }
+
+    void STWGameplaySystemComponent::RunAdditionalNetworkPlayerSteps(AZ::u32 stepCount)
+    {
+        for (STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
+        {
+            if (!authority.IsBound() || authority.UsesCompositionRootRuntime()
+                || stepCount == 0 || authority.GetCommandHistory().Empty())
+            {
+                continue;
+            }
+
+            PlayerSliceModel& model = authority.GetModel();
+            PhysXPlayerRuntime& physics = authority.GetPhysics();
+            for (AZ::u32 step = 0; step < stepCount; ++step)
+            {
+                PlayerCommand command;
+                bool commandIsNew = false;
+                if (!authority.GetCommandForFixedStep(command, commandIsNew))
+                {
+                    continue;
+                }
+
+                PlayerInput simulationInput = command;
+                if (!commandIsNew)
+                {
+                    simulationInput.m_lookX = 0.0f;
+                    simulationInput.m_lookY = 0.0f;
+                    simulationInput.m_reload = false;
+                }
+                const PlayerCommand stepCommand = MakePlayerCommand(simulationInput, command.m_sequence);
+                if (!model.UpdateNetworkPlayer(FixedSimulationClock::FixedDeltaTime, stepCommand))
+                {
+                    continue;
+                }
+                if (commandIsNew)
+                {
+                    authority.MarkCommandApplied(command.m_sequence);
+                }
+                TryBeginMantle(model, physics, simulationInput);
+            }
+        }
+    }
+
+    void STWGameplaySystemComponent::CaptureNetworkPlayerSnapshot(STWNetworkPlayerAuthority& authority)
+    {
+        authority.CaptureAuthoritativeSnapshot(authority.GetLastAppliedCommandSequence());
+        PublishNetworkPlayerSnapshot(authority.GetEntityId(), authority.GetAuthoritativeSnapshot());
+    }
+
+    void STWGameplaySystemComponent::PublishNetworkPlayerSnapshot(
+        AZ::EntityId entityId, const AuthoritativePlayerSnapshot& snapshot)
+    {
+        if (!entityId.IsValid())
+        {
+            return;
+        }
+        if (AZ::ComponentApplicationRequests* application =
+                AZ::Interface<AZ::ComponentApplicationRequests>::Get())
+        {
+            if (AZ::Entity* networkEntity = application->FindEntity(entityId))
+            {
+                if (STWPlayerNetworkComponent* networkComponent =
+                        networkEntity->FindComponent<STWPlayerNetworkComponent>())
+                {
+                    networkComponent->PublishAuthoritativeSnapshot(snapshot);
+                }
+            }
+        }
+    }
+
+    STWNetworkPlayerAuthority* STWGameplaySystemComponent::FindNetworkPlayer(AZ::EntityId entityId)
+    {
+        for (STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
+        {
+            if (authority.IsBound() && authority.GetEntityId() == entityId)
+            {
+                return &authority;
+            }
+        }
+        return nullptr;
+    }
+
+    const STWNetworkPlayerAuthority* STWGameplaySystemComponent::FindNetworkPlayer(AZ::EntityId entityId) const
+    {
+        for (const STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
+        {
+            if (authority.IsBound() && authority.GetEntityId() == entityId)
+            {
+                return &authority;
+            }
+        }
+        return nullptr;
+    }
+
+    STWNetworkPlayerAuthority* STWGameplaySystemComponent::FindCompositionRootNetworkPlayer()
+    {
+        for (STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
+        {
+            if (authority.IsBound() && authority.UsesCompositionRootRuntime())
+            {
+                return &authority;
+            }
+        }
+        return nullptr;
+    }
+
+    const STWNetworkPlayerAuthority* STWGameplaySystemComponent::FindCompositionRootNetworkPlayer() const
+    {
+        for (const STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
+        {
+            if (authority.IsBound() && authority.UsesCompositionRootRuntime())
+            {
+                return &authority;
+            }
+        }
+        return nullptr;
+    }
+
+    STWNetworkPlayerAuthority* STWGameplaySystemComponent::FindFirstNetworkPlayer()
+    {
+        for (STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
+        {
+            if (authority.IsBound())
+            {
+                return &authority;
+            }
+        }
+        return nullptr;
+    }
+
+    const STWNetworkPlayerAuthority* STWGameplaySystemComponent::FindFirstNetworkPlayer() const
+    {
+        for (const STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
+        {
+            if (authority.IsBound())
+            {
+                return &authority;
+            }
+        }
+        return nullptr;
+    }
+
+    void STWGameplaySystemComponent::UnbindAllNetworkPlayers()
+    {
+        for (STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
+        {
+            authority.Unbind();
+        }
     }
 
     void STWGameplaySystemComponent::OnTick(float deltaTime, AZ::ScriptTimePoint)
@@ -676,6 +875,7 @@ namespace STWGameplay
 
         UpdateAutomatedAcceptance(deltaTime);
         const FixedSimulationFrameResult simulation = RunFixedGameplaySteps(deltaTime);
+        RunAdditionalNetworkPlayerSteps(simulation.m_fixedStepCount);
         const PlayerCommand& command = simulation.m_lastCommand;
         const bool gameplayUpdated = simulation.m_gameplayUpdated;
         const EnemyCollectionModel& enemies = m_model.GetEnemies();
@@ -695,6 +895,16 @@ namespace STWGameplay
                 m_model.GetPlayer().m_crouchDesired, m_model.GetPlayer().m_grounded))
         {
             AZ_Error("STWGameplay", false, "PhysX crouch controller resize failed");
+        }
+        for (STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
+        {
+            if (authority.IsBound() && !authority.UsesCompositionRootRuntime()
+                && !authority.GetPhysics().ApplyCrouchRequest(
+                    authority.GetModel().GetPlayer().m_crouchDesired,
+                    authority.GetModel().GetPlayer().m_grounded))
+            {
+                AZ_Error("STWGameplay", false, "Network player PhysX crouch controller resize failed");
+            }
         }
         const WeaponState feedbackWeaponBefore = m_model.GetWeapon();
         const EnemyInstance* feedbackEnemyInstance = m_model.GetEnemies().Find(simulation.m_hitEnemyId);
@@ -755,6 +965,15 @@ namespace STWGameplay
                     instance.m_combat.GetMovementIntent(m_model.GetPlayer().m_position));
             }
         }
+        for (STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
+        {
+            if (authority.IsBound() && !authority.UsesCompositionRootRuntime()
+                && simulation.m_fixedStepCount > 0
+                && !authority.GetCommandHistory().Empty())
+            {
+                authority.GetPhysics().QueueVelocity(authority.GetModel().GetMovementVelocity());
+            }
+        }
         AZ::Vector3 physicalPosition = AZ::Vector3::CreateZero();
         bool grounded = false;
         const bool playerPhysicalStateSynchronized = m_physicsPlayer.Synchronize(physicalPosition, grounded);
@@ -770,6 +989,20 @@ namespace STWGameplay
             if (m_automatedAcceptance)
             {
                 m_spawnCheckpointLastPhysicalPosition = physicalPosition;
+            }
+        }
+        for (STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
+        {
+            if (!authority.IsBound() || authority.UsesCompositionRootRuntime())
+            {
+                continue;
+            }
+            AZ::Vector3 networkPhysicalPosition = AZ::Vector3::CreateZero();
+            bool networkGrounded = false;
+            if (authority.GetPhysics().Synchronize(networkPhysicalPosition, networkGrounded))
+            {
+                authority.GetModel().SynchronizePhysicalState(networkPhysicalPosition, networkGrounded);
+                CaptureNetworkPlayerSnapshot(authority);
             }
         }
         UpdateJumpAcceptance(playerPhysicalStateSynchronized);

@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <AzCore/Math/Vector3.h>
+#include <AzCore/std/optional.h>
 #include <STWGameplay/ArenaLayout.h>
 #include <STWGameplay/EnemyCollectionModel.h>
 #include <STWGameplay/PlayerMovementModel.h>
@@ -74,7 +75,11 @@ namespace STWGameplay
         static constexpr size_t WeaponCount = WeaponModel::WeaponCount; // legacy two-weapon gate compatibility
 
         PlayerSliceModel();
+        explicit PlayerSliceModel(EnemyCollectionModel& enemyCollection);
         bool Update(float deltaTime, const PlayerInput& input);
+        //! Updates one network player's state while leaving the shared enemy simulation to the
+        //! composition root's single world update.
+        bool UpdateNetworkPlayer(float deltaTime, const PlayerInput& input);
         bool TryFire();
         bool StartReload();
         bool RequestWeaponSwitch();
@@ -123,10 +128,10 @@ namespace STWGameplay
         }
         WeaponEventId GetLastAcceptedUseEventId() const { return m_weapons.GetLastAcceptedUseEventId(); }
         const TargetState& GetTarget() const { return GetEnemy().GetState(); }
-        const EnemyCombatModel& GetEnemy() const { return *m_enemies.GetEnemy(PrimaryEnemyId); }
-        EnemyCombatModel& GetEnemy() { return *m_enemies.GetEnemy(PrimaryEnemyId); }
-        const EnemyCollectionModel& GetEnemies() const { return m_enemies; }
-        EnemyCollectionModel& GetEnemies() { return m_enemies; }
+        const EnemyCombatModel& GetEnemy() const { return *m_enemyCollection->GetEnemy(PrimaryEnemyId); }
+        EnemyCombatModel& GetEnemy() { return *m_enemyCollection->GetEnemy(PrimaryEnemyId); }
+        const EnemyCollectionModel& GetEnemies() const { return *m_enemyCollection; }
+        EnemyCollectionModel& GetEnemies() { return *m_enemyCollection; }
         const PresentationState& GetPresentation() const { return m_presentation; }
         const PlayerMovementState& GetMovementState() const { return m_movement.GetMovementState(); }
         AZ::Vector3 GetEyePosition() const;
@@ -140,17 +145,19 @@ namespace STWGameplay
         bool IsMantleRequested() const { return m_player.m_mantleRequested; }
         void BeginMantle(const AZ::Vector3& direction);
 
-        void SetTargetPosition(const AZ::Vector3& position) { m_enemies.SynchronizePhysicalPosition(PrimaryEnemyId, position); }
+        void SetTargetPosition(const AZ::Vector3& position) { m_enemyCollection->SynchronizePhysicalPosition(PrimaryEnemyId, position); }
         void SetPlayerPosition(const AZ::Vector3& position);
         void SynchronizePhysicalState(const AZ::Vector3& position, bool grounded);
 
     private:
+        bool UpdateInternal(float deltaTime, const PlayerInput& input, bool updateEnemySimulation);
         bool RayHitsEnemy(const EnemyState& target, const AZ::Vector3& origin, const AZ::Vector3& direction,
             float maximumRange, float& projectedDistance) const;
 
         PlayerState m_player;
         WeaponModel m_weapons;
-        EnemyCollectionModel m_enemies;
+        AZStd::optional<EnemyCollectionModel> m_ownedEnemyCollection;
+        EnemyCollectionModel* m_enemyCollection = nullptr;
         PresentationState m_presentation;
         bool m_jumpWasHeld = false;
         bool m_crouchWasHeld = false;

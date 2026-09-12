@@ -27,6 +27,7 @@
 #include "PhysXPlayerRuntime.h"
 #include "PhysXEnemyRuntime.h"
 #include "STWMultiplayerRuntime.h"
+#include "STWNetworkPlayerAuthority.h"
 
 namespace STWGameplay
 {
@@ -37,6 +38,8 @@ namespace STWGameplay
     {
     public:
         AZ_COMPONENT_DECL(STWGameplaySystemComponent);
+
+        static constexpr size_t MaxNetworkPlayerCount = 8;
 
         static void Reflect(AZ::ReflectContext* context);
         static void GetProvidedServices(AZ::ComponentDescriptor::DependencyArrayType& provided);
@@ -63,29 +66,20 @@ namespace STWGameplay
             return m_multiplayer.GetState();
         }
 
-        const AuthoritativePlayerSnapshot& GetAuthoritativeSnapshot() const
-        {
-            return m_authoritativeSnapshot;
-        }
+        const AuthoritativePlayerSnapshot& GetAuthoritativeSnapshot() const;
 
-        const PlayerCommandHistory& GetPlayerCommandHistory() const
-        {
-            return m_commandHistory;
-        }
+        const PlayerCommandHistory& GetPlayerCommandHistory() const;
 
         //! Evaluates an externally supplied authoritative snapshot and prunes only commands
         //! explicitly acknowledged by it. This boundary never applies correction or replay.
         ReconciliationEvaluation ProcessAuthoritativeSnapshot(
             const AuthoritativePlayerSnapshot& authoritativeSnapshot);
 
-        const ReconciliationEvaluation& GetLastReconciliationEvaluation() const
-        {
-            return m_lastReconciliationEvaluation;
-        }
+        const ReconciliationEvaluation& GetLastReconciliationEvaluation() const;
 
-        //! Binds the single current network player to the existing PlayerSliceModel authority.
-        //! This boundary owns no gameplay state and rejects a second player until the gameplay
-        //! model is expanded to support per-player authorities.
+        //! Binds one network entity to one independent player authority slot. The first slot
+        //! adapts the existing local authority for compatibility; later slots own their player
+        //! state and physical runtime while sharing the world enemy authority.
         bool BindNetworkPlayer(AZ::EntityId entityId);
         void UnbindNetworkPlayer(AZ::EntityId entityId);
         bool CreateNetworkCommand(AZ::EntityId entityId, PlayerCommand& command);
@@ -93,6 +87,9 @@ namespace STWGameplay
         //! Routes one replicated snapshot from the currently bound network entity to the
         //! existing pure reconciliation policy. It never applies correction or replay.
         bool ReceiveNetworkSnapshot(AZ::EntityId entityId, const AuthoritativePlayerSnapshot& snapshot);
+
+        size_t GetNetworkPlayerCount() const;
+        size_t GetNetworkPlayerCommandHistorySize(AZ::EntityId entityId) const;
 
     private:
         bool OnInputChannelEventFiltered(const AzFramework::InputChannel& inputChannel) override;
@@ -110,7 +107,8 @@ namespace STWGameplay
         void UpdateEnemyPresentationInterpolation(
             const AZStd::array<bool, EnemyCollectionModel::MaxEnemyCount>& physicalStateSynchronized);
         PlayerCommand BuildPlayerCommand(const PlayerInput& input);
-        void TryBeginMantle(const PlayerInput& input);
+        void TryBeginMantle(
+            PlayerSliceModel& model, PhysXPlayerRuntime& physics, const PlayerInput& input);
         struct FixedSimulationFrameResult
         {
             PlayerCommand m_lastCommand;
@@ -123,9 +121,21 @@ namespace STWGameplay
             EnemyId m_hitEnemyId = InvalidEnemyId;
             bool m_equipmentUsed = false;
             bool m_equipmentChanged = false;
+            AZ::u32 m_fixedStepCount = 0;
         };
         FixedSimulationFrameResult RunFixedGameplaySteps(float frameDelta);
         void CaptureAuthoritativeSnapshot(PlayerCommandSequence acknowledgedCommandSequence);
+        void RunAdditionalNetworkPlayerSteps(AZ::u32 stepCount);
+        void CaptureNetworkPlayerSnapshot(STWNetworkPlayerAuthority& authority);
+        void PublishNetworkPlayerSnapshot(
+            AZ::EntityId entityId, const AuthoritativePlayerSnapshot& snapshot);
+        STWNetworkPlayerAuthority* FindNetworkPlayer(AZ::EntityId entityId);
+        const STWNetworkPlayerAuthority* FindNetworkPlayer(AZ::EntityId entityId) const;
+        STWNetworkPlayerAuthority* FindCompositionRootNetworkPlayer();
+        const STWNetworkPlayerAuthority* FindCompositionRootNetworkPlayer() const;
+        STWNetworkPlayerAuthority* FindFirstNetworkPlayer();
+        const STWNetworkPlayerAuthority* FindFirstNetworkPlayer() const;
+        void UnbindAllNetworkPlayers();
         // Attempts to acquire the real Atom viewmodel mesh once the render scene exists.
         void TryStartViewmodelMesh();
         // Drives the Atom mesh from the same first-person basis the presentation computes.
@@ -216,6 +226,7 @@ namespace STWGameplay
         SpawnCheckpointModel m_spawnCheckpoint;
         PhysXArenaRuntime m_physicsArena;
         PhysXPlayerRuntime m_physicsPlayer;
+        AZStd::array<STWNetworkPlayerAuthority, MaxNetworkPlayerCount> m_networkPlayerAuthorities;
         STWMultiplayerRuntime m_multiplayer;
         AZStd::array<PhysXEnemyRuntime, EnemyCollectionModel::MaxEnemyCount> m_enemyPhysicsRuntimes;
         AZStd::array<PresentationInterpolation, EnemyCollectionModel::MaxEnemyCount>
@@ -232,12 +243,6 @@ namespace STWGameplay
         float m_pendingLookY = 0.0f;
         bool m_pendingReload = false;
         PlayerCommandHistory m_commandHistory;
-        AZ::EntityId m_boundNetworkPlayerEntityId;
-        PlayerCommand m_networkCommand;
-        PlayerCommandSequence m_lastNetworkAppliedSequence = InvalidPlayerSimulationSequence;
-        PlayerCommandSequence m_lastNetworkCommandSequence = InvalidPlayerSimulationSequence;
-        bool m_networkCommandSourceActive = false;
-        bool m_networkCommandAvailable = false;
         AuthoritativePlayerSnapshot m_authoritativeSnapshot;
         PlayerCommandSequence m_nextCommandSequence = InvalidPlayerSimulationSequence;
         PlayerSnapshotSequence m_nextSnapshotSequence = InvalidPlayerSimulationSequence;
