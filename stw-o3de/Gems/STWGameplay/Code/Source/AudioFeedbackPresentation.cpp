@@ -165,6 +165,12 @@ namespace STWGameplay
         }
         m_backendReady = false;
         m_presentationActive = false;
+        m_previousShotFired = false;
+        m_previousReloading = false;
+        m_previousHitConfirmed = false;
+        m_previousImpactEvent = false;
+        m_previousEnemyEvent = false;
+        m_movementTimer = 0.0f;
     }
 
     void AudioFeedbackPresentation::TryInitializeBackend()

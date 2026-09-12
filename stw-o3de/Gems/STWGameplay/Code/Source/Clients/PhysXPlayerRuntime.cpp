@@ -50,6 +50,12 @@ namespace STWGameplay
 
         m_playerEntity = AZStd::make_unique<AZ::Entity>("STW PhysX Player");
         auto* transform = m_playerEntity->CreateComponent<AzFramework::TransformComponent>();
+        if (!transform)
+        {
+            AZ_Error("STWGameplay", false, "PhysX Player failed to create its transform component");
+            Shutdown();
+            return false;
+        }
         transform->SetWorldTM(AZ::Transform::CreateTranslation(ArenaLayout::PlayerSpawn));
 
         auto characterConfiguration = AZStd::make_unique<Physics::CharacterConfiguration>();
@@ -59,13 +65,25 @@ namespace STWGameplay
         characterConfiguration->m_maximumSpeed = MaximumControllerSpeed;
         characterConfiguration->m_applyMoveOnPhysicsTick = true;
         auto capsuleConfiguration = AZStd::make_shared<Physics::CapsuleShapeConfiguration>(CapsuleHeight, CapsuleRadius);
-        m_playerEntity->CreateComponent<PhysX::CharacterControllerComponent>(
+        auto* characterController = m_playerEntity->CreateComponent<PhysX::CharacterControllerComponent>(
             AZStd::move(characterConfiguration), AZStd::move(capsuleConfiguration));
+        if (!characterController)
+        {
+            AZ_Error("STWGameplay", false, "PhysX Player failed to create its character controller component");
+            Shutdown();
+            return false;
+        }
 
         PhysX::CharacterGameplayConfiguration gameplayConfiguration;
         gameplayConfiguration.m_gravityMultiplier = 1.0f;
         gameplayConfiguration.m_groundDetectionBoxHeight = GroundProbeHeight;
-        m_playerEntity->CreateComponent<PhysX::CharacterGameplayComponent>(gameplayConfiguration);
+        auto* characterGameplay = m_playerEntity->CreateComponent<PhysX::CharacterGameplayComponent>(gameplayConfiguration);
+        if (!characterGameplay)
+        {
+            AZ_Error("STWGameplay", false, "PhysX Player failed to create its character gameplay component");
+            Shutdown();
+            return false;
+        }
         m_playerEntity->Init();
         m_playerEntity->Activate();
 

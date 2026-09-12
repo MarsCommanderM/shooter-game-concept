@@ -451,9 +451,16 @@ namespace STWGameplay
         }
         m_entity = nullptr;
         m_entityId = AZ::EntityId();
+        m_currentMotionAssetId = AZ::Data::AssetId();
         m_actorInstanceReady = false;
         m_skinnedMeshVisible = false;
         m_motionAssetReady = false;
         m_animationActive = false;
+        m_animationTimeAdvancing = false;
+        m_boneTransformDeltaPositive = false;
+        m_haveAnimationSample = false;
+        m_haveBoneSample = false;
+        m_state = STWSkeletalPresentationState::Uninitialized;
+        m_lastMappedState = STWSkeletalPresentationState::Uninitialized;
     }
 }

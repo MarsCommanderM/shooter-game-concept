@@ -127,6 +127,17 @@ namespace STWGameplay
 
     void STWGameplaySystemComponent::Activate()
     {
+        // A component reactivation starts a new local simulation session. The fixed clock is
+        // reset below, so command/snapshot identities and retained commands must be reset with it
+        // instead of being allowed to alias the previous session.
+        m_physicsStartup = PhysicsStartup::Waiting;
+        m_commandHistory.Reset();
+        m_authoritativeSnapshot = {};
+        m_nextCommandSequence = InvalidPlayerSimulationSequence;
+        m_nextSnapshotSequence = InvalidPlayerSimulationSequence;
+        m_physicalReadbackSequence = InvalidPlayerSimulationSequence;
+        m_lastAcceptedSnapshotSequence = InvalidPlayerSimulationSequence;
+        m_lastReconciliationEvaluation = {};
         ResetViewmodelAssetLoadState();
         ResetEnemyAssetLoadState();
         m_fixedSimulationClock.Reset();
@@ -134,6 +145,12 @@ namespace STWGameplay
         m_pendingLookY = 0.0f;
         m_pendingReload = false;
         m_adsHeld = false;
+        m_nativeCapturePath.clear();
+        m_nativeCaptureDelay = 0.0f;
+        m_nativeCaptureAttempted = false;
+        m_bodycamCameraPresentation.ResetToNeutral();
+        m_viewmodel.ResetToNeutral();
+        m_combatFeedback.Reset();
         m_skeletalCharacterPhysicalState = {};
         m_skeletalCharacterRespawnEvents = m_model.GetEnemy().GetState().m_respawnEvents;
         for (size_t index = 0; index < m_model.GetEnemies().GetEnemyCount(); ++index)
@@ -163,6 +180,7 @@ namespace STWGameplay
     void STWGameplaySystemComponent::Deactivate()
     {
         m_adsHeld = false;
+        m_physicsStartup = PhysicsStartup::Waiting;
         m_fixedSimulationClock.Reset();
         m_pendingLookX = 0.0f;
         m_pendingLookY = 0.0f;
@@ -178,6 +196,9 @@ namespace STWGameplay
         ShutdownEnemyPhysics();
         m_physicsPlayer.Shutdown();
         m_physicsArena.Shutdown();
+        m_nativeCapturePath.clear();
+        m_nativeCaptureDelay = 0.0f;
+        m_nativeCaptureAttempted = false;
     }
 
     void STWGameplaySystemComponent::TryStartPhysics()
@@ -248,7 +269,7 @@ namespace STWGameplay
     }
 
     void STWGameplaySystemComponent::UpdateEnemyPresentationInterpolation(
-        bool gameplayUpdated, bool primaryPhysicalStateSynchronized)
+        const AZStd::array<bool, EnemyCollectionModel::MaxEnemyCount>& physicalStateSynchronized)
     {
         for (size_t index = 0; index < m_model.GetEnemies().GetEnemyCount(); ++index)
         {
@@ -260,7 +281,7 @@ namespace STWGameplay
             {
                 m_enemyPresentationInterpolations[index].Reset(presentationState);
             }
-            else if (gameplayUpdated && (index != 0 || primaryPhysicalStateSynchronized))
+            else if (physicalStateSynchronized[index])
             {
                 m_enemyPresentationInterpolations[index].Advance(presentationState);
             }
@@ -330,7 +351,14 @@ namespace STWGameplay
             simulationInput.m_reload = step == 0 && m_pendingReload;
 
             const PlayerCommand command = BuildPlayerCommand(simulationInput);
-            if (!m_model.Update(FixedSimulationClock::FixedDeltaTime, command))
+            const bool modelUpdated = m_model.Update(FixedSimulationClock::FixedDeltaTime, command);
+            if (step == 0)
+            {
+                m_pendingLookX = 0.0f;
+                m_pendingLookY = 0.0f;
+                m_pendingReload = false;
+            }
+            if (!modelUpdated)
             {
                 continue;
             }
@@ -357,12 +385,6 @@ namespace STWGameplay
                 frame.m_jumpImpulse = frame.m_requestedVelocity.GetZ();
             }
 
-            if (step == 0)
-            {
-                m_pendingLookX = 0.0f;
-                m_pendingLookY = 0.0f;
-                m_pendingReload = false;
-            }
         }
 
         // PhysX's AddVelocityForTick contract accumulates all requests until the engine's
@@ -547,13 +569,12 @@ namespace STWGameplay
         if (playerPhysicalStateSynchronized)
         {
             m_model.SynchronizePhysicalState(physicalPosition, grounded);
-            if (gameplayUpdated)
-            {
-                // The command is acknowledged as gameplay-processed here. The immediate
-                // readback is the newest known physical sample, not proof that this command
-                // has completed in the PhysX scene.
-                CaptureAuthoritativeSnapshot(command.m_sequence);
-            }
+            // The command is acknowledged as gameplay-processed only when a fixed step ran.
+            // Every successful readback still publishes the newest known physical sample; it is
+            // never proof that the acknowledged command has completed in the PhysX scene.
+            const PlayerCommandSequence acknowledgedCommandSequence = gameplayUpdated
+                ? command.m_sequence : m_authoritativeSnapshot.m_acknowledgedCommandSequence;
+            CaptureAuthoritativeSnapshot(acknowledgedCommandSequence);
             if (m_automatedAcceptance)
             {
                 m_spawnCheckpointLastPhysicalPosition = physicalPosition;
@@ -563,7 +584,7 @@ namespace STWGameplay
         UpdateCrouchAcceptance(playerPhysicalStateSynchronized);
         UpdateSlideAcceptance(playerPhysicalStateSynchronized);
         UpdateMantleAcceptance(playerPhysicalStateSynchronized);
-        bool primaryEnemyPhysicalStateSynchronized = false;
+        AZStd::array<bool, EnemyCollectionModel::MaxEnemyCount> enemyPhysicalStateSynchronized{};
         for (size_t index = 0; index < enemies.GetEnemyCount(); ++index)
         {
             AZ::Vector3 enemyPhysicalPosition = AZ::Vector3::CreateZero();
@@ -572,16 +593,16 @@ namespace STWGameplay
             {
                 const EnemyInstance& instance = enemies.GetInstanceByIndex(index);
                 m_model.GetEnemies().SynchronizePhysicalPosition(instance.m_id, enemyPhysicalPosition);
+                enemyPhysicalStateSynchronized[index] = true;
                 if (index == 0)
                 {
-                    primaryEnemyPhysicalStateSynchronized = true;
                     m_enemyMoved = m_enemyMoved
                         || (enemyPhysicalPosition - m_enemyAcceptanceStartPosition).GetLength() > 0.25f;
                 }
             }
         }
 
-        UpdateEnemyPresentationInterpolation(gameplayUpdated, primaryEnemyPhysicalStateSynchronized);
+        UpdateEnemyPresentationInterpolation(enemyPhysicalStateSynchronized);
         SynchronizeSkeletalCharacterPhysicalState();
 
         for (size_t index = 0; index < enemies.GetEnemyCount(); ++index)
