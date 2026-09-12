@@ -15,6 +15,11 @@ namespace STWGameplay
         constexpr float MaximumLookInput = 32.0f;
         constexpr float MaximumSpeed = 8.5f;
         constexpr float TwoPi = 6.28318530717958647692f;
+
+        float SanitizeFinite(float value)
+        {
+            return std::isfinite(value) ? value : 0.0f;
+        }
     }
 
     BodycamPresentationTuning BodycamCameraPresentation::GetStandardTuning()
@@ -146,8 +151,8 @@ namespace STWGameplay
     {
         const BodycamPresentationTuning tuning = GetTuning();
         const float safeDeltaTime = std::clamp(deltaTime, 0.0f, MaximumDeltaTime);
-        const float lookX = std::clamp(input.m_lookX, -MaximumLookInput, MaximumLookInput);
-        const float lookY = std::clamp(input.m_lookY, -MaximumLookInput, MaximumLookInput);
+        const float lookX = std::clamp(SanitizeFinite(input.m_lookX), -MaximumLookInput, MaximumLookInput);
+        const float lookY = std::clamp(SanitizeFinite(input.m_lookY), -MaximumLookInput, MaximumLookInput);
         const float adsScale = input.m_ads ? tuning.m_adsMotionScale : 1.0f;
         AZ::Vector3 acceleration(
             input.m_planarAcceleration.GetX(), input.m_planarAcceleration.GetY(), 0.0f);
@@ -189,10 +194,10 @@ namespace STWGameplay
             m_recoilResponseObserved = true;
         }
 
-        const float adsBlend = std::clamp(input.m_adsBlend, 0.0f, 1.0f);
+        const float adsBlend = std::clamp(SanitizeFinite(input.m_adsBlend), 0.0f, 1.0f);
         m_cameraFovDegrees = tuning.m_hipFovDegrees
             + (tuning.m_adsFovDegrees - tuning.m_hipFovDegrees) * adsBlend;
-        const float speedBlend = ClampUnit(std::max(input.m_speed, 0.0f) / MaximumSpeed);
+        const float speedBlend = ClampUnit(std::max(SanitizeFinite(input.m_speed), 0.0f) / MaximumSpeed);
         const float locomotionScale = input.m_sliding ? tuning.m_slideMotionScale
             : (input.m_crouched ? tuning.m_crouchMotionScale : 1.0f);
         const float targetLocomotion = ClampUnit(speedBlend * locomotionScale);
@@ -230,7 +235,7 @@ namespace STWGameplay
         }
         m_landingPulse = std::max(0.0f, m_landingPulse - safeDeltaTime * 4.0f);
 
-        const float lateral = ClampUnit(input.m_lateralInput);
+        const float lateral = ClampUnit(SanitizeFinite(input.m_lateralInput));
         const float movementRoll = -lateral * tuning.m_rollLimitRadians * m_locomotionBlend;
         const float lookRoll = lookX * LookSensitivityRadians * tuning.m_lookRollRadians * 10.0f;
         const float targetRoll = std::clamp((movementRoll + lookRoll) * adsScale,
@@ -245,13 +250,24 @@ namespace STWGameplay
             - m_landingPulse * tuning.m_landingVerticalMeters * adsScale
             + (!input.m_grounded ? -tuning.m_airborneVerticalMeters * adsScale : 0.0f)
             + (input.m_mantling
-                    ? std::sin(std::clamp(input.m_mantleProgress, 0.0f, 1.0f) * 3.14159265f)
+                    ? std::sin(std::clamp(SanitizeFinite(input.m_mantleProgress), 0.0f, 1.0f) * 3.14159265f)
                         * tuning.m_mantleVerticalMeters * adsScale
                     : 0.0f)
             + (input.m_crouched ? -0.012f * adsScale : 0.0f);
         const float lateralOffset = lateralWave * tuning.m_locomotionLateralMeters * m_locomotionBlend * adsScale;
         m_cameraPositionOffset = AZ::Vector3(lateralOffset, -m_recoilBack, verticalOffset) + m_accelerationOffset;
         m_cameraRotationOffset = AZ::Vector3(m_lookOffset.GetX() - m_recoilPitch, m_lookOffset.GetY(), m_roll);
+
+        if (!m_lookOffset.IsFinite() || !m_accelerationOffset.IsFinite()
+            || !m_cameraPositionOffset.IsFinite() || !m_cameraRotationOffset.IsFinite()
+            || !std::isfinite(m_recoilPitch) || !std::isfinite(m_recoilBack)
+            || !std::isfinite(m_cameraFovDegrees) || !std::isfinite(m_roll)
+            || !std::isfinite(m_locomotionBlend) || !std::isfinite(m_locomotionPhase)
+            || !std::isfinite(m_landingPulse))
+        {
+            ResetToNeutral();
+            return;
+        }
 
         if (input.m_ads && adsScale < 1.0f)
         {
