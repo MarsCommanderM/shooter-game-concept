@@ -2,6 +2,7 @@
 
 #include <AzCore/Asset/AssetManagerBus.h>
 #include <AzCore/Component/TransformBus.h>
+#include <AzCore/Interface/Interface.h>
 #include <AzCore/Math/Color.h>
 #include <AzCore/Math/Matrix3x3.h>
 #include <AzCore/Math/Quaternion.h>
@@ -139,6 +140,12 @@ namespace STWGameplay
         m_physicalReadbackSequence = InvalidPlayerSimulationSequence;
         m_lastAcceptedSnapshotSequence = InvalidPlayerSimulationSequence;
         m_lastReconciliationEvaluation = {};
+        m_boundNetworkPlayerEntityId = AZ::EntityId();
+        m_networkCommand = {};
+        m_lastNetworkAppliedSequence = InvalidPlayerSimulationSequence;
+        m_lastNetworkCommandSequence = InvalidPlayerSimulationSequence;
+        m_networkCommandSourceActive = false;
+        m_networkCommandAvailable = false;
         ResetViewmodelAssetLoadState();
         ResetEnemyAssetLoadState();
         m_fixedSimulationClock.Reset();
@@ -169,6 +176,7 @@ namespace STWGameplay
         m_audioEnemyBaselineCaptured = false;
         m_audioPreviousRespawnEvents = m_model.GetPlayer().m_respawnEvents;
         m_audioFeedback.Activate();
+        AZ::Interface<STWGameplaySystemComponent>::Register(this);
         if (const char* capturePath = std::getenv("STW_NATIVE_CAPTURE_PATH"); capturePath && capturePath[0] != '\0')
         {
             m_nativeCapturePath = capturePath;
@@ -205,6 +213,104 @@ namespace STWGameplay
         m_nativeCapturePath.clear();
         m_nativeCaptureDelay = 0.0f;
         m_nativeCaptureAttempted = false;
+        if (AZ::Interface<STWGameplaySystemComponent>::Get() == this)
+        {
+            AZ::Interface<STWGameplaySystemComponent>::Unregister(this);
+        }
+        m_boundNetworkPlayerEntityId = AZ::EntityId();
+        m_networkCommand = {};
+        m_lastNetworkAppliedSequence = InvalidPlayerSimulationSequence;
+        m_lastNetworkCommandSequence = InvalidPlayerSimulationSequence;
+        m_networkCommandSourceActive = false;
+        m_networkCommandAvailable = false;
+    }
+
+    bool STWGameplaySystemComponent::BindNetworkPlayer(AZ::EntityId entityId)
+    {
+        if (!entityId.IsValid())
+        {
+            return false;
+        }
+        if (m_boundNetworkPlayerEntityId.IsValid())
+        {
+            return m_boundNetworkPlayerEntityId == entityId;
+        }
+
+        // A network-controlled player is a new input source for this existing gameplay session.
+        // Retained commands belong to the previous source and must not be replayed through the
+        // network binding. The simulation sequence itself is intentionally not reset here.
+        m_commandHistory.Reset();
+        m_boundNetworkPlayerEntityId = entityId;
+        m_networkCommand = {};
+        m_lastNetworkAppliedSequence = InvalidPlayerSimulationSequence;
+        m_lastNetworkCommandSequence = InvalidPlayerSimulationSequence;
+        m_networkCommandSourceActive = true;
+        m_networkCommandAvailable = false;
+        return true;
+    }
+
+    void STWGameplaySystemComponent::UnbindNetworkPlayer(AZ::EntityId entityId)
+    {
+        if (!m_boundNetworkPlayerEntityId.IsValid() || m_boundNetworkPlayerEntityId != entityId)
+        {
+            return;
+        }
+
+        m_boundNetworkPlayerEntityId = AZ::EntityId();
+        m_networkCommand = {};
+        m_lastNetworkAppliedSequence = InvalidPlayerSimulationSequence;
+        m_lastNetworkCommandSequence = InvalidPlayerSimulationSequence;
+        m_networkCommandSourceActive = false;
+        m_networkCommandAvailable = false;
+    }
+
+    bool STWGameplaySystemComponent::CreateNetworkCommand(AZ::EntityId entityId, PlayerCommand& command)
+    {
+        if (!m_networkCommandSourceActive || m_boundNetworkPlayerEntityId != entityId)
+        {
+            return false;
+        }
+
+        PlayerInput sampledInput = m_input;
+        sampledInput.m_lookX = m_pendingLookX;
+        sampledInput.m_lookY = m_pendingLookY;
+        sampledInput.m_reload = m_pendingReload;
+        if (!PlayerCommand(sampledInput, 1u).IsFinite())
+        {
+            return false;
+        }
+
+        command = BuildPlayerCommand(sampledInput);
+        return command.IsFinite();
+    }
+
+    bool STWGameplaySystemComponent::SubmitNetworkCommand(
+        AZ::EntityId entityId, const PlayerCommand& command)
+    {
+        if (!m_networkCommandSourceActive || m_boundNetworkPlayerEntityId != entityId
+            || command.m_sequence == InvalidPlayerSimulationSequence || !command.IsFinite())
+        {
+            return false;
+        }
+        if (m_lastNetworkCommandSequence != InvalidPlayerSimulationSequence
+            && !IsNewerPlayerSimulationSequence(command.m_sequence, m_lastNetworkCommandSequence))
+        {
+            return false;
+        }
+        if (!m_commandHistory.Push(command))
+        {
+            return false;
+        }
+
+        m_networkCommand = command;
+        m_lastNetworkCommandSequence = command.m_sequence;
+        m_networkCommandAvailable = true;
+        // The sampled one-shot input is now represented by the network command. Do not let the
+        // same raw sample be captured again before the next fixed simulation step.
+        m_pendingLookX = 0.0f;
+        m_pendingLookY = 0.0f;
+        m_pendingReload = false;
+        return true;
     }
 
     void STWGameplaySystemComponent::TryStartPhysics()
@@ -347,18 +453,58 @@ namespace STWGameplay
             return frame;
         }
 
+        if (m_networkCommandSourceActive && !m_networkCommandAvailable)
+        {
+            return frame;
+        }
+
         for (AZ::u32 step = 0; step < advance.m_stepCount; ++step)
         {
-            PlayerInput simulationInput = m_input;
+            PlayerCommand networkCommand = m_networkCommand;
+            bool networkCommandIsNew = false;
+            if (m_networkCommandSourceActive)
+            {
+                for (size_t offset = 0; offset < m_commandHistory.Size(); ++offset)
+                {
+                    PlayerCommand candidate;
+                    if (!m_commandHistory.TryGetAt(offset, candidate))
+                    {
+                        break;
+                    }
+                    if (m_lastNetworkAppliedSequence == InvalidPlayerSimulationSequence
+                        || IsNewerPlayerSimulationSequence(candidate.m_sequence, m_lastNetworkAppliedSequence))
+                    {
+                        networkCommand = candidate;
+                        networkCommandIsNew = true;
+                        break;
+                    }
+                }
+            }
+
+            PlayerInput simulationInput = m_networkCommandSourceActive ? networkCommand : m_input;
             // Look and reload are transient samples. Consume them on the first fixed step only;
             // held movement/action inputs remain sampled for every fixed gameplay step.
-            simulationInput.m_lookX = step == 0 ? m_pendingLookX : 0.0f;
-            simulationInput.m_lookY = step == 0 ? m_pendingLookY : 0.0f;
-            simulationInput.m_reload = step == 0 && m_pendingReload;
+            if (m_networkCommandSourceActive)
+            {
+                if (!networkCommandIsNew)
+                {
+                    simulationInput.m_lookX = 0.0f;
+                    simulationInput.m_lookY = 0.0f;
+                    simulationInput.m_reload = false;
+                }
+            }
+            else
+            {
+                simulationInput.m_lookX = step == 0 ? m_pendingLookX : 0.0f;
+                simulationInput.m_lookY = step == 0 ? m_pendingLookY : 0.0f;
+                simulationInput.m_reload = step == 0 && m_pendingReload;
+            }
 
-            const PlayerCommand command = BuildPlayerCommand(simulationInput);
+            const PlayerCommand command = m_networkCommandSourceActive
+                ? MakePlayerCommand(simulationInput, networkCommand.m_sequence)
+                : BuildPlayerCommand(simulationInput);
             const bool modelUpdated = m_model.Update(FixedSimulationClock::FixedDeltaTime, command);
-            if (step == 0)
+            if (!m_networkCommandSourceActive && step == 0)
             {
                 m_pendingLookX = 0.0f;
                 m_pendingLookY = 0.0f;
@@ -371,7 +517,17 @@ namespace STWGameplay
 
             frame.m_lastCommand = command;
             frame.m_gameplayUpdated = true;
-            m_commandHistory.Push(command);
+            if (m_networkCommandSourceActive)
+            {
+                if (networkCommandIsNew)
+                {
+                    m_lastNetworkAppliedSequence = networkCommand.m_sequence;
+                }
+            }
+            else
+            {
+                m_commandHistory.Push(command);
+            }
 
             const PresentationState& presentation = m_model.GetPresentation();
             frame.m_shotFired = frame.m_shotFired || presentation.m_shotFired;

@@ -83,6 +83,14 @@ namespace STWGameplay
             return m_lastReconciliationEvaluation;
         }
 
+        //! Binds the single current network player to the existing PlayerSliceModel authority.
+        //! This boundary owns no gameplay state and rejects a second player until the gameplay
+        //! model is expanded to support per-player authorities.
+        bool BindNetworkPlayer(AZ::EntityId entityId);
+        void UnbindNetworkPlayer(AZ::EntityId entityId);
+        bool CreateNetworkCommand(AZ::EntityId entityId, PlayerCommand& command);
+        bool SubmitNetworkCommand(AZ::EntityId entityId, const PlayerCommand& command);
+
     private:
         bool OnInputChannelEventFiltered(const AzFramework::InputChannel& inputChannel) override;
         void UpdateCamera();
@@ -221,6 +229,12 @@ namespace STWGameplay
         float m_pendingLookY = 0.0f;
         bool m_pendingReload = false;
         PlayerCommandHistory m_commandHistory;
+        AZ::EntityId m_boundNetworkPlayerEntityId;
+        PlayerCommand m_networkCommand;
+        PlayerCommandSequence m_lastNetworkAppliedSequence = InvalidPlayerSimulationSequence;
+        PlayerCommandSequence m_lastNetworkCommandSequence = InvalidPlayerSimulationSequence;
+        bool m_networkCommandSourceActive = false;
+        bool m_networkCommandAvailable = false;
         AuthoritativePlayerSnapshot m_authoritativeSnapshot;
         PlayerCommandSequence m_nextCommandSequence = InvalidPlayerSimulationSequence;
         PlayerSnapshotSequence m_nextSnapshotSequence = InvalidPlayerSimulationSequence;

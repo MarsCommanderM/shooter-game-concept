@@ -2,6 +2,8 @@
 
 #include "Network/STWPlayerNetworkComponent.h"
 
+#include "Clients/STWGameplaySystemComponent.h"
+
 #include <limits>
 
 namespace STWGameplay
@@ -62,5 +64,28 @@ namespace STWGameplay
 
         PlayerCommand decoded;
         EXPECT_FALSE(STWPlayerNetworkComponent::ReadCommand(networkInput, decoded));
+    }
+
+    TEST(STWPlayerNetworkComponentTests, NetworkCommandBoundaryAcceptsOnlyOneBoundPlayerAndDeduplicates)
+    {
+        STWGameplaySystemComponent gameplay;
+        const AZ::EntityId boundEntityId(42);
+        const AZ::EntityId otherEntityId(43);
+
+        EXPECT_TRUE(gameplay.BindNetworkPlayer(boundEntityId));
+        EXPECT_FALSE(gameplay.BindNetworkPlayer(otherEntityId));
+
+        PlayerInput sampledInput;
+        sampledInput.m_forward = 1.0f;
+        const PlayerCommand firstCommand = MakePlayerCommand(sampledInput, 1u);
+        EXPECT_TRUE(gameplay.SubmitNetworkCommand(boundEntityId, firstCommand));
+        EXPECT_FALSE(gameplay.SubmitNetworkCommand(boundEntityId, firstCommand));
+        EXPECT_FALSE(gameplay.SubmitNetworkCommand(otherEntityId, firstCommand));
+
+        const PlayerCommand newerCommand = MakePlayerCommand(sampledInput, 2u);
+        EXPECT_TRUE(gameplay.SubmitNetworkCommand(boundEntityId, newerCommand));
+
+        gameplay.UnbindNetworkPlayer(boundEntityId);
+        EXPECT_FALSE(gameplay.SubmitNetworkCommand(boundEntityId, newerCommand));
     }
 }

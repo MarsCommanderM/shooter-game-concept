@@ -44,5 +44,11 @@ namespace STWGameplay
 
         void CreateInput(Multiplayer::NetworkInput& input, float deltaTime) override;
         void ProcessInput(Multiplayer::NetworkInput& input, float deltaTime) override;
+
+    private:
+        bool TryBindGameplayAuthority();
+        void UnbindGameplayAuthority();
+
+        bool m_gameplayAuthorityBound = false;
     };
 } // namespace STWGameplay
