@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include <AzCore/std/string/string.h>
+#include <Multiplayer/IMultiplayerSpawner.h>
 #include <Multiplayer/IMultiplayer.h>
 
 namespace STWGameplay
@@ -18,8 +19,10 @@ namespace STWGameplay
     };
 
     //! Owns only the STW lifecycle boundary to O3DE's real Multiplayer transport.
-    //! It does not own gameplay, simulation, replication, or presentation state.
+    //! It owns the production player-spawn callback but does not own gameplay,
+    //! simulation, replication, or presentation state.
     class STWMultiplayerRuntime final
+        : public Multiplayer::IMultiplayerSpawner
     {
     public:
         STWMultiplayerRuntime();
@@ -32,6 +35,15 @@ namespace STWGameplay
         STWMultiplayerTransportState GetState() const { return m_state; }
         Multiplayer::MultiplayerAgentType GetAgentType() const;
 
+        static const char* GetPlayerSpawnablePath();
+
+        Multiplayer::NetworkEntityHandle OnPlayerJoin(
+            uint64_t userId, const Multiplayer::MultiplayerAgentDatum& agentDatum) override;
+        void OnPlayerLeave(
+            Multiplayer::ConstNetworkEntityHandle entityHandle,
+            const Multiplayer::ReplicationSet& replicationSet,
+            AzNetworking::DisconnectReason reason) override;
+
     private:
         void OnEndpointDisconnected(Multiplayer::MultiplayerAgentType agentType);
         void OnServerAcceptanceReceived();
@@ -42,5 +54,6 @@ namespace STWGameplay
         STWMultiplayerTransportState m_state = STWMultiplayerTransportState::Unavailable;
         bool m_handlersConnected = false;
         bool m_sessionOwned = false;
+        bool m_playerSpawnerRegistered = false;
     };
 } // namespace STWGameplay

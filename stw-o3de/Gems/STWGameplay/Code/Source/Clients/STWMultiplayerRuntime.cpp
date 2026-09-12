@@ -1,5 +1,6 @@
 #include "STWMultiplayerRuntime.h"
 
+#include <AzCore/Interface/Interface.h>
 #include <AzNetworking/ConnectionLayer/IConnection.h>
 #include <Source/AutoGen/AutoComponentTypes.h>
 
@@ -24,14 +25,23 @@ namespace STWGameplay
             return true;
         }
 
-        m_multiplayer = Multiplayer::GetMultiplayer();
-        if (m_multiplayer == nullptr)
+        Multiplayer::IMultiplayer* multiplayer = Multiplayer::GetMultiplayer();
+        if (multiplayer == nullptr)
         {
             m_state = STWMultiplayerTransportState::Unavailable;
             return false;
         }
 
+        if (AZ::Interface<Multiplayer::IMultiplayerSpawner>::Get() != nullptr)
+        {
+            m_state = STWMultiplayerTransportState::Failed;
+            return false;
+        }
+
+        m_multiplayer = multiplayer;
         RegisterMultiplayerComponents();
+        AZ::Interface<Multiplayer::IMultiplayerSpawner>::Register(this);
+        m_playerSpawnerRegistered = true;
         m_multiplayer->AddEndpointDisconnectedHandler(m_endpointDisconnectedHandler);
         m_multiplayer->AddServerAcceptanceReceivedHandler(m_serverAcceptanceReceivedHandler);
         m_handlersConnected = true;
@@ -93,10 +103,54 @@ namespace STWGameplay
             m_serverAcceptanceReceivedHandler.Disconnect();
         }
 
+        if (m_playerSpawnerRegistered)
+        {
+            AZ::Interface<Multiplayer::IMultiplayerSpawner>::Unregister(this);
+        }
+
         m_multiplayer = nullptr;
         m_handlersConnected = false;
         m_sessionOwned = false;
+        m_playerSpawnerRegistered = false;
         m_state = STWMultiplayerTransportState::Unavailable;
+    }
+
+    const char* STWMultiplayerRuntime::GetPlayerSpawnablePath()
+    {
+        return "assets/network/stw_player/stw_player.network.spawnable";
+    }
+
+    Multiplayer::NetworkEntityHandle STWMultiplayerRuntime::OnPlayerJoin(
+        [[maybe_unused]] uint64_t userId,
+        [[maybe_unused]] const Multiplayer::MultiplayerAgentDatum& agentDatum)
+    {
+        Multiplayer::INetworkEntityManager* networkEntityManager = m_multiplayer != nullptr
+            ? m_multiplayer->GetNetworkEntityManager()
+            : nullptr;
+        if (networkEntityManager == nullptr)
+        {
+            return {};
+        }
+
+        const Multiplayer::PrefabEntityId playerPrefab{ AZ::Name(GetPlayerSpawnablePath()) };
+        const Multiplayer::INetworkEntityManager::EntityList entities =
+            networkEntityManager->CreateEntitiesImmediate(
+                playerPrefab, Multiplayer::NetEntityRole::Authority, AZ::Transform::CreateIdentity());
+        return entities.empty() ? Multiplayer::NetworkEntityHandle{} : entities.front();
+    }
+
+    void STWMultiplayerRuntime::OnPlayerLeave(
+        Multiplayer::ConstNetworkEntityHandle entityHandle,
+        [[maybe_unused]] const Multiplayer::ReplicationSet& replicationSet,
+        [[maybe_unused]] AzNetworking::DisconnectReason reason)
+    {
+        Multiplayer::INetworkEntityManager* networkEntityManager = m_multiplayer != nullptr
+            ? m_multiplayer->GetNetworkEntityManager()
+            : nullptr;
+        if (networkEntityManager != nullptr && entityHandle.Exists())
+        {
+            networkEntityManager->MarkForRemoval(entityHandle);
+        }
     }
 
     Multiplayer::MultiplayerAgentType STWMultiplayerRuntime::GetAgentType() const

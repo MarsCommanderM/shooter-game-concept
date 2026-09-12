@@ -27,4 +27,11 @@ namespace STWGameplay
 
         EXPECT_EQ(runtime.GetState(), STWMultiplayerTransportState::Unavailable);
     }
+
+    TEST(STWMultiplayerRuntimeTests, PlayerSpawnerUsesTheProductionNetworkSpawnable)
+    {
+        EXPECT_STREQ(
+            STWMultiplayerRuntime::GetPlayerSpawnablePath(),
+            "assets/network/stw_player/stw_player.network.spawnable");
+    }
 } // namespace STWGameplay
