@@ -90,6 +90,9 @@ namespace STWGameplay
         void UnbindNetworkPlayer(AZ::EntityId entityId);
         bool CreateNetworkCommand(AZ::EntityId entityId, PlayerCommand& command);
         bool SubmitNetworkCommand(AZ::EntityId entityId, const PlayerCommand& command);
+        //! Routes one replicated snapshot from the currently bound network entity to the
+        //! existing pure reconciliation policy. It never applies correction or replay.
+        bool ReceiveNetworkSnapshot(AZ::EntityId entityId, const AuthoritativePlayerSnapshot& snapshot);
 
     private:
         bool OnInputChannelEventFiltered(const AzFramework::InputChannel& inputChannel) override;

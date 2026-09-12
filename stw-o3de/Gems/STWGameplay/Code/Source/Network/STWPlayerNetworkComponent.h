@@ -3,6 +3,7 @@
 #include <Source/AutoGen/STWPlayerNetworkComponent.AutoComponent.h>
 
 #include <STWGameplay/PlayerCommand.h>
+#include <STWGameplay/PlayerSimulationTypes.h>
 
 namespace STWGameplay
 {
@@ -27,10 +28,22 @@ namespace STWGameplay
             const STWPlayerNetworkComponentNetworkInput& networkInput,
             PlayerCommand& command);
 
+        STWPlayerNetworkComponent();
+
+        //! Writes the complete current gameplay snapshot to Authority->Client properties.
+        //! Only an authoritative controller may write these properties.
+        void PublishAuthoritativeSnapshot(const AuthoritativePlayerSnapshot& snapshot);
+
         void OnInit() override;
         void OnActivate(Multiplayer::EntityIsMigrating entityIsMigrating) override;
         void OnDeactivate(Multiplayer::EntityIsMigrating entityIsMigrating) override;
         void OnNetworkActivated() override;
+
+    private:
+        void OnAuthoritativeSnapshotSequenceChanged(uint32_t snapshotSequence);
+        bool ReadAuthoritativeSnapshot(AuthoritativePlayerSnapshot& snapshot) const;
+
+        AZ::Event<uint32_t>::Handler m_snapshotSequenceChangedHandler;
     };
 
     class STWPlayerNetworkComponentController final
@@ -51,4 +64,5 @@ namespace STWGameplay
 
         bool m_gameplayAuthorityBound = false;
     };
+
 } // namespace STWGameplay

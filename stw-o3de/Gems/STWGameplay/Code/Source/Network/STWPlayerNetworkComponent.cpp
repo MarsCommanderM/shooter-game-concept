@@ -5,6 +5,8 @@
 #include <Clients/STWGameplaySystemComponent.h>
 #include <Multiplayer/Components/NetBindComponent.h>
 
+#include <cmath>
+
 namespace STWGameplay
 {
     namespace
@@ -33,6 +35,12 @@ namespace STWGameplay
             return flags;
         }
     } // namespace
+
+    STWPlayerNetworkComponent::STWPlayerNetworkComponent()
+        : m_snapshotSequenceChangedHandler(
+            [this](uint32_t snapshotSequence) { OnAuthoritativeSnapshotSequenceChanged(snapshotSequence); })
+    {
+    }
 
     void STWPlayerNetworkComponent::Reflect(AZ::ReflectContext* context)
     {
@@ -91,6 +99,48 @@ namespace STWGameplay
         return true;
     }
 
+    void STWPlayerNetworkComponent::PublishAuthoritativeSnapshot(
+        const AuthoritativePlayerSnapshot& snapshot)
+    {
+#if AZ_TRAIT_SERVER
+        if (!IsNetEntityRoleAuthority() || !HasController())
+        {
+            return;
+        }
+
+        auto* controller = static_cast<STWPlayerNetworkComponentController*>(GetController());
+        controller->SetAcknowledgedCommandSequence(snapshot.m_acknowledgedCommandSequence);
+        controller->SetPhysicalReadbackSequence(snapshot.m_physicalReadbackSequence);
+        controller->SetPhysicalStateSynchronized(snapshot.m_physicalStateSynchronized);
+        controller->SetPosition(snapshot.m_position);
+        controller->SetGrounded(snapshot.m_grounded);
+        controller->SetRequestedSimulationVelocity(snapshot.m_requestedSimulationVelocity);
+        controller->SetYaw(snapshot.m_yaw);
+        controller->SetPitch(snapshot.m_pitch);
+        controller->SetHealth(snapshot.m_health);
+        controller->SetAlive(snapshot.m_alive);
+        controller->SetCrouchDesired(snapshot.m_crouchDesired);
+        controller->SetSlideActive(snapshot.m_slideActive);
+        controller->SetMantleRequested(snapshot.m_mantleRequested);
+        controller->SetMantleActive(snapshot.m_mantleActive);
+        controller->SetActiveEquipmentSlot(static_cast<uint8_t>(snapshot.m_activeEquipmentSlot));
+        controller->SetActiveEquipmentProfile(static_cast<uint8_t>(snapshot.m_activeEquipmentProfile));
+        controller->SetMagazine(snapshot.m_magazine);
+        controller->SetReserve(snapshot.m_reserve);
+        controller->SetCharges(snapshot.m_charges);
+        controller->SetCooldownRemaining(snapshot.m_cooldownRemaining);
+        controller->SetReloadRemaining(snapshot.m_reloadRemaining);
+        controller->SetReloading(snapshot.m_reloading);
+        controller->SetDeathEvents(snapshot.m_deathEvents);
+        controller->SetRespawnEvents(snapshot.m_respawnEvents);
+        controller->SetLastAcceptedUseEventId(snapshot.m_lastAcceptedUseEventId);
+        // Set last so proxy listeners only observe a complete property set.
+        controller->SetSnapshotSequence(snapshot.m_snapshotSequence);
+#else
+        AZ_UNUSED(snapshot);
+#endif
+    }
+
     void STWPlayerNetworkComponent::OnInit()
     {
         m_netBindComponent->AddNetworkActivatedEventHandler(m_networkActivatedHandler);
@@ -98,14 +148,86 @@ namespace STWGameplay
 
     void STWPlayerNetworkComponent::OnActivate([[maybe_unused]] Multiplayer::EntityIsMigrating entityIsMigrating)
     {
+        SnapshotSequenceAddEvent(m_snapshotSequenceChangedHandler);
     }
 
     void STWPlayerNetworkComponent::OnDeactivate([[maybe_unused]] Multiplayer::EntityIsMigrating entityIsMigrating)
     {
+        m_snapshotSequenceChangedHandler.Disconnect();
     }
 
     void STWPlayerNetworkComponent::OnNetworkActivated()
     {
+    }
+
+    void STWPlayerNetworkComponent::OnAuthoritativeSnapshotSequenceChanged(
+        [[maybe_unused]] uint32_t snapshotSequence)
+    {
+        if (IsNetEntityRoleAuthority())
+        {
+            return;
+        }
+
+        AuthoritativePlayerSnapshot snapshot;
+        if (!ReadAuthoritativeSnapshot(snapshot))
+        {
+            return;
+        }
+
+        if (STWGameplaySystemComponent* gameplay = AZ::Interface<STWGameplaySystemComponent>::Get())
+        {
+            gameplay->ReceiveNetworkSnapshot(GetEntityId(), snapshot);
+        }
+    }
+
+    bool STWPlayerNetworkComponent::ReadAuthoritativeSnapshot(
+        AuthoritativePlayerSnapshot& snapshot) const
+    {
+        const uint32_t snapshotSequence = GetSnapshotSequence();
+        const uint8_t activeEquipmentSlot = GetActiveEquipmentSlot();
+        const uint8_t activeEquipmentProfile = GetActiveEquipmentProfile();
+        if (snapshotSequence == InvalidPlayerSimulationSequence
+            || !GetPhysicalStateSynchronized()
+            || activeEquipmentSlot >= WeaponModel::EquipmentSlotCount
+            || activeEquipmentProfile >= WeaponModel::EquipmentProfileCount)
+        {
+            return false;
+        }
+
+        snapshot.m_snapshotSequence = snapshotSequence;
+        snapshot.m_acknowledgedCommandSequence = GetAcknowledgedCommandSequence();
+        snapshot.m_physicalReadbackSequence = GetPhysicalReadbackSequence();
+        snapshot.m_physicalStateSynchronized = GetPhysicalStateSynchronized();
+        snapshot.m_position = GetPosition();
+        snapshot.m_grounded = GetGrounded();
+        snapshot.m_requestedSimulationVelocity = GetRequestedSimulationVelocity();
+        snapshot.m_yaw = GetYaw();
+        snapshot.m_pitch = GetPitch();
+        snapshot.m_health = GetHealth();
+        snapshot.m_alive = GetAlive();
+        snapshot.m_crouchDesired = GetCrouchDesired();
+        snapshot.m_slideActive = GetSlideActive();
+        snapshot.m_mantleRequested = GetMantleRequested();
+        snapshot.m_mantleActive = GetMantleActive();
+        snapshot.m_activeEquipmentSlot = static_cast<EquipmentSlot>(activeEquipmentSlot);
+        snapshot.m_activeEquipmentProfile = static_cast<EquipmentProfileId>(activeEquipmentProfile);
+        snapshot.m_magazine = GetMagazine();
+        snapshot.m_reserve = GetReserve();
+        snapshot.m_charges = GetCharges();
+        snapshot.m_cooldownRemaining = GetCooldownRemaining();
+        snapshot.m_reloadRemaining = GetReloadRemaining();
+        snapshot.m_reloading = GetReloading();
+        snapshot.m_deathEvents = GetDeathEvents();
+        snapshot.m_respawnEvents = GetRespawnEvents();
+        snapshot.m_lastAcceptedUseEventId = GetLastAcceptedUseEventId();
+
+        return snapshot.m_position.IsFinite()
+            && snapshot.m_requestedSimulationVelocity.IsFinite()
+            && std::isfinite(snapshot.m_yaw)
+            && std::isfinite(snapshot.m_pitch)
+            && std::isfinite(snapshot.m_health)
+            && std::isfinite(snapshot.m_cooldownRemaining)
+            && std::isfinite(snapshot.m_reloadRemaining);
     }
 
     STWPlayerNetworkComponentController::STWPlayerNetworkComponentController(STWPlayerNetworkComponent& parent)

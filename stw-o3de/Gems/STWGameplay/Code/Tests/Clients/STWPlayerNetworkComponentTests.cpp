@@ -88,4 +88,17 @@ namespace STWGameplay
         gameplay.UnbindNetworkPlayer(boundEntityId);
         EXPECT_FALSE(gameplay.SubmitNetworkCommand(boundEntityId, newerCommand));
     }
+
+    TEST(STWPlayerNetworkComponentTests, SnapshotBoundaryRoutesOnlyTheBoundNetworkPlayer)
+    {
+        STWGameplaySystemComponent gameplay;
+        const AZ::EntityId boundEntityId(42);
+        const AZ::EntityId otherEntityId(43);
+        AuthoritativePlayerSnapshot snapshot;
+        snapshot.m_snapshotSequence = 1u;
+
+        EXPECT_TRUE(gameplay.BindNetworkPlayer(boundEntityId));
+        EXPECT_FALSE(gameplay.ReceiveNetworkSnapshot(otherEntityId, snapshot));
+        EXPECT_TRUE(gameplay.ReceiveNetworkSnapshot(boundEntityId, snapshot));
+    }
 }

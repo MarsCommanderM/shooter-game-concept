@@ -1,6 +1,7 @@
 #include "STWGameplaySystemComponent.h"
 
 #include <AzCore/Asset/AssetManagerBus.h>
+#include <AzCore/Component/ComponentApplicationBus.h>
 #include <AzCore/Component/TransformBus.h>
 #include <AzCore/Interface/Interface.h>
 #include <AzCore/Math/Color.h>
@@ -28,6 +29,7 @@
 #include <STWGameplay/STWGameplayTypeIds.h>
 #include <STWGameplay/ArenaLayout.h>
 #include <STWGameplay/BodycamCameraPresentation.h>
+#include <Network/STWPlayerNetworkComponent.h>
 
 #include <cstdlib>
 #include <algorithm>
@@ -313,6 +315,18 @@ namespace STWGameplay
         return true;
     }
 
+    bool STWGameplaySystemComponent::ReceiveNetworkSnapshot(
+        AZ::EntityId entityId, const AuthoritativePlayerSnapshot& snapshot)
+    {
+        if (!m_networkCommandSourceActive || m_boundNetworkPlayerEntityId != entityId)
+        {
+            return false;
+        }
+
+        ProcessAuthoritativeSnapshot(snapshot);
+        return true;
+    }
+
     void STWGameplaySystemComponent::TryStartPhysics()
     {
         // Same default-scene retrieval PhysX's own CharacterGameplayComponent uses; the
@@ -595,6 +609,22 @@ namespace STWGameplay
         snapshot.m_respawnEvents = player.m_respawnEvents;
         snapshot.m_lastAcceptedUseEventId = m_model.GetLastAcceptedUseEventId();
         m_authoritativeSnapshot = snapshot;
+
+        if (m_boundNetworkPlayerEntityId.IsValid())
+        {
+            if (AZ::ComponentApplicationRequests* application =
+                    AZ::Interface<AZ::ComponentApplicationRequests>::Get())
+            {
+                if (AZ::Entity* networkEntity = application->FindEntity(m_boundNetworkPlayerEntityId))
+                {
+                    if (STWPlayerNetworkComponent* networkComponent =
+                            networkEntity->FindComponent<STWPlayerNetworkComponent>())
+                    {
+                        networkComponent->PublishAuthoritativeSnapshot(snapshot);
+                    }
+                }
+            }
+        }
     }
 
     ReconciliationEvaluation STWGameplaySystemComponent::ProcessAuthoritativeSnapshot(
