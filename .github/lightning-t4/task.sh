@@ -2,8 +2,8 @@
 set -Eeuo pipefail
 ROOT="/teamspace/studios/this_studio"
 ENGINE="${ROOT}/o3de-2605"
-O3DE_ROOT="${ROOT}/stw-o3de-worktree/stw-o3de"
-PROJECT="${O3DE_ROOT}/Project"
+O3DE_ROOT="${ROOT}/stw-production/stw-o3de"
+PROJECT="${ROOT}/stw-o3de-production-project"
 GEM="${O3DE_ROOT}/Gems/STWGameplay"
 BUILD="${ROOT}/stw-o3de-build/linux"
 BIN="${BUILD}/bin/profile"

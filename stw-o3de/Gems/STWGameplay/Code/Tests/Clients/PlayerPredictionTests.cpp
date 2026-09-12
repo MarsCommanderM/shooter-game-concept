@@ -158,4 +158,72 @@ namespace STWGameplay
         EXPECT_EQ(predicted.m_magazine, 12);
         EXPECT_EQ(authoritative.m_magazine, 12);
     }
+
+    TEST(PlayerPredictionTests, IncomingSnapshotAcceptsNewSequenceAndAcknowledgement)
+    {
+        const AuthoritativePlayerSnapshot predicted = MakeSnapshot();
+        AuthoritativePlayerSnapshot authoritative = predicted;
+        authoritative.m_snapshotSequence = 10u;
+        authoritative.m_acknowledgedCommandSequence = 7u;
+
+        const ReconciliationEvaluation evaluation = PlayerReconciliationPolicy::EvaluateIncoming(
+            predicted, authoritative, 8u, InvalidPlayerSimulationSequence);
+        EXPECT_EQ(evaluation.m_snapshotStatus, ReconciliationSnapshotStatus::Accepted);
+        EXPECT_TRUE(evaluation.m_acknowledgementUsable);
+        EXPECT_EQ(evaluation.m_comparison.m_decision, ReconciliationDecision::NoCorrection);
+    }
+
+    TEST(PlayerPredictionTests, IncomingSnapshotIgnoresEqualAndOlderSequences)
+    {
+        const AuthoritativePlayerSnapshot predicted = MakeSnapshot();
+        AuthoritativePlayerSnapshot authoritative = predicted;
+        authoritative.m_snapshotSequence = 10u;
+        authoritative.m_acknowledgedCommandSequence = 7u;
+
+        ReconciliationEvaluation evaluation = PlayerReconciliationPolicy::EvaluateIncoming(
+            predicted, authoritative, 8u, 10u);
+        EXPECT_EQ(evaluation.m_snapshotStatus, ReconciliationSnapshotStatus::IgnoredStale);
+        EXPECT_FALSE(evaluation.m_acknowledgementUsable);
+
+        authoritative.m_snapshotSequence = 9u;
+        evaluation = PlayerReconciliationPolicy::EvaluateIncoming(predicted, authoritative, 8u, 10u);
+        EXPECT_EQ(evaluation.m_snapshotStatus, ReconciliationSnapshotStatus::IgnoredStale);
+        EXPECT_FALSE(evaluation.m_acknowledgementUsable);
+    }
+
+    TEST(PlayerPredictionTests, IncomingSnapshotRejectsFutureAcknowledgement)
+    {
+        const AuthoritativePlayerSnapshot predicted = MakeSnapshot();
+        AuthoritativePlayerSnapshot authoritative = predicted;
+        authoritative.m_snapshotSequence = 1u;
+        authoritative.m_acknowledgedCommandSequence = 3u;
+
+        const ReconciliationEvaluation evaluation = PlayerReconciliationPolicy::EvaluateIncoming(
+            predicted, authoritative, 2u, InvalidPlayerSimulationSequence);
+        EXPECT_EQ(evaluation.m_snapshotStatus, ReconciliationSnapshotStatus::Invalid);
+        EXPECT_EQ(evaluation.m_comparison.m_decision, ReconciliationDecision::InvalidAuthoritativeState);
+        EXPECT_FALSE(evaluation.m_comparison.m_comparisonValid);
+    }
+
+    TEST(PlayerPredictionTests, IncomingSnapshotRejectsUnsequencedSnapshot)
+    {
+        const AuthoritativePlayerSnapshot predicted = MakeSnapshot();
+        AuthoritativePlayerSnapshot authoritative = predicted;
+
+        const ReconciliationEvaluation evaluation = PlayerReconciliationPolicy::EvaluateIncoming(
+            predicted, authoritative, 1u, InvalidPlayerSimulationSequence);
+        EXPECT_EQ(evaluation.m_snapshotStatus, ReconciliationSnapshotStatus::Invalid);
+        EXPECT_FALSE(evaluation.m_acknowledgementUsable);
+    }
+
+    TEST(PlayerPredictionTests, IncomingSnapshotSequenceAcceptsValidWraparound)
+    {
+        const AuthoritativePlayerSnapshot predicted = MakeSnapshot();
+        AuthoritativePlayerSnapshot authoritative = predicted;
+        authoritative.m_snapshotSequence = 1u;
+
+        const ReconciliationEvaluation evaluation = PlayerReconciliationPolicy::EvaluateIncoming(
+            predicted, authoritative, 2u, std::numeric_limits<AZ::u32>::max());
+        EXPECT_EQ(evaluation.m_snapshotStatus, ReconciliationSnapshotStatus::Accepted);
+    }
 }

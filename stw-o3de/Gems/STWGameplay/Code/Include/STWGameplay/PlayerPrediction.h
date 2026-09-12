@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cmath>
 
 #include <STWGameplay/PlayerSimulationTypes.h>
@@ -18,6 +19,21 @@ namespace STWGameplay
     {
         ReconciliationDecision m_decision = ReconciliationDecision::NoCorrection;
         bool m_comparisonValid = true;
+    };
+
+    enum class ReconciliationSnapshotStatus
+    {
+        Accepted,
+        IgnoredStale,
+        Invalid
+    };
+
+    struct ReconciliationEvaluation final
+    {
+        ReconciliationResult m_comparison;
+        ReconciliationSnapshotStatus m_snapshotStatus = ReconciliationSnapshotStatus::Invalid;
+        bool m_acknowledgementUsable = false;
+        size_t m_discardedCommandCount = 0;
     };
 
     //! Pure comparison policy. It never writes gameplay, physics, or presentation state.
@@ -66,6 +82,52 @@ namespace STWGameplay
             }
 
             return {};
+        }
+
+        //! Classifies one externally supplied snapshot without applying correction or replay.
+        //! A snapshot sequence is accepted only once, and an acknowledgement may not advance
+        //! beyond the locally generated command sequence. Physical timing remains whatever the
+        //! snapshot's explicit readback metadata proves; this function does not strengthen it.
+        static ReconciliationEvaluation EvaluateIncoming(
+            const AuthoritativePlayerSnapshot& predicted,
+            const AuthoritativePlayerSnapshot& authoritative,
+            PlayerCommandSequence latestLocalCommandSequence,
+            PlayerSnapshotSequence lastAcceptedSnapshotSequence)
+        {
+            ReconciliationEvaluation evaluation;
+            evaluation.m_comparison = { ReconciliationDecision::InvalidAuthoritativeState, false };
+            if (authoritative.m_snapshotSequence == InvalidPlayerSimulationSequence)
+            {
+                return evaluation;
+            }
+
+            if (lastAcceptedSnapshotSequence != InvalidPlayerSimulationSequence
+                && !IsNewerPlayerSimulationSequence(
+                    authoritative.m_snapshotSequence, lastAcceptedSnapshotSequence))
+            {
+                evaluation.m_snapshotStatus = ReconciliationSnapshotStatus::IgnoredStale;
+                evaluation.m_comparison = { ReconciliationDecision::NoCorrection, true };
+                return evaluation;
+            }
+
+            if (authoritative.m_acknowledgedCommandSequence != InvalidPlayerSimulationSequence
+                && (latestLocalCommandSequence == InvalidPlayerSimulationSequence
+                    || IsNewerPlayerSimulationSequence(
+                        authoritative.m_acknowledgedCommandSequence, latestLocalCommandSequence)))
+            {
+                return evaluation;
+            }
+
+            evaluation.m_comparison = Evaluate(predicted, authoritative);
+            if (!evaluation.m_comparison.m_comparisonValid)
+            {
+                return evaluation;
+            }
+
+            evaluation.m_snapshotStatus = ReconciliationSnapshotStatus::Accepted;
+            evaluation.m_acknowledgementUsable =
+                authoritative.m_acknowledgedCommandSequence != InvalidPlayerSimulationSequence;
+            return evaluation;
         }
 
     private:
