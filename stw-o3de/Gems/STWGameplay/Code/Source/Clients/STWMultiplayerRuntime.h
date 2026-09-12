@@ -45,10 +45,12 @@ namespace STWGameplay
             AzNetworking::DisconnectReason reason) override;
 
     private:
+        void OnNetworkInitialized(AzNetworking::INetworkInterface* networkInterface);
         void OnEndpointDisconnected(Multiplayer::MultiplayerAgentType agentType);
         void OnServerAcceptanceReceived();
 
         Multiplayer::IMultiplayer* m_multiplayer = nullptr;
+        Multiplayer::NetworkInitEvent::Handler m_networkInitHandler;
         Multiplayer::EndpointDisconnectedEvent::Handler m_endpointDisconnectedHandler;
         Multiplayer::ServerAcceptanceReceivedEvent::Handler m_serverAcceptanceReceivedHandler;
         STWMultiplayerTransportState m_state = STWMultiplayerTransportState::Unavailable;
