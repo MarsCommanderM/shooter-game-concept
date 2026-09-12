@@ -20,5 +20,6 @@ set(FILES
     Tests/Clients/SpawnCheckpointModelTests.cpp
     Tests/Clients/PhysXArenaRuntimeTests.cpp
     Tests/Clients/BodycamCameraPresentationTests.cpp
+    Tests/Clients/PresentationInterpolationTests.cpp
     Tests/Clients/STWSkeletalCharacterPresentationTests.cpp
     Tests/Clients/ViewmodelPresentationTests.cpp)

@@ -11,6 +11,7 @@
 #include <STWGameplay/CharacterPhysicalState.h>
 #include <STWGameplay/PlayerCommandHistory.h>
 #include <STWGameplay/PlayerPrediction.h>
+#include <STWGameplay/PresentationInterpolation.h>
 #include <STWGameplay/PlayerSliceModel.h>
 #include <STWGameplay/CombatFeedbackPresentation.h>
 #include <STWGameplay/EncounterModel.h>
@@ -79,6 +80,7 @@ namespace STWGameplay
         void TryStartPhysics();
         void ShutdownEnemyPhysics();
         void SynchronizeSkeletalCharacterPhysicalState();
+        void UpdateEnemyPresentationInterpolation(bool gameplayUpdated, bool primaryPhysicalStateSynchronized);
         PlayerCommand BuildPlayerCommand(const PlayerInput& input);
         void TryBeginMantle(const PlayerInput& input);
         struct FixedSimulationFrameResult
@@ -187,6 +189,9 @@ namespace STWGameplay
         PhysXArenaRuntime m_physicsArena;
         PhysXPlayerRuntime m_physicsPlayer;
         AZStd::array<PhysXEnemyRuntime, EnemyCollectionModel::MaxEnemyCount> m_enemyPhysicsRuntimes;
+        AZStd::array<PresentationInterpolation, EnemyCollectionModel::MaxEnemyCount>
+            m_enemyPresentationInterpolations;
+        AZStd::array<int, EnemyCollectionModel::MaxEnemyCount> m_enemyPresentationRespawnEvents{};
         // Composition-root-owned handoff state for the primary EMotionFX character. Native
         // ragdoll ownership remains unavailable until the character asset supplies a verified
         // ragdoll configuration and runtime adapter.

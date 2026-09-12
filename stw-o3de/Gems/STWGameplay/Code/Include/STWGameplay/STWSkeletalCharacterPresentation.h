@@ -11,6 +11,7 @@
 #include <AzCore/std/string/string.h>
 
 #include <STWGameplay/EnemyCombatModel.h>
+#include <STWGameplay/PresentationInterpolation.h>
 
 namespace AZ
 {
@@ -41,6 +42,9 @@ namespace STWGameplay
 
         //! Resolves the registered products and creates the presentation entity when ready.
         void Update(float deltaTime, const EnemyState& gameplayState);
+        //! Uses a copy-only visual source position while gameplayState remains the authority.
+        void Update(
+            float deltaTime, const EnemyState& gameplayState, const PresentationFrameState& presentationState);
         void Shutdown();
         void ResetToIdle();
 
