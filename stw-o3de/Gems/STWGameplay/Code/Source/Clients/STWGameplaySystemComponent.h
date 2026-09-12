@@ -8,6 +8,7 @@
 #include <Atom/Feature/Mesh/MeshFeatureProcessorInterface.h>
 #include <STWGameplay/PlayerSimulationTypes.h>
 #include <STWGameplay/FixedSimulationClock.h>
+#include <STWGameplay/CharacterPhysicalState.h>
 #include <STWGameplay/PlayerCommandHistory.h>
 #include <STWGameplay/PlayerPrediction.h>
 #include <STWGameplay/PlayerSliceModel.h>
@@ -77,6 +78,7 @@ namespace STWGameplay
         // Attempts to create the PhysX controller once the O3DE default physics scene exists.
         void TryStartPhysics();
         void ShutdownEnemyPhysics();
+        void SynchronizeSkeletalCharacterPhysicalState();
         PlayerCommand BuildPlayerCommand(const PlayerInput& input);
         void TryBeginMantle(const PlayerInput& input);
         struct FixedSimulationFrameResult
@@ -185,6 +187,11 @@ namespace STWGameplay
         PhysXArenaRuntime m_physicsArena;
         PhysXPlayerRuntime m_physicsPlayer;
         AZStd::array<PhysXEnemyRuntime, EnemyCollectionModel::MaxEnemyCount> m_enemyPhysicsRuntimes;
+        // Composition-root-owned handoff state for the primary EMotionFX character. Native
+        // ragdoll ownership remains unavailable until the character asset supplies a verified
+        // ragdoll configuration and runtime adapter.
+        CharacterPhysicalState m_skeletalCharacterPhysicalState;
+        int m_skeletalCharacterRespawnEvents = 0;
         FixedSimulationClock m_fixedSimulationClock;
         PlayerInput m_input;
         float m_pendingLookX = 0.0f;

@@ -92,4 +92,19 @@ namespace STWGameplay
         EXPECT_TRUE(state.CompleteAnimationRestore());
         EXPECT_EQ(state.GetMode(), CharacterPhysicsMode::Animated);
     }
+
+    TEST(CharacterPhysicalStateTests, GameplayLifecycleSignalsDriveOnlyThePhysicalHandoffState)
+    {
+        CharacterPhysicalState state;
+
+        ASSERT_TRUE(state.SynchronizeGameplayLifecycle(false, false));
+        EXPECT_EQ(state.GetMode(), CharacterPhysicsMode::TransitionToPhysics);
+
+        EXPECT_TRUE(state.SynchronizeGameplayLifecycle(false, false));
+        EXPECT_EQ(state.GetMode(), CharacterPhysicsMode::TransitionToPhysics);
+
+        ASSERT_TRUE(state.ConfirmPhysicsAuthority());
+        ASSERT_TRUE(state.SynchronizeGameplayLifecycle(true, true));
+        EXPECT_EQ(state.GetMode(), CharacterPhysicsMode::Animated);
+    }
 } // namespace STWGameplay
