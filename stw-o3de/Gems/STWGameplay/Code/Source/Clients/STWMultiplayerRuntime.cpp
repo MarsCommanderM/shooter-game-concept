@@ -1,13 +1,18 @@
 #include "STWMultiplayerRuntime.h"
 
 #include <AzCore/Interface/Interface.h>
+#include <AzCore/std/containers/vector.h>
 #include <AzNetworking/ConnectionLayer/IConnection.h>
 #include <Source/AutoGen/AutoComponentTypes.h>
 
 namespace STWGameplay
 {
     STWMultiplayerRuntime::STWMultiplayerRuntime()
-        : m_endpointDisconnectedHandler([this](Multiplayer::MultiplayerAgentType agentType)
+        : m_networkInitHandler([this](AzNetworking::INetworkInterface* networkInterface)
+        {
+            OnNetworkInitialized(networkInterface);
+        })
+        , m_endpointDisconnectedHandler([this](Multiplayer::MultiplayerAgentType agentType)
         {
             OnEndpointDisconnected(agentType);
         })
@@ -42,6 +47,7 @@ namespace STWGameplay
         RegisterMultiplayerComponents();
         AZ::Interface<Multiplayer::IMultiplayerSpawner>::Register(this);
         m_playerSpawnerRegistered = true;
+        m_multiplayer->AddNetworkInitHandler(m_networkInitHandler);
         m_multiplayer->AddEndpointDisconnectedHandler(m_endpointDisconnectedHandler);
         m_multiplayer->AddServerAcceptanceReceivedHandler(m_serverAcceptanceReceivedHandler);
         m_handlersConnected = true;
@@ -99,6 +105,7 @@ namespace STWGameplay
 
         if (m_handlersConnected)
         {
+            m_networkInitHandler.Disconnect();
             m_endpointDisconnectedHandler.Disconnect();
             m_serverAcceptanceReceivedHandler.Disconnect();
         }
@@ -139,6 +146,26 @@ namespace STWGameplay
         return entities.empty() ? Multiplayer::NetworkEntityHandle{} : entities.front();
     }
 
+    void STWMultiplayerRuntime::OnNetworkInitialized(
+        [[maybe_unused]] AzNetworking::INetworkInterface* networkInterface)
+    {
+        if (m_multiplayer == nullptr)
+        {
+            return;
+        }
+
+        const Multiplayer::MultiplayerAgentType agentType = m_multiplayer->GetAgentType();
+        if (agentType == Multiplayer::MultiplayerAgentType::DedicatedServer ||
+            agentType == Multiplayer::MultiplayerAgentType::ClientServer)
+        {
+            // O3DE can initialize a server from startup CVars without going through
+            // STWMultiplayerRuntime::StartHosting. Reflect that engine lifecycle in the
+            // wrapper so shutdown and diagnostics remain truthful.
+            m_sessionOwned = true;
+            m_state = STWMultiplayerTransportState::Hosting;
+        }
+    }
+
     void STWMultiplayerRuntime::OnPlayerLeave(
         Multiplayer::ConstNetworkEntityHandle entityHandle,
         [[maybe_unused]] const Multiplayer::ReplicationSet& replicationSet,
@@ -149,7 +176,27 @@ namespace STWGameplay
             : nullptr;
         if (networkEntityManager != nullptr && entityHandle.Exists())
         {
-            networkEntityManager->MarkForRemoval(entityHandle);
+            if (AZ::Entity* entity = entityHandle.GetEntity(); entity != nullptr && entity->GetTransform() != nullptr)
+            {
+                // Match O3DE's SimplePlayerSpawnerComponent lifecycle: remove networked
+                // descendants before their parent so a hierarchical player prefab cannot
+                // leave child network entities alive after disconnect.
+                const AZStd::vector<AZ::EntityId> hierarchy =
+                    entity->GetTransform()->GetEntityAndAllDescendants();
+                for (auto it = hierarchy.rbegin(); it != hierarchy.rend(); ++it)
+                {
+                    const Multiplayer::ConstNetworkEntityHandle hierarchyHandle =
+                        networkEntityManager->GetEntity(networkEntityManager->GetNetEntityIdById(*it));
+                    if (hierarchyHandle)
+                    {
+                        networkEntityManager->MarkForRemoval(hierarchyHandle);
+                    }
+                }
+            }
+            else
+            {
+                networkEntityManager->MarkForRemoval(entityHandle);
+            }
         }
     }
 
