@@ -1,6 +1,8 @@
 #include <Network/STWPlayerNetworkComponent.h>
 
+#include <AzCore/Interface/Interface.h>
 #include <AzCore/Serialization/SerializeContext.h>
+#include <Clients/STWGameplaySystemComponent.h>
 #include <Multiplayer/Components/NetBindComponent.h>
 
 namespace STWGameplay
@@ -114,26 +116,91 @@ namespace STWGameplay
     void STWPlayerNetworkComponentController::OnActivate(
         [[maybe_unused]] Multiplayer::EntityIsMigrating entityIsMigrating)
     {
+        TryBindGameplayAuthority();
     }
 
     void STWPlayerNetworkComponentController::OnDeactivate(
         [[maybe_unused]] Multiplayer::EntityIsMigrating entityIsMigrating)
     {
+        UnbindGameplayAuthority();
     }
 
     void STWPlayerNetworkComponentController::CreateInput(
-        [[maybe_unused]] Multiplayer::NetworkInput& input,
+        Multiplayer::NetworkInput& input,
         [[maybe_unused]] float deltaTime)
     {
-        // Command-source integration is intentionally a separate step. This carrier does not
-        // sample input or create a second gameplay authority.
+        if (!TryBindGameplayAuthority())
+        {
+            return;
+        }
+
+        if (STWGameplaySystemComponent* gameplay = AZ::Interface<STWGameplaySystemComponent>::Get())
+        {
+            PlayerCommand command;
+            if (gameplay->CreateNetworkCommand(GetEntityId(), command))
+            {
+                if (auto* networkInput = input.FindComponentInput<STWPlayerNetworkComponentNetworkInput>())
+                {
+                    STWPlayerNetworkComponent::WriteCommand(*networkInput, command);
+                }
+            }
+        }
     }
 
     void STWPlayerNetworkComponentController::ProcessInput(
-        [[maybe_unused]] Multiplayer::NetworkInput& input,
+        Multiplayer::NetworkInput& input,
         [[maybe_unused]] float deltaTime)
     {
-        // Gameplay integration is intentionally a separate step. This carrier does not mutate
-        // PlayerSliceModel, WeaponModel, PhysX, or presentation state.
+        if (!TryBindGameplayAuthority())
+        {
+            return;
+        }
+
+        const auto* networkInput = input.FindComponentInput<STWPlayerNetworkComponentNetworkInput>();
+        if (networkInput == nullptr)
+        {
+            return;
+        }
+
+        PlayerCommand command;
+        if (!STWPlayerNetworkComponent::ReadCommand(*networkInput, command))
+        {
+            return;
+        }
+
+        if (STWGameplaySystemComponent* gameplay = AZ::Interface<STWGameplaySystemComponent>::Get())
+        {
+            gameplay->SubmitNetworkCommand(GetEntityId(), command);
+        }
+    }
+
+    bool STWPlayerNetworkComponentController::TryBindGameplayAuthority()
+    {
+        if (m_gameplayAuthorityBound)
+        {
+            return true;
+        }
+        if (!IsNetEntityRoleAuthority() && !IsNetEntityRoleAutonomous())
+        {
+            return false;
+        }
+        if (STWGameplaySystemComponent* gameplay = AZ::Interface<STWGameplaySystemComponent>::Get())
+        {
+            m_gameplayAuthorityBound = gameplay->BindNetworkPlayer(GetEntityId());
+        }
+        return m_gameplayAuthorityBound;
+    }
+
+    void STWPlayerNetworkComponentController::UnbindGameplayAuthority()
+    {
+        if (!m_gameplayAuthorityBound)
+        {
+            return;
+        }
+        if (STWGameplaySystemComponent* gameplay = AZ::Interface<STWGameplaySystemComponent>::Get())
+        {
+            gameplay->UnbindNetworkPlayer(GetEntityId());
+        }
+        m_gameplayAuthorityBound = false;
     }
 } // namespace STWGameplay
