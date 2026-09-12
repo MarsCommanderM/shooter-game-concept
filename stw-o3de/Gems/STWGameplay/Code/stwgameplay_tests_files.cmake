@@ -22,4 +22,5 @@ set(FILES
     Tests/Clients/BodycamCameraPresentationTests.cpp
     Tests/Clients/PresentationInterpolationTests.cpp
     Tests/Clients/STWSkeletalCharacterPresentationTests.cpp
+    Tests/Clients/STWMultiplayerRuntimeTests.cpp
     Tests/Clients/ViewmodelPresentationTests.cpp)
