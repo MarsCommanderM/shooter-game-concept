@@ -24,8 +24,11 @@ ly_add_target(
         Gem::Atom_Feature_Common.Public
         Gem::EMotionFX.Static
         Gem::EMotionFX_Atom.Static
+        Gem::Multiplayer.Client
         Gem::MiniAudio.API
-        Gem::PhysX5.Static)
+        Gem::PhysX5.Static
+    PRIVATE
+        Gem::Multiplayer.Client.Static)
 
 ly_add_target(
     NAME STWGameplay ${PAL_TRAIT_MONOLITHIC_DRIVEN_MODULE_TYPE}

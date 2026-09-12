@@ -122,6 +122,7 @@ namespace STWGameplay
     void STWGameplaySystemComponent::GetRequiredServices(AZ::ComponentDescriptor::DependencyArrayType& required)
     {
         required.push_back(AZ_CRC_CE("PhysicsService"));
+        required.push_back(AZ_CRC_CE("MultiplayerService"));
     }
     void STWGameplaySystemComponent::GetDependentServices(AZ::ComponentDescriptor::DependencyArrayType&) {}
 
@@ -151,6 +152,10 @@ namespace STWGameplay
         m_bodycamCameraPresentation.ResetToNeutral();
         m_viewmodel.ResetToNeutral();
         m_combatFeedback.Reset();
+        if (!m_multiplayer.Initialize())
+        {
+            AZ_Warning("STWGameplay", false, "STW multiplayer transport is unavailable");
+        }
         m_skeletalCharacterPhysicalState = {};
         m_skeletalCharacterRespawnEvents = m_model.GetEnemy().GetState().m_respawnEvents;
         for (size_t index = 0; index < m_model.GetEnemies().GetEnemyCount(); ++index)
@@ -179,6 +184,7 @@ namespace STWGameplay
 
     void STWGameplaySystemComponent::Deactivate()
     {
+        m_multiplayer.Shutdown();
         m_adsHeld = false;
         m_physicsStartup = PhysicsStartup::Waiting;
         m_fixedSimulationClock.Reset();

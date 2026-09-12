@@ -26,6 +26,7 @@
 #include "PhysXArenaRuntime.h"
 #include "PhysXPlayerRuntime.h"
 #include "PhysXEnemyRuntime.h"
+#include "STWMultiplayerRuntime.h"
 
 namespace STWGameplay
 {
@@ -46,6 +47,21 @@ namespace STWGameplay
         void Activate() override;
         void Deactivate() override;
         void OnTick(float deltaTime, AZ::ScriptTimePoint time) override;
+
+        bool StartMultiplayerHost(uint16_t port, bool isDedicated = true)
+        {
+            return m_multiplayer.StartHosting(port, isDedicated);
+        }
+
+        bool ConnectMultiplayer(const AZStd::string& remoteAddress, uint16_t port)
+        {
+            return m_multiplayer.Connect(remoteAddress, port);
+        }
+
+        STWMultiplayerTransportState GetMultiplayerState() const
+        {
+            return m_multiplayer.GetState();
+        }
 
         const AuthoritativePlayerSnapshot& GetAuthoritativeSnapshot() const
         {
@@ -189,6 +205,7 @@ namespace STWGameplay
         SpawnCheckpointModel m_spawnCheckpoint;
         PhysXArenaRuntime m_physicsArena;
         PhysXPlayerRuntime m_physicsPlayer;
+        STWMultiplayerRuntime m_multiplayer;
         AZStd::array<PhysXEnemyRuntime, EnemyCollectionModel::MaxEnemyCount> m_enemyPhysicsRuntimes;
         AZStd::array<PresentationInterpolation, EnemyCollectionModel::MaxEnemyCount>
             m_enemyPresentationInterpolations;

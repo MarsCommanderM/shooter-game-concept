@@ -24,4 +24,6 @@ set(FILES
     Source/Clients/PhysXEnemyRuntime.cpp
     Source/Clients/PhysXEnemyRuntime.h
     Source/Clients/PhysXPlayerRuntime.cpp
-    Source/Clients/PhysXPlayerRuntime.h)
+    Source/Clients/PhysXPlayerRuntime.h
+    Source/Clients/STWMultiplayerRuntime.cpp
+    Source/Clients/STWMultiplayerRuntime.h)
