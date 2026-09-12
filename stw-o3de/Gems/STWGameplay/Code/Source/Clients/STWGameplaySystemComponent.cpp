@@ -136,6 +136,14 @@ namespace STWGameplay
         m_adsHeld = false;
         m_skeletalCharacterPhysicalState = {};
         m_skeletalCharacterRespawnEvents = m_model.GetEnemy().GetState().m_respawnEvents;
+        for (size_t index = 0; index < m_model.GetEnemies().GetEnemyCount(); ++index)
+        {
+            const EnemyState& enemyState = m_model.GetEnemies().GetInstanceByIndex(index).m_combat.GetState();
+            PresentationFrameState presentationState;
+            presentationState.m_position = enemyState.m_position;
+            m_enemyPresentationInterpolations[index].Reset(presentationState);
+            m_enemyPresentationRespawnEvents[index] = enemyState.m_respawnEvents;
+        }
         m_audioEnemyBaselineCaptured = false;
         m_audioPreviousRespawnEvents = m_model.GetPlayer().m_respawnEvents;
         m_audioFeedback.Activate();
@@ -237,6 +245,27 @@ namespace STWGameplay
         const bool respawnObserved = gameplayState.m_respawnEvents > m_skeletalCharacterRespawnEvents;
         m_skeletalCharacterPhysicalState.SynchronizeGameplayLifecycle(gameplayState.m_alive, respawnObserved);
         m_skeletalCharacterRespawnEvents = gameplayState.m_respawnEvents;
+    }
+
+    void STWGameplaySystemComponent::UpdateEnemyPresentationInterpolation(
+        bool gameplayUpdated, bool primaryPhysicalStateSynchronized)
+    {
+        for (size_t index = 0; index < m_model.GetEnemies().GetEnemyCount(); ++index)
+        {
+            const EnemyState& enemyState = m_model.GetEnemies().GetInstanceByIndex(index).m_combat.GetState();
+            PresentationFrameState presentationState;
+            presentationState.m_position = enemyState.m_position;
+            const bool respawnObserved = enemyState.m_respawnEvents != m_enemyPresentationRespawnEvents[index];
+            if (respawnObserved)
+            {
+                m_enemyPresentationInterpolations[index].Reset(presentationState);
+            }
+            else if (gameplayUpdated && (index != 0 || primaryPhysicalStateSynchronized))
+            {
+                m_enemyPresentationInterpolations[index].Advance(presentationState);
+            }
+            m_enemyPresentationRespawnEvents[index] = enemyState.m_respawnEvents;
+        }
     }
 
     PlayerCommand STWGameplaySystemComponent::BuildPlayerCommand(const PlayerInput& input)
@@ -534,6 +563,7 @@ namespace STWGameplay
         UpdateCrouchAcceptance(playerPhysicalStateSynchronized);
         UpdateSlideAcceptance(playerPhysicalStateSynchronized);
         UpdateMantleAcceptance(playerPhysicalStateSynchronized);
+        bool primaryEnemyPhysicalStateSynchronized = false;
         for (size_t index = 0; index < enemies.GetEnemyCount(); ++index)
         {
             AZ::Vector3 enemyPhysicalPosition = AZ::Vector3::CreateZero();
@@ -544,12 +574,14 @@ namespace STWGameplay
                 m_model.GetEnemies().SynchronizePhysicalPosition(instance.m_id, enemyPhysicalPosition);
                 if (index == 0)
                 {
+                    primaryEnemyPhysicalStateSynchronized = true;
                     m_enemyMoved = m_enemyMoved
                         || (enemyPhysicalPosition - m_enemyAcceptanceStartPosition).GetLength() > 0.25f;
                 }
             }
         }
 
+        UpdateEnemyPresentationInterpolation(gameplayUpdated, primaryEnemyPhysicalStateSynchronized);
         SynchronizeSkeletalCharacterPhysicalState();
 
         for (size_t index = 0; index < enemies.GetEnemyCount(); ++index)
@@ -557,7 +589,9 @@ namespace STWGameplay
             const EnemyState presentationInput = enemies.GetInstanceByIndex(index).m_combat.GetState();
             if (index == 0)
             {
-                m_skeletalCharacterPresentation.Update(deltaTime, presentationInput);
+                const PresentationFrameState presentationState = m_enemyPresentationInterpolations[index].Evaluate(
+                    m_fixedSimulationClock.GetInterpolationAlpha());
+                m_skeletalCharacterPresentation.Update(deltaTime, presentationInput, presentationState);
                 const EnemyState& skeletalStateAfter = enemies.GetInstanceByIndex(index).m_combat.GetState();
                 m_skeletalPresentationAuthoritySeparated = m_skeletalPresentationAuthoritySeparated
                     && STWSkeletalCharacterPresentation::IsGameplayStateUnchanged(presentationInput, skeletalStateAfter);
@@ -2573,7 +2607,14 @@ namespace STWGameplay
                 allMeshesReady = false;
                 continue;
             }
-            const AZ::Vector3 meshOrigin = enemy.m_position - AZ::Vector3(0.0f, 0.0f, PhysXEnemyRuntime::CenterHeight);
+            AZ::Vector3 presentationPosition = enemy.m_position;
+            if (m_enemyPresentationInterpolations[index].HasState())
+            {
+                presentationPosition = m_enemyPresentationInterpolations[index].Evaluate(
+                    m_fixedSimulationClock.GetInterpolationAlpha()).m_position;
+            }
+            const AZ::Vector3 meshOrigin = presentationPosition
+                - AZ::Vector3(0.0f, 0.0f, PhysXEnemyRuntime::CenterHeight);
             const AZ::Transform baseTransform = AZ::Transform::CreateTranslation(meshOrigin);
             const AZ::Vector3 presentationScale = m_enemyPresentations[index].GetScale();
             const float hitScale = enemy.m_id == hitEnemyId ? m_combatFeedback.GetEnemyHitScale() : 1.0f;
