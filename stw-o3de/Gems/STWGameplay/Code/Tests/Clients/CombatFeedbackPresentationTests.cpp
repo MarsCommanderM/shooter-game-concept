@@ -81,6 +81,23 @@ namespace STWGameplay
         EXPECT_FLOAT_EQ(feedback.GetImpactScale(), 0.0f);
     }
 
+    TEST(CombatFeedbackPresentationTests, ResetClearsTransientFeedback)
+    {
+        CombatFeedbackPresentation feedback;
+        CombatFeedbackInput input;
+        input.m_shotFired = true;
+        input.m_hitConfirmed = true;
+        input.m_impactPosition = AZ::Vector3(4.0f, 5.0f, 1.2f);
+        ASSERT_TRUE(feedback.Update(0.0f, input));
+        feedback.Reset();
+        EXPECT_FALSE(feedback.IsFireFlashVisible());
+        EXPECT_FALSE(feedback.IsEnemyHitVisible());
+        EXPECT_FALSE(feedback.IsImpactVisible());
+        EXPECT_FLOAT_EQ(feedback.GetFireIntensity(), 0.0f);
+        EXPECT_FLOAT_EQ(feedback.GetEnemyHitScale(), 1.0f);
+        EXPECT_FLOAT_EQ(feedback.GetImpactScale(), 0.0f);
+    }
+
     TEST(CombatFeedbackPresentationTests, AuthoritySeparation)
     {
         PlayerSliceModel model;

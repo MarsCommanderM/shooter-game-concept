@@ -10,6 +10,8 @@ namespace STWGameplay
     {
         bool IsFinite(float value) { return std::isfinite(value); }
 
+        constexpr float PlayerTwoPi = 2.0f * AZ::Constants::Pi;
+
         AZ::Vector3 GetPlanarDirection(float yaw, const PlayerInput& input)
         {
             const float forwardAmount = AZStd::clamp(input.m_forward, -1.0f, 1.0f);
@@ -173,7 +175,15 @@ namespace STWGameplay
             ++m_player.m_jumpEvents;
         }
 
-        m_player.m_yaw += input.m_lookX * LookSensitivity;
+        m_player.m_yaw = std::fmod(m_player.m_yaw + input.m_lookX * LookSensitivity, PlayerTwoPi);
+        if (m_player.m_yaw > AZ::Constants::Pi)
+        {
+            m_player.m_yaw -= PlayerTwoPi;
+        }
+        else if (m_player.m_yaw < -AZ::Constants::Pi)
+        {
+            m_player.m_yaw += PlayerTwoPi;
+        }
         m_player.m_pitch = AZStd::clamp(m_player.m_pitch - input.m_lookY * LookSensitivity, -PitchLimit, PitchLimit);
 
         if (newEquipmentSlotRequest)

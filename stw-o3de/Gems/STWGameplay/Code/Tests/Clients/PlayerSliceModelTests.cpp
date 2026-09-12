@@ -104,6 +104,16 @@ namespace STWGameplay
         EXPECT_FLOAT_EQ(model.GetPlayer().m_pitch, -PlayerSliceModel::PitchLimit);
     }
 
+    TEST(PlayerSliceModelTests, ExtremeFiniteLookInputKeepsYawFiniteAndNormalized)
+    {
+        PlayerSliceModel model;
+        PlayerInput input; input.m_lookX = 1000000000.0f;
+        ASSERT_TRUE(model.Update(0.016f, input));
+        EXPECT_TRUE(std::isfinite(model.GetPlayer().m_yaw));
+        EXPECT_GE(model.GetPlayer().m_yaw, -AZ::Constants::Pi);
+        EXPECT_LE(model.GetPlayer().m_yaw, AZ::Constants::Pi);
+    }
+
     TEST(PlayerSliceModelTests, GroundedJumpPressProducesBoundedVerticalImpulse)
     {
         PlayerSliceModel model;

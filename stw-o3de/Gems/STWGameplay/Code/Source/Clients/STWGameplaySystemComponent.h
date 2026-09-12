@@ -80,7 +80,8 @@ namespace STWGameplay
         void TryStartPhysics();
         void ShutdownEnemyPhysics();
         void SynchronizeSkeletalCharacterPhysicalState();
-        void UpdateEnemyPresentationInterpolation(bool gameplayUpdated, bool primaryPhysicalStateSynchronized);
+        void UpdateEnemyPresentationInterpolation(
+            const AZStd::array<bool, EnemyCollectionModel::MaxEnemyCount>& physicalStateSynchronized);
         PlayerCommand BuildPlayerCommand(const PlayerInput& input);
         void TryBeginMantle(const PlayerInput& input);
         struct FixedSimulationFrameResult

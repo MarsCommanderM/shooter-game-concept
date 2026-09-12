@@ -370,6 +370,47 @@ namespace STWGameplay
         EXPECT_TRUE(vm.GetSwayOffset().IsZero());
     }
 
+    TEST(ViewmodelPresentationTests, VeryLargeFiniteDeltaKeepsPresentationStateFinite)
+    {
+        ViewmodelPresentation vm;
+        PresentationInput input;
+        input.m_moving = true;
+        input.m_sprinting = true;
+        input.m_shotFired = true;
+
+        ASSERT_TRUE(vm.Update(std::numeric_limits<float>::max(), input));
+        EXPECT_TRUE(vm.GetRecoilOffset().IsFinite());
+        EXPECT_TRUE(vm.GetBobOffset().IsFinite());
+        EXPECT_TRUE(vm.GetSwayOffset().IsFinite());
+        EXPECT_TRUE(vm.GetPoseOffset().IsFinite());
+        EXPECT_TRUE(std::isfinite(vm.GetRecoilPitch()));
+        EXPECT_TRUE(std::isfinite(vm.GetCameraFovDegrees()));
+    }
+
+    TEST(ViewmodelPresentationTests, ResetToNeutralClearsTransientState)
+    {
+        ViewmodelPresentation vm;
+        PresentationInput input;
+        input.m_moving = true;
+        input.m_sprinting = true;
+        input.m_adsRequested = true;
+        input.m_shotFired = true;
+        input.m_reloading = true;
+        ASSERT_TRUE(vm.Update(1.0f / 60.0f, input));
+        ASSERT_GT(vm.GetFireEventCount(), 0u);
+        ASSERT_GT(vm.GetReloadStartCount(), 0u);
+
+        vm.ResetToNeutral();
+
+        EXPECT_EQ(vm.GetState(), ViewmodelState::Idle);
+        EXPECT_TRUE(vm.GetRecoilOffset().IsZero());
+        EXPECT_TRUE(vm.GetBobOffset().IsZero());
+        EXPECT_TRUE(vm.GetSwayOffset().IsZero());
+        EXPECT_FLOAT_EQ(vm.GetRecoilPitch(), 0.0f);
+        EXPECT_FLOAT_EQ(vm.GetAdsBlend(), 0.0f);
+        EXPECT_FALSE(vm.IsMuzzleFlashActive());
+    }
+
     TEST(ViewmodelPresentationTests, SprintTransitionsToAndFromSprintPose)
     {
         ViewmodelPresentation vm;
