@@ -31,7 +31,8 @@ namespace STWGameplay
 
     bool ViewmodelPresentation::Update(float deltaTime, const PresentationInput& input)
     {
-        if (!IsFiniteViewmodel(deltaTime) || deltaTime < 0.0f)
+        if (!IsFiniteViewmodel(deltaTime) || deltaTime < 0.0f
+            || !IsFiniteViewmodel(input.m_lookX) || !IsFiniteViewmodel(input.m_lookY))
         {
             return false;
         }
@@ -122,10 +123,6 @@ namespace STWGameplay
             m_bobOffset = AZ::Vector3::CreateZero();
         }
 
-        if (!IsFiniteViewmodel(input.m_lookX) || !IsFiniteViewmodel(input.m_lookY))
-        {
-            return false;
-        }
         // These immutable identity fields select the already-acquired presentation item. The
         // presentation stores them for rendering and never writes back to the authoritative model.
         m_activeEquipmentSlot = input.m_activeEquipmentSlot;

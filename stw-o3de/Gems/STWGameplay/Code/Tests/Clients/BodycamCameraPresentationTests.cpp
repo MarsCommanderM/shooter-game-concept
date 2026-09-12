@@ -1,5 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
+#include <limits>
+
 #include <STWGameplay/BodycamCameraPresentation.h>
 #include <STWGameplay/PlayerSliceModel.h>
 
@@ -273,5 +276,70 @@ namespace STWGameplay
         EXPECT_EQ(input.m_sprinting, before.m_sprinting);
         EXPECT_EQ(input.m_ads, before.m_ads);
         EXPECT_EQ(input.m_respawnEvents, before.m_respawnEvents);
+    }
+
+    TEST(BodycamCameraPresentationTests, NonFiniteInputCannotPoisonCameraState)
+    {
+        BodycamCameraPresentation bodycam;
+        BodycamPresentationInput input = MovingInput();
+        input.m_lookX = std::numeric_limits<float>::infinity();
+        input.m_lookY = std::numeric_limits<float>::quiet_NaN();
+        input.m_speed = std::numeric_limits<float>::infinity();
+        input.m_lateralInput = std::numeric_limits<float>::quiet_NaN();
+        input.m_mantleProgress = std::numeric_limits<float>::quiet_NaN();
+        input.m_adsBlend = std::numeric_limits<float>::infinity();
+        bodycam.Update(1.0f / 60.0f, input);
+
+        EXPECT_TRUE(bodycam.GetCameraPositionOffset().IsFinite());
+        EXPECT_TRUE(bodycam.GetCameraRotationOffset().IsFinite());
+        EXPECT_TRUE(std::isfinite(bodycam.GetCameraFovDegrees()));
+        EXPECT_TRUE(std::isfinite(bodycam.GetRecoilPitchRadians()));
+        EXPECT_TRUE(std::isfinite(bodycam.GetRecoilBackMeters()));
+    }
+
+    TEST(BodycamCameraPresentationTests, LandingPulseTriggersOnceAndDoesNotRetriggerWhileGrounded)
+    {
+        BodycamCameraPresentation bodycam;
+        BodycamPresentationInput input;
+        input.m_grounded = false;
+        bodycam.Update(1.0f / 60.0f, input);
+        input.m_grounded = true;
+        bodycam.Update(1.0f / 60.0f, input);
+        const float landingOffset = bodycam.GetCameraPositionOffset().GetZ();
+        ASSERT_LT(landingOffset, 0.0f);
+
+        bodycam.Update(1.0f / 60.0f, input);
+        EXPECT_GT(bodycam.GetCameraPositionOffset().GetZ(), landingOffset);
+        EXPECT_TRUE(bodycam.GetCameraPositionOffset().IsFinite());
+    }
+
+    TEST(BodycamCameraPresentationTests, MantleResponseIsPresentationOnlyAndBounded)
+    {
+        BodycamCameraPresentation bodycam;
+        BodycamPresentationInput input;
+        input.m_mantling = true;
+        input.m_mantleProgress = 0.5f;
+        bodycam.Update(1.0f / 60.0f, input);
+
+        EXPECT_GT(bodycam.GetCameraPositionOffset().GetZ(), 0.0f);
+        EXPECT_LE(
+            bodycam.GetCameraPositionOffset().GetZ(),
+            BodycamCameraPresentation::GetStandardTuning().m_mantleVerticalMeters);
+    }
+
+    TEST(BodycamCameraPresentationTests, ConstantAccelerationResponseIsStableAcrossValidFrameChunking)
+    {
+        BodycamCameraPresentation coarse;
+        BodycamCameraPresentation fine;
+        BodycamPresentationInput input;
+        input.m_planarAcceleration = AZ::Vector3(8.0f, 16.0f, 0.0f);
+
+        coarse.Update(0.1f, input);
+        for (int index = 0; index < 6; ++index)
+        {
+            fine.Update(1.0f / 60.0f, input);
+        }
+
+        EXPECT_TRUE(coarse.GetAccelerationOffset().IsClose(fine.GetAccelerationOffset(), 0.00001f));
     }
 }

@@ -3,6 +3,7 @@
 #include <STWGameplay/PlayerSliceModel.h>
 #include <AzCore/std/algorithm.h>
 #include <cmath>
+#include <limits>
 
 // AZ_UNIT_TEST_HOOK is defined once for this test module in PlayerSliceModelTests.cpp.
 
@@ -557,6 +558,23 @@ namespace STWGameplay
         EXPECT_TRUE(vm.GetSwayOffset().IsFinite());
         EXPECT_TRUE(std::isfinite(vm.GetRecoilPitch()));
         EXPECT_LE(vm.GetSwayOffset().GetLength(), 0.2f);
+    }
+
+    TEST(ViewmodelPresentationTests, NonFiniteLookInputIsTransactional)
+    {
+        ViewmodelPresentation vm;
+        PresentationInput valid = ShotInput();
+        ASSERT_TRUE(vm.Update(1.0f / 60.0f, valid));
+        const AZ::Vector3 recoilBefore = vm.GetRecoilOffset();
+        const float pitchBefore = vm.GetRecoilPitch();
+        const AZ::u32 fireEventsBefore = vm.GetFireEventCount();
+
+        PresentationInput invalid = valid;
+        invalid.m_lookX = std::numeric_limits<float>::quiet_NaN();
+        EXPECT_FALSE(vm.Update(1.0f / 60.0f, invalid));
+        EXPECT_TRUE(vm.GetRecoilOffset().IsClose(recoilBefore));
+        EXPECT_FLOAT_EQ(vm.GetRecoilPitch(), pitchBefore);
+        EXPECT_EQ(vm.GetFireEventCount(), fireEventsBefore);
     }
 
     // J. Sprint state selects sprint presentation.
