@@ -74,6 +74,24 @@ namespace STWGameplay
             return TransitionTo(CharacterPhysicsMode::Animated);
         }
 
+        //! Applies gameplay-owned death/respawn observations without owning either lifecycle decision.
+        //! A respawn observation completes the reset handoff only; a native physics adapter must still
+        //! explicitly confirm Ragdoll authority when one is available.
+        bool SynchronizeGameplayLifecycle(bool gameplayAlive, bool respawnObserved)
+        {
+            if (respawnObserved)
+            {
+                return RequestReset() && CompleteAnimationRestore();
+            }
+
+            if (!gameplayAlive)
+            {
+                return RequestDeath();
+            }
+
+            return m_mode == CharacterPhysicsMode::Animated;
+        }
+
         //! Explicit transition entry point for a verified runtime adapter.
         bool TryTransition(CharacterPhysicsMode target)
         {

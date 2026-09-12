@@ -134,6 +134,8 @@ namespace STWGameplay
         m_pendingLookY = 0.0f;
         m_pendingReload = false;
         m_adsHeld = false;
+        m_skeletalCharacterPhysicalState = {};
+        m_skeletalCharacterRespawnEvents = m_model.GetEnemy().GetState().m_respawnEvents;
         m_audioEnemyBaselineCaptured = false;
         m_audioPreviousRespawnEvents = m_model.GetPlayer().m_respawnEvents;
         m_audioFeedback.Activate();
@@ -227,6 +229,14 @@ namespace STWGameplay
             runtime.Shutdown();
         }
         m_enemyPhysicsReady = false;
+    }
+
+    void STWGameplaySystemComponent::SynchronizeSkeletalCharacterPhysicalState()
+    {
+        const EnemyState& gameplayState = m_model.GetEnemy().GetState();
+        const bool respawnObserved = gameplayState.m_respawnEvents > m_skeletalCharacterRespawnEvents;
+        m_skeletalCharacterPhysicalState.SynchronizeGameplayLifecycle(gameplayState.m_alive, respawnObserved);
+        m_skeletalCharacterRespawnEvents = gameplayState.m_respawnEvents;
     }
 
     PlayerCommand STWGameplaySystemComponent::BuildPlayerCommand(const PlayerInput& input)
@@ -539,6 +549,8 @@ namespace STWGameplay
                 }
             }
         }
+
+        SynchronizeSkeletalCharacterPhysicalState();
 
         for (size_t index = 0; index < enemies.GetEnemyCount(); ++index)
         {
