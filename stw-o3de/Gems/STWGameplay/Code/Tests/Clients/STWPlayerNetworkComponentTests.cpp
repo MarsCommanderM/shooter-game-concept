@@ -66,27 +66,78 @@ namespace STWGameplay
         EXPECT_FALSE(STWPlayerNetworkComponent::ReadCommand(networkInput, decoded));
     }
 
-    TEST(STWPlayerNetworkComponentTests, NetworkCommandBoundaryAcceptsOnlyOneBoundPlayerAndDeduplicates)
+    TEST(STWPlayerNetworkComponentTests, NetworkCommandBoundaryKeepsMultiplePlayersIndependent)
     {
         STWGameplaySystemComponent gameplay;
         const AZ::EntityId boundEntityId(42);
         const AZ::EntityId otherEntityId(43);
 
         EXPECT_TRUE(gameplay.BindNetworkPlayer(boundEntityId));
-        EXPECT_FALSE(gameplay.BindNetworkPlayer(otherEntityId));
+        EXPECT_TRUE(gameplay.BindNetworkPlayer(otherEntityId));
 
         PlayerInput sampledInput;
         sampledInput.m_forward = 1.0f;
         const PlayerCommand firstCommand = MakePlayerCommand(sampledInput, 1u);
+        const PlayerCommand otherFirstCommand = MakePlayerCommand(sampledInput, 1u);
         EXPECT_TRUE(gameplay.SubmitNetworkCommand(boundEntityId, firstCommand));
         EXPECT_FALSE(gameplay.SubmitNetworkCommand(boundEntityId, firstCommand));
-        EXPECT_FALSE(gameplay.SubmitNetworkCommand(otherEntityId, firstCommand));
+        EXPECT_TRUE(gameplay.SubmitNetworkCommand(otherEntityId, otherFirstCommand));
 
         const PlayerCommand newerCommand = MakePlayerCommand(sampledInput, 2u);
         EXPECT_TRUE(gameplay.SubmitNetworkCommand(boundEntityId, newerCommand));
+        EXPECT_FALSE(gameplay.SubmitNetworkCommand(otherEntityId, otherFirstCommand));
+
+        EXPECT_EQ(gameplay.GetNetworkPlayerCount(), 2u);
+        EXPECT_EQ(gameplay.GetNetworkPlayerCommandHistorySize(boundEntityId), 2u);
+        EXPECT_EQ(gameplay.GetNetworkPlayerCommandHistorySize(otherEntityId), 1u);
+        EXPECT_EQ(gameplay.GetPlayerCommandHistory().Size(), 2u);
 
         gameplay.UnbindNetworkPlayer(boundEntityId);
         EXPECT_FALSE(gameplay.SubmitNetworkCommand(boundEntityId, newerCommand));
+        EXPECT_TRUE(gameplay.GetPlayerCommandHistory().Empty());
+        EXPECT_TRUE(gameplay.SubmitNetworkCommand(otherEntityId, MakePlayerCommand(sampledInput, 2u)));
+    }
+
+    TEST(STWPlayerNetworkComponentTests, NetworkPlayerAuthoritySlotsAreBounded)
+    {
+        STWGameplaySystemComponent gameplay;
+        for (size_t index = 0; index < STWGameplaySystemComponent::MaxNetworkPlayerCount; ++index)
+        {
+            EXPECT_TRUE(gameplay.BindNetworkPlayer(AZ::EntityId(100 + index)));
+        }
+
+        EXPECT_EQ(gameplay.GetNetworkPlayerCount(), STWGameplaySystemComponent::MaxNetworkPlayerCount);
+        EXPECT_FALSE(gameplay.BindNetworkPlayer(AZ::EntityId(999)));
+
+        gameplay.UnbindNetworkPlayer(AZ::EntityId(103));
+        EXPECT_EQ(gameplay.GetNetworkPlayerCount(), STWGameplaySystemComponent::MaxNetworkPlayerCount - 1);
+        EXPECT_TRUE(gameplay.BindNetworkPlayer(AZ::EntityId(999)));
+        EXPECT_EQ(gameplay.GetNetworkPlayerCount(), STWGameplaySystemComponent::MaxNetworkPlayerCount);
+    }
+
+    TEST(STWPlayerNetworkComponentTests, AdditionalAuthoritiesShareEnemiesButOwnPlayerState)
+    {
+        EnemyCollectionModel sharedEnemies;
+        STWNetworkPlayerAuthority first;
+        STWNetworkPlayerAuthority second;
+
+        ASSERT_TRUE(first.BindAdditional(AZ::EntityId(200), sharedEnemies));
+        ASSERT_TRUE(second.BindAdditional(AZ::EntityId(201), sharedEnemies));
+        EXPECT_EQ(&first.GetModel().GetEnemies(), &sharedEnemies);
+        EXPECT_EQ(&second.GetModel().GetEnemies(), &sharedEnemies);
+        EXPECT_NE(&first.GetModel(), &second.GetModel());
+        EXPECT_NE(&first.GetPhysics(), &second.GetPhysics());
+
+        PlayerCommand firstCommand;
+        PlayerCommand secondCommand;
+        EXPECT_TRUE(first.CreateCommand(PlayerInput{}, firstCommand));
+        EXPECT_TRUE(second.CreateCommand(PlayerInput{}, secondCommand));
+        EXPECT_EQ(firstCommand.m_sequence, 1u);
+        EXPECT_EQ(secondCommand.m_sequence, 1u);
+        EXPECT_TRUE(first.SubmitCommand(firstCommand));
+        EXPECT_TRUE(second.SubmitCommand(secondCommand));
+        EXPECT_EQ(first.GetCommandHistorySize(), 1u);
+        EXPECT_EQ(second.GetCommandHistorySize(), 1u);
     }
 
     TEST(STWPlayerNetworkComponentTests, SnapshotBoundaryRoutesOnlyTheBoundNetworkPlayer)

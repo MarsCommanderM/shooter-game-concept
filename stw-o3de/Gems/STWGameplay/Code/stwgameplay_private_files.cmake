@@ -29,6 +29,8 @@ set(FILES
     Source/Clients/PhysXEnemyRuntime.h
     Source/Clients/PhysXPlayerRuntime.cpp
     Source/Clients/PhysXPlayerRuntime.h
+    Source/Clients/STWNetworkPlayerAuthority.cpp
+    Source/Clients/STWNetworkPlayerAuthority.h
     Source/Clients/STWMultiplayerRuntime.cpp
     Source/Clients/STWMultiplayerRuntime.h
     Source/AutoGen/STWPlayerNetworkComponent.AutoComponent.xml
