@@ -615,9 +615,9 @@ namespace STWGameplay
 
         }
 
-        // PhysX's AddVelocityForTick contract accumulates all requests until the engine's
-        // physics tick. Keep one request per engine tick; a jump accepted in an earlier fixed
-        // gameplay step still contributes its one-shot vertical impulse to that request.
+        // PhysX's AddVelocityForPhysicsTimestep contract accumulates requests until the next
+        // physics timestep. Keep one request per engine tick; a jump accepted in an earlier
+        // fixed gameplay step still contributes its one-shot vertical impulse to that request.
         if (frame.m_gameplayUpdated && frame.m_jumpImpulseObserved && model.GetPlayer().m_alive)
         {
             frame.m_requestedVelocity.SetZ(frame.m_jumpImpulse);
@@ -952,9 +952,9 @@ namespace STWGameplay
                 s_jumpDiagnostic.m_queueReported = true;
             }
         }
-        // The gameplay component ticks after the PhysX system. AddVelocityForTick accumulates
-        // requests until the next PhysX tick, so a render frame with no fixed gameplay step must
-        // not re-submit the previous request (and a catch-up frame submits only its final request).
+        // The gameplay component ticks after the PhysX system. Physics-timestep requests survive
+        // render frames where the engine has no physics substep; tick-duration requests are
+        // cleared by the engine's post-simulate callback even when its tick time is zero.
         if (gameplayUpdated)
         {
             m_physicsPlayer.QueueVelocity(desiredPlayerVelocity);
