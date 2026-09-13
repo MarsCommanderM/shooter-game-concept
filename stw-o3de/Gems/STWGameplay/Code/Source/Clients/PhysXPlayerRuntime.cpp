@@ -111,13 +111,13 @@ namespace STWGameplay
         }
         if (velocity.GetZ() > 0.0f)
         {
-            // AddVelocityForTick provides the collision-resolved takeoff step. Once PhysX
-            // reports that step made the controller airborne, Synchronize seeds the existing
-            // CharacterGameplayComponent falling velocity so gravity owns the remaining arc.
+            // AddVelocityForPhysicsTimestep provides the collision-resolved takeoff step. Once
+            // PhysX reports that step made the controller airborne, Synchronize seeds the
+            // existing CharacterGameplayComponent falling velocity so gravity owns the arc.
             m_pendingJumpSpeed = velocity.GetZ();
         }
         Physics::CharacterRequestBus::Event(
-            m_playerEntity->GetId(), &Physics::CharacterRequests::AddVelocityForTick, velocity);
+            m_playerEntity->GetId(), &Physics::CharacterRequests::AddVelocityForPhysicsTimestep, velocity);
         return true;
     }
 

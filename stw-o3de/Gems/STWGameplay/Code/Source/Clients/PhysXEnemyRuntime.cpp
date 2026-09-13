@@ -73,7 +73,7 @@ namespace STWGameplay
             return false;
         }
         Physics::CharacterRequestBus::Event(
-            m_enemyEntity->GetId(), &Physics::CharacterRequests::AddVelocityForTick, velocity);
+            m_enemyEntity->GetId(), &Physics::CharacterRequests::AddVelocityForPhysicsTimestep, velocity);
         return true;
     }
 

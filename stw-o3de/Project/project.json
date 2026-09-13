@@ -1,0 +1,43 @@
+{
+    "project_name": "STW",
+    "version": "1.0.0",
+    "project_id": "{9803CBCC-977A-46CB-BEBB-3A5352EE3F9E}",
+    "origin": "The primary repo for STW goes here: i.e. http://www.mydomain.com",
+    "license": "Apache-2.0 OR MIT",
+    "display_name": "STW",
+    "summary": "STW production gameplay project",
+    "canonical_tags": ["Project"],
+    "user_tags": ["STW"],
+    "icon_path": "preview.png",
+    "engine": "o3de",
+    "external_subdirectories": [
+        "../Gems/STWGameplay"
+    ],
+    "restricted": "STW",
+    "gem_names": [
+        "Atom",
+        "AudioSystem",
+        "CameraFramework",
+        "DebugDraw",
+        "DiffuseProbeGrid",
+        "EMotionFX",
+        "EditorPythonBindings",
+        "GameState",
+        "ImGui",
+        "LandscapeCanvas",
+        "LyShine",
+        "MiniAudio",
+        "PhysX5",
+        "PrefabBuilder",
+        "PrimitiveAssets",
+        "RemoteTools",
+        "SaveData",
+        "ScriptCanvasPhysics",
+        "ScriptEvents",
+        "StartingPointInput",
+        "TextureAtlas",
+        "WhiteBox",
+        "Multiplayer",
+        "STWGameplay"
+    ]
+}
