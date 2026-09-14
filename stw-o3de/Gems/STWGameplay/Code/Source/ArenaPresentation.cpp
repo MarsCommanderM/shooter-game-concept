@@ -32,27 +32,57 @@ namespace STWGameplay
             const char* m_materialPath;
         };
 
+        // One mesh per material family: the mesh feature processor binds a single
+        // material per handle through the default custom-material slot, so material
+        // separation is expressed by splitting the geometry, not by model slots.
+        // Paths must stay lowercase - DiscoverAssets lowercase-compares them against
+        // the asset catalog's relative paths.
         constexpr VisualAssetSpec VisualAssets[ArenaPresentation::VisualAssetCount] =
         {
             {
-                "arena_base",
-                "assets/environment/stw_arena_01/stw_arena_01.obj.azmodel",
+                "arena_deck",
+                "assets/environment/stw_arena_01/stw_arena_deck_01.obj.azmodel",
                 "assets/environment/stw_arena_01/stw_arena_01.azmaterial"
             },
             {
-                "arena_trim",
-                "assets/environment/stw_arena_01/stw_arena_trim_01.obj.azmodel",
-                "assets/environment/stw_arena_01/stw_arena_trim_01.azmaterial"
+                "arena_wall",
+                "assets/environment/stw_arena_01/stw_arena_wall_01.obj.azmodel",
+                "assets/environment/stw_arena_01/stw_arena_wallpanel_01.azmaterial"
             },
             {
-                "arena_landmark",
-                "assets/environment/stw_arena_01/stw_arena_landmark_01.obj.azmodel",
-                "assets/environment/stw_arena_01/stw_arena_landmark_01.azmaterial"
+                "arena_struct",
+                "assets/environment/stw_arena_01/stw_arena_struct_01.obj.azmodel",
+                "assets/environment/stw_arena_01/stw_arena_struct_01.azmaterial"
             },
             {
                 "arena_cover",
-                "assets/environment/stw_arena_01/stw_arena_cover_01.obj.azmodel",
+                "assets/environment/stw_arena_01/stw_arena_covermod_01.obj.azmodel",
                 "assets/environment/stw_arena_01/stw_arena_cover_01.azmaterial"
+            },
+            {
+                "arena_arch",
+                "assets/environment/stw_arena_01/stw_arena_arch_01.obj.azmodel",
+                "assets/environment/stw_arena_01/stw_arena_struct_01.azmaterial"
+            },
+            {
+                "arena_landmark",
+                "assets/environment/stw_arena_01/stw_arena_beacon_01.obj.azmodel",
+                "assets/environment/stw_arena_01/stw_arena_landmark_01.azmaterial"
+            },
+            {
+                "arena_trim",
+                "assets/environment/stw_arena_01/stw_arena_trimkit_01.obj.azmodel",
+                "assets/environment/stw_arena_01/stw_arena_trim_01.azmaterial"
+            },
+            {
+                "arena_props",
+                "assets/environment/stw_arena_01/stw_arena_prop_01.obj.azmodel",
+                "assets/environment/stw_arena_01/stw_arena_prop_01.azmaterial"
+            },
+            {
+                "arena_markings",
+                "assets/environment/stw_arena_01/stw_arena_mark_01.obj.azmodel",
+                "assets/environment/stw_arena_01/stw_arena_mark_01.azmaterial"
             }
         };
 
@@ -213,8 +243,10 @@ namespace STWGameplay
 
         IsolateDefaultLevelScaffold();
 
-        if (!m_assetsDiscovered)
+        if (!m_assetsDiscovered
+            && (m_discoveryAttempts == 0 || ++m_updatesSinceDiscoveryAttempt >= DiscoveryRetryUpdates))
         {
+            m_updatesSinceDiscoveryAttempt = 0;
             DiscoverAssets();
         }
 
@@ -421,10 +453,6 @@ namespace STWGameplay
                     cameraConfiguration.m_farClipDistance);
                 frustumIntersects = AZ::ShapeIntersection::Overlaps(AZ::Frustum(attributes), worldBounds);
                 frustumKnown = true;
-                AZ_Printf("STWGameplay", "STW_ARENA_VISIBILITY_STEP id=%s step=CAMERA_SPACE_MATH\n", visualId);
-                cameraRelation = CalculateCameraSpaceRelation(
-                    worldBounds, cameraTransform.GetTranslation(), cameraRight, cameraForward, cameraUp);
-                cameraRelationKnown = cameraRelation.m_valid;
             }
         }
 
@@ -578,6 +606,9 @@ namespace STWGameplay
         m_directionalLightFeatureProcessor = nullptr;
         m_directionalLightHandle = {};
         m_assetsDiscovered = false;
+        m_discoveryAttempts = 0;
+        m_updatesSinceDiscoveryAttempt = 0;
+        m_reportedUnresolvedMask = 0xFFFFFFFFu;
         m_environmentLightInitialized = false;
         m_initialized = false;
         m_defaultLevelGroundHidden = false;
@@ -623,11 +654,45 @@ namespace STWGameplay
         return IsGeometryReady() && IsMaterialSetReady() && IsEnvironmentPresentationReady();
     }
 
+    uint32_t ArenaPresentation::ComputeUnresolvedMask(
+        const AZStd::array<bool, VisualAssetCount>& modelFound,
+        const AZStd::array<bool, VisualAssetCount>& materialFound,
+        const AZStd::array<bool, VisualAssetCount>& modelIdValid,
+        const AZStd::array<bool, VisualAssetCount>& materialIdValid,
+        const AZStd::array<bool, VisualAssetCount>& alreadyDiscovered)
+    {
+        uint32_t unresolved = 0;
+        for (size_t index = 0; index < VisualAssetCount; ++index)
+        {
+            // Exactly the criterion UpdateAsset() needs to acquire a mesh: the
+            // catalog produced BOTH identities and BOTH of them are valid.
+            // A path match with an invalid AssetId is not a resolved entry.
+            const bool modelResolved = modelFound[index] && modelIdValid[index];
+            const bool materialResolved = materialFound[index] && materialIdValid[index];
+            if (alreadyDiscovered[index] || (modelResolved && materialResolved))
+            {
+                continue;
+            }
+            unresolved |= (1u << index);
+        }
+        return unresolved;
+    }
+
     void ArenaPresentation::DiscoverAssets()
     {
-        m_assetsDiscovered = true;
+        // Discovery stays open until every visual asset resolves. Marking it
+        // complete on the first pass - as this did before Block 26E-R1 - made an
+        // early catalog miss permanent and silent: the affected mesh was never
+        // acquired, IsGeometryReady() never returned true, and nothing said why.
+        ++m_discoveryAttempts;
+
         AZStd::array<bool, VisualAssetCount> modelFound{};
         AZStd::array<bool, VisualAssetCount> materialFound{};
+        AZStd::array<bool, VisualAssetCount> alreadyDiscovered{};
+        for (size_t index = 0; index < VisualAssetCount; ++index)
+        {
+            alreadyDiscovered[index] = m_assets[index].m_discovered;
+        }
 
         AZ::Data::AssetCatalogRequestBus::Broadcast(
             &AZ::Data::AssetCatalogRequests::EnumerateAssets,
@@ -637,6 +702,12 @@ namespace STWGameplay
                 const AZStd::string lowercasePath = LowercaseAssetPath(info.m_relativePath);
                 for (size_t index = 0; index < VisualAssetCount; ++index)
                 {
+                    // Leave an already-resolved entry untouched so a retry never
+                    // reassigns ids the mesh handle was acquired from.
+                    if (m_assets[index].m_discovered)
+                    {
+                        continue;
+                    }
                     if (lowercasePath == VisualAssets[index].m_modelPath)
                     {
                         modelFound[index] = true;
@@ -652,10 +723,25 @@ namespace STWGameplay
             },
             []() {});
 
+        // Identity validity is captured alongside the path hits so the
+        // termination signal below is computed from the same facts the
+        // per-entry acquisition uses, not from the weaker path-found flags.
+        AZStd::array<bool, VisualAssetCount> modelIdValid{};
+        AZStd::array<bool, VisualAssetCount> materialIdValid{};
         for (size_t index = 0; index < VisualAssetCount; ++index)
         {
+            modelIdValid[index] = m_assets[index].m_modelAssetId.IsValid();
+            materialIdValid[index] = m_assets[index].m_materialAssetId.IsValid();
+        }
+
+        for (size_t index = 0; index < VisualAssetCount; ++index)
+        {
+            if (m_assets[index].m_discovered)
+            {
+                continue;
+            }
             m_assets[index].m_discovered = modelFound[index] && materialFound[index]
-                && m_assets[index].m_modelAssetId.IsValid() && m_assets[index].m_materialAssetId.IsValid();
+                && modelIdValid[index] && materialIdValid[index];
             if (m_assets[index].m_discovered)
             {
                 m_assets[index].m_materialAsset = AZ::Data::Asset<AZ::RPI::MaterialAsset>(
@@ -664,6 +750,64 @@ namespace STWGameplay
                     VisualAssets[index].m_materialPath);
                 m_assets[index].m_materialAsset.QueueLoad();
             }
+        }
+
+        const uint32_t unresolved = ComputeUnresolvedMask(
+            modelFound, materialFound, modelIdValid, materialIdValid, alreadyDiscovered);
+        // Discovery only stops when every entry is usable, so an entry whose
+        // path matched but whose identity is invalid keeps m_assetsDiscovered
+        // false and Update() keeps re-running DiscoverAssets() on its cadence.
+        m_assetsDiscovered = unresolved == 0;
+        ReportDiscoveryState(unresolved, modelFound, materialFound);
+    }
+
+    void ArenaPresentation::ReportDiscoveryState(
+        uint32_t unresolvedMask,
+        const AZStd::array<bool, VisualAssetCount>& modelFound,
+        const AZStd::array<bool, VisualAssetCount>& materialFound)
+    {
+        // One line per state transition, not per Update(). The mask only ever
+        // loses bits, so this is bounded by VisualAssetCount + 1 reports.
+        if (unresolvedMask == m_reportedUnresolvedMask)
+        {
+            return;
+        }
+        m_reportedUnresolvedMask = unresolvedMask;
+
+        if (unresolvedMask == 0)
+        {
+            AZ_Printf(
+                "STWGameplay",
+                "STW_ARENA_ASSET_DISCOVERY=COMPLETE resolved=%zu/%zu attempts=%u\n",
+                VisualAssetCount, VisualAssetCount, m_discoveryAttempts);
+            return;
+        }
+
+        size_t resolvedCount = 0;
+        for (size_t index = 0; index < VisualAssetCount; ++index)
+        {
+            if ((unresolvedMask & (1u << index)) == 0)
+            {
+                ++resolvedCount;
+            }
+        }
+        AZ_Printf(
+            "STWGameplay",
+            "STW_ARENA_ASSET_DISCOVERY=PENDING resolved=%zu/%zu attempts=%u retry_updates=%u\n",
+            resolvedCount, VisualAssetCount, m_discoveryAttempts, DiscoveryRetryUpdates);
+        for (size_t index = 0; index < VisualAssetCount; ++index)
+        {
+            if ((unresolvedMask & (1u << index)) == 0)
+            {
+                continue;
+            }
+            AZ_Printf(
+                "STWGameplay",
+                "STW_ARENA_ASSET_UNRESOLVED id=%s model=%s model_in_catalog=%d "
+                "material=%s material_in_catalog=%d\n",
+                VisualAssets[index].m_id,
+                VisualAssets[index].m_modelPath, modelFound[index] ? 1 : 0,
+                VisualAssets[index].m_materialPath, materialFound[index] ? 1 : 0);
         }
     }
 
