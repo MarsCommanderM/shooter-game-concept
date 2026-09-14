@@ -1,87 +1,40 @@
-# SAVE THE WORLD — Engine- & Architektur-Entscheidung
+# STW canonical engine stack
 
-> **UPDATE 2026-08-11 (2): NOVA IST LIVE.** Production-Pfad = **Rust + wgpu + WGSL** (`nova/`):
-> Milestone 01 komplett ✅ (winit-Fenster, wgpu-Renderer mit PBR+ACES+Shadows, glTF, FPS-Controller,
-> WASM-Check grün) UND der **headless Dedicated Server läuft auf dem Contabo-VPS** (60 Hz, UDP,
-> authoritative, extern verifiziert über Public-IP). Browser-Prototyp = Gameplay-Labor,
-> `stw-engine/` (C++/GL) = Phase-0-Beweis, NOVA = Zukunft PC+Web+Mobile aus einer Codebasis.
+## Authority
 
-> Antwort auf die Frage „WebGL im Browser oder Pixel-Streaming?" und die Stack-Empfehlung (Unity/Unreal + Netcode + Audio + VFX-LOD).
-> Stand: 2026-08-11 · Status: **Entscheidung getroffen, Phase 1 läuft live.**
-
----
-
-## 1. Die Kernentscheidung: WebGL im Browser — kein Pixel-Streaming
-
-| Kriterium | WebGL (Browser) | Pixel-Streaming |
-|---|---|---|
-| Unser Server (Contabo Cloud VPS 8) | ✅ läuft bereits live auf :3000 | ❌ **CPU-only-VPS, keine GPU → unmöglich** |
-| iPhone (Safari, ohne App-Install) | ✅ läuft heute | ⚠️ nur über Umweg |
-| Kosten | ✅ 0 extra | ❌ GPU-Instanz pro Spieler |
-| Skalierung 6v6/10v10 | ✅ Dedicated-WS-Server reicht | ❌ GPU-Kosten explodieren |
-
-**Fazit:** Solange die Infrastruktur kein GPU-Hosting bekommt, ist Browser-WebGL der einzige realistische Pfad — und er ist bereits deployed (`http://169.58.152.88:3000`).
-
----
-
-## 2. Subsystem-Mapping: AAA-Liste → was WIRRWARR schon hat
-
-| AAA-Baustein | WIRRWARR-Status |
+| Layer | Canonical implementation |
 |---|---|
-| Rendering (PBR, Tonemapping, Bloom) | ✅ Three.js: ACES-Tonemapping, UnrealBloomPass, prozedurale Texturen |
-| Himmel/Atmosphäre | ✅ Shader-Sky, Sterne, Planet, Sporen-Partikel, Fog |
-| Schatten (Cascaded-artig) | ✅ PCFSoft-Directional-Shadow auf Qualitätsstufe HIGH |
-| Character Controller | ✅ Slide, Crouch, Prone, Mantle-artige Support-Checks, Bob, Lande-Dip |
-| Waffen-Feel (Recoil/ADS/Sway) | ✅ Recoil-Kick, FOV-Kick, Muzzle-Light, Tracer |
-| Physik/Interaktion | ✅ zerstörbare Wände (Breschen), Biomass-Wuchs, Granaten mit Gravitation |
-| KI | ✅ A*-Pathfinding, Personas (sniper/aggro/rush), adaptive Schwierigkeit, Bosse mit Phasen |
-| Netcode | 🟡 WS-Relay-Server (`server.mjs`) — nächste Stufe: Server-Authoritative (s. §4) |
-| Audio | ✅ **ab heute: HRTF-Spatial-Audio** (PannerNode) für Gegner-Schüsse & Explosionen, prozedurale SFX, Voice-Lines |
-| HUD/UX | ✅ HUD mit Safe-Area-Fix (iOS), Killfeed, Kompass, Streamer-Modus, EN-Toggle |
-| Spectator/Replay | ✅ Replay-Viewer, Killcams, Streak-Cams, Heatmaps |
-| Anti-Cheat | 🟡 Server-authoritative Entscheidungen sind der Plan (s. §4) |
-| Qualitäts-Drehknöpfe (Netz/Grafik/Sim) | ✅ Grafik: LOW/MED/HIGH (Pixel-Ratio, Schatten, Bloom, Partikel-Cap) |
+| Engine | O3DE 26.05.0 |
+| Upstream pin | `3db6943249d8bd7960b9ed7e9aee310b7668586e` |
+| Gameplay | `stw-o3de/Gems/STWGameplay/` |
+| Physics | O3DE PhysX integration |
+| Rendering | O3DE Atom with hardware Vulkan acceptance |
+| Game assets | `stw-o3de/Project/Assets/` |
+| Controlled build host | Lightning self-hosted GitHub Actions runner |
 
----
+The `STWGameplay` Gem declares itself the authoritative native gameplay
+module. Current tracked code contains player and enemy PhysX runtime adapters,
+combat and encounter models, loadout/weapon behavior, presentation systems,
+native skeletal character presentation, audio feedback, arena/environment
+presentation, and a bodycam presentation foundation with deterministic tests.
 
-## 3. Eskalationsstufen (der konkrete Fahrplan)
+## Pending recovery boundary
 
-### Stufe 1 — JETZT: Web-Prototyp als Vertical Slice
-Three.js + Next.js + WebSocket-Server. Alles was hier gebaut wird, ist **Design-Forschung**: Gunplay-Tuning, Maps, Modi, Balance, Feel. Das ist der Teil, der in jeder Engine gleich bleibt.
-→ Läuft live, wird weiter poliert.
+The GitHub baseline captured at
+`6992c8040cd7f427b7f306e08ef0e18841f23c53` does not contain the reported
+weekend multiplayer, native server, and ragdoll implementation. Those features
+must be recovered from Lightning under Issue #5 and verified against their
+exact recovered SHA before this document claims them as integrated.
 
-### Stufe 2 — NÄCHSTER MEILENSTEIN: Unity (URP) + Dedicated Server
-Wenn der Prototyp das Gameplay bewiesen hat: Port nach **Unity URP** (Mobile + WebGL-Export laut Stack-Analyse der pragmatischste Weg).
-- Netcode: **server-authoritativ** + Client-Prediction + Lag-Compensation/Rewind für Projektil-Impacts
-- Hosting: eigener Authoritative-Server (Node bleibt als Relay/Meta-Layer denkbar) oder Photon Fusion mit Host-Migration für kleine Lobbys, Dedicated für 6v6/10v10
-- Audio: FMOD oder Wwise mit Occlusion/Reverb-Zonen (das HRTF-Verhalten aus Stufe 1 ist die Referenz)
-- Matchmaking: skillbasiert über unsere Divisionen (Bronze→Apex)
+## Retired and frozen implementations
 
-### Stufe 3 — OPTIONAL: Unreal (nur bei Native/Konsole)
-Nur falls Zielplattform PC/Konsole mit Maximal-Grafik wird. Web via Unreal ist ohne Streaming nicht realistisch; Streaming scheitert an der GPU-Frage (§1).
+| Path | State | Rule |
+|---|---|---|
+| `nova/` | RETIRED; removed from active tree | Never restore as production |
+| `app/`, `components/`, `server.mjs` | FROZEN web prototype | No native gameplay or server work |
+| `stw-engine/` | FROZEN migration reference | No extension; archive after dependency proof |
+| `unity-starter/` | FROZEN historical starter | No production work |
 
----
-
-## 4. Netcode-Zielbild für 6v6 / 10v10 (aus der Stack-Analyse übernommen)
-
-1. **Server entscheidet alles** (Treffer, Spawns, Objektiv-State) → reduziert Cheat-Fläche.
-2. **Client-Prediction + Reconciliation** fürs Movement (kein Gummi-Feeling).
-3. **Projektile:** Server similiert Impact-Entscheidung mit Rewind (Hitbox-Zustand t-latency), Clients simulieren Trajektorie visuell nach (seed + Korrektur).
-4. **Relevanz-Sets:** pro Client nur Entitäten im Umkreis/POI replizieren → Bandbreite für 10v10.
-5. **Replay-Daten:** Projektil-Verläufe werden serverseitig geloggt (unsere Replay-Engine in Stufe 1 ist die Blaupause).
-6. **Tick-Budget:** Ziel 30–60 Hz Server-Tick, 120+ Hz Client-Loop (Three.js läuft bereits ungedrosselt).
-
----
-
-## 5. Was als Nächstes gebaut wird (Backlog, priorisiert)
-
-- [ ] Server-authoritative Treffer-Validierung in `server.mjs` (Anti-Cheat-Basis)
-- [ ] Bot-Radio-Chatter über Spatial-Audio (Richtungshören von Team-Calls)
-- [ ] Killfeed mit Waffen-Icons
-- [ ] Replay-Kameramodus (frei orbitbar, eSport-Broadcast-Vorbereitung)
-- [ ] Netz-LOD / Relevanz-Sets im Online-Modus
-- [ ] EN-Übersetzung der Story
-
----
-
-*Regel für alle künftigen Features: erst in Stufe 1 beweisen, dass es Spaß macht — dann erst in die Ziel-Engine portieren. Gameplay-Forschung ist Engine-unabhängig.*
+The historical document that described NOVA as production is preserved at
+[`docs/history/ENGINE_STACK_NOVA_2026-08-11.md`](docs/history/ENGINE_STACK_NOVA_2026-08-11.md)
+for provenance only.
