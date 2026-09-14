@@ -1,0 +1,16 @@
+set(FILES
+    Tests/Clients/ArenaLayoutTests.cpp
+    Tests/Clients/ArenaPresentationTests.cpp
+    Tests/Clients/AudioFeedbackPresentationTests.cpp
+    Tests/Clients/CombatFeedbackPresentationTests.cpp
+    Tests/Clients/EncounterModelTests.cpp
+    Tests/Clients/EnemyCombatModelTests.cpp
+    Tests/Clients/MultiEnemyModelTests.cpp
+    Tests/Clients/EnemyAiCombatLoopTests.cpp
+    Tests/Clients/EnemyPresentationTests.cpp
+    Tests/Clients/EnvironmentPresentationTests.cpp
+    Tests/Clients/PlayerSliceModelTests.cpp
+    Tests/Clients/SpawnCheckpointModelTests.cpp
+    Tests/Clients/BodycamCameraPresentationTests.cpp
+    Tests/Clients/STWSkeletalCharacterPresentationTests.cpp
+    Tests/Clients/ViewmodelPresentationTests.cpp)

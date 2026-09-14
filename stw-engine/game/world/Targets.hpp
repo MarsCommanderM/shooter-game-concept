@@ -5,6 +5,9 @@
 
 #include <glm/glm.hpp>
 
+#include <array>
+#include <cmath>
+#include <cstddef>
 #include <optional>
 #include <vector>
 
@@ -80,8 +83,17 @@ class TargetWorld {
 
    private:
     glm::vec3 spawnFor(int i) const {
-        float a = float(i) * 1.256f + 0.7f;
-        return glm::vec3(cosf(a) * 8.f, 1.f, sinf(a) * 8.f - 10.f);
+        static const std::array<glm::vec3, 5> kTrainingLanes{
+            glm::vec3(-6.4f, 1.0f, -14.0f),
+            glm::vec3(-3.2f, 1.0f, -18.0f),
+            glm::vec3(0.0f, 1.0f, -22.0f),
+            glm::vec3(3.2f, 1.0f, -18.0f),
+            glm::vec3(6.4f, 1.0f, -14.0f),
+        };
+        if (i >= 0 && static_cast<std::size_t>(i) < kTrainingLanes.size()) {
+            return kTrainingLanes[static_cast<std::size_t>(i)];
+        }
+        return glm::vec3(0.0f, 1.0f, -22.0f - static_cast<float>(i));
     }
     std::vector<Target> targets_;
     float time_ = 0.f;

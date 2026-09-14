@@ -1,0 +1,44 @@
+STW ASSET PROVENANCE
+====================
+
+Asset name:      STW_SMG_01
+Asset kind:      static first-person presentation mesh (weapon body)
+Origin:          original fictional STW game art
+
+Generation
+----------
+Generated deterministically by:
+
+    tools/assets/create_stw_smg_01.py
+
+The generator, the generated source asset and this provenance record are tracked
+together in this repository. Running the generator again reproduces the tracked
+STW_SMG_01.obj byte for byte: it uses no randomness, no timestamps and no
+locale-dependent formatting.
+
+Source files
+------------
+    STW_SMG_01.obj          geometry, emitted by the generator
+    STW_SMG_01.material     one Atom StandardPBR material, authored as text
+    ASSET_PROVENANCE.txt    this record
+
+Factual statements
+------------------
+- No external model source was used.
+- Nothing was downloaded to produce this asset.
+- No textures are used; the material is text-authored property values only.
+- No commercial, sample or third-party asset was copied, converted or adapted.
+- This is not a replica of any real-world firearm. It is a fictional sci-fi
+  silhouette and deliberately carries no real-world construction, internal
+  mechanism, functional dimensions or manufacturing information.
+- The asset is presentation only. It owns no gameplay state: ammunition, fire
+  acceptance, reload completion, hit detection, damage, player movement and
+  target state all remain with PlayerSliceModel, PhysXPlayerRuntime and
+  ViewmodelPresentation.
+- Geometry is authored at first-person presentation proportions (engine-local
+  visual proportions) and is applied at runtime without rescaling.
+
+This record intentionally makes no claim about copyright registration or any
+other legal status. The commit that introduces this asset is identified in the
+BLOCK 6B report rather than written into this file, because the file is created
+before that commit exists.

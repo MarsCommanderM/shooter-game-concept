@@ -1,0 +1,27 @@
+STW ASSET PROVENANCE
+====================
+
+Asset name:      STW_RIFLE_02
+Asset kind:      static first-person presentation mesh (fictional sci-fi weapon body)
+Origin:          original fictional STW game art
+
+Source files
+------------
+    STW_RIFLE_02.obj          locally authored geometry
+    STW_RIFLE_02.material     one Atom StandardPBR material, authored as text
+    ASSET_PROVENANCE.txt      this record
+
+Factual statements
+------------------
+- The geometry was authored locally in this repository.
+- No external model source was used and nothing was downloaded to produce this asset.
+- No textures are used; the material contains only text-authored StandardPBR values.
+- No commercial, sample or third-party asset was copied, converted or adapted.
+- This is an original fictional sci-fi silhouette, not a replica of any real-world firearm.
+- The asset deliberately contains no real-world construction, internal mechanism, functional
+  dimensions or manufacturing information.
+- The asset is presentation only. It owns no gameplay state: ammunition, fire acceptance,
+  reload completion, hit detection, damage, player movement and target state remain with
+  PlayerSliceModel, PhysXPlayerRuntime and ViewmodelPresentation.
+- The mesh uses the same engine-local first-person presentation convention as STW_SMG_01 and
+  is selected only for the authoritative active weapon slot.

@@ -1,0 +1,10 @@
+STW ASSET PROVENANCE
+====================
+
+Asset name: STW_RIFLE_03
+Asset kind: original fictional sci-fi first-person presentation mesh
+
+This minimal geometry and text-authored Atom StandardPBR material were created
+locally for deterministic slot/category verification. No external assets,
+textures, manufacturer data, or real-world weapon reproduction details are used.
+The mesh owns no gameplay state; PlayerSliceModel owns equipment authority.

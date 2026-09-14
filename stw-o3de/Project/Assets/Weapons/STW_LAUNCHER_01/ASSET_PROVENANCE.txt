@@ -1,0 +1,9 @@
+STW ASSET PROVENANCE
+====================
+
+Asset name: STW_LAUNCHER_01
+Asset kind: original fictional sci-fi first-person presentation mesh
+
+Launcher is explicitly assigned to the Primary slot in PlayerSliceModel. This
+local placeholder uses no external asset, manufacturer data, or real-world
+mechanical detail and owns no gameplay state.
