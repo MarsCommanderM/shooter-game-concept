@@ -1,34 +1,40 @@
+# SAVE THE WORLD (STW)
 
-# shooter-game-concept
+This repository contains the native STW game and historical prototypes.
 
-This is a [Next.js](https://nextjs.org) project bootstrapped with [v0](https://v0.app).
+## Canonical production line
 
-## Built with v0
+- Repository: `MarsCommanderM/shooter-game-concept`
+- Production branch: `brauny/stw-game-production`
+- Native engine: O3DE 26.05.0, pinned in
+  [`stw-o3de/O3DE_VERSION.md`](stw-o3de/O3DE_VERSION.md)
+- Gameplay owner: [`stw-o3de/Gems/STWGameplay/`](stw-o3de/Gems/STWGameplay/)
+- Project source assets: [`stw-o3de/Project/Assets/`](stw-o3de/Project/Assets/)
 
-This repository is linked to a [v0](https://v0.app) project. You can continue developing by visiting the link below -- start new chats to make changes, and v0 will push commits directly to this repo. Every merge to `main` will automatically deploy.
+Run `bash tools/stw-repo-guard.sh start` before changing source. The command
+rejects the wrong repository, stale `main`, an unrelated branch, a stale
+production checkout, or a dirty task start.
 
-[Continue working on v0 →](https://v0.app/chat/projects/prj_wkRD6VwwpXKGpXZoJXs6VK4OZraM)
+## Recovery status
 
-## Getting Started
+The remote baseline captured before repository cleanup is
+`6992c8040cd7f427b7f306e08ef0e18841f23c53`. It contains the native O3DE
+player/combat/presentation foundation, including the bodycam foundation. The
+separate weekend multiplayer/server/ragdoll package is not present in that
+remote tree and must be recovered under
+[Issue #5](https://github.com/MarsCommanderM/shooter-game-concept/issues/5)
+before integration claims are made.
 
-First, run the development server:
+## Legacy boundary
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-```
+NOVA has been removed from the active tree and preserved in
+`archive/stw-pre-cleanup-6992c804`.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The remaining browser/Next.js prototype, legacy Node relay,
+`stw-engine/`, and `unity-starter/` are frozen reference material. They are
+not valid targets for new native gameplay work and will be archived only after
+the recovered package proves that no production dependency remains.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-## Learn More
-
-To learn more, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-- [v0 Documentation](https://v0.app/docs) - learn about v0 and how to use it.
+See [`ENGINE_STACK.md`](ENGINE_STACK.md),
+[`DEPLOY.md`](DEPLOY.md), and
+[`docs/REPOSITORY_CONTRACT.md`](docs/REPOSITORY_CONTRACT.md).

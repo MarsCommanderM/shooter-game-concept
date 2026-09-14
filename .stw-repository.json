@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "repository": {
+    "full_name": "MarsCommanderM/shooter-game-concept",
+    "id": 1296772090
+  },
+  "production_branch": "brauny/stw-game-production",
+  "authoritative_engine": {
+    "name": "O3DE",
+    "release": "26.05.0",
+    "upstream_commit": "3db6943249d8bd7960b9ed7e9aee310b7668586e"
+  },
+  "active_paths": [
+    "stw-o3de/",
+    "stw-o3de/Gems/STWGameplay/",
+    ".github/lightning-t4/",
+    "tools/assets/",
+    "runner.sh"
+  ],
+  "retired_paths": [
+    "nova/"
+  ],
+  "frozen_paths": [
+    "app/",
+    "components/",
+    "server.mjs",
+    "stw-engine/",
+    "unity-starter/"
+  ],
+  "recovery": {
+    "issue": 5,
+    "merge_freeze_pr": 4,
+    "baseline_sha": "6992c8040cd7f427b7f306e08ef0e18841f23c53"
+  }
+}
