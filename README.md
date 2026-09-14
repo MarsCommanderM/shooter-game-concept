@@ -1,34 +1,28 @@
+# STOP — legacy default branch
 
-# shooter-game-concept
+This `main` branch is a quarantined historical landing branch. It is **not**
+the STW production line and must not receive feature work.
 
-This is a [Next.js](https://nextjs.org) project bootstrapped with [v0](https://v0.app).
+## Canonical STW location
 
-## Built with v0
+- Repository: `MarsCommanderM/shooter-game-concept`
+- Production branch: `brauny/stw-game-production`
+- Native engine: O3DE 26.05.0
+- Active game root: `stw-o3de/`
+- Gameplay Gem: `stw-o3de/Gems/STWGameplay/`
 
-This repository is linked to a [v0](https://v0.app) project. You can continue developing by visiting the link below -- start new chats to make changes, and v0 will push commits directly to this repo. Every merge to `main` will automatically deploy.
+NOVA is retired legacy material and must not be restored or treated as
+production. The browser/Next.js prototype is also not the native game target.
 
-[Continue working on v0 →](https://v0.app/chat/projects/prj_wkRD6VwwpXKGpXZoJXs6VK4OZraM)
+## Current recovery gate
 
-## Getting Started
+Weekend multiplayer, native server, bodycam, and ragdoll work must first be
+recovered losslessly from Lightning under
+[Issue #5](https://github.com/MarsCommanderM/shooter-game-concept/issues/5).
 
-First, run the development server:
+The clean O3DE repository boundary is staged in
+[Draft PR #6](https://github.com/MarsCommanderM/shooter-game-concept/pull/6).
+Do not merge it until Issue #5 and every listed verification gate are complete.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-## Learn More
-
-To learn more, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-- [v0 Documentation](https://v0.app/docs) - learn about v0 and how to use it.
+Agents must follow [AGENTS.md](AGENTS.md) and stop when repository identity,
+branch, ancestry, or worktree state is unexpected.
