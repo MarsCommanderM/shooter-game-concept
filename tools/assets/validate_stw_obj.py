@@ -57,6 +57,7 @@ RUNTIME_TABLE = GEM / "Source/ArenaPresentation.cpp"
 RUNTIME_HEADER = GEM / "Include/STWGameplay/ArenaPresentation.h"
 PHYSX_SOURCE = GEM / "Source/Clients/PhysXPlayerRuntime.cpp"
 PHYSX_HEADER = GEM / "Source/Clients/PhysXPlayerRuntime.h"
+ARENA_PHYSX_SOURCE = GEM / "Source/Clients/PhysXArenaRuntime.cpp"
 SLICE_HEADER = GEM / "Include/STWGameplay/PlayerSliceModel.h"
 KIT_GENERATOR = Path(__file__).with_name("generate_stw_arena_kit.py")
 
@@ -91,28 +92,45 @@ def _floats(text):
 
 
 def parse_collision_world():
-    """Derive the gameplay collision world from PhysXPlayerRuntime.
+    """Derive the gameplay collision world from the split PhysX runtimes.
 
     Gameplay owns collision. This validator must never carry its own editable
     copy of the collider list, or the two can drift and the arena would validate
-    against a collision world that no longer exists. The CreateStaticBox calls
-    and the capsule constants are read straight from the pinned source.
+    against a collision world that no longer exists. Arena CreateStaticBox
+    descriptions and the player capsule/movement constants are read straight
+    from their respective pinned sources.
     """
-    if not PHYSX_SOURCE.is_file() or not PHYSX_HEADER.is_file():
+    if (not PHYSX_SOURCE.is_file() or not PHYSX_HEADER.is_file()
+            or not ARENA_PHYSX_SOURCE.is_file()):
         raise AuthoritativeSourceError("PhysXPlayerRuntime sources are not readable")
 
+    arena_source = ARENA_PHYSX_SOURCE.read_text(encoding="utf-8")
+    if not re.search(r'CreateStaticBox\(\s*description\s*\)', arena_source):
+        raise AuthoritativeSourceError(
+            "no CreateStaticBox(description) call found in PhysXArenaRuntime.cpp")
+
+    descriptions = re.search(
+        r'StaticColliderDescriptions\s*=\s*\{\{(.*?)\}\};',
+        arena_source, re.DOTALL)
+    if not descriptions:
+        raise AuthoritativeSourceError(
+            "StaticColliderDescriptions table not found in PhysXArenaRuntime.cpp")
+
     calls = re.findall(
-        r'CreateStaticBox\(\s*"([^"]+)"\s*,\s*AZ::Vector3\(([^)]*)\)\s*,'
-        r'\s*AZ::Vector3\(([^)]*)\)\s*\)',
-        PHYSX_SOURCE.read_text(encoding="utf-8"))
+        r'\{\s*"([^"]+)"\s*,\s*AZ::Vector3\(([^)]*)\)\s*,'
+        r'\s*AZ::Vector3\(([^)]*)\)\s*\}', descriptions.group(1))
     if not calls:
-        raise AuthoritativeSourceError("no CreateStaticBox calls found")
+        raise AuthoritativeSourceError(
+            "no valid CreateStaticBox descriptions found in PhysXArenaRuntime.cpp")
 
     colliders = []
     for name, centre_text, size_text in calls:
         centre, size = _floats(centre_text), _floats(size_text)
-        if len(centre) != 3 or len(size) != 3:
-            raise AuthoritativeSourceError("malformed CreateStaticBox '{0}'".format(name))
+        if (len(centre) != 3 or len(size) != 3
+                or not all(math.isfinite(value) for value in centre + size)
+                or not all(value > 0.0 for value in size)):
+            raise AuthoritativeSourceError(
+                "malformed CreateStaticBox description '{0}'".format(name))
         colliders.append((name,
                           tuple(centre[i] - size[i] * 0.5 for i in range(3)),
                           tuple(centre[i] + size[i] * 0.5 for i in range(3))))
@@ -1549,7 +1567,8 @@ def main():
 
     print("COLLISION_WORLD_SOURCE={0} boxes={1} wall_inner={2:.2f} floor_top={3:.2f} "
           "detail_margin={4:.2f}".format(
-              PHYSX_SOURCE.name, len(COLLIDERS), WALL_INNER, FLOOR_TOP, DETAIL_MARGIN))
+              ARENA_PHYSX_SOURCE.name, len(COLLIDERS), WALL_INNER, FLOOR_TOP,
+              DETAIL_MARGIN))
     print("PLAYER_REACH standing_z={0:.3f} jump_apex={1:.3f} jump_reach_z={2:.3f} "
           "mantle_reach_z={3:.3f} conservative_reach_z={4:.3f} "
           "sources=PhysXPlayerRuntime.h:CapsuleHeight/CapsuleRadius,"
