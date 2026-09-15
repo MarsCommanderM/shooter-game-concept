@@ -1,4 +1,8 @@
 set(FILES
+    ${LY_ROOT_FOLDER}/Gems/Multiplayer/Code/Include/Multiplayer/AutoGen/AutoComponentTypes_Header.jinja
+    ${LY_ROOT_FOLDER}/Gems/Multiplayer/Code/Include/Multiplayer/AutoGen/AutoComponentTypes_Source.jinja
+    ${LY_ROOT_FOLDER}/Gems/Multiplayer/Code/Include/Multiplayer/AutoGen/AutoComponent_Header.jinja
+    ${LY_ROOT_FOLDER}/Gems/Multiplayer/Code/Include/Multiplayer/AutoGen/AutoComponent_Source.jinja
     Source/ArenaLayout.cpp
     Source/ArenaPresentation.cpp
     Source/AudioFeedbackPresentation.cpp
@@ -8,6 +12,8 @@ set(FILES
     Source/EnemyCollectionModel.cpp
     Source/EnemyPresentation.cpp
     Source/EnvironmentPresentation.cpp
+    Source/PlayerMovementModel.cpp
+    Source/WeaponModel.cpp
     Source/PlayerSliceModel.cpp
     Source/SpawnCheckpointModel.cpp
     Source/BodycamCameraPresentation.cpp
@@ -17,7 +23,16 @@ set(FILES
     Source/STWGameplayModuleInterface.h
     Source/Clients/STWGameplaySystemComponent.cpp
     Source/Clients/STWGameplaySystemComponent.h
+    Source/Clients/PhysXArenaRuntime.cpp
+    Source/Clients/PhysXArenaRuntime.h
     Source/Clients/PhysXEnemyRuntime.cpp
     Source/Clients/PhysXEnemyRuntime.h
     Source/Clients/PhysXPlayerRuntime.cpp
-    Source/Clients/PhysXPlayerRuntime.h)
+    Source/Clients/PhysXPlayerRuntime.h
+    Source/Clients/STWNetworkPlayerAuthority.cpp
+    Source/Clients/STWNetworkPlayerAuthority.h
+    Source/Clients/STWMultiplayerRuntime.cpp
+    Source/Clients/STWMultiplayerRuntime.h
+    Source/AutoGen/STWPlayerNetworkComponent.AutoComponent.xml
+    Source/Network/STWPlayerNetworkComponent.cpp
+    Source/Network/STWPlayerNetworkComponent.h)

@@ -3,14 +3,25 @@ set(FILES
     Tests/Clients/ArenaPresentationTests.cpp
     Tests/Clients/AudioFeedbackPresentationTests.cpp
     Tests/Clients/CombatFeedbackPresentationTests.cpp
+    Tests/Clients/CharacterPhysicalStateTests.cpp
     Tests/Clients/EncounterModelTests.cpp
     Tests/Clients/EnemyCombatModelTests.cpp
     Tests/Clients/MultiEnemyModelTests.cpp
     Tests/Clients/EnemyAiCombatLoopTests.cpp
     Tests/Clients/EnemyPresentationTests.cpp
     Tests/Clients/EnvironmentPresentationTests.cpp
+    Tests/Clients/FixedSimulationClockTests.cpp
+    Tests/Clients/PlayerMovementModelTests.cpp
+    Tests/Clients/PlayerCommandHistoryTests.cpp
+    Tests/Clients/PlayerPredictionTests.cpp
+    Tests/Clients/PlayerSimulationBoundaryTests.cpp
+    Tests/Clients/WeaponModelTests.cpp
     Tests/Clients/PlayerSliceModelTests.cpp
     Tests/Clients/SpawnCheckpointModelTests.cpp
+    Tests/Clients/PhysXArenaRuntimeTests.cpp
     Tests/Clients/BodycamCameraPresentationTests.cpp
+    Tests/Clients/PresentationInterpolationTests.cpp
     Tests/Clients/STWSkeletalCharacterPresentationTests.cpp
+    Tests/Clients/STWMultiplayerRuntimeTests.cpp
+    Tests/Clients/STWPlayerNetworkComponentTests.cpp
     Tests/Clients/ViewmodelPresentationTests.cpp)

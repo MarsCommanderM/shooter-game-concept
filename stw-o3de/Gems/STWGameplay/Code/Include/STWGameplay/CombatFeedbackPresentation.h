@@ -24,6 +24,7 @@ namespace STWGameplay
         static constexpr float ImpactPulseScale = 0.12f;
 
         bool Update(float deltaTime, const CombatFeedbackInput& input);
+        void Reset();
 
         bool IsFireFlashVisible() const { return m_fireTimer > 0.0f; }
         bool IsEnemyHitVisible() const { return m_enemyHitTimer > 0.0f; }

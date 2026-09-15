@@ -9,6 +9,8 @@ namespace STWGameplay
     {
         bool IsFiniteViewmodel(float value) { return std::isfinite(value); }
 
+        constexpr float ViewmodelTwoPi = 2.0f * AZ::Constants::Pi;
+
         float ExpBlend(float rate, float deltaTime)
         {
             return 1.0f - std::exp(-rate * deltaTime);
@@ -29,9 +31,29 @@ namespace STWGameplay
         return HipCameraFovDegrees + (AdsCameraFovDegrees - HipCameraFovDegrees) * m_adsBlend;
     }
 
+    void ViewmodelPresentation::ResetToNeutral()
+    {
+        m_state = ViewmodelState::Idle;
+        m_recoilOffset = AZ::Vector3::CreateZero();
+        m_bobOffset = AZ::Vector3::CreateZero();
+        m_swayOffset = AZ::Vector3::CreateZero();
+        m_recoilPitch = 0.0f;
+        m_bobPhase = 0.0f;
+        m_fireCue = 0.0f;
+        m_muzzleFlash = 0.0f;
+        m_hitFeedback = 0.0f;
+        m_adsBlend = 0.0f;
+        m_sprintBlend = 0.0f;
+        m_wasReloading = false;
+        m_activeEquipmentSlot = 0;
+        m_activeEquipmentCategory = 0;
+        m_activeEquipmentProfile = 0;
+    }
+
     bool ViewmodelPresentation::Update(float deltaTime, const PresentationInput& input)
     {
-        if (!IsFiniteViewmodel(deltaTime) || deltaTime < 0.0f)
+        if (!IsFiniteViewmodel(deltaTime) || deltaTime < 0.0f
+            || !IsFiniteViewmodel(input.m_lookX) || !IsFiniteViewmodel(input.m_lookY))
         {
             return false;
         }
@@ -107,8 +129,11 @@ namespace STWGameplay
         {
             const float amplitude = input.m_sprinting ? BobAmplitudeSprint : BobAmplitudeMove;
             const float frequency = input.m_sprinting ? BobFrequencySprint : BobFrequencyMove;
-            m_bobPhase += frequency * deltaTime;
-            m_bobPhase = std::fmod(m_bobPhase, 2.0f * AZ::Constants::Pi);
+            // Reduce the elapsed time before multiplication so a very large finite frame cannot
+            // overflow the phase accumulator and turn the render state into NaN.
+            const float period = ViewmodelTwoPi / frequency;
+            const float phaseDelta = std::fmod(deltaTime, period) * frequency;
+            m_bobPhase = std::fmod(m_bobPhase + phaseDelta, ViewmodelTwoPi);
             const float adsBobScale = 1.0f - m_adsBlend * (1.0f - AdsBobMultiplier);
             targetSway = AZ::Vector3(
                 std::sin(m_bobPhase) * amplitude * adsBobScale,
@@ -122,10 +147,6 @@ namespace STWGameplay
             m_bobOffset = AZ::Vector3::CreateZero();
         }
 
-        if (!IsFiniteViewmodel(input.m_lookX) || !IsFiniteViewmodel(input.m_lookY))
-        {
-            return false;
-        }
         // These immutable identity fields select the already-acquired presentation item. The
         // presentation stores them for rendering and never writes back to the authoritative model.
         m_activeEquipmentSlot = input.m_activeEquipmentSlot;

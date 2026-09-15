@@ -371,6 +371,14 @@ namespace STWGameplay
 
     void STWSkeletalCharacterPresentation::Update(float deltaTime, const EnemyState& gameplayState)
     {
+        PresentationFrameState presentationState;
+        presentationState.m_position = gameplayState.m_position;
+        Update(deltaTime, gameplayState, presentationState);
+    }
+
+    void STWSkeletalCharacterPresentation::Update(
+        float deltaTime, const EnemyState& gameplayState, const PresentationFrameState& presentationState)
+    {
         if (!TryCreatePresentationEntity())
         {
             return;
@@ -416,7 +424,7 @@ namespace STWGameplay
 
         // This is a presentation transform. PhysX remains the source of gameplay position.
         const AZ::Transform presentationTransform = AZ::Transform::CreateTranslation(
-            gameplayState.m_position + AZ::Vector3(0.0f, 0.0f, CharacterOriginOffset));
+            presentationState.m_position + AZ::Vector3(0.0f, 0.0f, CharacterOriginOffset));
         AZ::TransformBus::Event(m_entityId, &AZ::TransformBus::Events::SetWorldTM, presentationTransform);
         SampleRuntimeDiagnostics();
 
@@ -443,9 +451,16 @@ namespace STWGameplay
         }
         m_entity = nullptr;
         m_entityId = AZ::EntityId();
+        m_currentMotionAssetId = AZ::Data::AssetId();
         m_actorInstanceReady = false;
         m_skinnedMeshVisible = false;
         m_motionAssetReady = false;
         m_animationActive = false;
+        m_animationTimeAdvancing = false;
+        m_boneTransformDeltaPositive = false;
+        m_haveAnimationSample = false;
+        m_haveBoneSample = false;
+        m_state = STWSkeletalPresentationState::Uninitialized;
+        m_lastMappedState = STWSkeletalPresentationState::Uninitialized;
     }
 }

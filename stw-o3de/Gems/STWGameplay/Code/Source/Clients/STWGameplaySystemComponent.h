@@ -6,6 +6,12 @@
 #include <AzCore/std/string/string.h>
 #include <AzFramework/Input/Events/InputChannelEventListener.h>
 #include <Atom/Feature/Mesh/MeshFeatureProcessorInterface.h>
+#include <STWGameplay/PlayerSimulationTypes.h>
+#include <STWGameplay/FixedSimulationClock.h>
+#include <STWGameplay/CharacterPhysicalState.h>
+#include <STWGameplay/PlayerCommandHistory.h>
+#include <STWGameplay/PlayerPrediction.h>
+#include <STWGameplay/PresentationInterpolation.h>
 #include <STWGameplay/PlayerSliceModel.h>
 #include <STWGameplay/CombatFeedbackPresentation.h>
 #include <STWGameplay/EncounterModel.h>
@@ -17,8 +23,11 @@
 #include <STWGameplay/EnvironmentPresentation.h>
 #include <STWGameplay/STWSkeletalCharacterPresentation.h>
 #include <STWGameplay/ViewmodelPresentation.h>
+#include "PhysXArenaRuntime.h"
 #include "PhysXPlayerRuntime.h"
 #include "PhysXEnemyRuntime.h"
+#include "STWMultiplayerRuntime.h"
+#include "STWNetworkPlayerAuthority.h"
 
 namespace STWGameplay
 {
@@ -30,6 +39,8 @@ namespace STWGameplay
     public:
         AZ_COMPONENT_DECL(STWGameplaySystemComponent);
 
+        static constexpr size_t MaxNetworkPlayerCount = 8;
+
         static void Reflect(AZ::ReflectContext* context);
         static void GetProvidedServices(AZ::ComponentDescriptor::DependencyArrayType& provided);
         static void GetIncompatibleServices(AZ::ComponentDescriptor::DependencyArrayType& incompatible);
@@ -39,6 +50,46 @@ namespace STWGameplay
         void Activate() override;
         void Deactivate() override;
         void OnTick(float deltaTime, AZ::ScriptTimePoint time) override;
+
+        bool StartMultiplayerHost(uint16_t port, bool isDedicated = true)
+        {
+            return m_multiplayer.StartHosting(port, isDedicated);
+        }
+
+        bool ConnectMultiplayer(const AZStd::string& remoteAddress, uint16_t port)
+        {
+            return m_multiplayer.Connect(remoteAddress, port);
+        }
+
+        STWMultiplayerTransportState GetMultiplayerState() const
+        {
+            return m_multiplayer.GetState();
+        }
+
+        const AuthoritativePlayerSnapshot& GetAuthoritativeSnapshot() const;
+
+        const PlayerCommandHistory& GetPlayerCommandHistory() const;
+
+        //! Evaluates an externally supplied authoritative snapshot and prunes only commands
+        //! explicitly acknowledged by it. This boundary never applies correction or replay.
+        ReconciliationEvaluation ProcessAuthoritativeSnapshot(
+            const AuthoritativePlayerSnapshot& authoritativeSnapshot);
+
+        const ReconciliationEvaluation& GetLastReconciliationEvaluation() const;
+
+        //! Binds one network entity to one independent player authority slot. The first slot
+        //! adapts the existing local authority for compatibility; later slots own their player
+        //! state and physical runtime while sharing the world enemy authority.
+        bool BindNetworkPlayer(AZ::EntityId entityId);
+        void UnbindNetworkPlayer(AZ::EntityId entityId);
+        bool CreateNetworkCommand(AZ::EntityId entityId, PlayerCommand& command);
+        bool SubmitNetworkCommand(AZ::EntityId entityId, const PlayerCommand& command);
+        //! Routes one replicated snapshot from the currently bound network entity to the
+        //! existing pure reconciliation policy. It never applies correction or replay.
+        bool ReceiveNetworkSnapshot(AZ::EntityId entityId, const AuthoritativePlayerSnapshot& snapshot);
+
+        size_t GetNetworkPlayerCount() const;
+        size_t GetNetworkPlayerCommandHistorySize(AZ::EntityId entityId) const;
 
     private:
         bool OnInputChannelEventFiltered(const AzFramework::InputChannel& inputChannel) override;
@@ -52,6 +103,39 @@ namespace STWGameplay
         // Attempts to create the PhysX controller once the O3DE default physics scene exists.
         void TryStartPhysics();
         void ShutdownEnemyPhysics();
+        void SynchronizeSkeletalCharacterPhysicalState();
+        void UpdateEnemyPresentationInterpolation(
+            const AZStd::array<bool, EnemyCollectionModel::MaxEnemyCount>& physicalStateSynchronized);
+        PlayerCommand BuildPlayerCommand(const PlayerInput& input);
+        void TryBeginMantle(
+            PlayerSliceModel& model, PhysXPlayerRuntime& physics, const PlayerInput& input);
+        struct FixedSimulationFrameResult
+        {
+            PlayerCommand m_lastCommand;
+            AZ::Vector3 m_requestedVelocity = AZ::Vector3::CreateZero();
+            bool m_gameplayUpdated = false;
+            bool m_jumpImpulseObserved = false;
+            float m_jumpImpulse = 0.0f;
+            bool m_shotFired = false;
+            bool m_hit = false;
+            EnemyId m_hitEnemyId = InvalidEnemyId;
+            bool m_equipmentUsed = false;
+            bool m_equipmentChanged = false;
+            AZ::u32 m_fixedStepCount = 0;
+        };
+        FixedSimulationFrameResult RunFixedGameplaySteps(float frameDelta);
+        void CaptureAuthoritativeSnapshot(PlayerCommandSequence acknowledgedCommandSequence);
+        void RunAdditionalNetworkPlayerSteps(AZ::u32 stepCount);
+        void CaptureNetworkPlayerSnapshot(STWNetworkPlayerAuthority& authority);
+        void PublishNetworkPlayerSnapshot(
+            AZ::EntityId entityId, const AuthoritativePlayerSnapshot& snapshot);
+        STWNetworkPlayerAuthority* FindNetworkPlayer(AZ::EntityId entityId);
+        const STWNetworkPlayerAuthority* FindNetworkPlayer(AZ::EntityId entityId) const;
+        STWNetworkPlayerAuthority* FindCompositionRootNetworkPlayer();
+        const STWNetworkPlayerAuthority* FindCompositionRootNetworkPlayer() const;
+        STWNetworkPlayerAuthority* FindFirstNetworkPlayer();
+        const STWNetworkPlayerAuthority* FindFirstNetworkPlayer() const;
+        void UnbindAllNetworkPlayers();
         // Attempts to acquire the real Atom viewmodel mesh once the render scene exists.
         void TryStartViewmodelMesh();
         // Drives the Atom mesh from the same first-person basis the presentation computes.
@@ -140,9 +224,31 @@ namespace STWGameplay
         AudioFeedbackPresentation m_audioFeedback;
         EncounterModel m_encounter;
         SpawnCheckpointModel m_spawnCheckpoint;
+        PhysXArenaRuntime m_physicsArena;
         PhysXPlayerRuntime m_physicsPlayer;
+        AZStd::array<STWNetworkPlayerAuthority, MaxNetworkPlayerCount> m_networkPlayerAuthorities;
+        STWMultiplayerRuntime m_multiplayer;
         AZStd::array<PhysXEnemyRuntime, EnemyCollectionModel::MaxEnemyCount> m_enemyPhysicsRuntimes;
+        AZStd::array<PresentationInterpolation, EnemyCollectionModel::MaxEnemyCount>
+            m_enemyPresentationInterpolations;
+        AZStd::array<int, EnemyCollectionModel::MaxEnemyCount> m_enemyPresentationRespawnEvents{};
+        // Composition-root-owned handoff state for the primary EMotionFX character. Native
+        // ragdoll ownership remains unavailable until the character asset supplies a verified
+        // ragdoll configuration and runtime adapter.
+        CharacterPhysicalState m_skeletalCharacterPhysicalState;
+        int m_skeletalCharacterRespawnEvents = 0;
+        FixedSimulationClock m_fixedSimulationClock;
         PlayerInput m_input;
+        float m_pendingLookX = 0.0f;
+        float m_pendingLookY = 0.0f;
+        bool m_pendingReload = false;
+        PlayerCommandHistory m_commandHistory;
+        AuthoritativePlayerSnapshot m_authoritativeSnapshot;
+        PlayerCommandSequence m_nextCommandSequence = InvalidPlayerSimulationSequence;
+        PlayerSnapshotSequence m_nextSnapshotSequence = InvalidPlayerSimulationSequence;
+        PlayerSnapshotSequence m_physicalReadbackSequence = InvalidPlayerSimulationSequence;
+        PlayerSnapshotSequence m_lastAcceptedSnapshotSequence = InvalidPlayerSimulationSequence;
+        ReconciliationEvaluation m_lastReconciliationEvaluation;
         bool m_adsHeld = false;
         AZStd::string m_nativeCapturePath;
         float m_nativeCaptureDelay = 0.0f;

@@ -16,8 +16,6 @@
 #include <PhysX/CharacterGameplayBus.h>
 #include <PhysXCharacters/Components/CharacterControllerComponent.h>
 #include <PhysXCharacters/Components/CharacterGameplayComponent.h>
-#include <Source/BoxColliderComponent.h>
-#include <Source/StaticRigidBodyComponent.h>
 #include <STWGameplay/ArenaLayout.h>
 
 namespace STWGameplay
@@ -50,22 +48,14 @@ namespace STWGameplay
         m_crouched = false;
         m_pendingJumpSpeed = 0.0f;
 
-        // Minimal collision course: floor, perimeter, two covers and a valid step.
-        if (!CreateStaticBox("STW Floor", AZ::Vector3(0.0f, 0.0f, -0.5f), AZ::Vector3(24.0f, 24.0f, 1.0f))
-            || !CreateStaticBox("STW North Wall", AZ::Vector3(0.0f, 12.0f, 2.0f), AZ::Vector3(24.0f, 0.5f, 4.0f))
-            || !CreateStaticBox("STW South Wall", AZ::Vector3(0.0f, -12.0f, 2.0f), AZ::Vector3(24.0f, 0.5f, 4.0f))
-            || !CreateStaticBox("STW East Wall", AZ::Vector3(12.0f, 0.0f, 2.0f), AZ::Vector3(0.5f, 24.0f, 4.0f))
-            || !CreateStaticBox("STW West Wall", AZ::Vector3(-12.0f, 0.0f, 2.0f), AZ::Vector3(0.5f, 24.0f, 4.0f))
-            || !CreateStaticBox("STW Left Cover", AZ::Vector3(-2.25f, 0.0f, 1.25f), AZ::Vector3(1.5f, 2.0f, 2.5f))
-            || !CreateStaticBox("STW Right Cover", AZ::Vector3(2.25f, 0.0f, 1.25f), AZ::Vector3(1.5f, 2.0f, 2.5f))
-            || !CreateStaticBox("STW Step", AZ::Vector3(5.0f, -2.0f, 0.125f), AZ::Vector3(2.0f, 2.0f, 0.25f)))
+        m_playerEntity = AZStd::make_unique<AZ::Entity>("STW PhysX Player");
+        auto* transform = m_playerEntity->CreateComponent<AzFramework::TransformComponent>();
+        if (!transform)
         {
+            AZ_Error("STWGameplay", false, "PhysX Player failed to create its transform component");
             Shutdown();
             return false;
         }
-
-        m_playerEntity = AZStd::make_unique<AZ::Entity>("STW PhysX Player");
-        auto* transform = m_playerEntity->CreateComponent<AzFramework::TransformComponent>();
         transform->SetWorldTM(AZ::Transform::CreateTranslation(ArenaLayout::PlayerSpawn));
 
         auto characterConfiguration = AZStd::make_unique<Physics::CharacterConfiguration>();
@@ -75,13 +65,25 @@ namespace STWGameplay
         characterConfiguration->m_maximumSpeed = MaximumControllerSpeed;
         characterConfiguration->m_applyMoveOnPhysicsTick = true;
         auto capsuleConfiguration = AZStd::make_shared<Physics::CapsuleShapeConfiguration>(CapsuleHeight, CapsuleRadius);
-        m_playerEntity->CreateComponent<PhysX::CharacterControllerComponent>(
+        auto* characterController = m_playerEntity->CreateComponent<PhysX::CharacterControllerComponent>(
             AZStd::move(characterConfiguration), AZStd::move(capsuleConfiguration));
+        if (!characterController)
+        {
+            AZ_Error("STWGameplay", false, "PhysX Player failed to create its character controller component");
+            Shutdown();
+            return false;
+        }
 
         PhysX::CharacterGameplayConfiguration gameplayConfiguration;
         gameplayConfiguration.m_gravityMultiplier = 1.0f;
         gameplayConfiguration.m_groundDetectionBoxHeight = GroundProbeHeight;
-        m_playerEntity->CreateComponent<PhysX::CharacterGameplayComponent>(gameplayConfiguration);
+        auto* characterGameplay = m_playerEntity->CreateComponent<PhysX::CharacterGameplayComponent>(gameplayConfiguration);
+        if (!characterGameplay)
+        {
+            AZ_Error("STWGameplay", false, "PhysX Player failed to create its character gameplay component");
+            Shutdown();
+            return false;
+        }
         m_playerEntity->Init();
         m_playerEntity->Activate();
 
@@ -97,11 +99,6 @@ namespace STWGameplay
     void PhysXPlayerRuntime::Shutdown()
     {
         DeactivateEntity(m_playerEntity);
-        for (auto iterator = m_environmentEntities.rbegin(); iterator != m_environmentEntities.rend(); ++iterator)
-        {
-            DeactivateEntity(*iterator);
-        }
-        m_environmentEntities.clear();
         m_crouched = false;
         m_pendingJumpSpeed = 0.0f;
     }
@@ -114,13 +111,13 @@ namespace STWGameplay
         }
         if (velocity.GetZ() > 0.0f)
         {
-            // AddVelocityForTick provides the collision-resolved takeoff step. Once PhysX
-            // reports that step made the controller airborne, Synchronize seeds the existing
-            // CharacterGameplayComponent falling velocity so gravity owns the remaining arc.
+            // AddVelocityForPhysicsTimestep provides the collision-resolved takeoff step. Once
+            // PhysX reports that step made the controller airborne, Synchronize seeds the
+            // existing CharacterGameplayComponent falling velocity so gravity owns the arc.
             m_pendingJumpSpeed = velocity.GetZ();
         }
         Physics::CharacterRequestBus::Event(
-            m_playerEntity->GetId(), &Physics::CharacterRequests::AddVelocityForTick, velocity);
+            m_playerEntity->GetId(), &Physics::CharacterRequests::AddVelocityForPhysicsTimestep, velocity);
         return true;
     }
 
@@ -333,25 +330,4 @@ namespace STWGameplay
         return present;
     }
 
-    bool PhysXPlayerRuntime::CreateStaticBox(
-        const char* name, const AZ::Vector3& center, const AZ::Vector3& dimensions)
-    {
-        if (!center.IsFinite() || !dimensions.IsFinite() || dimensions.GetMinElement() <= 0.0f)
-        {
-            return false;
-        }
-        auto entity = AZStd::make_unique<AZ::Entity>(name);
-        auto* transform = entity->CreateComponent<AzFramework::TransformComponent>();
-        transform->SetWorldTM(AZ::Transform::CreateTranslation(center));
-
-        auto* collider = entity->CreateComponent<PhysX::BoxColliderComponent>();
-        collider->SetShapeConfigurationList({ AZStd::make_pair(
-            AZStd::make_shared<Physics::ColliderConfiguration>(),
-            AZStd::make_shared<Physics::BoxShapeConfiguration>(dimensions)) });
-        entity->CreateComponent<PhysX::StaticRigidBodyComponent>();
-        entity->Init();
-        entity->Activate();
-        m_environmentEntities.push_back(AZStd::move(entity));
-        return true;
-    }
 }

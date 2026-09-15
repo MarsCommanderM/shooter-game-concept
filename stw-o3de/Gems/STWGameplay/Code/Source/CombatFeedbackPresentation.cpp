@@ -5,6 +5,14 @@
 
 namespace STWGameplay
 {
+    void CombatFeedbackPresentation::Reset()
+    {
+        m_fireTimer = 0.0f;
+        m_enemyHitTimer = 0.0f;
+        m_impactTimer = 0.0f;
+        m_impactPosition = AZ::Vector3::CreateZero();
+    }
+
     bool CombatFeedbackPresentation::Update(float deltaTime, const CombatFeedbackInput& input)
     {
         if (!std::isfinite(deltaTime) || deltaTime < 0.0f

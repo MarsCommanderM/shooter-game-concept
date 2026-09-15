@@ -79,6 +79,10 @@ namespace STWGameplay
         //! an invalid delta (transactional), matching PlayerSliceModel's contract.
         bool Update(float deltaTime, const PresentationInput& input);
 
+        //! Clears transient visual state for a presentation lifecycle restart without touching
+        //! gameplay-owned equipment or event identity counters.
+        void ResetToNeutral();
+
         ViewmodelState GetState() const { return m_state; }
         const AZ::Vector3& GetRecoilOffset() const { return m_recoilOffset; }
         float GetRecoilPitch() const { return m_recoilPitch; }
