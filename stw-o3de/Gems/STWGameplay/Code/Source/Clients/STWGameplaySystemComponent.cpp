@@ -3469,18 +3469,25 @@ namespace STWGameplay
                 m_multiEnemyRearmObserved ? 1 : 0);
             AZ_Printf("STWGameplay", "MULTI_ENEMY_POST_REARM_ACTIVE=%d\n",
                 m_multiEnemyPostRearmActive ? 1 : 0);
-            AZ_Printf("STWGameplay", "PLAYER_AUTHORITY=PASS\n");
-            AZ_Printf("STWGameplay", "PLAYER_PHYSICAL_AUTHORITY=PASS\n");
-            AZ_Printf("STWGameplay", "ENEMY_COMBAT_AUTHORITY=PASS\n");
-            AZ_Printf("STWGameplay", "ENEMY_PHYSICAL_AUTHORITY=PASS\n");
-            AZ_Printf("STWGameplay", "ENCOUNTER_AUTHORITY=PASS\n");
+            // These five markers previously printed a hardcoded "PASS" with no backing check —
+            // this single-process composition-root path has no network-authority awareness at
+            // all (unlike Network/STWPlayerNetworkComponent.cpp, which does gate real work behind
+            // IsNetEntityRoleAuthority()/HasController()). Claiming authority separation was
+            // verified here was false. Print an honest, explicitly-unverified label instead of a
+            // fabricated pass until real cross-process authority gating is implemented for this
+            // path and a client+server gate run can actually exercise it.
+            AZ_Printf("STWGameplay", "PLAYER_AUTHORITY=NOT_VERIFIED_SINGLE_PROCESS_ONLY\n");
+            AZ_Printf("STWGameplay", "PLAYER_PHYSICAL_AUTHORITY=NOT_VERIFIED_SINGLE_PROCESS_ONLY\n");
+            AZ_Printf("STWGameplay", "ENEMY_COMBAT_AUTHORITY=NOT_VERIFIED_SINGLE_PROCESS_ONLY\n");
+            AZ_Printf("STWGameplay", "ENEMY_PHYSICAL_AUTHORITY=NOT_VERIFIED_SINGLE_PROCESS_ONLY\n");
+            AZ_Printf("STWGameplay", "ENCOUNTER_AUTHORITY=NOT_VERIFIED_SINGLE_PROCESS_ONLY\n");
             AZ_Printf("STWGameplay",
                 "MULTI_ENEMY_ACCEPTANCE result=PASS count=%zu ids=unique active=3 "
                 "independent_health=PASS independent_ai=PASS independent_physical=PASS "
                 "first_elimination=1 active_after_first=1 second_elimination=1 active_after_second=1 "
                 "third_elimination=1 completed_after_required_set=1 duplicate_completion_blocked=1 "
-                "rearm=1 post_rearm_active=1 player_authority=PASS player_physical_authority=PASS "
-                "enemy_combat_authority=PASS enemy_physical_authority=PASS encounter_authority=PASS\n",
+                "rearm=1 post_rearm_active=1 player_authority=NOT_VERIFIED player_physical_authority=NOT_VERIFIED "
+                "enemy_combat_authority=NOT_VERIFIED enemy_physical_authority=NOT_VERIFIED encounter_authority=NOT_VERIFIED\n",
                 enemies.GetEnemyCount());
             m_multiEnemyAcceptanceReported = true;
         }

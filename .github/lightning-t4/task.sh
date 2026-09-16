@@ -964,12 +964,17 @@ runtime_grep -q 'ENCOUNTER_COMPLETED_AFTER_REQUIRED_SET=1'
 runtime_grep -q 'DUPLICATE_COMPLETION_BLOCKED=1'
 runtime_grep -q 'MULTI_ENEMY_REARM_OBSERVED=1'
 runtime_grep -q 'MULTI_ENEMY_POST_REARM_ACTIVE=1'
-runtime_grep -q 'PLAYER_AUTHORITY=PASS'
-runtime_grep -q 'PLAYER_PHYSICAL_AUTHORITY=PASS'
-runtime_grep -q 'ENEMY_COMBAT_AUTHORITY=PASS'
-runtime_grep -q 'ENEMY_PHYSICAL_AUTHORITY=PASS'
-runtime_grep -q 'ENCOUNTER_AUTHORITY=PASS'
-runtime_grep -Eq 'MULTI_ENEMY_ACCEPTANCE result=PASS count=3 ids=unique active=3 independent_health=PASS independent_ai=PASS independent_physical=PASS first_elimination=1 active_after_first=1 second_elimination=1 active_after_second=1 third_elimination=1 completed_after_required_set=1 duplicate_completion_blocked=1 rearm=1 post_rearm_active=1 player_authority=PASS player_physical_authority=PASS enemy_combat_authority=PASS enemy_physical_authority=PASS encounter_authority=PASS'
+# These five markers are intentionally NOT required to say PASS: the single-process
+# composition-root path they come from has no real cross-process authority gating (see
+# STWGameplaySystemComponent.cpp). They previously printed a hardcoded, unbacked "PASS" claim;
+# fixed to honestly print NOT_VERIFIED_SINGLE_PROCESS_ONLY instead. Still require them to be
+# present, which proves this code path actually ran, without asserting a false pass.
+runtime_grep -q 'PLAYER_AUTHORITY=NOT_VERIFIED_SINGLE_PROCESS_ONLY'
+runtime_grep -q 'PLAYER_PHYSICAL_AUTHORITY=NOT_VERIFIED_SINGLE_PROCESS_ONLY'
+runtime_grep -q 'ENEMY_COMBAT_AUTHORITY=NOT_VERIFIED_SINGLE_PROCESS_ONLY'
+runtime_grep -q 'ENEMY_PHYSICAL_AUTHORITY=NOT_VERIFIED_SINGLE_PROCESS_ONLY'
+runtime_grep -q 'ENCOUNTER_AUTHORITY=NOT_VERIFIED_SINGLE_PROCESS_ONLY'
+runtime_grep -Eq 'MULTI_ENEMY_ACCEPTANCE result=PASS count=3 ids=unique active=3 independent_health=PASS independent_ai=PASS independent_physical=PASS first_elimination=1 active_after_first=1 second_elimination=1 active_after_second=1 third_elimination=1 completed_after_required_set=1 duplicate_completion_blocked=1 rearm=1 post_rearm_active=1 player_authority=NOT_VERIFIED player_physical_authority=NOT_VERIFIED enemy_combat_authority=NOT_VERIFIED enemy_physical_authority=NOT_VERIFIED encounter_authority=NOT_VERIFIED'
 runtime_grep -q 'ATOM_ARENA result=PASS .*mesh=ready material=bound lighting=native_environment'
 runtime_grep -q 'ARENA_ACCEPTANCE result=PASS player_spawn=PASS enemy_spawn=PASS bounds=PASS lighting=PASS combat_lane=PASS native_scene=PASS'
 runtime_grep -q 'ARENA_PRESENTATION_ACTIVE=1'
