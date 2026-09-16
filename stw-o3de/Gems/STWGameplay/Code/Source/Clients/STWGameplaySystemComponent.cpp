@@ -435,6 +435,21 @@ namespace STWGameplay
         AZ_Printf("STWGameplay", "Native Player Movement V2 PhysX active\n");
     }
 
+    void STWGameplaySystemComponent::ResetPhysicsAfterSceneLoss()
+    {
+        // The O3DE default world removes the active scene while a root spawnable is replaced.
+        // Keep gameplay/network authority bound, but release every runtime object that was
+        // attached to the old scene so TryStartPhysics can recreate them against the new one.
+        for (STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
+        {
+            authority.ShutdownPhysics();
+        }
+        ShutdownEnemyPhysics();
+        m_physicsPlayer.Shutdown();
+        m_physicsArena.Shutdown();
+        m_physicsStartup = PhysicsStartup::Waiting;
+    }
+
     void STWGameplaySystemComponent::ShutdownEnemyPhysics()
     {
         for (PhysXEnemyRuntime& runtime : m_enemyPhysicsRuntimes)
@@ -851,6 +866,10 @@ namespace STWGameplay
 
     void STWGameplaySystemComponent::OnTick(float deltaTime, AZ::ScriptTimePoint)
     {
+        if (m_physicsStartup == PhysicsStartup::Ready && !m_physicsPlayer.IsValid())
+        {
+            ResetPhysicsAfterSceneLoss();
+        }
         if (m_physicsStartup != PhysicsStartup::Ready)
         {
             if (m_physicsStartup == PhysicsStartup::Waiting)

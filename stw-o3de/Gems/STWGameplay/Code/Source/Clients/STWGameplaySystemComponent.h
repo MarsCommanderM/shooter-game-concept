@@ -102,6 +102,8 @@ namespace STWGameplay
         void UpdateSwayAcceptanceMarkers();
         // Attempts to create the PhysX controller once the O3DE default physics scene exists.
         void TryStartPhysics();
+        // Re-enters the existing startup path after O3DE replaces the default physics scene.
+        void ResetPhysicsAfterSceneLoss();
         void ShutdownEnemyPhysics();
         void SynchronizeSkeletalCharacterPhysicalState();
         void UpdateEnemyPresentationInterpolation(
