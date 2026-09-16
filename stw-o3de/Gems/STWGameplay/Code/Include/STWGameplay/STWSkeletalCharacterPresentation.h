@@ -111,6 +111,7 @@ namespace STWGameplay
         bool m_meshFeatureProcessorAvailable = false;
         bool m_haveAnimationSample = false;
         bool m_haveBoneSample = false;
+        bool m_boneSampleReseedPending = false;
         float m_animationTime = 0.0f;
         float m_previousAnimationTime = 0.0f;
         AZ::Quaternion m_previousBoneRotation = AZ::Quaternion::CreateIdentity();

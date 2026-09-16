@@ -235,6 +235,7 @@ namespace STWGameplay
         m_motionAssetReady = false;
         m_haveAnimationSample = false;
         m_haveBoneSample = false;
+        m_boneSampleReseedPending = true;
     }
 
     void STWSkeletalCharacterPresentation::SampleRuntimeDiagnostics()
@@ -295,6 +296,18 @@ namespace STWGameplay
 
         if (m_probeJointIndex != EMotionFX::Integration::ActorComponentRequests::s_invalidJointIndex)
         {
+            // A motion reseed (SelectMotion) resets m_haveBoneSample this same tick, but EMotionFX
+            // has not yet run its Update/Output pass for the newly started motion, so the probed
+            // joint's parent model-space transform is still stale. Converting that stale transform
+            // to local space triggers Matrix3x4::GetInverseFull on a degenerate (zero-determinant)
+            // matrix. Skip the probe for exactly one tick and let the first real sample land once
+            // EMotionFX has produced a pose for the new motion.
+            if (m_boneSampleReseedPending)
+            {
+                m_boneSampleReseedPending = false;
+                return;
+            }
+
             AZ::Transform currentBoneTransform;
             EMotionFX::Integration::ActorComponentRequestBus::EventResult(
                 currentBoneTransform, m_entityId,
