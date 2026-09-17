@@ -560,7 +560,8 @@
                     "Id": 3788403282205402021,
                     "Controller": {
                         "Configuration": {
-                            "ExposureControlType": 1
+                            "ExposureControlType": 0,
+                            "ManualCompensation": -1.0
                         }
                     }
                 }
