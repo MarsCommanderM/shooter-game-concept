@@ -264,6 +264,12 @@ namespace STWGameplay
         AZStd::string m_nativeCapturePath;
         float m_nativeCaptureDelay = 0.0f;
         bool m_nativeCaptureAttempted = false;
+        // Opt-in, off by default (unset in production and in the standard task.sh gate):
+        // periodic re-capture into indexed sibling files, for building a real gameplay
+        // frame sequence instead of one still frame.
+        float m_nativeCaptureIntervalSeconds = 0.0f;
+        int m_nativeCaptureMaxFrames = 0;
+        int m_nativeCaptureFrameIndex = 0;
         AZStd::array<float, 2048> m_frameSamples{};
         size_t m_frameSampleCount = 0;
         float m_performanceDuration = 0.0f;

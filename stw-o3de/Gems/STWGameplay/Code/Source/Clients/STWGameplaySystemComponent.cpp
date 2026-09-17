@@ -153,6 +153,9 @@ namespace STWGameplay
         m_nativeCapturePath.clear();
         m_nativeCaptureDelay = 0.0f;
         m_nativeCaptureAttempted = false;
+        m_nativeCaptureIntervalSeconds = 0.0f;
+        m_nativeCaptureMaxFrames = 0;
+        m_nativeCaptureFrameIndex = 0;
         m_bodycamCameraPresentation.ResetToNeutral();
         m_viewmodel.ResetToNeutral();
         m_combatFeedback.Reset();
@@ -180,6 +183,17 @@ namespace STWGameplay
         if (const char* capturePath = std::getenv("STW_NATIVE_CAPTURE_PATH"); capturePath && capturePath[0] != '\0')
         {
             m_nativeCapturePath = capturePath;
+        }
+        // Opt-in evidence-recording mode: unset by production and by the standard task.sh
+        // gate, so their single-shot capture behavior is unchanged. When set, requests a
+        // sequence of numbered frames instead of one, for assembling a real gameplay clip.
+        if (const char* captureInterval = std::getenv("STW_NATIVE_CAPTURE_INTERVAL"); captureInterval && captureInterval[0] != '\0')
+        {
+            m_nativeCaptureIntervalSeconds = static_cast<float>(std::atof(captureInterval));
+        }
+        if (const char* captureMaxFrames = std::getenv("STW_NATIVE_CAPTURE_MAX_FRAMES"); captureMaxFrames && captureMaxFrames[0] != '\0')
+        {
+            m_nativeCaptureMaxFrames = std::atoi(captureMaxFrames);
         }
         m_automatedAcceptance = std::getenv("STW_PHYSX_ACCEPTANCE") != nullptr;
         m_enemyPresentationIdleObserved = m_enemyPresentations[0].GetState() == EnemyBehaviorState::Idle;
@@ -221,6 +235,9 @@ namespace STWGameplay
         m_nativeCapturePath.clear();
         m_nativeCaptureDelay = 0.0f;
         m_nativeCaptureAttempted = false;
+        m_nativeCaptureIntervalSeconds = 0.0f;
+        m_nativeCaptureMaxFrames = 0;
+        m_nativeCaptureFrameIndex = 0;
         if (AZ::Interface<STWGameplaySystemComponent>::Get() == this)
         {
             AZ::Interface<STWGameplaySystemComponent>::Unregister(this);
@@ -1355,11 +1372,21 @@ namespace STWGameplay
         // Production runs do not set STW_NATIVE_CAPTURE_PATH. The controlled
         // native verification job uses it to request one genuine Atom/RHI
         // readback after the scene and presentation have had time to render.
-        if (!m_nativeCapturePath.empty() && !m_nativeCaptureAttempted)
+        // When STW_NATIVE_CAPTURE_INTERVAL is also set (opt-in evidence-recording
+        // mode, unused by production and by the standard task.sh gate), the same
+        // request is repeated on that cadence into indexed sibling files instead
+        // of once, so the captures can be assembled into a real gameplay clip.
+        const bool sequenceMode = m_nativeCaptureIntervalSeconds > 0.0f;
+        const bool captureDue = sequenceMode
+            ? (m_nativeCaptureMaxFrames <= 0 || m_nativeCaptureFrameIndex < m_nativeCaptureMaxFrames)
+            : !m_nativeCaptureAttempted;
+        if (!m_nativeCapturePath.empty() && captureDue)
         {
             m_nativeCaptureDelay += deltaTime;
-            if (m_nativeCaptureDelay >= 0.75f)
+            const float dueAt = sequenceMode ? m_nativeCaptureIntervalSeconds : 0.75f;
+            if (m_nativeCaptureDelay >= dueAt)
             {
+                m_nativeCaptureDelay = sequenceMode ? 0.0f : m_nativeCaptureDelay;
                 m_nativeCaptureAttempted = true;
                 bool canCapture = false;
                 AZ::Render::FrameCaptureRequestBus::BroadcastResult(
@@ -1370,19 +1397,31 @@ namespace STWGameplay
                     return;
                 }
 
+                AZStd::string targetPath = m_nativeCapturePath;
+                if (sequenceMode)
+                {
+                    const size_t dot = m_nativeCapturePath.find_last_of('.');
+                    const AZStd::string stem =
+                        dot == AZStd::string::npos ? m_nativeCapturePath : m_nativeCapturePath.substr(0, dot);
+                    const AZStd::string extension = dot == AZStd::string::npos ? "" : m_nativeCapturePath.substr(dot);
+                    targetPath = AZStd::string::format(
+                        "%s_%06d%s", stem.c_str(), m_nativeCaptureFrameIndex, extension.c_str());
+                    ++m_nativeCaptureFrameIndex;
+                }
+
                 AZ::Render::FrameCaptureOutcome outcome = AZ::Failure(
                     AZ::Render::FrameCaptureError{ "FrameCapture request was not handled" });
                 AZ::Render::FrameCaptureRequestBus::BroadcastResult(
                     outcome,
                     &AZ::Render::FrameCaptureRequestBus::Events::CaptureScreenshot,
-                    m_nativeCapturePath);
+                    targetPath);
                 if (outcome.IsSuccess())
                 {
                     AZ_Printf(
                         "STWGameplay",
                         "Native Atom frame capture submitted: %u -> %s\n",
                         outcome.GetValue(),
-                        m_nativeCapturePath.c_str());
+                        targetPath.c_str());
                 }
                 else
                 {
