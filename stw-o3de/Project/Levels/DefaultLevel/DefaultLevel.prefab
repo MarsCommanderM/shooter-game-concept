@@ -550,6 +550,19 @@
                 "Component_[931091830724002070]": {
                     "$type": "EditorInspectorComponent",
                     "Id": 931091830724002070
+                },
+                "Component_[8240933556768677901]": {
+                    "$type": "AZ::Render::EditorPostFxLayerComponent",
+                    "Id": 8240933556768677901
+                },
+                "Component_[3788403282205402021]": {
+                    "$type": "AZ::Render::EditorExposureControlComponent",
+                    "Id": 3788403282205402021,
+                    "Controller": {
+                        "Configuration": {
+                            "ExposureControlType": 1
+                        }
+                    }
                 }
             }
         }
