@@ -561,7 +561,7 @@
                     "Controller": {
                         "Configuration": {
                             "ExposureControlType": 0,
-                            "ManualCompensation": -1.0
+                            "ManualCompensation": -5.0
                         }
                     }
                 }
