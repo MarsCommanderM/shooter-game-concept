@@ -18,3 +18,7 @@ tsconfig.tsbuildinfo
 next-env.d.ts
 nova/target/
 stw-engine/build/
+
+# O3DE generated project output (AssetProcessor cache + user profile), never source
+stw-o3de/Project/Cache/
+stw-o3de/Project/user/
