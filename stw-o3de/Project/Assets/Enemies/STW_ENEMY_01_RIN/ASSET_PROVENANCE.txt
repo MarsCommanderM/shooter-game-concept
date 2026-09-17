@@ -1,0 +1,26 @@
+STW_ENEMY_01_RIN ASSET PROVENANCE
+==================================
+
+Replaces the earlier STW_ENEMY_01 procedural placeholder (a script-generated,
+untextured single-color box; see prior commit history for
+tools/assets/create_stw_enemy_01.py) with a real skinned character asset.
+
+Source: Rin.fbx, an O3DE engine sample character shipped with the engine's
+own MotionMatching Gem (Gems/MotionMatching/Assets/Character/Rin.fbx),
+copied verbatim as STW_ENEMY_01_RIN.fbx. It is part of the official Open 3D
+Engine distribution and covered by O3DE's default project license (Apache
+License 2.0 / MIT, see the engine checkout's LICENSE.TXT); no separate
+third-party license override file accompanies it in the engine tree. No
+STW-specific modification was made to the source mesh, skin, or embedded
+texture data.
+
+The scene contains a real skinned mesh, a skeleton, and 16 distinct
+authored PBR materials (face, skin/hands, hair cards, cloth, armor,
+leather, eyes, etc.). STWGameplaySystemComponent::TryStartEnemyMesh()
+intentionally does not pass a single override material to
+MeshHandleDescriptor, so Atom binds each part's own baked-in material
+instead of flattening the whole character to one flat color.
+
+Gameplay health, movement, damage, death and respawn remain in
+EnemyCombatModel; this mesh and its materials are presentation-only, same
+contract as the asset it replaces.

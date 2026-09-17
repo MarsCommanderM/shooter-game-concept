@@ -3240,58 +3240,37 @@ namespace STWGameplay
         {
             s_enemyAssetLoadState.m_enumerated = true;
             AZStd::vector<ViewmodelAssetCandidate> models;
-            AZStd::vector<ViewmodelAssetCandidate> materials;
             AZ::Data::AssetCatalogRequestBus::Broadcast(
                 &AZ::Data::AssetCatalogRequests::EnumerateAssets, []() {},
-                [&models, &materials](const AZ::Data::AssetId id, const AZ::Data::AssetInfo& info)
+                [&models](const AZ::Data::AssetId id, const AZ::Data::AssetInfo& info)
                 {
                     const AZStd::string path = LowercaseAssetPath(info.m_relativePath);
-                    if (path == "assets/enemies/stw_enemy_01/stw_enemy_01.obj.azmodel")
+                    // STW_ENEMY_01_RIN replaces the flat-shaded placeholder box: an O3DE
+                    // engine-sample character (Apache-2.0/MIT, MotionMatching gem) with a
+                    // real skinned mesh and its own 16 baked-in per-part materials (face,
+                    // skin, hair, cloth, armor, eyes, ...). No single material override is
+                    // requested below, so Atom binds each part's own authored material
+                    // instead of flattening the whole character to one flat color.
+                    if (path == "assets/enemies/stw_enemy_01_rin/stw_enemy_01_rin.fbx.azmodel")
                     {
                         models.push_back({ id, info.m_relativePath });
                     }
-                    else if (path == "assets/enemies/stw_enemy_01/stw_enemy_01.azmaterial")
-                    {
-                        materials.push_back({ id, info.m_relativePath });
-                    }
                 }, []() {});
-            if (models.size() != 1 || materials.size() != 1)
+            if (models.size() != 1)
             {
                 AZ_Error("STWGameplay", false,
-                    "ATOM_ENEMY_MESH result=FAIL reason=asset_candidate_count model=%zu material=%zu",
-                    models.size(), materials.size());
+                    "ATOM_ENEMY_MESH result=FAIL reason=asset_candidate_count model=%zu", models.size());
                 m_enemyMeshStartup = ViewmodelMeshStartup::Failed;
                 return;
             }
             s_enemyAssetLoadState.m_enumeratedModelAssetId = models[0].m_assetId;
-            s_enemyAssetLoadState.m_enumeratedMaterialAssetId = materials[0].m_assetId;
             m_enemyMeshAssetPath = models[0].m_relativePath;
-            s_enemyAssetLoadState.m_materialAsset = AZ::Data::Asset<AZ::RPI::MaterialAsset>(
-                materials[0].m_assetId, azrtti_typeid<AZ::RPI::MaterialAsset>(), materials[0].m_relativePath.c_str());
-            s_enemyAssetLoadState.m_materialAsset.QueueLoad();
-        }
-        if (s_enemyAssetLoadState.m_materialAsset.IsError())
-        {
-            AZ_Error("STWGameplay", false, "ATOM_ENEMY_MESH result=FAIL reason=material_load_failed");
-            m_enemyMeshStartup = ViewmodelMeshStartup::Failed;
-            return;
-        }
-        if (!s_enemyAssetLoadState.m_materialAsset.IsReady())
-        {
-            return;
-        }
-        s_enemyAssetLoadState.m_material = AZ::RPI::Material::FindOrCreate(s_enemyAssetLoadState.m_materialAsset);
-        if (!s_enemyAssetLoadState.m_material)
-        {
-            AZ_Error("STWGameplay", false, "ATOM_ENEMY_MESH result=FAIL reason=material_instance_failed");
-            m_enemyMeshStartup = ViewmodelMeshStartup::Failed;
-            return;
         }
         AZ::Data::Asset<AZ::RPI::ModelAsset> modelAsset(
             s_enemyAssetLoadState.m_enumeratedModelAssetId, azrtti_typeid<AZ::RPI::ModelAsset>(),
             m_enemyMeshAssetPath.c_str());
         modelAsset.QueueLoad();
-        AZ::Render::MeshHandleDescriptor descriptor(modelAsset, s_enemyAssetLoadState.m_material);
+        AZ::Render::MeshHandleDescriptor descriptor(modelAsset);
         descriptor.m_isAlwaysDynamic = true;
         for (size_t index = 0; index < m_model.GetEnemies().GetEnemyCount(); ++index)
         {
