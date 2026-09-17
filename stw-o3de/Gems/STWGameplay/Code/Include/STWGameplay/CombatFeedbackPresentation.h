@@ -22,6 +22,10 @@ namespace STWGameplay
         static constexpr float FirePulseScale = 0.16f;
         static constexpr float EnemyHitScaleAmount = 0.10f;
         static constexpr float ImpactPulseScale = 0.12f;
+        // O3DE inverts the full transform for mesh normals. A uniform scale below
+        // this value makes the scale cubed fall below the engine's determinant
+        // tolerance near the end of a pulse, even while the effect is still visible.
+        static constexpr float MinimumRenderableScale = 0.05f;
 
         bool Update(float deltaTime, const CombatFeedbackInput& input);
         void Reset();
@@ -30,8 +34,12 @@ namespace STWGameplay
         bool IsEnemyHitVisible() const { return m_enemyHitTimer > 0.0f; }
         bool IsImpactVisible() const { return m_impactTimer > 0.0f; }
         float GetFireIntensity() const;
+        //! Non-zero scale for hidden Atom feedback meshes; visibility owns whether they render.
+        float GetRenderableFireScale() const;
         float GetEnemyHitScale() const;
         float GetImpactScale() const;
+        //! Non-zero scale for hidden Atom feedback meshes; visibility owns whether they render.
+        float GetRenderableImpactScale() const;
         const AZ::Vector3& GetImpactPosition() const { return m_impactPosition; }
         AZ::u32 GetFireFeedbackCount() const { return m_fireFeedbackCount; }
         AZ::u32 GetHitFeedbackCount() const { return m_hitFeedbackCount; }

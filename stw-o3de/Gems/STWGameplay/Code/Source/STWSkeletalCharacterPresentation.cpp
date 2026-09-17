@@ -297,11 +297,9 @@ namespace STWGameplay
         if (m_probeJointIndex != EMotionFX::Integration::ActorComponentRequests::s_invalidJointIndex)
         {
             // A motion reseed (SelectMotion) resets m_haveBoneSample this same tick, but EMotionFX
-            // has not yet run its Update/Output pass for the newly started motion, so the probed
-            // joint's parent model-space transform is still stale. Converting that stale transform
-            // to local space triggers Matrix3x4::GetInverseFull on a degenerate (zero-determinant)
-            // matrix. Skip the probe for exactly one tick and let the first real sample land once
-            // EMotionFX has produced a pose for the new motion.
+            // has not yet run its Update/Output pass for the newly started motion. Skip the probe
+            // for exactly one tick and let the first real sample land once EMotionFX has produced
+            // a pose for the new motion.
             if (m_boneSampleReseedPending)
             {
                 m_boneSampleReseedPending = false;
@@ -312,7 +310,7 @@ namespace STWGameplay
             EMotionFX::Integration::ActorComponentRequestBus::EventResult(
                 currentBoneTransform, m_entityId,
                 &EMotionFX::Integration::ActorComponentRequests::GetJointTransform,
-                m_probeJointIndex, EMotionFX::Integration::Space::LocalSpace);
+                m_probeJointIndex, EMotionFX::Integration::Space::ModelSpace);
             const AZ::Quaternion currentBoneRotation = currentBoneTransform.GetRotation().GetNormalized();
             const bool baselineValidBeforeSample = m_haveBoneSample;
             const bool baselineReseeded = !baselineValidBeforeSample;
@@ -436,7 +434,8 @@ namespace STWGameplay
         m_deathObserved = m_deathObserved || m_state == STWSkeletalPresentationState::Death;
 
         // This is a presentation transform. PhysX remains the source of gameplay position.
-        const AZ::Transform presentationTransform = AZ::Transform::CreateTranslation(
+        const AZ::Transform presentationTransform = AZ::Transform::CreateFromQuaternionAndTranslation(
+            AZ::Quaternion::CreateRotationZ(presentationState.m_yaw),
             presentationState.m_position + AZ::Vector3(0.0f, 0.0f, CharacterOriginOffset));
         AZ::TransformBus::Event(m_entityId, &AZ::TransformBus::Events::SetWorldTM, presentationTransform);
         SampleRuntimeDiagnostics();

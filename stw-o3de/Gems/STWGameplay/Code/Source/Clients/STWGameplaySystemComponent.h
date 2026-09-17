@@ -87,6 +87,9 @@ namespace STWGameplay
         //! Routes one replicated snapshot from the currently bound network entity to the
         //! existing pure reconciliation policy. It never applies correction or replay.
         bool ReceiveNetworkSnapshot(AZ::EntityId entityId, const AuthoritativePlayerSnapshot& snapshot);
+        bool BindRemoteNetworkPlayer(AZ::EntityId entityId);
+        const AuthoritativePlayerSnapshot* GetRemoteNetworkSnapshot(AZ::EntityId entityId) const;
+        const PresentationFrameState* GetRemotePlayerPresentationState(AZ::EntityId entityId) const;
 
         size_t GetNetworkPlayerCount() const;
         size_t GetNetworkPlayerCommandHistorySize(AZ::EntityId entityId) const;
@@ -106,6 +109,8 @@ namespace STWGameplay
         void ResetPhysicsAfterSceneLoss();
         void ShutdownEnemyPhysics();
         void SynchronizeSkeletalCharacterPhysicalState();
+        void UpdateRemotePlayerPresentation(float deltaTime);
+        void ReleaseRemotePlayerPresentation(AZ::EntityId entityId);
         void UpdateEnemyPresentationInterpolation(
             const AZStd::array<bool, EnemyCollectionModel::MaxEnemyCount>& physicalStateSynchronized);
         PlayerCommand BuildPlayerCommand(const PlayerInput& input);
@@ -233,6 +238,10 @@ namespace STWGameplay
         AZStd::array<PhysXEnemyRuntime, EnemyCollectionModel::MaxEnemyCount> m_enemyPhysicsRuntimes;
         AZStd::array<PresentationInterpolation, EnemyCollectionModel::MaxEnemyCount>
             m_enemyPresentationInterpolations;
+        AZStd::array<STWSkeletalCharacterPresentation, MaxNetworkPlayerCount> m_remotePlayerPresentations;
+        AZStd::array<AZ::EntityId, MaxNetworkPlayerCount> m_remotePlayerPresentationEntities;
+        AZStd::array<bool, MaxNetworkPlayerCount> m_remotePlayerPresentationReported{};
+        AZStd::array<bool, MaxNetworkPlayerCount> m_remotePlayerPresentationRenderReported{};
         AZStd::array<int, EnemyCollectionModel::MaxEnemyCount> m_enemyPresentationRespawnEvents{};
         // Composition-root-owned handoff state for the primary EMotionFX character. Native
         // ragdoll ownership remains unavailable until the character asset supplies a verified
@@ -397,6 +406,7 @@ namespace STWGameplay
         int m_weaponSwitchInactiveAAmmoAfterBFire = 0;
         bool m_weaponSwitchInactiveAAmmoAfterBFireCaptured = false;
         bool m_loadoutAcceptanceReported = false;
+        bool m_loadoutDiagnosticReported = false;
         bool m_spawnCheckpointAcceptanceStarted = false;
         bool m_spawnCheckpointDefaultRespawnObserved = false;
         bool m_spawnCheckpointActivationObserved = false;

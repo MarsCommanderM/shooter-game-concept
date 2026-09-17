@@ -130,6 +130,20 @@ namespace STWGameplay
             return evaluation;
         }
 
+        //! Remote proxies do not own a local command stream. Their authoritative snapshot
+        //! acknowledgement is transport metadata for the owning client and must not be
+        //! compared against a nonexistent local command sequence.
+        static ReconciliationEvaluation EvaluateRemoteIncoming(
+            const AuthoritativePlayerSnapshot& authoritative,
+            PlayerSnapshotSequence lastAcceptedSnapshotSequence)
+        {
+            return EvaluateIncoming(
+                authoritative,
+                authoritative,
+                authoritative.m_acknowledgedCommandSequence,
+                lastAcceptedSnapshotSequence);
+        }
+
     private:
         static bool IsClose(float first, float second, float epsilon)
         {

@@ -46,6 +46,19 @@ namespace STWGameplay
         return AZStd::clamp(m_fireTimer / FireFlashDuration, 0.0f, 1.0f);
     }
 
+    float CombatFeedbackPresentation::GetRenderableFireScale() const
+    {
+        // Hidden Atom meshes must keep a well-conditioned transform. A tiny uniform
+        // scale such as 0.001 produces a determinant below O3DE's inverse-matrix
+        // tolerance even though it is technically non-zero. Visibility already owns
+        // whether the feedback renders, so keep the hidden handle at identity scale.
+        if (!IsFireFlashVisible())
+        {
+            return 1.0f;
+        }
+        return AZStd::max(MinimumRenderableScale, FirePulseScale * GetFireIntensity());
+    }
+
     float CombatFeedbackPresentation::GetEnemyHitScale() const
     {
         const float intensity = AZStd::clamp(m_enemyHitTimer / EnemyHitDuration, 0.0f, 1.0f);
@@ -56,5 +69,14 @@ namespace STWGameplay
     {
         const float intensity = AZStd::clamp(m_impactTimer / ImpactDuration, 0.0f, 1.0f);
         return ImpactPulseScale * intensity;
+    }
+
+    float CombatFeedbackPresentation::GetRenderableImpactScale() const
+    {
+        if (!IsImpactVisible())
+        {
+            return 1.0f;
+        }
+        return AZStd::max(MinimumRenderableScale, GetImpactScale());
     }
 }

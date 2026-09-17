@@ -41,11 +41,12 @@ MIN_FACES = 100
 
 
 class ObjBuilder:
-    """Accumulates positions, normals and grouped faces, then serialises an OBJ."""
+    """Accumulates positions, face-local UVs/normals and grouped faces, then serialises an OBJ."""
 
     def __init__(self):
         self.positions = []
         self._position_index = {}
+        self.uvs = []
         self.normals = []
         self._normal_index = {}
         self.groups = []  # list of (name, [ (pos_idx, nrm_idx) x N ])
@@ -72,7 +73,17 @@ class ObjBuilder:
     def add_polygon(self, points, normal):
         """Add one convex polygon. points are ordered counter-clockwise seen from outside."""
         normal_index = self._add_normal(normal)
-        corner = [(self._add_position(p), normal_index) for p in points]
+        abs_normal = tuple(abs(component) for component in normal)
+        if abs_normal[2] >= abs_normal[0] and abs_normal[2] >= abs_normal[1]:
+            project = lambda point: (point[0], point[1])
+        elif abs_normal[1] >= abs_normal[0]:
+            project = lambda point: (point[0], point[2])
+        else:
+            project = lambda point: (point[1], point[2])
+        corner = []
+        for point in points:
+            self.uvs.append(tuple(round(value, DECIMALS) for value in project(point)))
+            corner.append((self._add_position(point), len(self.uvs), normal_index))
         self.groups[-1][1].append(corner)
 
     def counts(self):
@@ -97,12 +108,14 @@ class ObjBuilder:
         ]
         for position in self.positions:
             lines.append("v {0:.6f} {1:.6f} {2:.6f}".format(*position))
+        for uv in self.uvs:
+            lines.append("vt {0:.6f} {1:.6f}".format(*uv))
         for normal in self.normals:
             lines.append("vn {0:.6f} {1:.6f} {2:.6f}".format(*normal))
         for name, faces in self.groups:
             lines.append("g {0}".format(name))
             for corner in faces:
-                lines.append("f " + " ".join("{0}//{1}".format(p, n) for p, n in corner))
+                lines.append("f " + " ".join("{0}/{1}/{2}".format(p, uv, n) for p, uv, n in corner))
         return "\n".join(lines) + "\n"
 
 

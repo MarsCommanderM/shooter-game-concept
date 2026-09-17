@@ -9,6 +9,7 @@ namespace STWGameplay
         CombatFeedbackPresentation feedback;
         ASSERT_TRUE(feedback.Update(0.016f, {}));
         EXPECT_FALSE(feedback.IsFireFlashVisible());
+        EXPECT_FLOAT_EQ(feedback.GetRenderableFireScale(), 1.0f);
         EXPECT_EQ(feedback.GetFireFeedbackCount(), 0u);
     }
 
@@ -20,6 +21,9 @@ namespace STWGameplay
         ASSERT_TRUE(feedback.Update(0.0f, input));
         EXPECT_TRUE(feedback.IsFireFlashVisible());
         EXPECT_FLOAT_EQ(feedback.GetFireIntensity(), 1.0f);
+        ASSERT_TRUE(feedback.Update(CombatFeedbackPresentation::FireFlashDuration - 0.0001f, {}));
+        EXPECT_TRUE(feedback.IsFireFlashVisible());
+        EXPECT_FLOAT_EQ(feedback.GetRenderableFireScale(), CombatFeedbackPresentation::MinimumRenderableScale);
         EXPECT_EQ(feedback.GetFireFeedbackCount(), 1u);
     }
 
@@ -32,6 +36,7 @@ namespace STWGameplay
         ASSERT_TRUE(feedback.Update(CombatFeedbackPresentation::FireFlashDuration, {}));
         EXPECT_FALSE(feedback.IsFireFlashVisible());
         EXPECT_FLOAT_EQ(feedback.GetFireIntensity(), 0.0f);
+        EXPECT_FLOAT_EQ(feedback.GetRenderableFireScale(), 1.0f);
     }
 
     TEST(CombatFeedbackPresentationTests, EnemyHitFeedbackTrigger)
@@ -67,6 +72,9 @@ namespace STWGameplay
         EXPECT_TRUE(feedback.IsImpactVisible());
         EXPECT_TRUE(feedback.GetImpactPosition().IsClose(input.m_impactPosition));
         EXPECT_GT(feedback.GetImpactScale(), 0.0f);
+        ASSERT_TRUE(feedback.Update(CombatFeedbackPresentation::ImpactDuration - 0.0001f, {}));
+        EXPECT_TRUE(feedback.IsImpactVisible());
+        EXPECT_FLOAT_EQ(feedback.GetRenderableImpactScale(), CombatFeedbackPresentation::MinimumRenderableScale);
         EXPECT_EQ(feedback.GetImpactFeedbackCount(), 1u);
     }
 
@@ -79,6 +87,7 @@ namespace STWGameplay
         ASSERT_TRUE(feedback.Update(CombatFeedbackPresentation::ImpactDuration, {}));
         EXPECT_FALSE(feedback.IsImpactVisible());
         EXPECT_FLOAT_EQ(feedback.GetImpactScale(), 0.0f);
+        EXPECT_FLOAT_EQ(feedback.GetRenderableImpactScale(), 1.0f);
     }
 
     TEST(CombatFeedbackPresentationTests, ResetClearsTransientFeedback)

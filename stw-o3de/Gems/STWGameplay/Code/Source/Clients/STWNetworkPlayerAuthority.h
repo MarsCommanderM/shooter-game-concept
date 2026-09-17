@@ -6,6 +6,7 @@
 #include <STWGameplay/PlayerCommandHistory.h>
 #include <STWGameplay/PlayerPrediction.h>
 #include <STWGameplay/PlayerSliceModel.h>
+#include <STWGameplay/PresentationInterpolation.h>
 
 #include "PhysXPlayerRuntime.h"
 
@@ -24,9 +25,11 @@ namespace STWGameplay
 
         bool BindPrimary(AZ::EntityId entityId, PlayerSliceModel& model, PhysXPlayerRuntime& physics);
         bool BindAdditional(AZ::EntityId entityId, EnemyCollectionModel& sharedEnemies);
+        bool BindRemote(AZ::EntityId entityId);
         void Unbind();
 
         bool IsBound() const { return m_entityId.IsValid(); }
+        bool IsRemote() const { return m_isRemote; }
         bool UsesCompositionRootRuntime() const { return m_externalModel != nullptr; }
         AZ::EntityId GetEntityId() const { return m_entityId; }
 
@@ -58,10 +61,22 @@ namespace STWGameplay
             return m_lastReconciliationEvaluation;
         }
 
+        const AuthoritativePlayerSnapshot* GetRemoteSnapshot() const
+        {
+            return m_hasRemoteSnapshot ? &m_remoteSnapshot : nullptr;
+        }
+
+        const PresentationFrameState* GetRemotePresentationState() const
+        {
+            return m_remotePresentationInterpolation.HasState()
+                ? &m_remotePresentationInterpolation.GetCurrentState() : nullptr;
+        }
+
     private:
         void ResetNetworkState();
 
         AZ::EntityId m_entityId;
+        bool m_isRemote = false;
         PlayerSliceModel* m_externalModel = nullptr;
         PhysXPlayerRuntime* m_externalPhysics = nullptr;
         PlayerSliceModel* m_model = nullptr;
@@ -78,7 +93,10 @@ namespace STWGameplay
         PlayerSnapshotSequence m_physicalReadbackSequence = InvalidPlayerSimulationSequence;
         PlayerSnapshotSequence m_lastAcceptedSnapshotSequence = InvalidPlayerSimulationSequence;
         AuthoritativePlayerSnapshot m_authoritativeSnapshot;
+        AuthoritativePlayerSnapshot m_remoteSnapshot;
+        PresentationInterpolation m_remotePresentationInterpolation;
         ReconciliationEvaluation m_lastReconciliationEvaluation;
+        bool m_hasRemoteSnapshot = false;
         bool m_commandAvailable = false;
     };
 } // namespace STWGameplay

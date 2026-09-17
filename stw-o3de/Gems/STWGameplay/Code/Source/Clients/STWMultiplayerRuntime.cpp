@@ -1,9 +1,12 @@
 #include "STWMultiplayerRuntime.h"
 
+#include <AzCore/Debug/Trace.h>
 #include <AzCore/Interface/Interface.h>
 #include <AzCore/std/containers/vector.h>
 #include <AzNetworking/ConnectionLayer/IConnection.h>
+#include <Multiplayer/Components/NetBindComponent.h>
 #include <Source/AutoGen/AutoComponentTypes.h>
+#include <Network/STWPlayerNetworkComponent.h>
 
 namespace STWGameplay
 {
@@ -47,6 +50,7 @@ namespace STWGameplay
         RegisterMultiplayerComponents();
         AZ::Interface<Multiplayer::IMultiplayerSpawner>::Register(this);
         m_playerSpawnerRegistered = true;
+        AZ_Printf("STWGameplay", "STW_MP_SPAWNER_REGISTERED=1\n");
         m_multiplayer->AddNetworkInitHandler(m_networkInitHandler);
         m_multiplayer->AddEndpointDisconnectedHandler(m_endpointDisconnectedHandler);
         m_multiplayer->AddServerAcceptanceReceivedHandler(m_serverAcceptanceReceivedHandler);
@@ -128,9 +132,12 @@ namespace STWGameplay
     }
 
     Multiplayer::NetworkEntityHandle STWMultiplayerRuntime::OnPlayerJoin(
-        [[maybe_unused]] uint64_t userId,
-        [[maybe_unused]] const Multiplayer::MultiplayerAgentDatum& agentDatum)
+        uint64_t userId,
+        const Multiplayer::MultiplayerAgentDatum& agentDatum)
     {
+        AZ_Printf("STWGameplay", "STW_MP_PLAYER_JOIN_BEGIN user_id=%llu agent_id=%llu\n",
+            static_cast<unsigned long long>(userId),
+            static_cast<unsigned long long>(agentDatum.m_id));
         Multiplayer::INetworkEntityManager* networkEntityManager = m_multiplayer != nullptr
             ? m_multiplayer->GetNetworkEntityManager()
             : nullptr;
@@ -143,7 +150,18 @@ namespace STWGameplay
         const Multiplayer::INetworkEntityManager::EntityList entities =
             networkEntityManager->CreateEntitiesImmediate(
                 playerPrefab, Multiplayer::NetEntityRole::Authority, AZ::Transform::CreateIdentity());
-        return entities.empty() ? Multiplayer::NetworkEntityHandle{} : entities.front();
+        const bool spawned = !entities.empty() && entities.front().Exists();
+        const AZ::Entity* playerEntity = spawned ? entities.front().GetEntity() : nullptr;
+        AZ_Printf("STWGameplay", "STW_MP_PLAYER_JOIN_RESULT spawned=%d entity_count=%zu\n",
+            spawned ? 1 : 0, entities.size());
+        AZ_Printf("STWGameplay",
+            "STW_MP_PLAYER_PREFAB_COMPONENTS entity=%s component_count=%zu stw_component=%d netbind=%d transform=%d\n",
+            playerEntity != nullptr ? playerEntity->GetId().ToString().c_str() : "invalid",
+            playerEntity != nullptr ? playerEntity->GetComponents().size() : 0,
+            playerEntity != nullptr && playerEntity->FindComponent<STWPlayerNetworkComponent>() != nullptr ? 1 : 0,
+            playerEntity != nullptr && playerEntity->FindComponent<Multiplayer::NetBindComponent>() != nullptr ? 1 : 0,
+            playerEntity != nullptr && playerEntity->GetTransform() != nullptr ? 1 : 0);
+        return spawned ? entities.front() : Multiplayer::NetworkEntityHandle{};
     }
 
     void STWMultiplayerRuntime::OnNetworkInitialized(
@@ -155,6 +173,8 @@ namespace STWGameplay
         }
 
         const Multiplayer::MultiplayerAgentType agentType = m_multiplayer->GetAgentType();
+        AZ_Printf("STWGameplay", "STW_MP_NETWORK_INITIALIZED agent_type=%s\n",
+            Multiplayer::GetEnumString(agentType));
         if (agentType == Multiplayer::MultiplayerAgentType::DedicatedServer ||
             agentType == Multiplayer::MultiplayerAgentType::ClientServer)
         {

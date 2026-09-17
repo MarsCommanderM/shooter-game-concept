@@ -992,6 +992,19 @@ runtime_grep -Eq 'SPAWN_CHECKPOINT_ACCEPTANCE result=PASS initial_spawn=1 defaul
 runtime_grep -Eq 'WEAPON_SWITCH_ACCEPTANCE result=PASS initial_slot=0 first_weapon_visible=1 first_switch_slot=1 second_switch_slot=0 weapon_a_ammo_preserved=1 weapon_b_ammo_changed_on_fire=1 inactive_weapon_ammo_unchanged=1 held_switch_retrigger_blocked=1'
 runtime_grep -Eq 'LOADOUT_ACCEPTANCE result=PASS primary_available=1 secondary_available=1 tactical_available=1 lethal_available=1 melee_available=1 independent_ammo=1 independent_charges=1 inactive_state_preserved=1 slot_validation=1 held_switch_blocked=1 authority_separation=PASS'
 runtime_grep -q 'PERFORMANCE_BASELINE'
+
+# Renderer-quality guardrails: these are production defects, not informational noise.
+# A mesh missing required streams can silently bind dummy inputs, and a degenerate
+# transform can corrupt inverse-transpose normal handling. Keep both defects as hard
+# exit criteria so later asset or presentation changes cannot regress the gate while
+# all gameplay acceptance markers continue to pass.
+mesh_input_stream_warnings="$(grep -Ec "Mesh does not have all the required input streams" "${GAME_LOG}" 2>/dev/null || true)"
+zero_determinant_warnings="$(grep -Eic "zero determinant" "${GAME_LOG}" 2>/dev/null || true)"
+echo "MESH_INPUT_STREAM_WARNINGS=${mesh_input_stream_warnings}"
+echo "ZERO_DETERMINANT_WARNINGS=${zero_determinant_warnings}"
+[[ "${mesh_input_stream_warnings}" -eq 0 ]]
+[[ "${zero_determinant_warnings}" -eq 0 ]]
+
 if runtime_grep -q 'Native Atom frame capture submitted'; then
   echo "FRAME_CAPTURE_SUBMISSION_LOG=CONFIRMED"
 else

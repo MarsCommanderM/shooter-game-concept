@@ -92,6 +92,12 @@ ly_create_alias(NAME STWGameplay.Clients.API NAMESPACE Gem TARGETS Gem::STWGamep
 ly_create_alias(NAME STWGameplay.Servers.API NAMESPACE Gem TARGETS Gem::STWGameplay.API)
 ly_create_alias(NAME STWGameplay.Unified.API NAMESPACE Gem TARGETS Gem::STWGameplay.API)
 
+# AssetProcessorBatch runs the Multiplayer network-prefab processor in the
+# Builders variant. It must load this gem's module so custom Multiplayer
+# components are registered while the network spawnable is serialized.
+ly_create_alias(NAME STWGameplay.Tools NAMESPACE Gem TARGETS Gem::STWGameplay)
+ly_create_alias(NAME STWGameplay.Builders NAMESPACE Gem TARGETS Gem::STWGameplay)
+
 if(PAL_TRAIT_BUILD_TESTS_SUPPORTED AND PAL_TRAIT_STWGAMEPLAY_TEST_SUPPORTED)
     ly_add_target(
         NAME STWGameplay.Tests ${PAL_TRAIT_TEST_TARGET_TYPE}

@@ -152,4 +152,81 @@ namespace STWGameplay
         EXPECT_FALSE(gameplay.ReceiveNetworkSnapshot(otherEntityId, snapshot));
         EXPECT_TRUE(gameplay.ReceiveNetworkSnapshot(boundEntityId, snapshot));
     }
+
+    TEST(STWPlayerNetworkComponentTests, SimulatedProxyConsumesOrderedRemoteSnapshotsWithoutAuthority)
+    {
+        EXPECT_EQ(
+            GetSTWNetworkRoleBinding(Multiplayer::NetEntityRole::Client),
+            STWNetworkRoleBinding::RemoteSnapshot);
+        EXPECT_EQ(
+            GetSTWNetworkRoleBinding(Multiplayer::NetEntityRole::Authority),
+            STWNetworkRoleBinding::GameplayAuthority);
+        EXPECT_EQ(
+            GetSTWNetworkRoleBinding(Multiplayer::NetEntityRole::Autonomous),
+            STWNetworkRoleBinding::GameplayAuthority);
+
+        STWGameplaySystemComponent gameplay;
+        const AZ::EntityId remoteEntityId(77);
+        ASSERT_TRUE(gameplay.BindRemoteNetworkPlayer(remoteEntityId));
+
+        AuthoritativePlayerSnapshot snapshot;
+        snapshot.m_snapshotSequence = 10u;
+        snapshot.m_physicalReadbackSequence = 10u;
+        snapshot.m_physicalStateSynchronized = true;
+        snapshot.m_acknowledgedCommandSequence = 27u;
+        snapshot.m_position = AZ::Vector3(12.0f, -4.0f, 2.0f);
+        snapshot.m_yaw = 0.8f;
+        snapshot.m_pitch = -0.2f;
+        snapshot.m_health = 45.0f;
+        snapshot.m_alive = false;
+        snapshot.m_crouchDesired = true;
+        snapshot.m_activeEquipmentSlot = EquipmentSlot::Secondary;
+        snapshot.m_activeEquipmentProfile = EquipmentProfileId::STW_SIDEARM_01;
+        snapshot.m_magazine = 3;
+        snapshot.m_reserve = 12;
+        snapshot.m_deathEvents = 2;
+        snapshot.m_respawnEvents = 3;
+
+        EXPECT_TRUE(gameplay.ReceiveNetworkSnapshot(remoteEntityId, snapshot));
+
+        const AuthoritativePlayerSnapshot* remoteSnapshot =
+            gameplay.GetRemoteNetworkSnapshot(remoteEntityId);
+        ASSERT_NE(remoteSnapshot, nullptr);
+        EXPECT_EQ(remoteSnapshot->m_snapshotSequence, 10u);
+        EXPECT_EQ(remoteSnapshot->m_position, snapshot.m_position);
+        EXPECT_FLOAT_EQ(remoteSnapshot->m_yaw, snapshot.m_yaw);
+        EXPECT_FLOAT_EQ(remoteSnapshot->m_pitch, snapshot.m_pitch);
+        EXPECT_FLOAT_EQ(remoteSnapshot->m_health, snapshot.m_health);
+        EXPECT_EQ(remoteSnapshot->m_alive, snapshot.m_alive);
+        EXPECT_EQ(remoteSnapshot->m_activeEquipmentSlot, snapshot.m_activeEquipmentSlot);
+        EXPECT_EQ(remoteSnapshot->m_activeEquipmentProfile, snapshot.m_activeEquipmentProfile);
+        EXPECT_EQ(remoteSnapshot->m_deathEvents, snapshot.m_deathEvents);
+        EXPECT_EQ(remoteSnapshot->m_respawnEvents, snapshot.m_respawnEvents);
+
+        const PresentationFrameState* presentationState =
+            gameplay.GetRemotePlayerPresentationState(remoteEntityId);
+        ASSERT_NE(presentationState, nullptr);
+        EXPECT_EQ(presentationState->m_position, snapshot.m_position);
+        EXPECT_FLOAT_EQ(presentationState->m_yaw, snapshot.m_yaw);
+        EXPECT_FLOAT_EQ(presentationState->m_pitch, snapshot.m_pitch);
+
+        EXPECT_EQ(gameplay.GetNetworkPlayerCount(), 0u);
+        PlayerCommand command;
+        EXPECT_FALSE(gameplay.CreateNetworkCommand(remoteEntityId, command));
+
+        AuthoritativePlayerSnapshot newerSnapshot = snapshot;
+        newerSnapshot.m_snapshotSequence = 11u;
+        newerSnapshot.m_position = AZ::Vector3(-8.0f, 6.0f, 1.0f);
+        EXPECT_TRUE(gameplay.ReceiveNetworkSnapshot(remoteEntityId, newerSnapshot));
+
+        AuthoritativePlayerSnapshot staleSnapshot = snapshot;
+        staleSnapshot.m_position = AZ::Vector3(100.0f, 100.0f, 100.0f);
+        EXPECT_FALSE(gameplay.ReceiveNetworkSnapshot(remoteEntityId, staleSnapshot));
+        EXPECT_FALSE(gameplay.ReceiveNetworkSnapshot(remoteEntityId, newerSnapshot));
+
+        remoteSnapshot = gameplay.GetRemoteNetworkSnapshot(remoteEntityId);
+        ASSERT_NE(remoteSnapshot, nullptr);
+        EXPECT_EQ(remoteSnapshot->m_snapshotSequence, newerSnapshot.m_snapshotSequence);
+        EXPECT_EQ(remoteSnapshot->m_position, newerSnapshot.m_position);
+    }
 }

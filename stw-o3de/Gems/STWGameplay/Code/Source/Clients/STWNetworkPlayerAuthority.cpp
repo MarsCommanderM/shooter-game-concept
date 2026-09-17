@@ -47,11 +47,26 @@ namespace STWGameplay
         return true;
     }
 
+    bool STWNetworkPlayerAuthority::BindRemote(AZ::EntityId entityId)
+    {
+        if (!entityId.IsValid())
+        {
+            return false;
+        }
+
+        Unbind();
+        m_entityId = entityId;
+        m_isRemote = true;
+        ResetNetworkState();
+        return true;
+    }
+
     void STWNetworkPlayerAuthority::Unbind()
     {
         ShutdownPhysics();
         m_ownedModel.reset();
         m_entityId = AZ::EntityId();
+        m_isRemote = false;
         m_externalModel = nullptr;
         m_externalPhysics = nullptr;
         m_model = nullptr;
@@ -61,7 +76,7 @@ namespace STWGameplay
 
     bool STWNetworkPlayerAuthority::InitializePhysics()
     {
-        if (!IsBound() || m_physics == nullptr)
+        if (!IsBound() || m_isRemote || m_physics == nullptr)
         {
             return false;
         }
@@ -78,7 +93,7 @@ namespace STWGameplay
 
     bool STWNetworkPlayerAuthority::CreateCommand(const PlayerInput& sampledInput, PlayerCommand& command)
     {
-        if (!IsBound() || !PlayerCommand(sampledInput, 1u).IsFinite())
+        if (!IsBound() || m_isRemote || !PlayerCommand(sampledInput, 1u).IsFinite())
         {
             return false;
         }
@@ -90,7 +105,8 @@ namespace STWGameplay
 
     bool STWNetworkPlayerAuthority::SubmitCommand(const PlayerCommand& command)
     {
-        if (!IsBound() || command.m_sequence == InvalidPlayerSimulationSequence || !command.IsFinite())
+        if (!IsBound() || m_isRemote || command.m_sequence == InvalidPlayerSimulationSequence
+            || !command.IsFinite())
         {
             return false;
         }
@@ -151,6 +167,11 @@ namespace STWGameplay
     void STWNetworkPlayerAuthority::CaptureAuthoritativeSnapshot(
         PlayerCommandSequence acknowledgedCommandSequence)
     {
+        if (!IsBound() || m_isRemote || m_model == nullptr)
+        {
+            return;
+        }
+
         m_nextSnapshotSequence = AdvancePlayerSimulationSequence(m_nextSnapshotSequence);
         m_physicalReadbackSequence = AdvancePlayerSimulationSequence(m_physicalReadbackSequence);
 
@@ -189,11 +210,14 @@ namespace STWGameplay
     ReconciliationEvaluation STWNetworkPlayerAuthority::ProcessAuthoritativeSnapshot(
         const AuthoritativePlayerSnapshot& authoritativeSnapshot)
     {
-        ReconciliationEvaluation evaluation = PlayerReconciliationPolicy::EvaluateIncoming(
-            m_authoritativeSnapshot,
-            authoritativeSnapshot,
-            m_nextCommandSequence,
-            m_lastAcceptedSnapshotSequence);
+        ReconciliationEvaluation evaluation = m_isRemote
+            ? PlayerReconciliationPolicy::EvaluateRemoteIncoming(
+                authoritativeSnapshot, m_lastAcceptedSnapshotSequence)
+            : PlayerReconciliationPolicy::EvaluateIncoming(
+                m_authoritativeSnapshot,
+                authoritativeSnapshot,
+                m_nextCommandSequence,
+                m_lastAcceptedSnapshotSequence);
 
         if (evaluation.m_snapshotStatus == ReconciliationSnapshotStatus::Accepted)
         {
@@ -202,6 +226,18 @@ namespace STWGameplay
             {
                 evaluation.m_discardedCommandCount = m_commandHistory.DiscardThrough(
                     authoritativeSnapshot.m_acknowledgedCommandSequence);
+            }
+            if (m_isRemote)
+            {
+                PresentationFrameState presentationState;
+                presentationState.m_position = authoritativeSnapshot.m_position;
+                presentationState.m_yaw = authoritativeSnapshot.m_yaw;
+                presentationState.m_pitch = authoritativeSnapshot.m_pitch;
+                if (m_remotePresentationInterpolation.Advance(presentationState))
+                {
+                    m_remoteSnapshot = authoritativeSnapshot;
+                    m_hasRemoteSnapshot = true;
+                }
             }
         }
 
@@ -220,7 +256,10 @@ namespace STWGameplay
         m_physicalReadbackSequence = InvalidPlayerSimulationSequence;
         m_lastAcceptedSnapshotSequence = InvalidPlayerSimulationSequence;
         m_authoritativeSnapshot = {};
+        m_remoteSnapshot = {};
+        m_remotePresentationInterpolation = {};
         m_lastReconciliationEvaluation = {};
+        m_hasRemoteSnapshot = false;
         m_commandAvailable = false;
     }
 } // namespace STWGameplay

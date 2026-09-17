@@ -109,6 +109,13 @@ namespace STWGameplay
         }
 
         auto* controller = static_cast<STWPlayerNetworkComponentController*>(GetController());
+        if (!m_authoritativeSnapshotReported)
+        {
+            AZ_Printf("STWGameplay",
+                "STW_MP_AUTHORITY_SNAPSHOT_PUBLISHED entity=%s role=Authority sequence=%u\n",
+                GetEntityId().ToString().c_str(), snapshot.m_snapshotSequence);
+            m_authoritativeSnapshotReported = true;
+        }
         controller->SetAcknowledgedCommandSequence(snapshot.m_acknowledgedCommandSequence);
         controller->SetPhysicalReadbackSequence(snapshot.m_physicalReadbackSequence);
         controller->SetPhysicalStateSynchronized(snapshot.m_physicalStateSynchronized);
@@ -143,21 +150,58 @@ namespace STWGameplay
 
     void STWPlayerNetworkComponent::OnInit()
     {
+        AZ_Printf("STWGameplay", "STW_MP_PLAYER_COMPONENT_INIT entity=%s netbind=%d\n",
+            GetEntityId().ToString().c_str(), GetNetBindComponent() != nullptr ? 1 : 0);
         m_netBindComponent->AddNetworkActivatedEventHandler(m_networkActivatedHandler);
     }
 
     void STWPlayerNetworkComponent::OnActivate([[maybe_unused]] Multiplayer::EntityIsMigrating entityIsMigrating)
     {
+        AZ_Printf("STWGameplay", "STW_MP_PLAYER_COMPONENT_ACTIVATE entity=%s\n",
+            GetEntityId().ToString().c_str());
+        m_networkRoleReported = false;
+        m_authoritativeSnapshotReported = false;
+        m_remoteSnapshotReported = false;
+        m_remoteSnapshotDiagnosticReported = false;
         SnapshotSequenceAddEvent(m_snapshotSequenceChangedHandler);
     }
 
     void STWPlayerNetworkComponent::OnDeactivate([[maybe_unused]] Multiplayer::EntityIsMigrating entityIsMigrating)
     {
+        if (m_remoteSnapshotBound)
+        {
+            if (STWGameplaySystemComponent* gameplay = AZ::Interface<STWGameplaySystemComponent>::Get())
+            {
+                gameplay->UnbindNetworkPlayer(GetEntityId());
+            }
+            m_remoteSnapshotBound = false;
+        }
         m_snapshotSequenceChangedHandler.Disconnect();
     }
 
     void STWPlayerNetworkComponent::OnNetworkActivated()
     {
+        AZ_Printf("STWGameplay", "STW_MP_PLAYER_NETWORK_ACTIVATED entity=%s netbind=%d\n",
+            GetEntityId().ToString().c_str(), GetNetBindComponent() != nullptr ? 1 : 0);
+        if (!m_networkRoleReported && GetNetBindComponent() != nullptr)
+        {
+            const Multiplayer::NetEntityRole role = GetNetBindComponent()->GetNetEntityRole();
+            AZ_Printf("STWGameplay",
+                "STW_MP_NETWORK_ENTITY_ROLE entity=%s role=%s authority=%d autonomous=%d proxy=%d\n",
+                GetEntityId().ToString().c_str(),
+                Multiplayer::GetEnumString(role),
+                IsNetEntityRoleAuthority() ? 1 : 0,
+                IsNetEntityRoleAutonomous() ? 1 : 0,
+                IsNetEntityRoleClient() ? 1 : 0);
+            m_networkRoleReported = true;
+        }
+        if (IsNetEntityRoleClient())
+        {
+            if (STWGameplaySystemComponent* gameplay = AZ::Interface<STWGameplaySystemComponent>::Get())
+            {
+                m_remoteSnapshotBound = gameplay->BindRemoteNetworkPlayer(GetEntityId());
+            }
+        }
     }
 
     void STWPlayerNetworkComponent::OnAuthoritativeSnapshotSequenceChanged(
@@ -171,12 +215,37 @@ namespace STWGameplay
         AuthoritativePlayerSnapshot snapshot;
         if (!ReadAuthoritativeSnapshot(snapshot))
         {
+            if (!m_remoteSnapshotDiagnosticReported && IsNetEntityRoleClient())
+            {
+                AZ_Printf("STWGameplay",
+                    "STW_MP_REMOTE_SNAPSHOT_REJECTED entity=%s sequence=%u physical_sync=%d slot=%u profile=%u\n",
+                    GetEntityId().ToString().c_str(), GetSnapshotSequence(),
+                    GetPhysicalStateSynchronized() ? 1 : 0,
+                    static_cast<unsigned>(GetActiveEquipmentSlot()),
+                    static_cast<unsigned>(GetActiveEquipmentProfile()));
+                m_remoteSnapshotDiagnosticReported = true;
+            }
             return;
         }
 
         if (STWGameplaySystemComponent* gameplay = AZ::Interface<STWGameplaySystemComponent>::Get())
         {
-            gameplay->ReceiveNetworkSnapshot(GetEntityId(), snapshot);
+            const bool accepted = gameplay->ReceiveNetworkSnapshot(GetEntityId(), snapshot);
+            if (accepted && IsNetEntityRoleClient() && !m_remoteSnapshotReported
+                && gameplay->GetRemoteNetworkSnapshot(GetEntityId()) != nullptr)
+            {
+                AZ_Printf("STWGameplay",
+                    "STW_MP_REMOTE_SNAPSHOT_RECEIVED entity=%s sequence=%u\n",
+                    GetEntityId().ToString().c_str(), snapshot.m_snapshotSequence);
+                m_remoteSnapshotReported = true;
+            }
+            else if (!accepted && !m_remoteSnapshotDiagnosticReported && IsNetEntityRoleClient())
+            {
+                AZ_Printf("STWGameplay",
+                    "STW_MP_REMOTE_SNAPSHOT_NOT_ACCEPTED entity=%s sequence=%u\n",
+                    GetEntityId().ToString().c_str(), snapshot.m_snapshotSequence);
+                m_remoteSnapshotDiagnosticReported = true;
+            }
         }
     }
 
@@ -238,6 +307,8 @@ namespace STWGameplay
     void STWPlayerNetworkComponentController::OnActivate(
         [[maybe_unused]] Multiplayer::EntityIsMigrating entityIsMigrating)
     {
+        AZ_Printf("STWGameplay", "STW_MP_PLAYER_CONTROLLER_ACTIVATE entity=%s\n",
+            GetEntityId().ToString().c_str());
         TryBindGameplayAuthority();
     }
 

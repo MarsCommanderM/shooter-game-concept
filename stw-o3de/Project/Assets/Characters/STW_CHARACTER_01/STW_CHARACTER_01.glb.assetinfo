@@ -26,6 +26,11 @@
                     },
                     {
                         "$type": "MaterialRule"
+                    },
+                    {
+                        "$type": "TangentsRule",
+                        "tangentSpace": 1,
+                        "tSpaceMethod": 0
                     }
                 ]
             }

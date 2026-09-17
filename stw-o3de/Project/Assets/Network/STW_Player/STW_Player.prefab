@@ -34,6 +34,13 @@
                         "$type": "STWGameplay::STWPlayerNetworkComponent"
                     }
                 },
+                "Component_[10000000000000000007]": {
+                    "$type": "GenericComponentWrapper",
+                    "Id": 10000000000000000007,
+                    "m_template": {
+                        "$type": "Multiplayer::LocalPredictionPlayerInputComponent"
+                    }
+                },
                 "Component_[10000000000000000006]": {
                     "$type": "GenericComponentWrapper",
                     "Id": 10000000000000000006,

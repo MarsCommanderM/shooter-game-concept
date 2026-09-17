@@ -156,6 +156,9 @@ namespace STWGameplay
         m_bodycamCameraPresentation.ResetToNeutral();
         m_viewmodel.ResetToNeutral();
         m_combatFeedback.Reset();
+        m_remotePlayerPresentationEntities.fill(AZ::EntityId());
+        m_remotePlayerPresentationReported.fill(false);
+        m_remotePlayerPresentationRenderReported.fill(false);
         if (!m_multiplayer.Initialize())
         {
             AZ_Warning("STWGameplay", false, "STW multiplayer transport is unavailable");
@@ -200,6 +203,13 @@ namespace STWGameplay
         m_audioFeedback.Deactivate();
         AZ::TickBus::Handler::BusDisconnect();
         AzFramework::InputChannelEventListener::Disconnect();
+        for (STWSkeletalCharacterPresentation& presentation : m_remotePlayerPresentations)
+        {
+            presentation.Shutdown();
+        }
+        m_remotePlayerPresentationEntities.fill(AZ::EntityId());
+        m_remotePlayerPresentationReported.fill(false);
+        m_remotePlayerPresentationRenderReported.fill(false);
         m_skeletalCharacterPresentation.Shutdown();
         m_environmentPresentation.Shutdown();
         ShutdownEnemyMesh();
@@ -265,6 +275,10 @@ namespace STWGameplay
         {
             return;
         }
+        if (authority->IsRemote())
+        {
+            ReleaseRemotePlayerPresentation(entityId);
+        }
         authority->Unbind();
     }
 
@@ -312,8 +326,60 @@ namespace STWGameplay
             return false;
         }
 
-        authority->ProcessAuthoritativeSnapshot(snapshot);
-        return true;
+        const ReconciliationEvaluation evaluation = authority->ProcessAuthoritativeSnapshot(snapshot);
+        return !authority->IsRemote()
+            || evaluation.m_snapshotStatus == ReconciliationSnapshotStatus::Accepted;
+    }
+
+    bool STWGameplaySystemComponent::BindRemoteNetworkPlayer(AZ::EntityId entityId)
+    {
+        if (!entityId.IsValid())
+        {
+            return false;
+        }
+        if (FindNetworkPlayer(entityId) != nullptr)
+        {
+            return true;
+        }
+
+        for (STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
+        {
+            if (!authority.IsBound())
+            {
+                if (!authority.BindRemote(entityId))
+                {
+                    return false;
+                }
+                for (size_t slot = 0; slot < m_remotePlayerPresentationEntities.size(); ++slot)
+                {
+                    if (!m_remotePlayerPresentationEntities[slot].IsValid())
+                    {
+                        m_remotePlayerPresentationEntities[slot] = entityId;
+                        m_remotePlayerPresentationReported[slot] = false;
+                        m_remotePlayerPresentationRenderReported[slot] = false;
+                        return true;
+                    }
+                }
+                authority.Unbind();
+                return false;
+            }
+        }
+        return false;
+    }
+
+    const AuthoritativePlayerSnapshot* STWGameplaySystemComponent::GetRemoteNetworkSnapshot(
+        AZ::EntityId entityId) const
+    {
+        const STWNetworkPlayerAuthority* authority = FindNetworkPlayer(entityId);
+        return authority != nullptr && authority->IsRemote() ? authority->GetRemoteSnapshot() : nullptr;
+    }
+
+    const PresentationFrameState* STWGameplaySystemComponent::GetRemotePlayerPresentationState(
+        AZ::EntityId entityId) const
+    {
+        const STWNetworkPlayerAuthority* authority = FindNetworkPlayer(entityId);
+        return authority != nullptr && authority->IsRemote()
+            ? authority->GetRemotePresentationState() : nullptr;
     }
 
     size_t STWGameplaySystemComponent::GetNetworkPlayerCount() const
@@ -321,7 +387,7 @@ namespace STWGameplay
         size_t count = 0;
         for (const STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
         {
-            count += authority.IsBound() ? 1 : 0;
+            count += authority.IsBound() && !authority.IsRemote() ? 1 : 0;
         }
         return count;
     }
@@ -388,7 +454,7 @@ namespace STWGameplay
 
         for (STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
         {
-            if (authority.IsBound() && !authority.InitializePhysics())
+            if (authority.IsBound() && !authority.IsRemote() && !authority.InitializePhysics())
             {
                 AZ_Error("STWGameplay", false, "Network player PhysX runtime could not initialize");
                 UnbindAllNetworkPlayers();
@@ -405,7 +471,7 @@ namespace STWGameplay
         m_model.SynchronizePhysicalState(physicalPosition, grounded);
         for (STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
         {
-            if (!authority.IsBound() || authority.UsesCompositionRootRuntime())
+            if (!authority.IsBound() || authority.IsRemote() || authority.UsesCompositionRootRuntime())
             {
                 continue;
             }
@@ -465,6 +531,60 @@ namespace STWGameplay
         const bool respawnObserved = gameplayState.m_respawnEvents > m_skeletalCharacterRespawnEvents;
         m_skeletalCharacterPhysicalState.SynchronizeGameplayLifecycle(gameplayState.m_alive, respawnObserved);
         m_skeletalCharacterRespawnEvents = gameplayState.m_respawnEvents;
+    }
+
+    void STWGameplaySystemComponent::UpdateRemotePlayerPresentation(float deltaTime)
+    {
+        for (size_t slot = 0; slot < m_remotePlayerPresentationEntities.size(); ++slot)
+        {
+            const AZ::EntityId entityId = m_remotePlayerPresentationEntities[slot];
+            if (!entityId.IsValid())
+            {
+                continue;
+            }
+
+            const AuthoritativePlayerSnapshot* snapshot = GetRemoteNetworkSnapshot(entityId);
+            const PresentationFrameState* presentationState = GetRemotePlayerPresentationState(entityId);
+            if (snapshot == nullptr || presentationState == nullptr)
+            {
+                continue;
+            }
+
+            EnemyState visualState;
+            visualState.m_position = presentationState->m_position;
+            visualState.m_health = snapshot->m_health;
+            visualState.m_alive = snapshot->m_alive;
+            visualState.m_behaviorState = !snapshot->m_alive
+                ? EnemyBehaviorState::Dead
+                : snapshot->m_requestedSimulationVelocity.GetLengthSq() > 0.01f
+                    ? EnemyBehaviorState::Chase
+                    : EnemyBehaviorState::Idle;
+            m_remotePlayerPresentations[slot].Update(deltaTime, visualState, *presentationState);
+
+            if (!m_remotePlayerPresentationReported[slot]
+                && m_remotePlayerPresentations[slot].IsActorAssetReady())
+            {
+                AZ_Printf("STWGameplay",
+                    "STW_MP_REMOTE_PRESENTATION_ACTIVE entity=%s slot=%zu actor=ready state=%s\n",
+                    entityId.ToString().c_str(), slot,
+                    m_remotePlayerPresentations[slot].GetStateName());
+                m_remotePlayerPresentationReported[slot] = true;
+            }
+
+            if (!m_remotePlayerPresentationRenderReported[slot]
+                && STWSkeletalCharacterPresentation::IsAssetLifecycleComplete(
+                    m_remotePlayerPresentations[slot].IsActorAssetReady(),
+                    m_remotePlayerPresentations[slot].IsActorInstanceReady(),
+                    m_remotePlayerPresentations[slot].IsSkinnedMeshVisible(),
+                    m_remotePlayerPresentations[slot].IsMotionAssetReady()))
+            {
+                AZ_Printf("STWGameplay",
+                    "STW_MP_REMOTE_PRESENTATION_RENDER_READY entity=%s slot=%zu state=%s\n",
+                    entityId.ToString().c_str(), slot,
+                    m_remotePlayerPresentations[slot].GetStateName());
+                m_remotePlayerPresentationRenderReported[slot] = true;
+            }
+        }
     }
 
     void STWGameplaySystemComponent::UpdateEnemyPresentationInterpolation(
@@ -719,7 +839,7 @@ namespace STWGameplay
     {
         for (STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
         {
-            if (!authority.IsBound() || authority.UsesCompositionRootRuntime()
+            if (!authority.IsBound() || authority.IsRemote() || authority.UsesCompositionRootRuntime()
                 || stepCount == 0 || authority.GetCommandHistory().Empty())
             {
                 continue;
@@ -860,7 +980,26 @@ namespace STWGameplay
     {
         for (STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
         {
+            if (authority.IsRemote())
+            {
+                ReleaseRemotePlayerPresentation(authority.GetEntityId());
+            }
             authority.Unbind();
+        }
+    }
+
+    void STWGameplaySystemComponent::ReleaseRemotePlayerPresentation(AZ::EntityId entityId)
+    {
+        for (size_t slot = 0; slot < m_remotePlayerPresentationEntities.size(); ++slot)
+        {
+            if (m_remotePlayerPresentationEntities[slot] == entityId)
+            {
+                m_remotePlayerPresentations[slot].Shutdown();
+                m_remotePlayerPresentationEntities[slot] = AZ::EntityId();
+                m_remotePlayerPresentationReported[slot] = false;
+                m_remotePlayerPresentationRenderReported[slot] = false;
+                return;
+            }
         }
     }
 
@@ -917,7 +1056,7 @@ namespace STWGameplay
         }
         for (STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
         {
-            if (authority.IsBound() && !authority.UsesCompositionRootRuntime()
+            if (authority.IsBound() && !authority.IsRemote() && !authority.UsesCompositionRootRuntime()
                 && !authority.GetPhysics().ApplyCrouchRequest(
                     authority.GetModel().GetPlayer().m_crouchDesired,
                     authority.GetModel().GetPlayer().m_grounded))
@@ -1012,7 +1151,7 @@ namespace STWGameplay
         }
         for (STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
         {
-            if (!authority.IsBound() || authority.UsesCompositionRootRuntime())
+            if (!authority.IsBound() || authority.IsRemote() || authority.UsesCompositionRootRuntime())
             {
                 continue;
             }
@@ -1085,6 +1224,8 @@ namespace STWGameplay
                     || m_enemyPresentations[index].GetResetReactionCount() > 0;
             }
         }
+
+        UpdateRemotePlayerPresentation(deltaTime);
 
         // Presentation reacts to authoritative events/state only (read-only). It never writes
         // ammo, damage, reload completion, target health or player movement back.
@@ -1702,7 +1843,7 @@ namespace STWGameplay
 
         if (!m_weaponSwitchPostResetDiagnosticReported
             && (m_weaponSwitchAcceptancePhase == WeaponSwitchAcceptancePhase::Complete
-                || m_acceptanceTime >= 12.0f))
+                || m_acceptanceTime >= 30.0f))
         {
             AZ_Printf("STWGameplay",
                 "WEAPON_SWITCH_POST_RESET_DIAG RESET_COMPLETE=%d POST_RESET_RELEASE_OBSERVED=%d "
@@ -1898,7 +2039,7 @@ namespace STWGameplay
         // Acceptance-only diagnostics. These expose the existing predicate state without
         // changing the stimulus, timing, authority, or official PASS marker.
         if (!m_weaponSwitchDiagnosticReported
-            && (m_weaponSwitchSecondSwitchObserved || m_acceptanceTime >= 12.0f))
+            && (m_weaponSwitchSecondSwitchObserved || m_acceptanceTime >= 30.0f))
         {
             const bool initialSlotValid = m_weaponSwitchInitialSlot == static_cast<int>(WeaponId::STW_SMG_01);
             const bool firstSwitchObserved = m_weaponSwitchFirstSwitchObserved;
@@ -2074,6 +2215,9 @@ namespace STWGameplay
 
         PlayerInput heldSwitch;
         heldSwitch.m_switchWeapon = true;
+        // Runtime input is edge-triggered. Release the latch first so this controlled
+        // acceptance probe always begins from a known input boundary.
+        m_model.Update(0.0f, PlayerInput{});
         const bool heldFirstSwitch = m_model.Update(0.0f, heldSwitch)
             && m_model.GetActiveEquipmentSlot() == EquipmentSlot::Secondary;
         const bool heldSecondSwitch = m_model.Update(0.0f, heldSwitch)
@@ -2108,6 +2252,75 @@ namespace STWGameplay
             && lethalInactivePreserved && m_model.GetEquipment(EquipmentSlot::Primary).m_reserve
                 == primaryAfterUse.m_reserve;
         const bool heldSwitchBlocked = heldFirstSwitch && heldSecondSwitch;
+
+        if (!m_loadoutDiagnosticReported)
+        {
+            const char* firstFalsePredicate = "none";
+            if (!primaryAvailable) firstFalsePredicate = "primary_available";
+            else if (!secondaryAvailable) firstFalsePredicate = "secondary_available";
+            else if (!tacticalAvailable) firstFalsePredicate = "tactical_available";
+            else if (!lethalAvailable) firstFalsePredicate = "lethal_available";
+            else if (!meleeAvailable) firstFalsePredicate = "melee_available";
+            else if (!primaryFired) firstFalsePredicate = "primary_fired";
+            else if (!secondaryFired) firstFalsePredicate = "secondary_fired";
+            else if (!primaryToSecondary) firstFalsePredicate = "primary_to_secondary";
+            else if (!secondaryToPrimary) firstFalsePredicate = "secondary_to_primary";
+            else if (!primaryPreservedWhileInactive) firstFalsePredicate = "primary_preserved_while_inactive";
+            else if (!primaryToTactical) firstFalsePredicate = "primary_to_tactical";
+            else if (!tacticalUsed) firstFalsePredicate = "tactical_used";
+            else if (!tacticalToPrimary) firstFalsePredicate = "tactical_to_primary";
+            else if (!primaryToLethal) firstFalsePredicate = "primary_to_lethal";
+            else if (!lethalUsed) firstFalsePredicate = "lethal_used";
+            else if (!lethalToPrimary) firstFalsePredicate = "lethal_to_primary";
+            else if (!tacticalInactivePreserved) firstFalsePredicate = "tactical_inactive_preserved";
+            else if (!lethalInactivePreserved) firstFalsePredicate = "lethal_inactive_preserved";
+            else if (!primaryToMelee) firstFalsePredicate = "primary_to_melee";
+            else if (!meleeToPrimary) firstFalsePredicate = "melee_to_primary";
+            else if (!invalidSlotRejected) firstFalsePredicate = "invalid_slot_rejected";
+            else if (!invalidProfileRejected) firstFalsePredicate = "invalid_profile_rejected";
+            else if (!heldSwitchBlocked) firstFalsePredicate = "held_switch_blocked";
+            else if (!authoritySeparation) firstFalsePredicate = "authority_separation";
+
+            const WeaponState& primaryState = m_model.GetEquipment(EquipmentSlot::Primary);
+            const WeaponState& secondaryState = m_model.GetEquipment(EquipmentSlot::Secondary);
+            const bool passed = primaryAvailable && secondaryAvailable && tacticalAvailable && lethalAvailable
+                && meleeAvailable && independentAmmo && independentCharges && inactiveStatePreserved
+                && invalidSlotRejected && invalidProfileRejected && heldSwitchBlocked && authoritySeparation
+                && primaryToMelee && meleeToPrimary;
+            AZ_Printf("STWGameplay",
+                "LOADOUT_DIAG first_false_predicate=%s passed=%d time=%.3f alive=%d active_slot=%d "
+                "primary_fired=%d secondary_fired=%d tactical_used=%d lethal_used=%d "
+                "primary_to_secondary=%d secondary_to_primary=%d primary_to_tactical=%d tactical_to_primary=%d "
+                "primary_to_lethal=%d lethal_to_primary=%d primary_to_melee=%d melee_to_primary=%d "
+                "invalid_slot_rejected=%d invalid_profile_rejected=%d held_switch_blocked=%d authority_separation=%d "
+                "primary_mag=%d primary_cooldown=%.3f secondary_mag=%d secondary_cooldown=%.3f\n",
+                firstFalsePredicate,
+                passed ? 1 : 0,
+                m_acceptanceTime,
+                m_model.GetPlayer().m_alive ? 1 : 0,
+                static_cast<int>(m_model.GetActiveEquipmentSlot()),
+                primaryFired ? 1 : 0,
+                secondaryFired ? 1 : 0,
+                tacticalUsed ? 1 : 0,
+                lethalUsed ? 1 : 0,
+                primaryToSecondary ? 1 : 0,
+                secondaryToPrimary ? 1 : 0,
+                primaryToTactical ? 1 : 0,
+                tacticalToPrimary ? 1 : 0,
+                primaryToLethal ? 1 : 0,
+                lethalToPrimary ? 1 : 0,
+                primaryToMelee ? 1 : 0,
+                meleeToPrimary ? 1 : 0,
+                invalidSlotRejected ? 1 : 0,
+                invalidProfileRejected ? 1 : 0,
+                heldSwitchBlocked ? 1 : 0,
+                authoritySeparation ? 1 : 0,
+                primaryState.m_magazine,
+                primaryState.m_cooldownRemaining,
+                secondaryState.m_magazine,
+                secondaryState.m_cooldownRemaining);
+            m_loadoutDiagnosticReported = true;
+        }
 
         const bool passed = primaryAvailable && secondaryAvailable && tacticalAvailable && lethalAvailable
             && meleeAvailable && independentAmmo && independentCharges && inactiveStatePreserved
@@ -2757,6 +2970,11 @@ namespace STWGameplay
                     m_viewmodelMeshStartup = ViewmodelMeshStartup::Failed;
                     return;
                 }
+                // Atom's transform service computes the inverse-transpose even for hidden
+                // handles. Initialize every acquired viewmodel with a valid matrix before
+                // visibility is changed so no zero-initialized scale reaches the renderer.
+                m_meshFeatureProcessor->SetTransform(
+                    m_viewmodelMeshHandles[slot], AZ::Transform::CreateIdentity(), AZ::Vector3::CreateOne());
                 m_meshFeatureProcessor->SetVisible(m_viewmodelMeshHandles[slot], false);
             }
         }
@@ -2778,6 +2996,8 @@ namespace STWGameplay
                 m_viewmodelMeshStartup = ViewmodelMeshStartup::Failed;
                 return;
             }
+            m_meshFeatureProcessor->SetTransform(
+                m_fireFeedbackMeshHandle, AZ::Transform::CreateIdentity(), AZ::Vector3::CreateOne());
             m_meshFeatureProcessor->SetVisible(m_fireFeedbackMeshHandle, false);
         }
         m_viewmodelMeshStartup = ViewmodelMeshStartup::Acquired;
@@ -2815,10 +3035,16 @@ namespace STWGameplay
         const AZ::Quaternion orientation =
             AZ::Quaternion::CreateFromMatrix3x3(AZ::Matrix3x3::CreateFromColumns(-right, up, aim));
         const AZ::Transform transform = AZ::Transform::CreateFromQuaternionAndTranslation(orientation, center);
-        m_meshFeatureProcessor->SetTransform(m_viewmodelMeshHandles[activeSlot], transform,
-            AZ::Vector3::CreateOne());
         for (size_t slot = 0; slot < PlayerSliceModel::EquipmentProfileCount; ++slot)
         {
+            if (!m_viewmodelMeshHandles[slot].IsValid())
+            {
+                continue;
+            }
+            // Hidden viewmodels remain registered with Atom and still need a nonsingular
+            // object matrix. Only visibility selects the active equipment presentation.
+            m_meshFeatureProcessor->SetTransform(m_viewmodelMeshHandles[slot], transform,
+                AZ::Vector3::CreateOne());
             m_meshFeatureProcessor->SetVisible(m_viewmodelMeshHandles[slot], slot == activeSlot);
         }
         m_visibleViewmodelSlot = activeSlot;
@@ -2827,8 +3053,7 @@ namespace STWGameplay
             orientation, center + aim * 0.36f);
         m_meshFeatureProcessor->SetTransform(
             m_fireFeedbackMeshHandle, fireTransform,
-            AZ::Vector3::CreateOne() * (CombatFeedbackPresentation::FirePulseScale
-                * m_combatFeedback.GetFireIntensity()));
+            AZ::Vector3::CreateOne() * m_combatFeedback.GetRenderableFireScale());
         m_meshFeatureProcessor->SetVisible(m_fireFeedbackMeshHandle, fireVisible);
 
         const AZ::Data::Instance<AZ::RPI::Model> activeModel =
@@ -3039,6 +3264,8 @@ namespace STWGameplay
                 m_enemyMeshStartup = ViewmodelMeshStartup::Failed;
                 return;
             }
+            m_meshFeatureProcessor->SetTransform(
+                m_enemyMeshHandles[index], AZ::Transform::CreateIdentity(), AZ::Vector3::CreateOne());
             m_meshFeatureProcessor->SetVisible(m_enemyMeshHandles[index], false);
         }
         m_impactFeedbackMeshHandle = m_meshFeatureProcessor->AcquireMesh(descriptor);
@@ -3048,6 +3275,8 @@ namespace STWGameplay
             m_enemyMeshStartup = ViewmodelMeshStartup::Failed;
             return;
         }
+        m_meshFeatureProcessor->SetTransform(
+            m_impactFeedbackMeshHandle, AZ::Transform::CreateIdentity(), AZ::Vector3::CreateOne());
         m_meshFeatureProcessor->SetVisible(m_impactFeedbackMeshHandle, false);
         m_enemyMeshStartup = ViewmodelMeshStartup::Acquired;
     }
@@ -3096,7 +3325,7 @@ namespace STWGameplay
             m_combatFeedback.GetImpactPosition()) * objAxisCorrection;
         m_meshFeatureProcessor->SetTransform(
             m_impactFeedbackMeshHandle, impactTransform,
-            AZ::Vector3::CreateOne() * m_combatFeedback.GetImpactScale());
+            AZ::Vector3::CreateOne() * m_combatFeedback.GetRenderableImpactScale());
         m_meshFeatureProcessor->SetVisible(m_impactFeedbackMeshHandle, impactVisible);
         if (!m_enemyMeshReported && allMeshesReady && m_model.GetEnemies().GetEnemyCount() >= EnemyCollectionModel::RequiredEnemyCount)
         {
