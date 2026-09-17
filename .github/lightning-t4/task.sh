@@ -483,6 +483,22 @@ while IFS= read -r -d '' tracked_asset; do
 done < <(find "${tracked_project_assets}" -type f -print0)
 [[ "${tracked_asset_count}" -gt 0 ]]
 
+# Project/Levels (level prefabs: lighting, sky, PostFx, level layout) was never
+# mirrored here, so any tracked level edit silently built and ran against the
+# worktree's stale prior copy instead of the checkout under test — discovered
+# when an exposure-control fix to DefaultLevel.prefab produced byte-identical
+# runtime luminance stats before and after. Sync it the same way Assets is.
+tracked_project_levels="${GITHUB_WORKSPACE}/stw-o3de/Project/Levels"
+[[ -d "${tracked_project_levels}" ]]
+mirror_tree "${tracked_project_levels}" "${PROJECT}/Levels" "${O3DE_ROOT}"
+tracked_level_count=0
+while IFS= read -r -d '' tracked_level; do
+  relative_level="${tracked_level#${tracked_project_levels}/}"
+  cmp -s "${tracked_level}" "${PROJECT}/Levels/${relative_level}"
+  tracked_level_count=$((tracked_level_count + 1))
+done < <(find "${tracked_project_levels}" -type f -print0)
+[[ "${tracked_level_count}" -gt 0 ]]
+
 # These are the pinned 26.05 CLI contracts. Registration and enable-gem are
 # idempotent: O3DE de-duplicates registered external subdirectories and gem names.
 "${ENGINE}/scripts/o3de.sh" register --this-engine 2>&1 | tee -a "${BUILD_LOG}"
