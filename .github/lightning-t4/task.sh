@@ -734,9 +734,9 @@ stw_second_asset_face_count="$(grep -c '^f ' "${stw_second_asset_source}")"
 stw_second_asset_group_count="$(grep -c '^g ' "${stw_second_asset_source}")"
 stw_second_model_product="${PROJECT}/Cache/linux/assets/weapons/stw_rifle_02/stw_rifle_02.obj.azmodel"
 stw_second_material_product="${PROJECT}/Cache/linux/assets/weapons/stw_rifle_02/stw_rifle_02.azmaterial"
-enemy_asset_source="${PROJECT}/Assets/Enemies/STW_ENEMY_01/STW_ENEMY_01.obj"
-enemy_model_product="${PROJECT}/Cache/linux/assets/enemies/stw_enemy_01/stw_enemy_01.obj.azmodel"
-enemy_material_product="${PROJECT}/Cache/linux/assets/enemies/stw_enemy_01/stw_enemy_01.azmaterial"
+enemy_asset_source="${PROJECT}/Assets/Enemies/STW_ENEMY_01_RIN/STW_ENEMY_01_RIN.fbx"
+enemy_model_product="${PROJECT}/Cache/linux/assets/enemies/stw_enemy_01_rin/stw_enemy_01_rin.fbx.azmodel"
+enemy_material_product_dir="${PROJECT}/Cache/linux/assets/enemies/stw_enemy_01_rin"
 echo "STW_ASSET_MODEL_PRODUCT=${stw_model_product}"
 echo "STW_ASSET_MATERIAL_PRODUCT=${stw_material_product}"
 [[ -s "${stw_model_product}" && -s "${stw_material_product}" ]]
@@ -770,8 +770,16 @@ for loadout_asset_spec in \
 done
 echo "STW_ENEMY_ASSET_SOURCE=${enemy_asset_source}"
 echo "STW_ENEMY_MODEL_PRODUCT=${enemy_model_product}"
-echo "STW_ENEMY_MATERIAL_PRODUCT=${enemy_material_product}"
-[[ -s "${enemy_asset_source}" && -s "${enemy_model_product}" && -s "${enemy_material_product}" ]]
+# STW_ENEMY_01_RIN is a real skinned character (O3DE MotionMatching Gem sample,
+# Apache-2.0/MIT) with 16 authored per-part materials (face, skin, hair, cloth,
+# armor, eyes, ...) instead of the single flat-color material the earlier box
+# placeholder used, so this checks for at least one real material product
+# rather than one fixed filename.
+mapfile -t enemy_material_products < <(find "${enemy_material_product_dir}" -type f -iname '*.azmaterial' -print 2>/dev/null | sort)
+echo "STW_ENEMY_MATERIAL_PRODUCT_COUNT=${#enemy_material_products[@]}"
+printf 'STW_ENEMY_MATERIAL_PRODUCT=%s\n' "${enemy_material_products[@]}"
+[[ -s "${enemy_asset_source}" && -s "${enemy_model_product}" ]]
+[[ "${#enemy_material_products[@]}" -ge 1 ]]
 
 # Block 22C skeletal products. These checks are deliberately against the actual
 # Asset Processor cache, not the source GLBs, so Actor/Motion/skin products are
