@@ -514,7 +514,8 @@
                                     "subId": 2000
                                 },
                                 "assetHint": "lightingpresets/highcontrast/goegap_4k_iblglobalcm_iblspecular.exr.streamingimage"
-                            }
+                            },
+                            "exposure": -2.0
                         }
                     }
                 },
@@ -561,7 +562,7 @@
                     "Controller": {
                         "Configuration": {
                             "ExposureControlType": 0,
-                            "ManualCompensation": -5.0
+                            "ManualCompensation": 0.0
                         }
                     }
                 }
