@@ -67,11 +67,13 @@ generated output (`stw-o3de/Project/Cache`, `stw-o3de/Project/user`).
 - **Byte-identical duplicates:** `components/ui/use-toast.ts` = `hooks/use-toast.ts`,
   `components/ui/use-mobile.tsx` = `hooks/use-mobile.tsx` (legacy).
   `PAL_linux.cmake` = `PAL_windows.cmake` is an intentional platform layout.
-- **Unreferenced by any tracked file or workflow:**
-  `tools/assets/ensure_stw_obj_streams.py`, `.github/lightning-t4/multiplayer_gate.sh`
-  (mentioned only in a spec).
-- **Obsolete:** `tools/assets/create_stw_enemy_01.py` generates the placeholder box
-  that `STW_ENEMY_01_RIN` replaced.
+- **Unwired but intentional (keep):** `.github/lightning-t4/multiplayer_gate.sh` is the
+  only two-client / two-server multiplayer gate; no workflow or script calls it
+  (only a spec mentions it). `tools/assets/ensure_stw_obj_streams.py` is a documented,
+  idempotent manual tool for adding UV/normal streams to OBJ assets. Neither is dead
+  code; the multiplayer gate should be wired into CI.
+- **Obsolete (low value):** `tools/assets/create_stw_enemy_01.py` generates the placeholder
+  box that `STW_ENEMY_01_RIN` replaced.
 - **Overlapping planning docs:** four AI-authored files under `docs/superpowers/`
   (two "multiplayer-production-integrity", two "production-integrity"), same date.
 
@@ -105,6 +107,6 @@ equivalence or supersession is proven and archived. Issue #5 is open. So:
 
 - Whether the weekend files that differ from integration are improvements or
   regressions; only symbol-level equivalence was checked.
-- Whether unreferenced scripts are needed for manual workflows.
+- Whether `create_stw_enemy_01.py` has any remaining manual use.
 - The visual quality of the game: assets are procedurally generated
   blockout geometry; the gate checks only that a frame is non-empty.
