@@ -54,6 +54,10 @@ namespace STWGameplay
 
         bool IsLightingPresetApplied() const { return m_lightingPresetApplied; }
         bool IsPostProcessApplied() const { return m_postProcessApplied; }
+        //! True once the lens stack (vignette, chromatic aberration, film grain) is applied.
+        bool IsLensOpticApplied() const { return m_lensOpticApplied; }
+        //! True once depth of field is bound to a live camera entity (applied lazily).
+        bool IsDepthOfFieldApplied() const { return m_depthOfFieldApplied; }
         bool IsAccentRigApplied() const { return m_accentRigApplied; }
         bool IsDefaultLevelNeutralised() const { return m_shaderBallHidden; }
         bool IsReady() const;
@@ -74,10 +78,26 @@ namespace STWGameplay
         static float GetExposureCompensationTrim();
         static bool IsAccentRigPhysicallyPlausible(const AZStd::array<AccentLightSpec, AccentLightCount>& rig);
 
+        //! Cinematic lens stack. Every value is a restrained, engine-bounded look
+        //! (all Atom post-process sliders are 0..1); gameplay legibility wins over style.
+        static float GetVignetteIntensity();
+        static float GetChromaticAberrationStrength();
+        static float GetChromaticAberrationBlend();
+        static float GetFilmGrainIntensity();
+        static float GetFilmGrainLuminanceDampening();
+        //! Depth of field is specified as a real f-number; Atom's ApertureF slider is a
+        //! normalised inverse-f-number, so the two conversions are exposed for testing.
+        static float GetDepthOfFieldFNumber();
+        static float GetDepthOfFieldApertureF();
+        static float ApertureFForFNumber(float fNumber);
+        static float FNumberForApertureF(float apertureF);
+
     private:
         void ResolveFeatureProcessors(const AZ::Uuid& contextId);
         void TryApplyLightingPreset();
         void ApplyPostProcess();
+        void ApplyLensOptic();
+        void TryApplyDepthOfField();
         void ApplyAccentRig();
         void NeutraliseDefaultLevelVisuals();
 
@@ -98,6 +118,9 @@ namespace STWGameplay
         bool m_initialized = false;
         bool m_lightingPresetApplied = false;
         bool m_postProcessApplied = false;
+        bool m_lensOpticApplied = false;
+        bool m_depthOfFieldApplied = false;
+        bool m_opticReported = false;
         bool m_accentRigApplied = false;
         bool m_shaderBallHidden = false;
         bool m_readyReported = false;

@@ -63,4 +63,50 @@ namespace STWGameplay
         EXPECT_LT(EnvironmentPresentation::GetExposureCompensationTrim(), 0.0f);
         EXPECT_GT(EnvironmentPresentation::GetExposureCompensationTrim(), -3.0f);
     }
+
+    TEST(EnvironmentPresentationTests, LensStackIsVisibleButRestrained)
+    {
+        // Every Atom lens slider is 0..1; the look must be present but never dominant.
+        EXPECT_GT(EnvironmentPresentation::GetVignetteIntensity(), 0.0f);
+        EXPECT_LE(EnvironmentPresentation::GetVignetteIntensity(), 0.40f);
+
+        // Atom's own default strength is 0.01; stay within 2x so the fringing stays subtle.
+        EXPECT_GT(EnvironmentPresentation::GetChromaticAberrationStrength(), 0.0f);
+        EXPECT_LE(EnvironmentPresentation::GetChromaticAberrationStrength(), 0.02f);
+        EXPECT_GE(EnvironmentPresentation::GetChromaticAberrationBlend(), 0.0f);
+        EXPECT_LE(EnvironmentPresentation::GetChromaticAberrationBlend(), 1.0f);
+
+        // Grain must sit below Atom's 0.2 default so it never masks distant targets.
+        EXPECT_GT(EnvironmentPresentation::GetFilmGrainIntensity(), 0.0f);
+        EXPECT_LE(EnvironmentPresentation::GetFilmGrainIntensity(), 0.15f);
+        EXPECT_GE(EnvironmentPresentation::GetFilmGrainLuminanceDampening(), 0.0f);
+        EXPECT_LE(EnvironmentPresentation::GetFilmGrainLuminanceDampening(), 1.0f);
+    }
+
+    TEST(EnvironmentPresentationTests, DepthOfFieldApertureIsSpecifiedAsARealFNumber)
+    {
+        // Photographic, shallow-but-legible: not wide open, not effectively pinhole.
+        EXPECT_GE(EnvironmentPresentation::GetDepthOfFieldFNumber(), 2.8f);
+        EXPECT_LE(EnvironmentPresentation::GetDepthOfFieldFNumber(), 8.0f);
+
+        // The Atom slider is normalised to 0..1 and must round-trip to the requested f-number.
+        const float aperture = EnvironmentPresentation::GetDepthOfFieldApertureF();
+        EXPECT_GT(aperture, 0.0f);
+        EXPECT_LT(aperture, 1.0f);
+        EXPECT_NEAR(
+            EnvironmentPresentation::FNumberForApertureF(aperture), EnvironmentPresentation::GetDepthOfFieldFNumber(), 0.01f);
+    }
+
+    TEST(EnvironmentPresentationTests, ApertureConversionIsMonotonicAndClamped)
+    {
+        // A wider aperture (smaller f-number) must map to a larger slider value.
+        EXPECT_GT(EnvironmentPresentation::ApertureFForFNumber(2.0f), EnvironmentPresentation::ApertureFForFNumber(4.0f));
+        EXPECT_GT(EnvironmentPresentation::ApertureFForFNumber(4.0f), EnvironmentPresentation::ApertureFForFNumber(8.0f));
+
+        // Out-of-range requests clamp into the engine's 0..1 slider instead of escaping it.
+        EXPECT_LE(EnvironmentPresentation::ApertureFForFNumber(0.001f), 1.0f);
+        EXPECT_GE(EnvironmentPresentation::ApertureFForFNumber(100000.0f), 0.0f);
+        EXPECT_LE(EnvironmentPresentation::FNumberForApertureF(-1.0f), 256.0f);
+        EXPECT_GE(EnvironmentPresentation::FNumberForApertureF(2.0f), 0.12f);
+    }
 }

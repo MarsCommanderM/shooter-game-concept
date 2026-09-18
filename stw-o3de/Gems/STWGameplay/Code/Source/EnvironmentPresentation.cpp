@@ -17,6 +17,10 @@
 #include <Atom/Feature/PostProcess/PostProcessFeatureProcessorInterface.h>
 #include <Atom/Feature/PostProcess/PostProcessSettingsInterface.h>
 #include <Atom/Feature/PostProcess/Bloom/BloomSettingsInterface.h>
+#include <Atom/Feature/PostProcess/ChromaticAberration/ChromaticAberrationSettingsInterface.h>
+#include <Atom/Feature/PostProcess/DepthOfField/DepthOfFieldSettingsInterface.h>
+#include <Atom/Feature/PostProcess/FilmGrain/FilmGrainSettingsInterface.h>
+#include <Atom/Feature/PostProcess/Vignette/VignetteSettingsInterface.h>
 #include <Atom/Feature/PostProcess/ColorGrading/HDRColorGradingSettingsInterface.h>
 #include <Atom/Feature/PostProcess/ExposureControl/ExposureControlSettingsInterface.h>
 #include <Atom/Feature/PostProcess/Ssao/SsaoSettingsInterface.h>
@@ -72,6 +76,41 @@ namespace STWGameplay
     // R1: firm stop-down for the sunlit metallic deck (Block 26D captured mean luminance ~206,
     // large pinned-white regions). Applied as ManualOnly exposure compensation in EV.
     float EnvironmentPresentation::GetExposureCompensationTrim() { return -1.75f; }
+
+    // Cinematic lens stack. Atom's own defaults are the reference points: vignette 0.01,
+    // chromatic aberration 0.01 / blend 0.5, film grain 0.2. The values below are a
+    // deliberate, restrained look for a first-person view where target legibility matters.
+    float EnvironmentPresentation::GetVignetteIntensity() { return 0.25f; }
+    float EnvironmentPresentation::GetChromaticAberrationStrength() { return 0.006f; }
+    float EnvironmentPresentation::GetChromaticAberrationBlend() { return 0.5f; }
+    float EnvironmentPresentation::GetFilmGrainIntensity() { return 0.06f; }
+    float EnvironmentPresentation::GetFilmGrainLuminanceDampening() { return 0.5f; }
+    // f/4 keeps a soft, photographic falloff without smearing the viewmodel or distant threats.
+    float EnvironmentPresentation::GetDepthOfFieldFNumber() { return 4.0f; }
+
+    float EnvironmentPresentation::ApertureFForFNumber(float fNumber)
+    {
+        // Inverse of DepthOfFieldSettings::UpdateFNumber(): ApertureF in [0, 1] maps linearly
+        // onto the inverse f-number between 1/ApertureFMax and 1/ApertureFMin.
+        constexpr float MinF = AZ::Render::DepthOfField::ApertureFMin;
+        constexpr float MaxF = AZ::Render::DepthOfField::ApertureFMax;
+        const float clamped = AZStd::clamp(fNumber, MinF, MaxF);
+        return (1.0f / clamped - 1.0f / MaxF) / (1.0f / MinF - 1.0f / MaxF);
+    }
+
+    float EnvironmentPresentation::FNumberForApertureF(float apertureF)
+    {
+        constexpr float MinF = AZ::Render::DepthOfField::ApertureFMin;
+        constexpr float MaxF = AZ::Render::DepthOfField::ApertureFMax;
+        const float clamped = AZStd::clamp(apertureF, 0.0f, 1.0f);
+        // Float rounding can land a hair outside the engine's range at the slider ends.
+        return AZStd::clamp(1.0f / (1.0f / MaxF + (1.0f / MinF - 1.0f / MaxF) * clamped), MinF, MaxF);
+    }
+
+    float EnvironmentPresentation::GetDepthOfFieldApertureF()
+    {
+        return ApertureFForFNumber(GetDepthOfFieldFNumber());
+    }
 
     bool EnvironmentPresentation::IsAccentRigPhysicallyPlausible(
         const AZStd::array<AccentLightSpec, AccentLightCount>& rig)
@@ -142,6 +181,16 @@ namespace STWGameplay
         if (m_lightingPresetApplied && !m_postProcessApplied)
         {
             ApplyPostProcess();
+        }
+
+        if (m_postProcessApplied && !m_lensOpticApplied)
+        {
+            ApplyLensOptic();
+        }
+
+        if (m_postProcessApplied && !m_depthOfFieldApplied)
+        {
+            TryApplyDepthOfField();
         }
 
         if (m_lightingPresetApplied && !m_accentRigApplied)
@@ -309,6 +358,113 @@ namespace STWGameplay
         m_postProcessApplied = true;
     }
 
+    void EnvironmentPresentation::ApplyLensOptic()
+    {
+        if (m_postProcessFeatureProcessor == nullptr)
+        {
+            return;
+        }
+        AZ::Render::PostProcessSettingsInterface* settings =
+            m_postProcessFeatureProcessor->GetOrCreateSettingsInterface(m_postSettingsEntityId);
+        if (settings == nullptr)
+        {
+            return;
+        }
+
+        bool vignetteOk = false;
+        bool aberrationOk = false;
+        bool grainOk = false;
+
+        if (AZ::Render::VignetteSettingsInterface* vignette = settings->GetOrCreateVignetteSettingsInterface())
+        {
+            vignette->SetEnabled(true);
+            vignette->SetIntensity(GetVignetteIntensity());
+            vignette->OnConfigChanged();
+            vignetteOk = true;
+        }
+
+        if (AZ::Render::ChromaticAberrationSettingsInterface* aberration =
+                settings->GetOrCreateChromaticAberrationSettingsInterface())
+        {
+            aberration->SetEnabled(true);
+            aberration->SetStrength(GetChromaticAberrationStrength());
+            aberration->SetBlend(GetChromaticAberrationBlend());
+            aberration->OnConfigChanged();
+            aberrationOk = true;
+        }
+
+        if (AZ::Render::FilmGrainSettingsInterface* grain = settings->GetOrCreateFilmGrainSettingsInterface())
+        {
+            grain->SetEnabled(true);
+            grain->SetIntensity(GetFilmGrainIntensity());
+            grain->SetLuminanceDampening(GetFilmGrainLuminanceDampening());
+            grain->OnConfigChanged();
+            grainOk = true;
+        }
+
+        settings->OnConfigChanged();
+        m_postProcessFeatureProcessor->OnPostProcessSettingsChanged();
+        m_lensOpticApplied = vignetteOk && aberrationOk && grainOk;
+
+        if (!m_opticReported)
+        {
+            m_opticReported = true;
+            AZ_Printf(
+                "STWGameplay",
+                "STW_CINEMATIC_OPTIC lens=%d vignette=%.3f aberration=%.4f grain=%.3f dof_fnumber=%.1f\n",
+                m_lensOpticApplied ? 1 : 0, GetVignetteIntensity(), GetChromaticAberrationStrength(),
+                GetFilmGrainIntensity(), GetDepthOfFieldFNumber());
+        }
+    }
+
+    void EnvironmentPresentation::TryApplyDepthOfField()
+    {
+        if (m_postProcessFeatureProcessor == nullptr)
+        {
+            return;
+        }
+
+        // Atom disables depth of field unless it is bound to a live camera entity, and the
+        // gameplay camera is created after the environment layer, so this stays lazy.
+        AZ::EntityId cameraId;
+        Camera::CameraSystemRequestBus::BroadcastResult(cameraId, &Camera::CameraSystemRequests::GetActiveCamera);
+        if (!cameraId.IsValid())
+        {
+            return;
+        }
+
+        AZ::Render::PostProcessSettingsInterface* settings =
+            m_postProcessFeatureProcessor->GetOrCreateSettingsInterface(m_postSettingsEntityId);
+        if (settings == nullptr)
+        {
+            return;
+        }
+        AZ::Render::DepthOfFieldSettingsInterface* dof = settings->GetOrCreateDepthOfFieldSettingsInterface();
+        if (dof == nullptr)
+        {
+            return;
+        }
+
+        // SetEnabled() only sticks when the camera entity is already valid, so bind it first.
+        dof->SetCameraEntityId(cameraId);
+        dof->SetEnabled(true);
+        dof->SetApertureF(GetDepthOfFieldApertureF());
+        dof->SetEnableAutoFocus(true);
+        dof->SetAutoFocusScreenPosition(AZ::Vector2(0.5f, 0.5f));
+        dof->SetAutoFocusSensitivity(1.0f);
+        dof->SetAutoFocusSpeed(AZ::Render::DepthOfField::AutoFocusSpeedMax);
+        dof->SetAutoFocusDelay(0.0f);
+        dof->OnConfigChanged();
+
+        settings->OnConfigChanged();
+        m_postProcessFeatureProcessor->OnPostProcessSettingsChanged();
+        m_depthOfFieldApplied = true;
+
+        AZ_Printf(
+            "STWGameplay", "STW_CINEMATIC_OPTIC_DOF=1 fnumber=%.1f aperture_slider=%.4f autofocus=1\n",
+            GetDepthOfFieldFNumber(), GetDepthOfFieldApertureF());
+    }
+
     void EnvironmentPresentation::ApplyAccentRig()
     {
         if (m_pointLightFeatureProcessor == nullptr)
@@ -422,6 +578,9 @@ namespace STWGameplay
         m_initialized = false;
         m_lightingPresetApplied = false;
         m_postProcessApplied = false;
+        m_lensOpticApplied = false;
+        m_depthOfFieldApplied = false;
+        m_opticReported = false;
         m_accentRigApplied = false;
         m_shaderBallHidden = false;
         m_readyReported = false;
