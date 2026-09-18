@@ -37,6 +37,12 @@ namespace STWGameplay
         // must not be permanent, but enumerating it every frame would be waste.
         static constexpr uint32_t DiscoveryRetryUpdates = 60;
 
+        //! Key-light illuminance in Atom's photometric lux. Atom's own default level sun is a few
+        //! lux; a real-world 25,000 lux daylight value blew the deck to flat white, because the
+        //! HDRI/IBL and the manual exposure are scaled for that lower range (measured: 47% of the
+        //! frame clipped at 25,000 lux, 0.1% at 25 lux).
+        static constexpr float GetSunIlluminanceLux() { return 25.0f; }
+
         // Bit per visual asset that is not yet usable. An asset counts as
         // resolved only when BOTH its model and its material were found in the
         // catalog AND both resulting asset identities are valid, so a

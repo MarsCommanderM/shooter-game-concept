@@ -59,11 +59,14 @@ namespace STWGameplay
     {
         // Restrained interior practicals layered on top of the HDRI key/fill:
         // two cool ceiling fills over the lanes and one warm bounce near the
-        // player spawn. Intensities are modest (interior fixtures, not the sun).
+        // player spawn. Intensities are calibrated against the key light: a light at height h
+        // lights the floor beneath it with candela / h^2 lux, which must stay below the sun's
+        // lux (see ArenaPresentation::GetSunIlluminanceLux). At 850 cd these lit the deck at
+        // ~65 lux each and blew it to flat white regardless of the sun.
         AZStd::array<AccentLightSpec, AccentLightCount> rig;
-        rig[0] = AccentLightSpec{ AZ::Vector3(-5.0f, 3.0f, 3.6f), AZ::Color(0.62f, 0.74f, 1.0f, 1.0f), 850.0f, 16.0f, 0.20f };
-        rig[1] = AccentLightSpec{ AZ::Vector3(5.0f, 3.0f, 3.6f), AZ::Color(0.62f, 0.74f, 1.0f, 1.0f), 850.0f, 16.0f, 0.20f };
-        rig[2] = AccentLightSpec{ AZ::Vector3(0.0f, -8.0f, 2.4f), AZ::Color(1.0f, 0.82f, 0.60f, 1.0f), 500.0f, 12.0f, 0.15f };
+        rig[0] = AccentLightSpec{ AZ::Vector3(-5.0f, 3.0f, 3.6f), AZ::Color(0.62f, 0.74f, 1.0f, 1.0f), 85.0f, 16.0f, 0.20f };
+        rig[1] = AccentLightSpec{ AZ::Vector3(5.0f, 3.0f, 3.6f), AZ::Color(0.62f, 0.74f, 1.0f, 1.0f), 85.0f, 16.0f, 0.20f };
+        rig[2] = AccentLightSpec{ AZ::Vector3(0.0f, -8.0f, 2.4f), AZ::Color(1.0f, 0.82f, 0.60f, 1.0f), 50.0f, 12.0f, 0.15f };
         return rig;
     }
 

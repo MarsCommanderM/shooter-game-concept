@@ -869,7 +869,7 @@ namespace STWGameplay
         m_directionalLightFeatureProcessor->SetRgbIntensity(
             m_directionalLightHandle,
             AZ::Render::PhotometricColor<AZ::Render::PhotometricUnit::Lux>(
-                AZ::Color(1.0f, 0.91f, 0.78f, 1.0f) * 25000.0f));
+                AZ::Color(1.0f, 0.91f, 0.78f, 1.0f) * GetSunIlluminanceLux()));
         m_directionalLightFeatureProcessor->SetShadowEnabled(m_directionalLightHandle, true);
         m_directionalLightFeatureProcessor->SetCascadeCount(m_directionalLightHandle, 3);
         m_directionalLightFeatureProcessor->SetShadowmapFrustumSplitSchemeRatio(m_directionalLightHandle, 0.7f);

@@ -9,6 +9,14 @@ namespace STWGameplay
         EXPECT_EQ(ArenaPresentation::GetVisualAssetCount(), 9u);
     }
 
+    TEST(ArenaPresentationTests, SunIlluminanceMatchesAtomsExposureRange)
+    {
+        // Atom's default level sun is a few lux; the runtime exposure and HDRI are scaled for
+        // that range. A 25,000 lux daylight value clipped 47% of the captured frame.
+        EXPECT_GE(ArenaPresentation::GetSunIlluminanceLux(), 4.0f);
+        EXPECT_LE(ArenaPresentation::GetSunIlluminanceLux(), 100.0f);
+    }
+
     TEST(ArenaPresentationTests, PresentationDoesNotOwnGameplayAuthority)
     {
         EXPECT_TRUE(ArenaPresentation::IsVisualOnly());

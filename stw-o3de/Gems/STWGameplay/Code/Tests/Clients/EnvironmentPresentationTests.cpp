@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <STWGameplay/ArenaPresentation.h>
 #include <STWGameplay/EnvironmentPresentation.h>
 
 namespace STWGameplay
@@ -27,6 +28,19 @@ namespace STWGameplay
             EXPECT_GT(spec.m_candela, 0.0f);
             EXPECT_LE(spec.m_candela, 2000.0f);
             EXPECT_GT(spec.m_attenuationRadiusMeters, spec.m_bulbRadiusMeters);
+        }
+    }
+
+    TEST(EnvironmentPresentationTests, AccentLightsNeverOverpowerTheKeyLight)
+    {
+        // A point light of intensity I at height h lights the floor beneath it with I / h^2 lux.
+        // Accents that outshine the sun blow the deck to white whatever the sun is set to.
+        const float sunLux = ArenaPresentation::GetSunIlluminanceLux();
+        for (const auto& spec : EnvironmentPresentation::GetAccentLightRig())
+        {
+            ASSERT_GT(spec.m_position.GetZ(), 0.5f);
+            const float floorLux = spec.m_candela / (spec.m_position.GetZ() * spec.m_position.GetZ());
+            EXPECT_LT(floorLux, sunLux);
         }
     }
 
