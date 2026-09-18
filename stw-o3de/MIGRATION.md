@@ -12,8 +12,8 @@ Current authority is explicit:
   `3db6943249d8bd7960b9ed7e9aee310b7668586e`
 - controlled host automation: `.github/lightning-t4/`
 - retired implementation: `nova/`
-- frozen reference implementations: browser/Node, `stw-engine/`, and
-  `unity-starter/`
+- archived reference implementations (tag `archive/legacy-web-prototype-20260918`):
+  browser/Node, `stw-engine/`, and `unity-starter/`
 
 Do not use statements in the historical gate that predate the native
 `STWGameplay` implementation as a description of the current production

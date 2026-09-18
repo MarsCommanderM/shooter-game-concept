@@ -20,7 +20,7 @@ of a past state, never permission to use a stale base.
 |---|---|---|
 | ACTIVE | `stw-o3de/**`, `.github/lightning-t4/**`, native asset tools | Explicit STW production tasks |
 | RETIRED | `nova/**` | None; archive inspection only |
-| FROZEN | browser/Next.js, `server.mjs`, `stw-engine/**`, `unity-starter/**` | Forensics and dependency audit only |
+| ARCHIVED | browser/Next.js, `server.mjs`, `stw-engine/**`, `unity-starter/**` (removed 2026-09-18; tag `archive/legacy-web-prototype-20260918`) | None; must not be recreated |
 | RECOVERY | local Lightning work identified by Issue #5 | Preservation first; no integration until reviewed |
 
 ## Branch rules

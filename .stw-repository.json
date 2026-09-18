@@ -20,16 +20,23 @@
   "retired_paths": [
     "nova/"
   ],
-  "frozen_paths": [
-    "app/",
-    "components/",
-    "server.mjs",
-    "stw-engine/",
-    "unity-starter/"
-  ],
   "recovery": {
     "issue": 5,
     "merge_freeze_pr": 4,
     "baseline_sha": "6992c8040cd7f427b7f306e08ef0e18841f23c53"
-  }
+  },
+  "archived_paths": [
+    "app/",
+    "components/",
+    "server.mjs",
+    "stw-engine/",
+    "unity-starter/",
+    "components.json",
+    "hooks/",
+    "lib/",
+    "styles/",
+    "public/",
+    "deploy/"
+  ],
+  "archive_tag": "archive/legacy-web-prototype-20260918"
 }

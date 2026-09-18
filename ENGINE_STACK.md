@@ -26,14 +26,12 @@ weekend multiplayer, native server, and ragdoll implementation. Those features
 must be recovered from Lightning under Issue #5 and verified against their
 exact recovered SHA before this document claims them as integrated.
 
-## Retired and frozen implementations
+## Retired and archived implementations
 
 | Path | State | Rule |
 |---|---|---|
 | `nova/` | RETIRED; removed from active tree | Never restore as production |
-| `app/`, `components/`, `server.mjs` | FROZEN web prototype | No native gameplay or server work |
-| `stw-engine/` | FROZEN migration reference | No extension; archive after dependency proof |
-| `unity-starter/` | FROZEN historical starter | No production work |
+| `app/`, `components/`, `server.mjs`, `stw-engine/`, `unity-starter/` | ARCHIVED 2026-09-18 at tag `archive/legacy-web-prototype-20260918` | Never restore into the active tree |
 
 The historical document that described NOVA as production is preserved at
 [`docs/history/ENGINE_STACK_NOVA_2026-08-11.md`](docs/history/ENGINE_STACK_NOVA_2026-08-11.md)

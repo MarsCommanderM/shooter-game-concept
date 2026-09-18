@@ -59,7 +59,7 @@ Working tree is 870 MB but tracked content is small; 850 MB is ignored
 generated output (`stw-o3de/Project/Cache`, `stw-o3de/Project/user`).
 
 - **Active:** `stw-o3de/` (207 files, 16 MB), `.github/`, `tools/`, `docs/`, `runner.sh`.
-- **Frozen legacy, ~250 files:** `app/`, `components/` (69), `hooks/`, `lib/`,
+- **Frozen legacy, 213 files (archived later the same day, see section 7):** `app/`, `components/` (69), `hooks/`, `lib/`,
   `styles/`, `public/` (34, 4 MB), `deploy/`, `stw-engine/` (82), `unity-starter/`,
   `server.mjs`, and the Next.js config files. **Dependency audit:** no file under
   `stw-o3de/`, `tools/`, `.github/` or `runner.sh` references any of them; the only
@@ -110,3 +110,12 @@ equivalence or supersession is proven and archived. Issue #5 is open. So:
 - Whether `create_stw_enemy_01.py` has any remaining manual use.
 - The visual quality of the game: assets are procedurally generated
   blockout geometry; the gate checks only that a frame is non-empty.
+
+## 7. Actions taken after owner approval (2026-09-18)
+
+- The 213-file frozen legacy tree was removed from the working tree in one commit.
+  Preserved at tag `archive/legacy-web-prototype-20260918` (the last commit that
+  contains it), in git history, and in the local backup bundle.
+- `AGENTS.md`, `README.md`, `ENGINE_STACK.md`, `DEPLOY.md`, the contract, `MIGRATION.md`
+  and `.stw-repository.json` were updated to say ARCHIVED. `tools/stw-repo-guard.sh`
+  now fails if an archived path reappears.

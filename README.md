@@ -30,10 +30,10 @@ before integration claims are made.
 NOVA has been removed from the active tree and preserved in
 `archive/stw-pre-cleanup-6992c804`.
 
-The remaining browser/Next.js prototype, legacy Node relay,
-`stw-engine/`, and `unity-starter/` are frozen reference material. They are
-not valid targets for new native gameplay work and will be archived only after
-the recovered package proves that no production dependency remains.
+The browser/Next.js prototype, legacy Node relay, `stw-engine/`, and
+`unity-starter/` were archived on 2026-09-18 after a dependency audit showed no
+production reference. They are preserved at tag
+`archive/legacy-web-prototype-20260918` and are not valid targets for new work.
 
 See [`ENGINE_STACK.md`](ENGINE_STACK.md),
 [`DEPLOY.md`](DEPLOY.md), and

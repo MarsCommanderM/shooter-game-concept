@@ -22,10 +22,12 @@ Lightning/O3DE automation. The `STWGameplay` Gem owns native gameplay.
 
 `nova/` is retired and must not be recreated or treated as production.
 
-The browser/Next.js code, `server.mjs`, `stw-engine/`, and
-`unity-starter/` are frozen legacy or reference material until a separate,
-evidence-backed archival decision is approved. Do not extend them. Do not use
-the legacy Node server as the native authoritative STW server.
+The browser/Next.js code, `server.mjs`, `stw-engine/`, and `unity-starter/`
+were archived by the owner on 2026-09-18 after a dependency audit showed no
+production reference (see `docs/audits/REPO_AUDIT_2026-09-18.md`). They are
+preserved at tag `archive/legacy-web-prototype-20260918` and must not be
+recreated. Do not use the legacy Node server as the native authoritative STW
+server.
 
 ## Mandatory preflight before any mutation
 

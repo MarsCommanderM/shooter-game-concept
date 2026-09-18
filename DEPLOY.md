@@ -18,9 +18,10 @@ different SHA is not transferable.
 
 ## Server boundary
 
-The root `server.mjs` belongs to the frozen browser prototype. It is not the
-authoritative native STW dedicated server and must not be deployed or extended
-as one.
+The former root `server.mjs` belonged to the archived browser prototype
+(tag `archive/legacy-web-prototype-20260918`). It is not the authoritative
+native STW dedicated server and must not be restored, deployed, or extended as
+one.
 
 The recovered native server path is accepted only after its exact branch and
 SHA are known and the following are proven:

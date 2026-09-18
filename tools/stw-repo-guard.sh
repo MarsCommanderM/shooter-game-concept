@@ -57,6 +57,12 @@ done
 
 [[ ! -e "${repository_root}/nova" ]] || fail "retired_nova_tree_present"
 
+# Archived on 2026-09-18 (tag archive/legacy-web-prototype-20260918); must not return.
+for archived_path in app components server.mjs stw-engine unity-starter; do
+  [[ ! -e "${repository_root}/${archived_path}" ]] ||
+    fail "archived_legacy_path_present:${archived_path}"
+done
+
 if [[ "${mode}" == "ci" ]]; then
   bash -n "${repository_root}/tools/stw-repo-guard.sh" ||
     fail "guard_syntax"
