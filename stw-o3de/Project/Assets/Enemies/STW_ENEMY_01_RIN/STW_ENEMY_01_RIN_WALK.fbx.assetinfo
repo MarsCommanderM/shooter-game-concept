@@ -1,0 +1,17 @@
+{
+    "values": [
+        {
+            "$type": "MotionGroup",
+            "name": "STW_ENEMY_01_RIN_WALK",
+            "selectedRootBone": "RootNode.root",
+            "id": "{099E1137-D6EE-46E1-A716-AFBB7371AAB2}",
+            "rules": {
+                "rules": [
+                    {
+                        "$type": "MotionSamplingRule"
+                    }
+                ]
+            }
+        }
+    ]
+}

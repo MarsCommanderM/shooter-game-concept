@@ -1,0 +1,17 @@
+{
+    "values": [
+        {
+            "$type": "MotionGroup",
+            "name": "STW_ENEMY_01_RIN_JOG",
+            "selectedRootBone": "RootNode.root",
+            "id": "{2453700F-6FDD-47AD-8723-A64C7C524C20}",
+            "rules": {
+                "rules": [
+                    {
+                        "$type": "MotionSamplingRule"
+                    }
+                ]
+            }
+        }
+    ]
+}
