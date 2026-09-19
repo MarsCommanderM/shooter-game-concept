@@ -18,6 +18,9 @@
 #include <Integration/Components/ActorComponent.h>
 #include <Integration/Components/SimpleMotionComponent.h>
 #include <Integration/ActorComponentBus.h>
+#include <Atom/RPI.Reflect/Material/MaterialAsset.h>
+#include <AtomLyIntegration/CommonFeatures/Material/MaterialComponentBus.h>
+#include <AtomLyIntegration/CommonFeatures/Material/MaterialComponentConstants.h>
 #include <Integration/SimpleMotionComponentBus.h>
 
 #include <cmath>
@@ -53,6 +56,27 @@ namespace STWGameplay
                 path, azrtti_typeid<AssetType>(), false);
             return assetId;
         }
+    }
+
+    const SkeletalCharacterProfile& SkeletalCharacterProfile::Box()
+    {
+        static const SkeletalCharacterProfile profile{
+            "STW_CHARACTER_01", ActorPath, IdleMotionPath, LocomotionMotionPath, DeathMotionPath, CharacterOriginOffset,
+            "upper_spine", nullptr};
+        return profile;
+    }
+
+    const SkeletalCharacterProfile& SkeletalCharacterProfile::Rin()
+    {
+        static const SkeletalCharacterProfile profile{
+            "STW_ENEMY_01_RIN",
+            "assets/enemies/stw_enemy_01_rin/stw_enemy_01_rin.actor",
+            "assets/enemies/stw_enemy_01_rin/stw_enemy_01_rin_walk.motion",
+            "assets/enemies/stw_enemy_01_rin/stw_enemy_01_rin_jog.motion",
+            "assets/enemies/stw_enemy_01_rin/stw_enemy_01_rin_walk.motion",
+            -1.2f, // enemy capsule centre height (PhysXEnemyRuntime::CenterHeight): Rin's feet are at its origin
+            "C_spine_03_JNT", "assets/enemies/stw_enemy_01_rin/"};
+        return profile;
     }
 
     STWSkeletalCharacterPresentation::~STWSkeletalCharacterPresentation()
@@ -150,20 +174,20 @@ namespace STWGameplay
             return true;
         }
 
-        m_actorAssetId = FindAssetId<EMotionFX::Integration::ActorAsset>(ActorPath);
-        m_idleMotionAssetId = FindAssetId<EMotionFX::Integration::MotionAsset>(IdleMotionPath);
-        m_locomotionMotionAssetId = FindAssetId<EMotionFX::Integration::MotionAsset>(LocomotionMotionPath);
-        m_deathMotionAssetId = FindAssetId<EMotionFX::Integration::MotionAsset>(DeathMotionPath);
+        m_actorAssetId = FindAssetId<EMotionFX::Integration::ActorAsset>(m_profile->m_actorPath);
+        m_idleMotionAssetId = FindAssetId<EMotionFX::Integration::MotionAsset>(m_profile->m_idleMotionPath);
+        m_locomotionMotionAssetId = FindAssetId<EMotionFX::Integration::MotionAsset>(m_profile->m_locomotionMotionPath);
+        m_deathMotionAssetId = FindAssetId<EMotionFX::Integration::MotionAsset>(m_profile->m_deathMotionPath);
         if (!m_actorAssetId.IsValid() || !m_idleMotionAssetId.IsValid()
             || !m_locomotionMotionAssetId.IsValid() || !m_deathMotionAssetId.IsValid())
         {
             return false;
         }
 
-        m_actorAssetPath = ActorPath;
-        m_idleMotionAssetPath = IdleMotionPath;
-        m_locomotionMotionAssetPath = LocomotionMotionPath;
-        m_deathMotionAssetPath = DeathMotionPath;
+        m_actorAssetPath = m_profile->m_actorPath;
+        m_idleMotionAssetPath = m_profile->m_idleMotionPath;
+        m_locomotionMotionAssetPath = m_profile->m_locomotionMotionPath;
+        m_deathMotionAssetPath = m_profile->m_deathMotionPath;
         m_productsResolved = true;
         return true;
     }
@@ -204,6 +228,10 @@ namespace STWGameplay
         entity->SetRuntimeActiveByDefault(false);
         entity->CreateComponent<AzFramework::TransformComponent>();
         entity->CreateComponent<EMotionFX::Integration::ActorComponent>(&actorConfiguration);
+        if (m_profile->m_materialOverridePrefix != nullptr)
+        {
+            entity->CreateComponent(AZ::Render::MaterialComponentTypeId);
+        }
         entity->CreateComponent<EMotionFX::Integration::SimpleMotionComponent>(&motionConfiguration);
         m_entityId = entity->GetId();
 
@@ -238,6 +266,71 @@ namespace STWGameplay
         m_boneSampleReseedPending = true;
     }
 
+    void STWSkeletalCharacterPresentation::ApplyMaterialOverrides()
+    {
+        if (m_materialsApplied || m_profile->m_materialOverridePrefix == nullptr)
+        {
+            return;
+        }
+        AZ::Render::MaterialAssignmentMap slots;
+        AZ::Render::MaterialComponentRequestBus::EventResult(
+            slots, m_entityId, &AZ::Render::MaterialComponentRequests::GetDefaultMaterialMap);
+        if (slots.empty())
+        {
+            return; // the model is not resolved yet; try again on the next update
+        }
+        size_t matched = 0;
+        for (const auto& slot : slots)
+        {
+            AZStd::string label;
+            AZ::Render::MaterialComponentRequestBus::EventResult(
+                label, m_entityId, &AZ::Render::MaterialComponentRequests::GetMaterialLabel, slot.first);
+            AZStd::to_lower(label.begin(), label.end());
+            // Slot labels look like "rin_m_face" (possibly with the FBX prefix and a numeric hash): keep "rin_m_<part>".
+            AZStd::string token;
+            const size_t start = label.find("rin_m_");
+            if (start != AZStd::string::npos)
+            {
+                token = label.substr(start);
+                const size_t dot = token.find('.');
+                if (dot != AZStd::string::npos)
+                {
+                    token = token.substr(0, dot);
+                }
+                const size_t tail = token.rfind('_');
+                if (tail != AZStd::string::npos && tail + 1 < token.size())
+                {
+                    bool allDigits = true;
+                    for (size_t i = tail + 1; i < token.size(); ++i)
+                    {
+                        allDigits = allDigits && token[i] >= '0' && token[i] <= '9';
+                    }
+                    if (allDigits)
+                    {
+                        token = token.substr(0, tail); // trailing numeric hash only
+                    }
+                }
+            }
+            bool applied = false;
+            if (!token.empty())
+            {
+                const AZStd::string path = AZStd::string(m_profile->m_materialOverridePrefix) + token + ".azmaterial";
+                const AZ::Data::AssetId materialId = FindAssetId<AZ::RPI::MaterialAsset>(path.c_str());
+                if (materialId.IsValid())
+                {
+                    AZ::Render::MaterialComponentRequestBus::Event(
+                        m_entityId, &AZ::Render::MaterialComponentRequests::SetMaterialAssetId, slot.first, materialId);
+                    applied = true;
+                    ++matched;
+                }
+            }
+            AZ_Printf("STWGameplay", "CHARACTER_MATERIAL_SLOT label=%s override=%d\n", label.c_str(), applied ? 1 : 0);
+        }
+        AZ_Printf("STWGameplay", "CHARACTER_MATERIAL_OVERRIDES profile=%s matched=%zu slots=%zu\n",
+            m_profile->m_name, matched, slots.size());
+        m_materialsApplied = true;
+    }
+
     void STWSkeletalCharacterPresentation::SampleRuntimeDiagnostics()
     {
         if (!m_entity)
@@ -269,12 +362,13 @@ namespace STWGameplay
             return;
         }
 
+        ApplyMaterialOverrides();
         EMotionFX::Integration::ActorComponentRequestBus::EventResult(
             m_skeletonNodeCount, m_entityId, &EMotionFX::Integration::ActorComponentRequests::GetNumJoints);
         m_probeJointIndex = EMotionFX::Integration::ActorComponentRequests::s_invalidJointIndex;
         EMotionFX::Integration::ActorComponentRequestBus::EventResult(
             m_probeJointIndex, m_entityId, &EMotionFX::Integration::ActorComponentRequests::GetJointIndexByName,
-            "upper_spine");
+            m_profile->m_probeJointName);
         EMotionFX::Integration::ActorComponentRequestBus::EventResult(
             m_skinnedMeshVisible, m_entityId,
             &EMotionFX::Integration::ActorComponentRequests::GetRenderActorVisible);
@@ -436,7 +530,7 @@ namespace STWGameplay
         // This is a presentation transform. PhysX remains the source of gameplay position.
         const AZ::Transform presentationTransform = AZ::Transform::CreateFromQuaternionAndTranslation(
             AZ::Quaternion::CreateRotationZ(presentationState.m_yaw),
-            presentationState.m_position + AZ::Vector3(0.0f, 0.0f, CharacterOriginOffset));
+            presentationState.m_position + AZ::Vector3(0.0f, 0.0f, m_profile->m_originOffsetZ));
         AZ::TransformBus::Event(m_entityId, &AZ::TransformBus::Events::SetWorldTM, presentationTransform);
         SampleRuntimeDiagnostics();
 

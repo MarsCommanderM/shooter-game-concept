@@ -166,6 +166,9 @@ namespace STWGameplay
         {
             AZ_Warning("STWGameplay", false, "STW multiplayer transport is unavailable");
         }
+        // The animated enemy is the engine's Rin character (real human proportions, PBR materials, mocap clips) instead of the
+        // STW_CHARACTER_01 cube figure. Presentation only; the box profile stays available as SkeletalCharacterProfile::Box().
+        m_skeletalCharacterPresentation.SetProfile(SkeletalCharacterProfile::Rin());
         m_skeletalCharacterPhysicalState = {};
         m_skeletalCharacterRespawnEvents = m_model.GetEnemy().GetState().m_respawnEvents;
         for (size_t index = 0; index < m_model.GetEnemies().GetEnemyCount(); ++index)

@@ -22,6 +22,7 @@ ly_add_target(
         AZ::AzCore
         AZ::AzFramework
         Gem::Atom_Feature_Common.Public
+        Gem::AtomLyIntegration_CommonFeatures.Static
         Gem::EMotionFX.Static
         Gem::EMotionFX_Atom.Static
         Gem::Multiplayer.Client
@@ -49,6 +50,7 @@ ly_add_target(
         AZ::AzCore
         AZ::AzFramework
         Gem::Atom_Feature_Common.Public
+        Gem::AtomLyIntegration_CommonFeatures.Static
         Gem::EMotionFX.Static
         Gem::EMotionFX_Atom.Static
         Gem::Multiplayer.Server

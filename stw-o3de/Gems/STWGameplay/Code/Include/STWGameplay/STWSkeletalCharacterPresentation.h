@@ -29,6 +29,28 @@ namespace STWGameplay
         ResetToIdle
     };
 
+    //! Asset paths and placement of one animated character. Data only: the runtime contract (states, gameplay separation,
+    //! acceptance markers) is unchanged for every profile. Box() is the shipped STW_CHARACTER_01 and the default.
+    struct SkeletalCharacterProfile
+    {
+        const char* m_name;
+        const char* m_actorPath;
+        const char* m_idleMotionPath;
+        const char* m_locomotionMotionPath;
+        const char* m_deathMotionPath;
+        //! Added to the gameplay position so the actor's feet meet the deck.
+        float m_originOffsetZ;
+        //! Joint whose rotation the runtime samples to prove the skeleton really animates (an upper-spine joint).
+        const char* m_probeJointName;
+        //! Product-path prefix of per-slot material overrides (rin_m_<slot>.azmaterial), or nullptr to keep the actor's own.
+        const char* m_materialOverridePrefix;
+
+        static const SkeletalCharacterProfile& Box();
+        //! Engine Rin character with the Jog and Walk mocap clips. The engine library has no idle or death clip, so idle
+        //! and death temporarily reuse Walk; a real idle and a ragdoll are still open requirements.
+        static const SkeletalCharacterProfile& Rin();
+    };
+
     //! Presentation-only EMotionFX/Atom character integration.
     //! Gameplay and physics state is supplied as a const snapshot and is never owned here.
     class STWSkeletalCharacterPresentation final
@@ -41,6 +63,10 @@ namespace STWGameplay
         STWSkeletalCharacterPresentation& operator=(const STWSkeletalCharacterPresentation&) = delete;
 
         //! Resolves the registered products and creates the presentation entity when ready.
+        //! Selects the character profile. Must be called before the first Update; the default is Box().
+        void SetProfile(const SkeletalCharacterProfile& profile) { m_profile = &profile; }
+        const SkeletalCharacterProfile& GetProfile() const { return *m_profile; }
+
         void Update(float deltaTime, const EnemyState& gameplayState);
         //! Uses a copy-only visual source position while gameplayState remains the authority.
         void Update(
@@ -80,10 +106,12 @@ namespace STWGameplay
     private:
         bool TryCreatePresentationEntity();
         bool ResolveProducts();
+        void ApplyMaterialOverrides();
         void SelectMotion(const AZ::Data::AssetId& motionAssetId, bool loop);
         void SampleRuntimeDiagnostics();
 
         // The game entity context owns this presentation entity after it is registered.
+        const SkeletalCharacterProfile* m_profile = &SkeletalCharacterProfile::Box();
         AZ::Entity* m_entity = nullptr;
         AZ::EntityId m_entityId;
         AZ::Data::AssetId m_actorAssetId;
@@ -97,6 +125,7 @@ namespace STWGameplay
         AZ::Data::AssetId m_currentMotionAssetId;
 
         bool m_productsResolved = false;
+        bool m_materialsApplied = false;
         bool m_actorAssetReady = false;
         bool m_motionAssetReady = false;
         bool m_actorInstanceReady = false;

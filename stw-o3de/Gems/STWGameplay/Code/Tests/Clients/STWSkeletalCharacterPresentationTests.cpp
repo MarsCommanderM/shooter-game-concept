@@ -55,6 +55,35 @@ namespace STWGameplay
         EXPECT_TRUE(STWSkeletalCharacterPresentation::IsAssetLifecycleComplete(true, true, true, true));
     }
 
+    TEST(STWSkeletalCharacterPresentationTests, DefaultProfileIsTheShippedBoxCharacterUnchanged)
+    {
+        STWSkeletalCharacterPresentation presentation;
+        const SkeletalCharacterProfile& profile = presentation.GetProfile();
+        EXPECT_EQ(&profile, &SkeletalCharacterProfile::Box());
+        EXPECT_STREQ(profile.m_actorPath, "assets/characters/stw_character_01/stw_character_01.actor");
+        EXPECT_STREQ(profile.m_idleMotionPath, "assets/characters/stw_character_01/stw_character_01_idle.motion");
+        EXPECT_STREQ(profile.m_locomotionMotionPath, "assets/characters/stw_character_01/stw_character_01_locomotion.motion");
+        EXPECT_STREQ(profile.m_deathMotionPath, "assets/characters/stw_character_01/stw_character_01_death.motion");
+        EXPECT_FLOAT_EQ(profile.m_originOffsetZ, -1.0f);
+        EXPECT_STREQ(profile.m_probeJointName, "upper_spine");
+        EXPECT_EQ(profile.m_materialOverridePrefix, nullptr);
+    }
+
+    TEST(STWSkeletalCharacterPresentationTests, RinProfilePointsAtTheImportedProductsAndCanBeSelected)
+    {
+        const SkeletalCharacterProfile& rin = SkeletalCharacterProfile::Rin();
+        EXPECT_STREQ(rin.m_name, "STW_ENEMY_01_RIN");
+        EXPECT_STREQ(rin.m_actorPath, "assets/enemies/stw_enemy_01_rin/stw_enemy_01_rin.actor");
+        EXPECT_STREQ(rin.m_locomotionMotionPath, "assets/enemies/stw_enemy_01_rin/stw_enemy_01_rin_jog.motion");
+        EXPECT_NE(&rin, &SkeletalCharacterProfile::Box());
+        EXPECT_FLOAT_EQ(rin.m_originOffsetZ, -1.2f);
+        EXPECT_STREQ(rin.m_probeJointName, "C_spine_03_JNT");
+        EXPECT_STREQ(rin.m_materialOverridePrefix, "assets/enemies/stw_enemy_01_rin/");
+        STWSkeletalCharacterPresentation presentation;
+        presentation.SetProfile(rin);
+        EXPECT_EQ(&presentation.GetProfile(), &rin);
+    }
+
     TEST(STWSkeletalCharacterPresentationTests, SkeletonContractHasStableRagdollCompatibleJointNames)
     {
         EXPECT_EQ(STWSkeletalCharacterPresentation::RequiredJointCount(), 18u);
