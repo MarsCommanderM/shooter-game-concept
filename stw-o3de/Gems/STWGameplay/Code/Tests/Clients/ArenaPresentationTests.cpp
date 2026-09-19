@@ -9,6 +9,15 @@ namespace STWGameplay
         EXPECT_EQ(ArenaPresentation::GetVisualAssetCount(), 9u);
     }
 
+    TEST(ArenaPresentationTests, SunShadowsAreActuallyResolved)
+    {
+        // Atom's default is a 1x1 shadow map (no shadows). Anything below 1024 is too coarse for a 24 m hall and
+        // 2048 is the supported maximum.
+        EXPECT_GE(ArenaPresentation::GetSunShadowmapSize(), 1024u);
+        EXPECT_LE(ArenaPresentation::GetSunShadowmapSize(), 2048u);
+        EXPECT_GE(ArenaPresentation::GetSunShadowFilterSampleCount(), 4);
+    }
+
     TEST(ArenaPresentationTests, SunIlluminanceMatchesAtomsExposureRange)
     {
         // Atom's default level sun is a few lux; the runtime exposure and HDRI are scaled for

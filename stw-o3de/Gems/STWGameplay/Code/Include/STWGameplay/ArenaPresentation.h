@@ -43,6 +43,12 @@ namespace STWGameplay
         //! frame clipped at 25,000 lux, 0.1% at 25 lux).
         static constexpr float GetSunIlluminanceLux() { return 25.0f; }
 
+        //! Sun shadow quality. Atom's directional light defaults to a 1x1 shadow map with no filtering, i.e. no
+        //! working shadows at all (measured: the floor luma follows the sun's lux even with a closed roof and no
+        //! cover casts a shadow). 2048 is the engine's own lighting-preset value and the supported maximum.
+        static constexpr uint32_t GetSunShadowmapSize() { return 2048; }
+        static constexpr uint16_t GetSunShadowFilterSampleCount() { return 16; }
+
         // Bit per visual asset that is not yet usable. An asset counts as
         // resolved only when BOTH its model and its material were found in the
         // catalog AND both resulting asset identities are valid, so a

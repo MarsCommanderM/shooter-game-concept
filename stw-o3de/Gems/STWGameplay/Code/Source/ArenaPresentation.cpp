@@ -871,6 +871,11 @@ namespace STWGameplay
             AZ::Render::PhotometricColor<AZ::Render::PhotometricUnit::Lux>(
                 AZ::Color(1.0f, 0.91f, 0.78f, 1.0f) * GetSunIlluminanceLux()));
         m_directionalLightFeatureProcessor->SetShadowEnabled(m_directionalLightHandle, true);
+        m_directionalLightFeatureProcessor->SetShadowmapSize(
+            m_directionalLightHandle, static_cast<AZ::Render::ShadowmapSize>(GetSunShadowmapSize()));
+        m_directionalLightFeatureProcessor->SetShadowFilterMethod(
+            m_directionalLightHandle, AZ::Render::ShadowFilterMethod::Pcf);
+        m_directionalLightFeatureProcessor->SetFilteringSampleCount(m_directionalLightHandle, GetSunShadowFilterSampleCount());
         m_directionalLightFeatureProcessor->SetCascadeCount(m_directionalLightHandle, 3);
         m_directionalLightFeatureProcessor->SetShadowmapFrustumSplitSchemeRatio(m_directionalLightHandle, 0.7f);
         m_directionalLightFeatureProcessor->SetShadowFarClipDistance(m_directionalLightHandle, 80.0f);
