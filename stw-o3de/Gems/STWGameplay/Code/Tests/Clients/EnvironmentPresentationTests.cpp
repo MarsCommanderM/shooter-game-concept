@@ -44,6 +44,14 @@ namespace STWGameplay
         }
     }
 
+    TEST(EnvironmentPresentationTests, IblExposureTrimIsAModestStopDown)
+    {
+        // At most three stops down and never brighter than the preset; a deeper cut would black out the
+        // ambient fill and make shadowed areas unreadable.
+        EXPECT_LE(EnvironmentPresentation::GetIblExposureTrim(), 0.0f);
+        EXPECT_GE(EnvironmentPresentation::GetIblExposureTrim(), -3.0f);
+    }
+
     TEST(EnvironmentPresentationTests, AccentRigRejectsImplausibleIntensities)
     {
         auto rig = EnvironmentPresentation::GetAccentLightRig();

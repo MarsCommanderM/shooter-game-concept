@@ -79,6 +79,9 @@ namespace STWGameplay
     // R1: firm stop-down for the sunlit metallic deck (Block 26D captured mean luminance ~206,
     // large pinned-white regions). Applied as ManualOnly exposure compensation in EV.
     float EnvironmentPresentation::GetExposureCompensationTrim() { return -1.75f; }
+    // Cinematic step 2: the deck is lit mostly by the HDRI ambient (measured: lowering the sun 25->15 lux
+    // only moved the floor 188->170). One stop less IBL lets the key and the accents shape the image.
+    float EnvironmentPresentation::GetIblExposureTrim() { return -1.0f; }
 
     // Cinematic lens stack. Atom's own defaults are the reference points: vignette 0.01,
     // chromatic aberration 0.01 / blend 0.5, film grain 0.2. The values below are a
@@ -310,6 +313,11 @@ namespace STWGameplay
             exposureSettings->SetManualCompensation(GetExposureCompensationTrim());
             exposureSettings->OnConfigChanged();
             m_postProcessFeatureProcessor->OnPostProcessSettingsChanged();
+        }
+
+        if (m_iblFeatureProcessor != nullptr)
+        {
+            m_iblFeatureProcessor->SetExposure(GetIblExposureTrim());
         }
 
         m_lightingPresetApplied = true;

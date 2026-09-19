@@ -76,6 +76,9 @@ namespace STWGameplay
         static float GetColorGradingPostSaturation();
         //! A plausible manual exposure trim (EV) layered under the preset's own control.
         static float GetExposureCompensationTrim();
+        //! EV trim applied to the image-based light (HDRI ambient) after the preset, so the sky
+        //! fills the deck less and the directional key reads. Bounded by the unit tests.
+        static float GetIblExposureTrim();
         static bool IsAccentRigPhysicallyPlausible(const AZStd::array<AccentLightSpec, AccentLightCount>& rig);
 
         //! Cinematic lens stack. Every value is a restrained, engine-bounded look
