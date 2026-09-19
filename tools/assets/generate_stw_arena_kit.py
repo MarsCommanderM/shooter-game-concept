@@ -690,6 +690,24 @@ def build_struct():
     for x in (-8.0, 8.0):
         add_box(kit, (x, 2.0, TRUSS_BOTTOM + 0.34), (0.24, WALL_INNER * 2.0 - 4.0, 0.24))
     add_box(kit, (0.0, 2.0, TRUSS_TOP - 0.06), (0.30, WALL_INNER * 2.0 - 4.0, 0.16))
+
+    # Cinematic step 4: close the roof. A thin slab sits on top of the trusses so the hall reads as an
+    # interior instead of an open frame under a flat overcast sky. Visual only: it stays inside
+    # WALL_INNER, far above every player reach envelope (REACH/JUMP/MANTLE), and adds no collision.
+    kit.begin_group("roof_deck")
+    add_box(kit, (0.0, 0.0, TRUSS_TOP + 0.06), (WALL_INNER * 2.0, WALL_INNER * 2.0, 0.12))
+
+    # Cinematic step 5: the wall tops end at WALL_HEIGHT (6.0) but the roof slab sits at TRUSS_TOP (7.0), which
+    # left an open band all round where the sky showed through. A perimeter fascia closes it. It occupies only
+    # the WALL_INNER..WALL_OUTER relief, so nothing visual crosses the collision walls.
+    kit.begin_group("roof_fascia")
+    fascia_depth = WALL_OUTER - WALL_INNER
+    fascia_mid = WALL_INNER + fascia_depth * 0.5
+    fascia_z = (WALL_HEIGHT + TRUSS_TOP) * 0.5
+    fascia_h = TRUSS_TOP - WALL_HEIGHT
+    for sign in (-1.0, 1.0):
+        add_box(kit, (sign * fascia_mid, 0.0, fascia_z), (fascia_depth, WALL_OUTER * 2.0, fascia_h))
+        add_box(kit, (0.0, sign * fascia_mid, fascia_z), (WALL_INNER * 2.0, fascia_depth, fascia_h))
     return kit
 
 

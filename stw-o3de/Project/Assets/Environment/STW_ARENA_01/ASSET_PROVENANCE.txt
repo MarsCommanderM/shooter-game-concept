@@ -3,7 +3,7 @@ The STW_ARENA_01 modular kit is original STW production geometry.
 Geometry generated deterministically by tools/assets/generate_stw_arena_kit.py:
   STW_ARENA_DECK_01.obj      segmented deck plates, channels, hatches, framing
   STW_ARENA_WALL_01.obj      framed wall modules, ribs, rails, bays, vents
-  STW_ARENA_STRUCT_01.obj    wall pilasters, roof trusses, tie beams
+  STW_ARENA_STRUCT_01.obj    wall pilasters, roof trusses, tie beams, roof deck slab and perimeter fascia (visual only)
   STW_ARENA_COVERMOD_01.obj  cover modules and the step platform
   STW_ARENA_ARCH_01.obj      suspended hero gate structure
   STW_ARENA_BEACON_01.obj    landmark tower and the arena's emissive channels
