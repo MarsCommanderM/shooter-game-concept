@@ -58,8 +58,20 @@ Top sixth of the frame (sky / roof): 144 (baseline) -> 49 (roof closed). Upper c
 
 1. **The floor is still too bright** (183.8, target <= ~140). Lowering it with roughness or sun cost contrast.
    Needs a different approach (reflection probes / baked GI so the sky is not reflected in an interior).
-2. **Unexplained sun response:** the floor luma still follows the sun's illuminance (about -19 for 25 -> 15 lux)
-   even with the roof closed, so the roof slab does not appear to shadow the sun as expected. Cause unverified
-   (shadow cascade coverage or shadow-caster flags are hypotheses only).
+2. **Root cause of the sun anomaly found: the sun has no working shadow map.** Atom's directional light defaults to
+   `m_shadowmapSize = 1` and `ShadowFilterMethod::None`; STW never calls `SetShadowmapSize` / `SetShadowFilterMethod`.
+   Evidence: the floor follows the sun's lux even with the roof closed (25 -> 10 lux, run `20260919T132751Z`: floor
+   183.8 -> 149.7, walls 91.9 -> 76.1, RMS 77.9 -> 63.2), and no cover or character casts a shadow in any frame.
+   The 4 lux variant was rejected by the unit test `AccentLightsNeverOverpowerTheKeyLight` (accents reach 8.7 lux) before
+   rendering, as designed.
+   **Blocked fix:** enabling a real 2048 shadow map crashes the launcher deterministically about 40 s into the run,
+   at the same game moment (`STW_BONE_ROT_DIAG state=IDLE anim_time~0.2`), with no log line and no core file. Two variants
+   were tried on `codex/stw-sun-shadows` and both failed the gate before 8 of 29 acceptance markers appeared
+   (`VIEWMODEL`, `COMBAT_FEEDBACK`, `AUDIO_PRESENTATION`, `ENCOUNTER`, `MULTI_ENEMY`, `SPAWN_CHECKPOINT`,
+   `BODYCAM_PRESENTATION`): `58f9e12` (2048, EsmPcf, cascade blending; run `20260919T133457Z`, exit 1) and `6156a3d`
+   (2048, Pcf, no blending; run `20260919T134534Z`, exit 1). Frame rate also collapses with real shadows (average 29.5 ->
+   8.7 fps). The cause inside the game is not identified; `gdb` is not installed and `ulimit -c` is 0.
+   Next step: capture a core dump or a backtrace (install gdb, enable cores), then decide between fixing the crash and
+   another shadow strategy (fewer cascades, smaller map, baked lighting). Nothing from this branch is merged.
 3. Characters, weapons and materials remain `BLOCKOUT`; geometry and PBR detail, not lighting constants, are the
    main distance to the product target.
