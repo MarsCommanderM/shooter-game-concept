@@ -67,6 +67,7 @@ PLATE_RISE = 0.04           # plate top sits at DECK_TOP, base slab is recessed
 TRUSS_Y = (-6.0, -2.0, 2.0, 6.0, 10.0)
 TRUSS_BOTTOM = 6.2
 TRUSS_TOP = 7.0
+ROOF_SLOTS = ((-4.0, 1.6), (2.0, 1.6), (8.0, 1.6))   # (centre y, width) skylight slots in the roof deck
 
 # Collision cover boxes: centre (+-2.25, 0, 1.25), size (1.5, 2.0, 2.5).
 COVER_CENTRES = (-2.25, 2.25)
@@ -695,7 +696,17 @@ def build_struct():
     # interior instead of an open frame under a flat overcast sky. Visual only: it stays inside
     # WALL_INNER, far above every player reach envelope (REACH/JUMP/MANTLE), and adds no collision.
     kit.begin_group("roof_deck")
-    add_box(kit, (0.0, 0.0, TRUSS_TOP + 0.06), (WALL_INNER * 2.0, WALL_INNER * 2.0, 0.12))
+    # Cinematic step 8: skylight slots. The sun now has a real shadow map, so gaps in the roof let it fall as hard
+    # bright bars across the deck against a dark ambient. Slots run along X between the truss lines; the trusses
+    # beneath them break each bar into a lattice.
+    roof_edge = -WALL_INNER
+    for slot_y, slot_w in ROOF_SLOTS:
+        strip_hi = slot_y - slot_w * 0.5
+        add_box(kit, (0.0, (roof_edge + strip_hi) * 0.5, TRUSS_TOP + 0.06),
+                (WALL_INNER * 2.0, strip_hi - roof_edge, 0.12))
+        roof_edge = slot_y + slot_w * 0.5
+    add_box(kit, (0.0, (roof_edge + WALL_INNER) * 0.5, TRUSS_TOP + 0.06),
+            (WALL_INNER * 2.0, WALL_INNER - roof_edge, 0.12))
 
     # Cinematic step 5: the wall tops end at WALL_HEIGHT (6.0) but the roof slab sits at TRUSS_TOP (7.0), which
     # left an open band all round where the sky showed through. A perimeter fascia closes it. It occupies only
