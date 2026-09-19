@@ -169,6 +169,10 @@ namespace STWGameplay
         // The animated enemy is the engine's Rin character (real human proportions, PBR materials, mocap clips) instead of the
         // STW_CHARACTER_01 cube figure. Presentation only; the box profile stays available as SkeletalCharacterProfile::Box().
         m_skeletalCharacterPresentation.SetProfile(SkeletalCharacterProfile::Rin());
+        for (STWSkeletalCharacterPresentation& enemyCharacter : m_enemyCharacterPresentations)
+        {
+            enemyCharacter.SetProfile(SkeletalCharacterProfile::Rin());
+        }
         m_skeletalCharacterPhysicalState = {};
         m_skeletalCharacterRespawnEvents = m_model.GetEnemy().GetState().m_respawnEvents;
         for (size_t index = 0; index < m_model.GetEnemies().GetEnemyCount(); ++index)
@@ -228,6 +232,10 @@ namespace STWGameplay
         m_remotePlayerPresentationReported.fill(false);
         m_remotePlayerPresentationRenderReported.fill(false);
         m_skeletalCharacterPresentation.Shutdown();
+        for (STWSkeletalCharacterPresentation& enemyCharacter : m_enemyCharacterPresentations)
+        {
+            enemyCharacter.Shutdown();
+        }
         m_environmentPresentation.Shutdown();
         ShutdownEnemyMesh();
         ShutdownArenaMesh();
@@ -1219,6 +1227,12 @@ namespace STWGameplay
                 const EnemyState& skeletalStateAfter = enemies.GetInstanceByIndex(index).m_combat.GetState();
                 m_skeletalPresentationAuthoritySeparated = m_skeletalPresentationAuthoritySeparated
                     && STWSkeletalCharacterPresentation::IsGameplayStateUnchanged(presentationInput, skeletalStateAfter);
+            }
+            else if (m_enemyPresentationInterpolations[index].HasState())
+            {
+                m_enemyCharacterPresentations[index].Update(
+                    deltaTime, presentationInput,
+                    m_enemyPresentationInterpolations[index].Evaluate(m_fixedSimulationClock.GetInterpolationAlpha()));
             }
             m_enemyPresentations[index].Update(deltaTime, presentationInput);
             const EnemyState& presentationAfter = enemies.GetInstanceByIndex(index).m_combat.GetState();
@@ -3337,7 +3351,8 @@ namespace STWGameplay
                 m_enemyMeshHandles[index],
                 baseTransform * m_enemyPresentations[index].GetLocalTransform() * objAxisCorrection,
                 AZ::Vector3(presentationScale.GetX(), presentationScale.GetZ(), presentationScale.GetY()) * hitScale);
-            const bool skeletalPrimaryVisible = index == 0 && m_skeletalCharacterPresentation.IsSkinnedMeshVisible();
+            const bool skeletalPrimaryVisible = (index == 0 ? m_skeletalCharacterPresentation
+                : m_enemyCharacterPresentations[index]).IsSkinnedMeshVisible();
             m_meshFeatureProcessor->SetVisible(m_enemyMeshHandles[index], enemy.m_alive && !skeletalPrimaryVisible);
             allMeshesReady = allMeshesReady && m_meshFeatureProcessor->GetModel(m_enemyMeshHandles[index]);
         }

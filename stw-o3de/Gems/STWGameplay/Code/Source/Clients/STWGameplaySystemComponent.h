@@ -226,6 +226,9 @@ namespace STWGameplay
         BodycamCameraPresentation m_bodycamCameraPresentation;
         AZStd::array<EnemyPresentation, EnemyCollectionModel::MaxEnemyCount> m_enemyPresentations;
         STWSkeletalCharacterPresentation m_skeletalCharacterPresentation;
+        // Animated characters for enemies 1..MaxEnemyCount-1 (index 0 uses m_skeletalCharacterPresentation, which also
+        // carries the gate's acceptance state). Presentation only; index 0 of this array stays unused.
+        AZStd::array<STWSkeletalCharacterPresentation, EnemyCollectionModel::MaxEnemyCount> m_enemyCharacterPresentations;
         ViewmodelPresentation m_viewmodel;
         CombatFeedbackPresentation m_combatFeedback;
         AudioFeedbackPresentation m_audioFeedback;
