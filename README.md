@@ -2,6 +2,12 @@
 
 This repository contains the native STW game and historical prototypes.
 
+STW is a high-end native 3D multiplayer FPS with a hyper-realistic cinematic
+sci-fi target. Blockouts, debug geometry and placeholder content are development
+tools, never the quality bar. Read
+[`docs/STW_PRODUCT_VISION.md`](docs/STW_PRODUCT_VISION.md) before making any
+architecture, asset or cleanup decision.
+
 ## Canonical production line
 
 - Repository: `MarsCommanderM/shooter-game-concept`

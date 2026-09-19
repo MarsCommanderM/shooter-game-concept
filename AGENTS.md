@@ -15,6 +15,16 @@ Resolve the production HEAD from the remote at the start of every task. Never
 reuse an old SHA from a prompt, report, checkout, or prior conversation as the
 current baseline.
 
+## Product identity
+
+STW is a high-end native 3D multiplayer FPS with a hyper-realistic cinematic
+sci-fi target, not a blockout project or tech demo. Read
+`docs/STW_PRODUCT_VISION.md` before architecture, asset or cleanup work. Never
+lower the product target to match the implementation; report the gap instead.
+Classify visual content as `TEMPORARY_DEBUG`, `BLOCKOUT`, `TECHNICAL_VALIDATION`,
+`PRODUCTION_CANDIDATE` or `PRODUCTION_READY`, and never call placeholder content
+final or production-ready without visual and runtime evidence.
+
 ## Production scope
 
 New game implementation belongs under `stw-o3de/` and its controlled

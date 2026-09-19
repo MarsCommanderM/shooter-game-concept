@@ -1,5 +1,9 @@
 # STW canonical engine stack
 
+This document records the engine stack. The product target it serves is defined
+in [`docs/STW_PRODUCT_VISION.md`](docs/STW_PRODUCT_VISION.md): a high-end native
+3D multiplayer FPS with a hyper-realistic cinematic sci-fi target.
+
 ## Authority
 
 | Layer | Canonical implementation |
