@@ -52,3 +52,22 @@ unit tests 100 %. It reproduced the skylight run to within 0.1 luma, so the rend
 3. An unexplained intermittent failure: two of the first three runs with shadows ended with the launcher gone. Not reproduced
    in six later runs; no core file; `gdb` is now installed and core dumps enabled for the next occurrence.
 4. Characters, weapons and surface detail remain `BLOCKOUT`; lighting alone cannot close the distance to the product target.
+
+## Step 9 (branch `codex/stw-cinematic-interior-v3`): accent lights as practical lights
+
+The closed, shadowed hall was ambient-lit (mean 68, RMS 49). The three accents were raised from 85/85/50 cd to
+210/210/120 cd; their floor illuminance (16.2 / 16.2 / 20.8 lux) stays below the sun's 25 lux, which the unit test
+`AccentLightsNeverOverpowerTheKeyLight` enforces. Gate `player-slice-20260919T142242Z`, `SOURCE_COMMIT=3ec4cf982e8cbaa1cba27b075f221b0ef798bc95`,
+`RESULT=PASS`, average fps 30.5.
+
+| metric | v2 tip | + brighter accents |
+|---|---|---|
+| mean luma | 68.1 | 83.0 |
+| floor third | 97.8 | 122.0 |
+| RMS contrast | 49.4 | 55.4 |
+| p5 luma | 14.7 | 17.3 |
+| clipped >= 250 / crushed <= 8 | 0.00 % / 0.81 % | 0.00 % / 0.45 % |
+| R/B overall | 0.97 | 0.95 (cooler fill on walls and roof) |
+
+Kept. Contrast is still below the very first baseline (78) because the scene no longer has a sun-flooded deck; the next
+levers are point-light shadows for the practicals, emissive strips and reflection probes.
