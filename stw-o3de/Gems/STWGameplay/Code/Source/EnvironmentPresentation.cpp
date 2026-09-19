@@ -64,9 +64,11 @@ namespace STWGameplay
         // lux (see ArenaPresentation::GetSunIlluminanceLux). At 850 cd these lit the deck at
         // ~65 lux each and blew it to flat white regardless of the sun.
         AZStd::array<AccentLightSpec, AccentLightCount> rig;
-        rig[0] = AccentLightSpec{ AZ::Vector3(-5.0f, 3.0f, 3.6f), AZ::Color(0.62f, 0.74f, 1.0f, 1.0f), 85.0f, 16.0f, 0.20f };
-        rig[1] = AccentLightSpec{ AZ::Vector3(5.0f, 3.0f, 3.6f), AZ::Color(0.62f, 0.74f, 1.0f, 1.0f), 85.0f, 16.0f, 0.20f };
-        rig[2] = AccentLightSpec{ AZ::Vector3(0.0f, -8.0f, 2.4f), AZ::Color(1.0f, 0.82f, 0.60f, 1.0f), 50.0f, 12.0f, 0.15f };
+        // Cinematic step 9: with real sun shadows and a closed roof the hall is ambient-lit (mean luma 68, RMS 49), so the
+        // accents become the practical lights that shape it. Still below the sun at the floor (16.2 / 16.2 / 20.8 lux < 25).
+        rig[0] = AccentLightSpec{ AZ::Vector3(-5.0f, 3.0f, 3.6f), AZ::Color(0.62f, 0.74f, 1.0f, 1.0f), 210.0f, 16.0f, 0.20f };
+        rig[1] = AccentLightSpec{ AZ::Vector3(5.0f, 3.0f, 3.6f), AZ::Color(0.62f, 0.74f, 1.0f, 1.0f), 210.0f, 16.0f, 0.20f };
+        rig[2] = AccentLightSpec{ AZ::Vector3(0.0f, -8.0f, 2.4f), AZ::Color(1.0f, 0.82f, 0.60f, 1.0f), 120.0f, 12.0f, 0.15f };
         return rig;
     }
 
