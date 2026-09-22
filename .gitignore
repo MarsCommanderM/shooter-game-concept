@@ -22,3 +22,18 @@ stw-engine/build/
 # O3DE generated project output (AssetProcessor cache + user profile), never source
 stw-o3de/Project/Cache/
 stw-o3de/Project/user/
+
+# Visual Forge: generated builds, caches and raw evidence are never sources.
+stw-o3de/Build/
+stw-o3de/Project/build/
+stw-o3de/Project/Build/
+stw-o3de/Project/.cache/
+stw-o3de/**/__pycache__/
+stw-o3de/**/*.pyc
+
+# Machine-local toolchain and third-party package caches (O3DE package cache,
+# host CMake symlink). They are host state, never sources.
+/o3de-packages/
+/tools/cmake-*
+# Blender auto-save backups
+*.blend1
