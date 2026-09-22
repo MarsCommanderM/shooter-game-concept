@@ -26,7 +26,6 @@
 #include <Atom/RPI.Public/Scene.h>
 #include <Atom/RPI.Public/Pass/ParentPass.h>
 #include <Atom/RPI.Public/Pass/PassSystemInterface.h>
-#include <Atom/RHI/RHISystemInterface.h>
 #include <Atom/RPI.Reflect/Material/MaterialAsset.h>
 #include <Atom/RPI.Reflect/Model/ModelAsset.h>
 #include <STWGameplay/STWGameplayTypeIds.h>
@@ -38,6 +37,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <ctime>
 
 namespace STWGameplay
 {
@@ -1475,6 +1475,47 @@ namespace STWGameplay
 
     namespace
     {
+        // GPU frame extent: earliest begin to latest end over every pass with a timestamp
+        // result - the same aggregation as AZ::RPI::GpuPassProfiler. A ParentPass has no
+        // timestamp of its own, so the root pass alone always reports zero.
+        void AccumulatePassTimestamps(const AZ::RPI::Pass* pass, AZ::RPI::TimestampResult& extent, bool& hasSample)
+        {
+            const AZ::RPI::TimestampResult passTime = pass->GetLatestTimestampResult();
+            if (passTime.GetDurationInTicks() > 0)
+            {
+                if (hasSample)
+                {
+                    extent.Add(passTime);
+                }
+                else
+                {
+                    extent = passTime;
+                    hasSample = true;
+                }
+            }
+            if (const AZ::RPI::ParentPass* parent = pass->AsParent())
+            {
+                for (const AZ::RPI::Ptr<AZ::RPI::Pass>& child : parent->GetChildren())
+                {
+                    AccumulatePassTimestamps(child.get(), extent, hasSample);
+                }
+            }
+        }
+
+        // CPU time actually consumed by the calling (main) thread, excluding time blocked on
+        // the GPU, present or vsync. Returns a negative value where it is not available.
+        double MainThreadCpuSeconds()
+        {
+#if defined(__linux__)
+            timespec now{};
+            if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &now) == 0)
+            {
+                return static_cast<double>(now.tv_sec) + static_cast<double>(now.tv_nsec) * 1.0e-9;
+            }
+#endif
+            return -1.0;
+        }
+
         // Nearest-rank percentile, as required by Docs/PerformanceBudgets.
         float NearestRankPercentile(AZStd::vector<float> values, float quantile)
         {
@@ -1507,6 +1548,8 @@ namespace STWGameplay
         }
 
         m_profileElapsed += deltaTime;
+        const double frameStartCpuSeconds = m_profileLastCpuSeconds;
+        m_profileLastCpuSeconds = MainThreadCpuSeconds();
         if (m_profileElapsed < WarmupSeconds)
         {
             return;
@@ -1522,15 +1565,20 @@ namespace STWGameplay
         if (m_profileFrameMs.size() < ProfileSampleCapacity)
         {
             m_profileFrameMs.push_back(deltaTime * 1000.0f);
-            const double cpuMs = AZ::RHI::RHISystemInterface::Get() ? AZ::RHI::RHISystemInterface::Get()->GetCpuFrameTime() : 0.0;
-            if (std::isfinite(cpuMs) && cpuMs > 0.0)
+            // Main-thread CPU time consumed since the previous tick, i.e. over one frame.
+            if (frameStartCpuSeconds >= 0.0 && m_profileLastCpuSeconds > frameStartCpuSeconds)
             {
-                m_profileCpuMs.push_back(static_cast<float>(cpuMs));
+                m_profileCpuMs.push_back(static_cast<float>((m_profileLastCpuSeconds - frameStartCpuSeconds) * 1000.0));
             }
-            const uint64_t gpuNs = rootPass ? rootPass->GetLatestTimestampResult().GetDurationInNanoseconds() : 0;
-            if (gpuNs > 0)
+            AZ::RPI::TimestampResult gpuExtent;
+            bool hasGpuSample = false;
+            if (rootPass)
             {
-                m_profileGpuMs.push_back(static_cast<float>(static_cast<double>(gpuNs) / 1.0e6));
+                AccumulatePassTimestamps(rootPass.get(), gpuExtent, hasGpuSample);
+            }
+            if (hasGpuSample && gpuExtent.GetDurationInNanoseconds() > 0)
+            {
+                m_profileGpuMs.push_back(static_cast<float>(static_cast<double>(gpuExtent.GetDurationInNanoseconds()) / 1.0e6));
             }
         }
         if (m_profileWindowElapsed < WindowSeconds)
@@ -1562,7 +1610,7 @@ namespace STWGameplay
         // a valid sample; zero or missing telemetry is reported, never estimated from FPS.
         AZ_Printf("STWGameplay",
             "PERFORMANCE_PROFILE warmup_s=%.0f window_s=%.3f samples=%zu frame_sum_s=%.3f frame_ms=%s cpu_ms=%s gpu_ms=%s "
-            "cpu_samples=%zu gpu_samples=%zu cpu_source=RHI_FrameScheduler gpu_source=RootPassTimestamp resolution=1920x1080\n",
+            "cpu_samples=%zu gpu_samples=%zu cpu_source=MainThreadCpuTime gpu_source=PassTimestampExtent resolution=1920x1080\n",
             WarmupSeconds, m_profileWindowElapsed, samples, frameSumMs / 1000.0,
             formatSeries(m_profileFrameMs).c_str(), formatSeries(m_profileCpuMs).c_str(), formatSeries(m_profileGpuMs).c_str(),
             m_profileCpuMs.size(), m_profileGpuMs.size());
