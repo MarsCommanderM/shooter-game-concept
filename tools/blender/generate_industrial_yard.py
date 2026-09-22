@@ -36,6 +36,13 @@ def args():
     return parser.parse_args(values)
 
 
+def linear_to_srgb(value):
+    """Encode a linear color channel with the sRGB transfer function."""
+    if value <= 0.0031308:
+        return 12.92 * value
+    return 1.055 * value ** (1.0 / 2.4) - 0.055
+
+
 def mat(name, color, metallic, roughness):
     value = bpy.data.materials.new(name)
     value.diffuse_color = (*color, 1)
@@ -209,9 +216,9 @@ def write_material_sources(output, materials):
     definitions = {
         "concrete": ((0.16, 0.17, 0.18, 1.0), 0.0, 0.32),
         "facade": ((0.28, 0.075, 0.045, 1.0), 0.0, 0.62),
-        "steel": ((0.045, 0.075, 0.085, 1.0), 0.62, 0.27),
+        "steel": ((0.045, 0.075, 0.085, 1.0), 0.0, 0.27),
         "hazard": ((0.85, 0.45, 0.015, 1.0), 0.0, 0.38),
-        "sign": ((0.75, 0.15, 0.025, 1.0), 0.25, 0.25),
+        "sign": ((0.75, 0.15, 0.025, 1.0), 0.0, 0.25),
         "water": ((0.025, 0.075, 0.10, 1.0), 0.0, 0.07),
     }
     generated_maps = {}
@@ -231,7 +238,8 @@ def write_material_sources(output, materials):
                     broad = 0.5 + 0.5 * math.sin((u * 5.0 - v * 3.0 + len(map_name)) * math.pi)
                     wear = 0.84 + 0.16 * (0.65 * grain + 0.35 * broad)
                     if map_name == "basecolor":
-                        value = tuple(min(1.0, channel * wear) for channel in color[:3]) + (1.0,)
+                        # Colors are linear (Principled BSDF inputs); the PNG is read as sRGB.
+                        value = tuple(linear_to_srgb(min(1.0, channel * wear)) for channel in color[:3]) + (1.0,)
                     elif map_name == "metallic":
                         metallic_variation = 0.012 if metallic == 0.0 else metallic * 0.18
                         metal = min(
@@ -323,8 +331,8 @@ def main():
     materials = {
         "concrete": mat("M_IY_ConcreteWet", (0.16, 0.17, 0.18), 0.0, 0.32),
         "brick": mat("M_IY_BrickAged", (0.28, 0.075, 0.045), 0.0, 0.62),
-        "steel": mat("M_IY_SteelPainted", (0.045, 0.075, 0.085), 0.62, 0.27),
-        "sign": mat("M_IY_Sign", (0.75, 0.15, 0.025), 0.25, 0.25),
+        "steel": mat("M_IY_SteelPainted", (0.045, 0.075, 0.085), 0.0, 0.27),
+        "sign": mat("M_IY_Sign", (0.75, 0.15, 0.025), 0.0, 0.25),
         "water": mat("M_IY_Water", (0.025, 0.075, 0.10), 0.0, 0.07),
         "hazard": mat("M_IY_Hazard", (0.85, 0.45, 0.015), 0.0, 0.38),
     }
