@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "engine_commit": "3db6943249d8bd7960b9ed7e9aee310b7668586e",
+  "classifications": [
+    "TEMPORARY_DEBUG",
+    "BLOCKOUT",
+    "TECHNICAL_VALIDATION",
+    "PRODUCTION_CANDIDATE",
+    "PRODUCTION_READY"
+  ],
+  "stages": [
+    "Concept",
+    "Blockout",
+    "Highpoly Source",
+    "Retopology",
+    "UV Layout",
+    "Baking",
+    "Texturing",
+    "LOD Creation",
+    "O3DE Import",
+    "Material Setup",
+    "Lighting Test",
+    "Performance Validation",
+    "Approved"
+  ],
+  "prefixes": {
+    "SM": [
+      ".fbx",
+      ".obj",
+      ".glb"
+    ],
+    "SK": [
+      ".fbx",
+      ".glb"
+    ],
+    "M": [
+      ".material",
+      ".materialtype"
+    ],
+    "MI": [
+      ".material"
+    ],
+    "T": [
+      ".png",
+      ".tif",
+      ".tiff",
+      ".tga",
+      ".exr",
+      ".dds"
+    ],
+    "VFX": [
+      ".prefab",
+      ".json"
+    ],
+    "SFX": [
+      ".wav",
+      ".ogg"
+    ],
+    "LVL": [
+      ".prefab"
+    ],
+    "BP": [
+      ".prefab"
+    ],
+    "AN": [
+      ".fbx",
+      ".glb"
+    ],
+    "PH": [
+      ".fbx",
+      ".pxmesh"
+    ],
+    "LOD": [
+      ".fbx",
+      ".obj",
+      ".glb"
+    ]
+  },
+  "asset_folders": [
+    "Environments",
+    "Environment",
+    "Characters",
+    "Enemies",
+    "Weapons",
+    "Materials",
+    "VFX",
+    "Audio",
+    "UI",
+    "Lighting",
+    "Cinematics",
+    "TestScenes"
+  ],
+  "asset_budgets": {
+    "weapon_fp": {
+      "triangles": 85000,
+      "materials": 8,
+      "texture_memory_mib": 180,
+      "texture_edge": 2048,
+      "lod_count": 3
+    },
+    "weapon_tp": {
+      "triangles": 45000,
+      "materials": 8,
+      "texture_memory_mib": 128,
+      "texture_edge": 2048,
+      "lod_count": 3
+    },
+    "character": {
+      "triangles": 90000,
+      "materials": 12,
+      "texture_memory_mib": 256,
+      "texture_edge": 2048,
+      "lod_count": 3
+    },
+    "environment": {
+      "triangles": 50000,
+      "materials": 4,
+      "texture_memory_mib": 128,
+      "texture_edge": 2048,
+      "lod_count": 3
+    },
+    "cinematic": {
+      "triangles": 180000,
+      "materials": 16,
+      "texture_memory_mib": 512,
+      "texture_edge": 4096,
+      "lod_count": 3
+    }
+  },
+  "required_asset_checks": [
+    "scale",
+    "pivot",
+    "uv",
+    "texture_channels",
+    "material_cost",
+    "lods",
+    "collision",
+    "target_level",
+    "network"
+  ],
+  "required_reviews": [
+    "art",
+    "technical_art",
+    "rendering",
+    "multiplayer"
+  ],
+  "scene_budget": {
+    "frame_p95_ms": 16.67,
+    "frame_p99_ms": 22.22,
+    "cpu_p95_ms": 12,
+    "gpu_p95_ms": 14,
+    "draw_calls_peak": 2000,
+    "vram_mib_peak": 6144,
+    "ram_mib_peak": 12288
+  },
+  "capture": {
+    "runs": 3,
+    "warmup_seconds": 30,
+    "sample_seconds": 60,
+    "min_samples": 600,
+    "players": 8,
+    "output_resolution": [
+      1920,
+      1080
+    ]
+  },
+  "budget_status": "PROVISIONAL_TARGET"
+}

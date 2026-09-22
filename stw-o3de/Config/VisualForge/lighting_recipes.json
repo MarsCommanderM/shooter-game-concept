@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "status": "TARGET_ONLY",
+  "runtime_adapter": "NOT_YET_IMPLEMENTED",
+  "shared_scene": "Project/Levels/DefaultLevel/DefaultLevel.prefab",
+  "camera": {
+    "position_m": [
+      0,
+      -8,
+      1.7
+    ],
+    "look_at_m": [
+      0,
+      0,
+      1.7
+    ],
+    "vertical_fov_degrees": 60
+  },
+  "seed": 19092026,
+  "recipes": {
+    "LVL_Lighting_Day": {
+      "sun_lux": 100000,
+      "sun_elevation_degrees": 45,
+      "sun_azimuth_degrees": 135,
+      "exposure_ev100": 15,
+      "practical_temperature_k": 3200
+    },
+    "LVL_Lighting_Night": {
+      "sun_lux": 0.2,
+      "sun_elevation_degrees": 25,
+      "sun_azimuth_degrees": 135,
+      "exposure_ev100": 1,
+      "practical_temperature_k": 3200
+    },
+    "LVL_Lighting_Overcast": {
+      "sun_lux": 10000,
+      "sun_elevation_degrees": 45,
+      "sun_azimuth_degrees": 135,
+      "exposure_ev100": 12,
+      "practical_temperature_k": 3200
+    }
+  },
+  "test_conditions": [
+    "sun",
+    "overcast",
+    "interior",
+    "night",
+    "wet_ground",
+    "smoke_dust",
+    "backlight",
+    "dark_corner",
+    "bright_exterior",
+    "muzzle_explosion"
+  ],
+  "ibl_assets_status": "UNASSIGNED",
+  "note": "Physical reference targets; exposure EV100 is not Atom manual compensation. Adapter must explicitly convert and capture effective settings."
+}

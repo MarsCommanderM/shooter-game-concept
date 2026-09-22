@@ -67,6 +67,14 @@ and reverified. Do not merge, retarget, close, or mark it ready.
 
 ## Evidence standard
 
+For visual production work, follow `stw-o3de/Docs/README.md` (Project Visual
+Forge). Before substantial asset or level edits, record affected files and
+expected performance impact in a task report. Visual choices must be reproducible
+from versioned sources, import settings and presets. Passing tooling CI does not
+approve assets: preserve explicit classifications, validate asset evidence, and
+require exact-revision visual reviews and measured performance before promotion.
+
+
 A completion claim must include exact local and remote SHAs, changed paths,
 commands actually executed, exit codes, test counts, CI/check links, and every
 blocked or unverified item. A prior green run does not prove a different SHA.

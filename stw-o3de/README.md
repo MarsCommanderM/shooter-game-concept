@@ -30,3 +30,9 @@ and Unity starter are not production dependencies of `STWGameplay`.
 
 The superseded initial migration gate is retained at
 [`../docs/history/O3DE_MIGRATION_GATE_2026-08-22.md`](../docs/history/O3DE_MIGRATION_GATE_2026-08-22.md).
+
+## Project Visual Forge
+
+Visual production standards, reproducible targets and evidence gates:
+[Project Visual Forge](Docs/README.md). Start there before changing visual assets,
+lighting, materials or quality settings.

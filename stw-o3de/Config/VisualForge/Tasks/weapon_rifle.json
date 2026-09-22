@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "task": "vertical_slice_weapon_rifle",
+  "owner": "art_weapons",
+  "status": "planned",
+  "classification": "PRODUCTION_CANDIDATE",
+  "stage": "Concept",
+  "requirements": [
+    "first_person_ready",
+    "third_person_ready",
+    "reload_animation",
+    "recoil_animation",
+    "3_lod_levels",
+    "collision_mesh",
+    "2k_gameplay_textures",
+    "4k_cinematic_optional",
+    "material_instance",
+    "muzzle_flash",
+    "impact_effect"
+  ],
+  "budget_class": "weapon_fp",
+  "affected_files": [],
+  "performance_impact": "UNMEASURED",
+  "references": [],
+  "visual_target": "../../Docs/ArtBible/README.md",
+  "rollback": "Revert only the task commit after dependency review."
+}

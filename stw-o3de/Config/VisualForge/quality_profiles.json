@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "status": "TARGET_ONLY",
+  "runtime_adapter": "NOT_YET_IMPLEMENTED",
+  "profiles": {
+    "Quality_Low": {
+      "output_resolution": [
+        1920,
+        1080
+      ],
+      "resolution_scale": 0.67,
+      "shadow_resolution": 512,
+      "shadow_distance_m": 60,
+      "dynamic_lights_max": 8,
+      "volumetric_fog": "off",
+      "reflections": "probes",
+      "ambient_occlusion": "off",
+      "particle_density": 0.25,
+      "vegetation_density": 0.4,
+      "view_distance_m": 200,
+      "lod_screen_ratios": [
+        0.65,
+        0.26,
+        0.065
+      ],
+      "texture_max_edge": 1024,
+      "bloom": "controlled",
+      "motion_blur": "off",
+      "depth_of_field": "off",
+      "chromatic_aberration": "minimal",
+      "raytracing": "off",
+      "tone_mapping": "AgX_Standard"
+    },
+    "Quality_Medium": {
+      "output_resolution": [
+        1920,
+        1080
+      ],
+      "resolution_scale": 0.8,
+      "shadow_resolution": 1024,
+      "shadow_distance_m": 100,
+      "dynamic_lights_max": 16,
+      "volumetric_fog": "low",
+      "reflections": "probes",
+      "ambient_occlusion": "low",
+      "particle_density": 0.5,
+      "vegetation_density": 0.6,
+      "view_distance_m": 300,
+      "lod_screen_ratios": [
+        0.575,
+        0.23,
+        0.057
+      ],
+      "texture_max_edge": 2048,
+      "bloom": "controlled",
+      "motion_blur": "off",
+      "depth_of_field": "off",
+      "chromatic_aberration": "minimal",
+      "raytracing": "off",
+      "tone_mapping": "AgX_Standard"
+    },
+    "Quality_High": {
+      "output_resolution": [
+        1920,
+        1080
+      ],
+      "resolution_scale": 0.9,
+      "shadow_resolution": 2048,
+      "shadow_distance_m": 160,
+      "dynamic_lights_max": 24,
+      "volumetric_fog": "medium",
+      "reflections": "screen_space",
+      "ambient_occlusion": "medium",
+      "particle_density": 0.75,
+      "vegetation_density": 0.8,
+      "view_distance_m": 450,
+      "lod_screen_ratios": [
+        0.5,
+        0.2,
+        0.05
+      ],
+      "texture_max_edge": 2048,
+      "bloom": "controlled",
+      "motion_blur": "off",
+      "depth_of_field": "off",
+      "chromatic_aberration": "minimal",
+      "raytracing": "off",
+      "tone_mapping": "AgX_Standard"
+    },
+    "Quality_Ultra": {
+      "output_resolution": [
+        1920,
+        1080
+      ],
+      "resolution_scale": 1,
+      "shadow_resolution": 4096,
+      "shadow_distance_m": 250,
+      "dynamic_lights_max": 32,
+      "volumetric_fog": "high",
+      "reflections": "screen_space",
+      "ambient_occlusion": "high",
+      "particle_density": 1,
+      "vegetation_density": 1,
+      "view_distance_m": 600,
+      "lod_screen_ratios": [
+        0.425,
+        0.17,
+        0.043
+      ],
+      "texture_max_edge": 4096,
+      "bloom": "controlled",
+      "motion_blur": "off",
+      "depth_of_field": "off",
+      "chromatic_aberration": "minimal",
+      "raytracing": "off",
+      "tone_mapping": "AgX_Standard"
+    }
+  }
+}

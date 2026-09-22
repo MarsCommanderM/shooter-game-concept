@@ -1,5 +1,9 @@
 # STW product vision
 
+Visual production implementation and acceptance workflow:
+[Project Visual Forge](../stw-o3de/Docs/README.md). This document remains the
+authoritative product vision.
+
 This is the single authoritative statement of what STW is meant to become.
 Every agent and contributor reads it before making architecture, cleanup,
 asset or documentation decisions. Current implementation status is **not**

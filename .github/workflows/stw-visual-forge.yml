@@ -1,0 +1,33 @@
+name: STW Visual Forge contracts
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stw-visual-forge-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    name: Pipeline contracts and negative gate tests (not visual approval)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Validate policy and target profiles
+        run: python3 stw-o3de/Tools/visual_forge/forge.py contracts
+      - name: Test evidence rejection and budget gates
+        run: python3 -m unittest discover -s stw-o3de/Tools/visual_forge -p 'test_*.py' -v
+      - name: Require manifests for changed asset exports
+        if: github.event_name == 'pull_request'
+        env:
+          FORGE_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 stw-o3de/Tools/visual_forge/forge.py changes --base "$FORGE_BASE_SHA"
