@@ -6,6 +6,8 @@
 #include <AzCore/Math/Color.h>
 #include <AzCore/Math/Frustum.h>
 #include <AzCore/Math/Matrix3x3.h>
+#include <AzCore/Math/MathUtils.h>
+#include <AzCore/Math/Quaternion.h>
 #include <AzCore/Math/ShapeIntersection.h>
 #include <AzFramework/Components/CameraBus.h>
 #include <Atom/Feature/CoreLights/PhotometricValue.h>
@@ -252,7 +254,7 @@ namespace STWGameplay
 
         for (size_t index = 0; index < VisualAssetCount; ++index)
         {
-            UpdateAsset(m_assets[index], VisualAssets[index].m_modelPath, VisualAssets[index].m_materialPath);
+            UpdateAsset(m_assets[index], VisualAssets[index].m_modelPath, VisualAssets[index].m_materialPath, ImportAxes::ObjRawZUp);
             VisualAssetState& asset = m_assets[index];
             if (asset.m_meshHandle.IsValid() && !asset.m_materialAppliedToModel
                 && m_meshFeatureProcessor->GetModel(asset.m_meshHandle) != nullptr)
@@ -380,7 +382,9 @@ namespace STWGameplay
         for (size_t index = 0; index < VisualAssetCount; ++index)
         {
             VisualAssetState& state = m_industrialAssets[index];
-            UpdateAsset(state, industrialSpecs[index].modelPath.data(), industrialSpecs[index].materialPath.data());
+            UpdateAsset(
+                state, industrialSpecs[index].modelPath.data(), industrialSpecs[index].materialPath.data(),
+                ImportAxes::BlenderFbxForwardNegY);
             if (!state.m_meshHandle.IsValid())
             {
                 continue;
@@ -1018,7 +1022,7 @@ namespace STWGameplay
     }
 
     void ArenaPresentation::UpdateAsset(
-        VisualAssetState& state, const char* modelPath, const char* materialPath)
+        VisualAssetState& state, const char* modelPath, const char* materialPath, ImportAxes importAxes)
     {
         AZ_UNUSED(materialPath);
         if (!state.m_discovered || state.m_meshAcquired)
@@ -1046,9 +1050,12 @@ namespace STWGameplay
         // world (ax, ay, az). This is the world-static form of the same (-X, Z, Y) correction
         // the viewmodel and enemy presentations already apply. Determinant +1 (pure rotation);
         // scale stays Vector3::CreateOne().
-        const AZ::Quaternion importOrientationCompensation = AZ::Quaternion::CreateFromMatrix3x3(
-            AZ::Matrix3x3::CreateFromColumns(
-                -AZ::Vector3::CreateAxisX(), AZ::Vector3::CreateAxisZ(), AZ::Vector3::CreateAxisY()));
+        // The Industrial Yard FBX set arrives Z-up but turned half a turn about Z; a pure
+        // 180 degree rotation about Z (determinant +1) restores its authored placement.
+        const AZ::Quaternion importOrientationCompensation = importAxes == ImportAxes::ObjRawZUp
+            ? AZ::Quaternion::CreateFromMatrix3x3(AZ::Matrix3x3::CreateFromColumns(
+                  -AZ::Vector3::CreateAxisX(), AZ::Vector3::CreateAxisZ(), AZ::Vector3::CreateAxisY()))
+            : AZ::Quaternion::CreateRotationZ(AZ::Constants::Pi);
         m_meshFeatureProcessor->SetTransform(
             state.m_meshHandle, AZ::Transform::CreateFromQuaternion(importOrientationCompensation),
             AZ::Vector3::CreateOne());

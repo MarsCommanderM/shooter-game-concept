@@ -192,19 +192,10 @@ def add_high_detail(groups, materials):
     for index, x in enumerate((-4.0, -2.0, 0.0, 2.0, 4.0)):
         add("struct", detail_cube(f"IY_CableTray_{index:02d}", (x, 1.25, 4.78), (0.72, 0.08, 0.045), materials["steel"], 0.012))
 
-    for index, x in enumerate((7.2, 8.2, 9.2)):
-        pallet_z = 0.10
-        for slat in range(4):
-            add("props", detail_cube(f"IY_Pallet_{index}_{slat}", (x, -8.8 + slat * 0.22, pallet_z), (0.42, 0.07, 0.045), materials["concrete"], 0.012))
-        crate = detail_cube(f"IY_ServiceCrate_{index}", (x, -8.8, 0.58), (0.43, 0.43, 0.48), materials["steel"], 0.035)
-        add("props", crate)
-        for bolt_index, (dx, dy) in enumerate(((-0.35, -0.35), (0.35, -0.35), (-0.35, 0.35), (0.35, 0.35))):
-            add("props", detail_cylinder(f"IY_CrateFastener_{index}_{bolt_index}", (x + dx, -8.8 + dy, 1.08), 0.025, 0.018, materials["hazard"], 12))
-
-    for index, x in enumerate((9.8, 10.55)):
-        add("props", detail_cylinder(f"IY_Drum_{index}", (x, -6.7, 0.48), 0.42, 0.96, materials["steel"], 24))
-        for band_index, z in enumerate((0.20, 0.76)):
-            add("props", detail_cylinder(f"IY_DrumBand_{index}_{band_index}", (x, -6.7, z), 0.435, 0.035, materials["hazard"], 24))
+    # No free-standing pallets, crates or drums inside the walls: the arena has
+    # exactly eight PhysX colliders shared with STW_ARENA_01, and solid dressing in
+    # the playable space without a matching collider could be walked through. Props
+    # stay on the exterior signage, which is beyond the west wall.
 
     for index, z in enumerate((0.9, 1.35, 1.8, 2.25, 2.7, 3.15)):
         add("beacon", detail_cylinder_between(f"IY_BeaconLadder_{index:02d}", (-13.44, 5.0, z), (-12.56, 5.0, z), 0.026, materials["steel"], 12))

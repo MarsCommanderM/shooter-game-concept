@@ -1013,7 +1013,9 @@ runtime_grep -q 'ARENA_ENVIRONMENT_PRESENTATION_READY=1'
 runtime_grep -q 'STW_ARENA_VARIANT=IndustrialYard'
 runtime_grep -q 'ARENA_VARIANT_AT_CAPTURE=IndustrialYard'
 industrial_yard_report="${PROJECT}/Assets/IndustrialYard/STW_INDUSTRIAL_YARD_01/Environment/STW_INDUSTRIAL_YARD_01.report.json"
-runtime_grep -h 'INDUSTRIAL_YARD_GROUP_BOUNDS' | python3 - "${industrial_yard_report}" <<'PY_BOUNDS'
+industrial_yard_bounds_log="${RUN_DIR}/industrial-yard-bounds.log"
+runtime_grep -h 'INDUSTRIAL_YARD_GROUP_BOUNDS' > "${industrial_yard_bounds_log}"
+python3 - "${industrial_yard_report}" "${industrial_yard_bounds_log}" <<'PY_BOUNDS'
 import json, re, sys
 # Authored piece bounds are the intent envelope; beveled detail (fasteners, ribs,
 # rails) may extend past it. A group passes when it covers its whole envelope within
@@ -1031,7 +1033,7 @@ for piece in report["world_bounds"].values():
     group[1] = [max(a, b) for a, b in zip(group[1], hi)]
 measured = {}
 pattern = re.compile(r"group=(\w+) valid=1 min=([-\d.,]+) max=([-\d.,]+)")
-for line in sys.stdin:
+for line in open(sys.argv[2], encoding="utf-8"):
     match = pattern.search(line)
     if match:
         measured[match.group(1)] = ([float(v) for v in match.group(2).split(",")],

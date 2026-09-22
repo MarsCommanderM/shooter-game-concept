@@ -116,7 +116,17 @@ namespace STWGameplay
             uint32_t unresolvedMask,
             const AZStd::array<bool, VisualAssetCount>& modelFound,
             const AZStd::array<bool, VisualAssetCount>& materialFound);
-        void UpdateAsset(VisualAssetState& state, const char* modelPath, const char* materialPath);
+        //! Import-axis compensation applied to a visual set's world-static transform.
+        enum class ImportAxes
+        {
+            //! STW_ARENA_01 OBJ set: imported as (-x, z, y) from raw Z-up sources.
+            ObjRawZUp,
+            //! STW_INDUSTRIAL_YARD_01 FBX set (Blender, forward -Y, up Z): imported Z-up but
+            //! turned 180 degrees about Z, i.e. (-x, -y, z). Measured on T4 from the rendered
+            //! group bounds (INDUSTRIAL_YARD_GROUP_BOUNDS) of gate run 20260922T183744Z.
+            BlenderFbxForwardNegY
+        };
+        void UpdateAsset(VisualAssetState& state, const char* modelPath, const char* materialPath, ImportAxes importAxes);
         void UpdateIndustrialYardVariant();
         void ApplyVariantVisibility(bool industrialActive);
         void ReportVariantTransition(bool industrialActive, bool emitFallbackDiagnostic);
