@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "name": "STW_INDUSTRIAL_YARD_BODYCAM_01",
+  "consumer": "STWGameplay::BodycamCameraPresentation",
+  "presentation_only": true,
+  "creates_camera_entity": false,
+  "writes_gameplay_state": false,
+  "standard": {
+    "vertical_fov_degrees": 78.0,
+    "near_clip_meters": 0.05,
+    "maximum_position_offset_meters": 0.12,
+    "maximum_rotation_offset_radians": 0.06,
+    "ads_motion_scale": 0.3,
+    "viewmodel_offset_meters": [0.0, 0.18, -0.12]
+  },
+  "reduced_motion": {
+    "vertical_fov_degrees": 78.0,
+    "near_clip_meters": 0.05,
+    "maximum_position_offset_meters": 0.05,
+    "maximum_rotation_offset_radians": 0.02,
+    "ads_motion_scale": 0.2,
+    "viewmodel_offset_meters": [0.0, 0.18, -0.12]
+  },
+  "reset_events": [
+    "death",
+    "profile_change",
+    "respawn",
+    "view_target_change"
+  ]
+}

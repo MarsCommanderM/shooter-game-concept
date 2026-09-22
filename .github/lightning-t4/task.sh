@@ -914,7 +914,9 @@ grep -Eqi 'Vulkan' "${LAUNCH_LOG}"
 ! grep -Eqi 'selected.*(llvmpipe|lavapipe|software)|adapter.*(llvmpipe|lavapipe)' "${LAUNCH_LOG}"
 
 last_frame_size=0
-for _ in $(seq 1 45); do
+# The native capture waits (bounded to 30 s of simulation) for the Industrial Yard
+# variant before its 0.75 s delay, so the window covers that settle time as well.
+for _ in $(seq 1 75); do
   frame_size="$(stat -c %s "${FRAME_NATIVE}" 2>/dev/null || echo 0)"
   [[ "${frame_size}" -gt 0 && "${frame_size}" -eq "${last_frame_size}" ]] && break
   last_frame_size="${frame_size}"
@@ -1005,6 +1007,52 @@ runtime_grep -q 'ARENA_PRESENTATION_ACTIVE=1'
 runtime_grep -q 'ARENA_VISUAL_GEOMETRY_READY=1'
 runtime_grep -q 'ARENA_MATERIAL_SET_READY=1'
 runtime_grep -q 'ARENA_ENVIRONMENT_PRESENTATION_READY=1'
+# STW_INDUSTRIAL_YARD_01 is the production arena visual set; STW_ARENA_01 is only the
+# complete fallback. The yard must be the active variant, the captured frame must have
+# been taken while it was active, and every group must render at its authored bounds.
+runtime_grep -q 'STW_ARENA_VARIANT=IndustrialYard'
+runtime_grep -q 'ARENA_VARIANT_AT_CAPTURE=IndustrialYard'
+industrial_yard_report="${PROJECT}/Assets/IndustrialYard/STW_INDUSTRIAL_YARD_01/Environment/STW_INDUSTRIAL_YARD_01.report.json"
+runtime_grep -h 'INDUSTRIAL_YARD_GROUP_BOUNDS' | python3 - "${industrial_yard_report}" <<'PY_BOUNDS'
+import json, re, sys
+# Authored piece bounds are the intent envelope; beveled detail (fasteners, ribs,
+# rails) may extend past it. A group passes when it covers its whole envelope within
+# 5 cm and protrudes no further than 0.75 m. Any axis swap or mis-rotation of a group
+# changes an extent by metres (walls are 4 m high, the deck is 24 m wide), so this
+# proves import orientation and placement without relying on a screenshot.
+COVER_TOLERANCE, PROTRUSION_LIMIT = 0.05, 0.75
+report = json.load(open(sys.argv[1], encoding="utf-8"))
+expected = {}
+for piece in report["world_bounds"].values():
+    lo = [c - s / 2.0 for c, s in zip(piece["center"], piece["size"])]
+    hi = [c + s / 2.0 for c, s in zip(piece["center"], piece["size"])]
+    group = expected.setdefault(piece["group"], [lo, hi])
+    group[0] = [min(a, b) for a, b in zip(group[0], lo)]
+    group[1] = [max(a, b) for a, b in zip(group[1], hi)]
+measured = {}
+pattern = re.compile(r"group=(\w+) valid=1 min=([-\d.,]+) max=([-\d.,]+)")
+for line in sys.stdin:
+    match = pattern.search(line)
+    if match:
+        measured[match.group(1)] = ([float(v) for v in match.group(2).split(",")],
+                                    [float(v) for v in match.group(3).split(",")])
+failures = []
+for group, (lo, hi) in sorted(expected.items()):
+    if group not in measured:
+        failures.append(f"{group}:missing")
+        continue
+    mlo, mhi = measured[group]
+    for axis in range(3):
+        if mlo[axis] > lo[axis] + COVER_TOLERANCE or mhi[axis] < hi[axis] - COVER_TOLERANCE:
+            failures.append(f"{group}:axis{axis}:does_not_cover")
+        if mlo[axis] < lo[axis] - PROTRUSION_LIMIT or mhi[axis] > hi[axis] + PROTRUSION_LIMIT:
+            failures.append(f"{group}:axis{axis}:protrudes")
+    print(f"INDUSTRIAL_YARD_BOUNDS group={group} expected_min={lo} expected_max={hi} measured_min={mlo} measured_max={mhi}")
+print(f"INDUSTRIAL_YARD_BOUNDS_GROUPS expected={len(expected)} measured={len(measured)}")
+if failures or len(expected) != 9:
+    raise SystemExit("INDUSTRIAL_YARD_BOUNDS=FAIL " + " ".join(failures))
+print("INDUSTRIAL_YARD_BOUNDS=PASS")
+PY_BOUNDS
 runtime_grep -Eq 'COMBAT_FEEDBACK_ACCEPTANCE result=PASS fire_feedback=[1-9][0-9]* hit_feedback=[1-9][0-9]* impact_feedback=[1-9][0-9]* authority_separation=PASS native_atom_meshes=PASS'
 runtime_grep -Eq 'JUMP_ACCEPTANCE result=PASS requested=1 airborne=1 rose=1 landed=1 held_retrigger=0 physx_authority=PASS start_z=-?[0-9]+\.[0-9]+ max_z=-?[0-9]+\.[0-9]+ max_delta_z=[0-9]+\.[0-9]+ samples=[1-9][0-9]*'
 runtime_grep -Eq 'CROUCH_ACCEPTANCE result=PASS requested=1 crouched=1 stood=1 base_preserved=1 camera_lowered=1 standing_height=[0-9]+\.[0-9]+ crouched_height=[0-9]+\.[0-9]+ physx_authority=PASS'

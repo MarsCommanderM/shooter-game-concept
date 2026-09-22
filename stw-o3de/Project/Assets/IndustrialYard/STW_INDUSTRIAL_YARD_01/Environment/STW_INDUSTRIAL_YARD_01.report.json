@@ -1,0 +1,219 @@
+{
+  "asset_family": "STW_INDUSTRIAL_YARD_01",
+  "contract_valid": true,
+  "detail_object_count": 192,
+  "groups": [
+    "arch",
+    "beacon",
+    "cover",
+    "deck",
+    "mark",
+    "props",
+    "struct",
+    "trim",
+    "wall"
+  ],
+  "material_sources": [
+    "STW_INDUSTRIAL_YARD_01_concrete.material",
+    "STW_INDUSTRIAL_YARD_01_facade.material",
+    "STW_INDUSTRIAL_YARD_01_hazard.material",
+    "STW_INDUSTRIAL_YARD_01_sign.material",
+    "STW_INDUSTRIAL_YARD_01_steel.material",
+    "STW_INDUSTRIAL_YARD_01_water.material"
+  ],
+  "materials": [
+    "M_IY_BrickAged",
+    "M_IY_ConcreteWet",
+    "M_IY_Hazard",
+    "M_IY_Sign",
+    "M_IY_SteelPainted",
+    "M_IY_Water"
+  ],
+  "piece_count": 14,
+  "quality_status": "source-generated; O3DE import and T4 visual review pending",
+  "quality_tier": "high_end_procedural_foundation",
+  "world_bounds": {
+    "east_steel_facade": {
+      "center": [
+        12,
+        0,
+        2
+      ],
+      "group": "wall",
+      "size": [
+        0.45,
+        23.95,
+        3.95
+      ]
+    },
+    "flush_hazard_trim": {
+      "center": [
+        6,
+        -6,
+        0.005
+      ],
+      "group": "trim",
+      "size": [
+        4,
+        2,
+        0.01
+      ]
+    },
+    "left_cover_cladding": {
+      "center": [
+        -2.25,
+        0,
+        1.25
+      ],
+      "group": "cover",
+      "size": [
+        1.5,
+        2,
+        2.5
+      ]
+    },
+    "north_brick_facade": {
+      "center": [
+        0,
+        12,
+        2
+      ],
+      "group": "wall",
+      "size": [
+        23.95,
+        0.45,
+        3.95
+      ]
+    },
+    "outside_factory_tower": {
+      "center": [
+        -13,
+        5,
+        2.5
+      ],
+      "group": "beacon",
+      "size": [
+        0.8,
+        1.5,
+        3
+      ]
+    },
+    "right_cover_cladding": {
+      "center": [
+        2.25,
+        0,
+        1.25
+      ],
+      "group": "cover",
+      "size": [
+        1.5,
+        2,
+        2.5
+      ]
+    },
+    "roof_service_truss": {
+      "center": [
+        0,
+        2,
+        4.45
+      ],
+      "group": "struct",
+      "size": [
+        10,
+        0.6,
+        0.5
+      ]
+    },
+    "service_step_skin": {
+      "center": [
+        5,
+        -2,
+        0.125
+      ],
+      "group": "cover",
+      "size": [
+        2,
+        2,
+        0.25
+      ]
+    },
+    "shallow_puddles": {
+      "center": [
+        0,
+        -6,
+        0.006
+      ],
+      "group": "mark",
+      "size": [
+        5,
+        2,
+        0.008
+      ]
+    },
+    "south_concrete_facade": {
+      "center": [
+        0,
+        -12,
+        2
+      ],
+      "group": "wall",
+      "size": [
+        23.95,
+        0.45,
+        3.95
+      ]
+    },
+    "suspended_gallery": {
+      "center": [
+        0,
+        6,
+        4.45
+      ],
+      "group": "arch",
+      "size": [
+        8,
+        1,
+        0.5
+      ]
+    },
+    "west_signage": {
+      "center": [
+        -12.7,
+        2,
+        2.2
+      ],
+      "group": "props",
+      "size": [
+        0.5,
+        2,
+        1.5
+      ]
+    },
+    "west_steel_facade": {
+      "center": [
+        -12,
+        0,
+        2
+      ],
+      "group": "wall",
+      "size": [
+        0.45,
+        23.95,
+        3.95
+      ]
+    },
+    "wet_concrete_deck": {
+      "center": [
+        0,
+        0,
+        0.005
+      ],
+      "group": "deck",
+      "size": [
+        24,
+        24,
+        0.01
+      ]
+    }
+  }
+}

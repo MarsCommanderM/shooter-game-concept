@@ -8,6 +8,8 @@
 #include <Atom/Feature/CoreLights/DirectionalLightFeatureProcessorInterface.h>
 #include <Atom/Feature/Mesh/MeshFeatureProcessorInterface.h>
 
+#include <STWGameplay/IndustrialYardArenaVariant.h>
+
 namespace STWGameplay
 {
     // Presentation-only native arena visuals. This class never owns collision, spawn,
@@ -82,6 +84,12 @@ namespace STWGameplay
             const AZ::Vector3& cameraForward,
             const AZ::Vector3& cameraUp);
 
+        //! True once the Industrial Yard visual set is complete (all 9 model+material
+        //! identities present and valid in the catalog) and selected as the active
+        //! variant. False keeps STW_ARENA_01 as the rendered geometry - the complete
+        //! current arena is the only fallback; this never mixes individual groups.
+        bool IsIndustrialYardVariantActive() const;
+
     private:
         struct VisualAssetState
         {
@@ -98,6 +106,9 @@ namespace STWGameplay
             uint32_t m_runtimeDiagnosticAttempts = 0;
             bool m_runtimeDiagnosticReported = false;
             bool m_visibilityDiagnosticReported = false;
+            // Industrial Yard set only: the initial visibility was applied right after
+            // acquisition, so a partially loaded set never renders on top of the arena.
+            bool m_variantVisibilityApplied = false;
         };
 
         void DiscoverAssets();
@@ -106,6 +117,10 @@ namespace STWGameplay
             const AZStd::array<bool, VisualAssetCount>& modelFound,
             const AZStd::array<bool, VisualAssetCount>& materialFound);
         void UpdateAsset(VisualAssetState& state, const char* modelPath, const char* materialPath);
+        void UpdateIndustrialYardVariant();
+        void ApplyVariantVisibility(bool industrialActive);
+        void ReportVariantTransition(bool industrialActive, bool emitFallbackDiagnostic);
+        void ReportIndustrialYardGroupBounds();
         void ReportRuntimeMaterialIdentity(size_t index);
         void ReportRuntimeGeometryState(size_t index);
         void IsolateDefaultLevelScaffold();
@@ -117,6 +132,17 @@ namespace STWGameplay
         AZStd::array<VisualAssetState, VisualAssetCount> m_assets;
         bool m_assetsDiscovered = false;
         uint32_t m_discoveryAttempts = 0;
+
+        // Industrial Yard variant: a second, independently discovered visual set.
+        // Its geometry is only made visible once every one of its 9 model/material
+        // identities is present and valid; a partial match leaves the complete
+        // current arena as the only rendered set (STW_INDUSTRIAL_YARD_01 contract).
+        AZStd::array<VisualAssetState, VisualAssetCount> m_industrialAssets;
+        IndustrialYardIntegration::VariantSelector m_variantSelector;
+        bool m_industrialVariantActive = false;
+        bool m_variantTransitionReported = false;
+        bool m_lastReportedIndustrialActive = false;
+        bool m_industrialBoundsReported = false;
         uint32_t m_updatesSinceDiscoveryAttempt = 0;
         // Sentinel distinct from every real mask, so the first outcome always
         // reports. Diagnostics fire only when this changes, which bounds them to

@@ -1,0 +1,21 @@
+{
+    "schema_version": 1,
+    "consumer": "STWGameplay::EnvironmentPresentation",
+    "name": "industrial_yard_warm_key_cool_fill",
+    "presentation_only": true,
+    "requires_ray_tracing": false,
+    "lighting_preset": "lightingpresets/lowcontrast/blouberg_sunrise_1.lightingpreset.azasset",
+    "fallback_lighting_preset": "lightingpresets/default.lightingpreset.azasset",
+    "key": {
+        "color": [1.0, 0.74, 0.52],
+        "intensity_lux": 25.0
+    },
+    "accent_lights": [
+        {"color": [0.62, 0.74, 1.0], "candela": 210.0, "attenuation_radius_meters": 16.0, "bulb_radius_meters": 0.20},
+        {"color": [0.62, 0.74, 1.0], "candela": 210.0, "attenuation_radius_meters": 16.0, "bulb_radius_meters": 0.20},
+        {"color": [1.0, 0.82, 0.60], "candela": 120.0, "attenuation_radius_meters": 12.0, "bulb_radius_meters": 0.15}
+    ],
+    "exposure_compensation_ev": -1.75,
+    "ibl_exposure_ev": -1.0,
+    "bloom_intensity": 0.06
+}

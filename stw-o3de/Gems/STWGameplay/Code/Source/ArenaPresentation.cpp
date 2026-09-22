@@ -299,6 +299,196 @@ namespace STWGameplay
                 }
             }
         }
+
+        UpdateIndustrialYardVariant();
+    }
+
+    bool ArenaPresentation::IsIndustrialYardVariantActive() const
+    {
+        return m_industrialVariantActive;
+    }
+
+    void ArenaPresentation::UpdateIndustrialYardVariant()
+    {
+        using namespace IndustrialYardIntegration;
+
+        const std::array<VisualAssetSpec, VisualAssetCount> industrialSpecs = IndustrialAssetSet();
+
+        IdentitySet models{};
+        IdentitySet materials{};
+        for (size_t index = 0; index < VisualAssetCount; ++index)
+        {
+            const VisualAssetState& state = m_industrialAssets[index];
+            models[index] = { industrialSpecs[index].modelPath, state.m_modelAssetId.IsValid() };
+            materials[index] = { industrialSpecs[index].materialPath, state.m_materialAssetId.IsValid() };
+        }
+
+        const VariantDecision decision = m_variantSelector.Update(models, materials);
+
+        // The selector's own 60-update cadence gates the (relatively expensive)
+        // full catalog enumeration, exactly like the current-arena discovery
+        // pass above gates its own rescan.
+        if (decision.retryDue)
+        {
+            AZ::Data::AssetCatalogRequestBus::Broadcast(
+                &AZ::Data::AssetCatalogRequests::EnumerateAssets,
+                []() {},
+                [this, &industrialSpecs](const AZ::Data::AssetId assetId, const AZ::Data::AssetInfo& info)
+                {
+                    const AZStd::string lowercasePath = LowercaseAssetPath(info.m_relativePath);
+                    for (size_t index = 0; index < VisualAssetCount; ++index)
+                    {
+                        VisualAssetState& state = m_industrialAssets[index];
+                        if (state.m_discovered)
+                        {
+                            continue;
+                        }
+                        if (lowercasePath == industrialSpecs[index].modelPath)
+                        {
+                            state.m_modelAssetId = assetId;
+                            state.m_modelPath = info.m_relativePath;
+                        }
+                        if (lowercasePath == industrialSpecs[index].materialPath)
+                        {
+                            state.m_materialAssetId = assetId;
+                        }
+                    }
+                },
+                []() {});
+
+            for (size_t index = 0; index < VisualAssetCount; ++index)
+            {
+                VisualAssetState& state = m_industrialAssets[index];
+                if (state.m_discovered)
+                {
+                    continue;
+                }
+                state.m_discovered = state.m_modelAssetId.IsValid() && state.m_materialAssetId.IsValid();
+                if (state.m_discovered)
+                {
+                    state.m_materialAsset = AZ::Data::Asset<AZ::RPI::MaterialAsset>(
+                        state.m_materialAssetId, azrtti_typeid<AZ::RPI::MaterialAsset>(),
+                        industrialSpecs[index].materialPath.data());
+                    state.m_materialAsset.QueueLoad();
+                }
+            }
+        }
+
+        for (size_t index = 0; index < VisualAssetCount; ++index)
+        {
+            VisualAssetState& state = m_industrialAssets[index];
+            UpdateAsset(state, industrialSpecs[index].modelPath.data(), industrialSpecs[index].materialPath.data());
+            if (!state.m_meshHandle.IsValid())
+            {
+                continue;
+            }
+            // A freshly acquired mesh is visible by default. Hide it until the complete
+            // set is selected so individual groups never mix with the current arena.
+            if (!state.m_variantVisibilityApplied)
+            {
+                m_meshFeatureProcessor->SetVisible(state.m_meshHandle, m_industrialVariantActive);
+                state.m_variantVisibilityApplied = true;
+            }
+            // Same re-bind as the current arena set: once the live model exists the
+            // material must be present in the draw-packet rebuild, not only in the
+            // pre-load mesh descriptor.
+            if (!state.m_materialAppliedToModel && m_meshFeatureProcessor->GetModel(state.m_meshHandle) != nullptr)
+            {
+                m_meshFeatureProcessor->SetCustomMaterials(state.m_meshHandle, state.m_material);
+                state.m_materialAppliedToModel = true;
+                ++state.m_materialRebindCount;
+            }
+        }
+
+        bool industrialGeometryReady = decision.complete;
+        if (industrialGeometryReady)
+        {
+            for (const VisualAssetState& state : m_industrialAssets)
+            {
+                if (!state.m_meshHandle.IsValid() || m_meshFeatureProcessor->GetModel(state.m_meshHandle) == nullptr)
+                {
+                    industrialGeometryReady = false;
+                    break;
+                }
+            }
+        }
+
+        const bool industrialActive = decision.variant == Variant::IndustrialYard && industrialGeometryReady;
+        if (industrialActive != m_industrialVariantActive)
+        {
+            ApplyVariantVisibility(industrialActive);
+            m_industrialVariantActive = industrialActive;
+        }
+
+        ReportVariantTransition(industrialActive, decision.emitFallbackDiagnostic);
+        if (industrialActive && !m_industrialBoundsReported)
+        {
+            ReportIndustrialYardGroupBounds();
+            m_industrialBoundsReported = true;
+        }
+    }
+
+    void ArenaPresentation::ReportIndustrialYardGroupBounds()
+    {
+        // Runtime world-space bounds of every group as rendered. The native gate compares
+        // them with the authored target bounds in STW_INDUSTRIAL_YARD_01.report.json, which
+        // proves import orientation and placement from data instead of from a screenshot.
+        const std::array<IndustrialYardIntegration::VisualAssetSpec, VisualAssetCount> industrialSpecs =
+            IndustrialYardIntegration::IndustrialAssetSet();
+        for (size_t index = 0; index < VisualAssetCount; ++index)
+        {
+            const VisualAssetState& state = m_industrialAssets[index];
+            const AZ::Data::Instance<AZ::RPI::Model> model =
+                state.m_meshHandle.IsValid() ? m_meshFeatureProcessor->GetModel(state.m_meshHandle) : nullptr;
+            if (model == nullptr)
+            {
+                AZ_Printf("STWGameplay", "INDUSTRIAL_YARD_GROUP_BOUNDS group=%.*s valid=0\n",
+                    static_cast<int>(industrialSpecs[index].group.size()), industrialSpecs[index].group.data());
+                continue;
+            }
+            AZ::Aabb bounds = model->GetModelAsset()->GetAabb();
+            bounds.ApplyTransform(m_meshFeatureProcessor->GetTransform(state.m_meshHandle));
+            const AZ::Vector3 minimum = bounds.GetMin();
+            const AZ::Vector3 maximum = bounds.GetMax();
+            AZ_Printf("STWGameplay",
+                "INDUSTRIAL_YARD_GROUP_BOUNDS group=%.*s valid=1 min=%.3f,%.3f,%.3f max=%.3f,%.3f,%.3f material_rebinds=%u\n",
+                static_cast<int>(industrialSpecs[index].group.size()), industrialSpecs[index].group.data(),
+                minimum.GetX(), minimum.GetY(), minimum.GetZ(), maximum.GetX(), maximum.GetY(), maximum.GetZ(),
+                state.m_materialRebindCount);
+        }
+    }
+
+    void ArenaPresentation::ApplyVariantVisibility(bool industrialActive)
+    {
+        for (VisualAssetState& state : m_assets)
+        {
+            if (state.m_meshHandle.IsValid())
+            {
+                m_meshFeatureProcessor->SetVisible(state.m_meshHandle, !industrialActive);
+            }
+        }
+        for (VisualAssetState& state : m_industrialAssets)
+        {
+            if (state.m_meshHandle.IsValid())
+            {
+                m_meshFeatureProcessor->SetVisible(state.m_meshHandle, industrialActive);
+            }
+        }
+    }
+
+    void ArenaPresentation::ReportVariantTransition(bool industrialActive, bool emitFallbackDiagnostic)
+    {
+        if (m_variantTransitionReported && m_lastReportedIndustrialActive == industrialActive && !emitFallbackDiagnostic)
+        {
+            return;
+        }
+        m_variantTransitionReported = true;
+        m_lastReportedIndustrialActive = industrialActive;
+        AZ_Printf(
+            "STWGameplay",
+            "STW_ARENA_VARIANT=%s fallback_diagnostic=%d\n",
+            industrialActive ? "IndustrialYard" : "CurrentArena",
+            emitFallbackDiagnostic ? 1 : 0);
     }
 
     void ArenaPresentation::IsolateDefaultLevelScaffold()
@@ -595,6 +785,13 @@ namespace STWGameplay
                     m_meshFeatureProcessor->ReleaseMesh(asset.m_meshHandle);
                 }
             }
+            for (VisualAssetState& asset : m_industrialAssets)
+            {
+                if (asset.m_meshHandle.IsValid())
+                {
+                    m_meshFeatureProcessor->ReleaseMesh(asset.m_meshHandle);
+                }
+            }
         }
         if (m_directionalLightFeatureProcessor != nullptr && m_directionalLightHandle.IsValid())
         {
@@ -602,6 +799,12 @@ namespace STWGameplay
         }
 
         m_assets = {};
+        m_industrialAssets = {};
+        m_variantSelector = {};
+        m_industrialVariantActive = false;
+        m_variantTransitionReported = false;
+        m_lastReportedIndustrialActive = false;
+        m_industrialBoundsReported = false;
         m_meshFeatureProcessor = nullptr;
         m_directionalLightFeatureProcessor = nullptr;
         m_directionalLightHandle = {};

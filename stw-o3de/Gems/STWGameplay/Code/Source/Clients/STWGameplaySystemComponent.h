@@ -267,6 +267,9 @@ namespace STWGameplay
         AZStd::string m_nativeCapturePath;
         float m_nativeCaptureDelay = 0.0f;
         bool m_nativeCaptureAttempted = false;
+        // Single-capture mode only: simulation time spent waiting for the arena visual
+        // variant to settle before the 0.75 s capture delay starts.
+        float m_nativeCaptureSettleTime = 0.0f;
         // Opt-in, off by default (unset in production and in the standard task.sh gate):
         // periodic re-capture into indexed sibling files, for building a real gameplay
         // frame sequence instead of one still frame.

@@ -153,6 +153,7 @@ namespace STWGameplay
         m_nativeCapturePath.clear();
         m_nativeCaptureDelay = 0.0f;
         m_nativeCaptureAttempted = false;
+        m_nativeCaptureSettleTime = 0.0f;
         m_nativeCaptureIntervalSeconds = 0.0f;
         m_nativeCaptureMaxFrames = 0;
         m_nativeCaptureFrameIndex = 0;
@@ -246,6 +247,7 @@ namespace STWGameplay
         m_nativeCapturePath.clear();
         m_nativeCaptureDelay = 0.0f;
         m_nativeCaptureAttempted = false;
+        m_nativeCaptureSettleTime = 0.0f;
         m_nativeCaptureIntervalSeconds = 0.0f;
         m_nativeCaptureMaxFrames = 0;
         m_nativeCaptureFrameIndex = 0;
@@ -1397,7 +1399,18 @@ namespace STWGameplay
         const bool captureDue = sequenceMode
             ? (m_nativeCaptureMaxFrames <= 0 || m_nativeCaptureFrameIndex < m_nativeCaptureMaxFrames)
             : !m_nativeCaptureAttempted;
-        if (!m_nativeCapturePath.empty() && captureDue)
+        // The single verification capture must show the arena variant that is actually
+        // selected, not the first frames of asset streaming. It waits until the Industrial
+        // Yard set is active, bounded by a settle timeout; a capture after the timeout still
+        // happens (so the failure is visible) and reports the variant it shows.
+        constexpr float NativeCaptureVariantSettleTimeoutSeconds = 30.0f;
+        bool captureVariantSettled = sequenceMode || m_arenaPresentation.IsIndustrialYardVariantActive();
+        if (!captureVariantSettled && !m_nativeCapturePath.empty() && captureDue)
+        {
+            m_nativeCaptureSettleTime += deltaTime;
+            captureVariantSettled = m_nativeCaptureSettleTime >= NativeCaptureVariantSettleTimeoutSeconds;
+        }
+        if (!m_nativeCapturePath.empty() && captureDue && captureVariantSettled)
         {
             m_nativeCaptureDelay += deltaTime;
             const float dueAt = sequenceMode ? m_nativeCaptureIntervalSeconds : 0.75f;
@@ -1439,6 +1452,11 @@ namespace STWGameplay
                         "Native Atom frame capture submitted: %u -> %s\n",
                         outcome.GetValue(),
                         targetPath.c_str());
+                    AZ_Printf(
+                        "STWGameplay",
+                        "ARENA_VARIANT_AT_CAPTURE=%s settle_seconds=%.3f\n",
+                        m_arenaPresentation.IsIndustrialYardVariantActive() ? "IndustrialYard" : "CurrentArena",
+                        m_nativeCaptureSettleTime);
                 }
                 else
                 {

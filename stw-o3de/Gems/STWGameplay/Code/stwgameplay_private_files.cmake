@@ -19,6 +19,8 @@ set(FILES
     Source/BodycamCameraPresentation.cpp
     Source/STWSkeletalCharacterPresentation.cpp
     Source/ViewmodelPresentation.cpp
+    Source/IndustrialYardLookTemplate.cpp
+    Source/IndustrialYardArenaVariant.cpp
     Source/STWGameplayModuleInterface.cpp
     Source/STWGameplayModuleInterface.h
     Source/Clients/STWGameplaySystemComponent.cpp

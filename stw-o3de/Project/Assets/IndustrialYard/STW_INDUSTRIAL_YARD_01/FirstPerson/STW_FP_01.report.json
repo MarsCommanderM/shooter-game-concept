@@ -1,0 +1,48 @@
+{
+  "actions": [
+    "ads",
+    "idle",
+    "reload"
+  ],
+  "all_meshes_have_uvs": true,
+  "all_skinned_meshes_have_armature_modifier": true,
+  "animation_exports": {
+    "ads": "STW_FP_01_ads.fbx",
+    "idle": "STW_FP_01.fbx",
+    "reload": "STW_FP_01_reload.fbx"
+  },
+  "asset_family": "STW_FP_01",
+  "binding_pose_bounds": {
+    "maximum": [
+      0.6846483945846558,
+      1.8000001907348633,
+      1.0460000038146973
+    ],
+    "minimum": [
+      -0.6846483945846558,
+      -0.2400762438774109,
+      0.3199999928474426
+    ]
+  },
+  "coordinate_contract": "Z-up, forward -Y on FBX export",
+  "generator": "Blender 4.5.14 LTS",
+  "glove_detail_objects": 12,
+  "hand_to_grip_distance_max": 0.23280894481581452,
+  "material_slots": 5,
+  "mesh_objects": 65,
+  "quality_status": "source-generated; visual and in-engine playback require review",
+  "quality_tier": "high_end_procedural_foundation",
+  "required_bones": [
+    "root",
+    "weapon",
+    "upperarm_L",
+    "forearm_L",
+    "hand_L",
+    "upperarm_R",
+    "forearm_R",
+    "hand_R"
+  ],
+  "triangles": 18820,
+  "vertices": 9540,
+  "weapon_detail_objects": 36
+}
