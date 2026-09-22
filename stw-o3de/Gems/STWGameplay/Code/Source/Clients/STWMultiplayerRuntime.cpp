@@ -1,5 +1,7 @@
 #include "STWMultiplayerRuntime.h"
 
+#include <AzCore/Component/Entity.h>
+#include <AzCore/Component/TransformBus.h>
 #include <AzCore/Debug/Trace.h>
 #include <AzCore/Interface/Interface.h>
 #include <AzCore/std/containers/vector.h>

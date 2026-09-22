@@ -308,14 +308,17 @@ namespace STWGameplay
         return m_industrialVariantActive;
     }
 
+    static_assert(IndustrialYardIntegration::VisualAssetCount == ArenaPresentation::VisualAssetCount,
+        "the Industrial Yard variant replaces the current arena group for group");
+
     void ArenaPresentation::UpdateIndustrialYardVariant()
     {
-        using namespace IndustrialYardIntegration;
+        namespace Yard = IndustrialYardIntegration;
 
-        const std::array<VisualAssetSpec, VisualAssetCount> industrialSpecs = IndustrialAssetSet();
+        const std::array<Yard::VisualAssetSpec, Yard::VisualAssetCount> industrialSpecs = Yard::IndustrialAssetSet();
 
-        IdentitySet models{};
-        IdentitySet materials{};
+        Yard::IdentitySet models{};
+        Yard::IdentitySet materials{};
         for (size_t index = 0; index < VisualAssetCount; ++index)
         {
             const VisualAssetState& state = m_industrialAssets[index];
@@ -323,7 +326,7 @@ namespace STWGameplay
             materials[index] = { industrialSpecs[index].materialPath, state.m_materialAssetId.IsValid() };
         }
 
-        const VariantDecision decision = m_variantSelector.Update(models, materials);
+        const Yard::VariantDecision decision = m_variantSelector.Update(models, materials);
 
         // The selector's own 60-update cadence gates the (relatively expensive)
         // full catalog enumeration, exactly like the current-arena discovery
@@ -343,12 +346,12 @@ namespace STWGameplay
                         {
                             continue;
                         }
-                        if (lowercasePath == industrialSpecs[index].modelPath)
+                        if (lowercasePath == AZStd::string_view(industrialSpecs[index].modelPath.data(), industrialSpecs[index].modelPath.size()))
                         {
                             state.m_modelAssetId = assetId;
                             state.m_modelPath = info.m_relativePath;
                         }
-                        if (lowercasePath == industrialSpecs[index].materialPath)
+                        if (lowercasePath == AZStd::string_view(industrialSpecs[index].materialPath.data(), industrialSpecs[index].materialPath.size()))
                         {
                             state.m_materialAssetId = assetId;
                         }
@@ -413,7 +416,7 @@ namespace STWGameplay
             }
         }
 
-        const bool industrialActive = decision.variant == Variant::IndustrialYard && industrialGeometryReady;
+        const bool industrialActive = decision.variant == Yard::Variant::IndustrialYard && industrialGeometryReady;
         if (industrialActive != m_industrialVariantActive)
         {
             ApplyVariantVisibility(industrialActive);
