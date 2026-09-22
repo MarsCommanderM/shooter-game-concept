@@ -50,13 +50,13 @@
       "center": [
         6,
         -6,
-        0.005
+        0.0115
       ],
       "group": "trim",
       "size": [
         4,
         2,
-        0.01
+        0.003
       ]
     },
     "left_cover_cladding": {
@@ -141,13 +141,13 @@
       "center": [
         0,
         -6,
-        0.006
+        0.012
       ],
       "group": "mark",
       "size": [
         5,
         2,
-        0.008
+        0.004
       ]
     },
     "south_concrete_facade": {

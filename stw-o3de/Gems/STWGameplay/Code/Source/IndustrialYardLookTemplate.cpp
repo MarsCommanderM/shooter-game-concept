@@ -73,14 +73,14 @@ namespace STWGameplay
                 AZ::Vector3(8.0f, 1.0f, 0.50f), Anchor::AboveArena },
             { "west_signage", "props", AZ::Vector3(-12.70f, 2.0f, 2.2f),
                 AZ::Vector3(0.50f, 2.0f, 1.5f), Anchor::BeyondWestWall },
-            { "shallow_puddles", "mark", AZ::Vector3(0.0f, -6.0f, 0.006f),
-                AZ::Vector3(5.0f, 2.0f, 0.008f), Anchor::FloorSurface },
+            { "shallow_puddles", "mark", AZ::Vector3(0.0f, -6.0f, 0.012f),
+                AZ::Vector3(5.0f, 2.0f, 0.004f), Anchor::FloorSurface },
             { "roof_service_truss", "struct", AZ::Vector3(0.0f, 2.0f, 4.45f),
                 AZ::Vector3(10.0f, 0.6f, 0.50f), Anchor::AboveArena },
             { "outside_factory_tower", "beacon", AZ::Vector3(-13.0f, 5.0f, 2.5f),
                 AZ::Vector3(0.8f, 1.5f, 3.0f), Anchor::BeyondWestWall },
-            { "flush_hazard_trim", "trim", AZ::Vector3(6.0f, -6.0f, 0.005f),
-                AZ::Vector3(4.0f, 2.0f, 0.01f), Anchor::FloorSurface }
+            { "flush_hazard_trim", "trim", AZ::Vector3(6.0f, -6.0f, 0.0115f),
+                AZ::Vector3(4.0f, 2.0f, 0.003f), Anchor::FloorSurface }
         }};
     }
 

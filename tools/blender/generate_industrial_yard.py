@@ -10,6 +10,9 @@ import bpy
 from mathutils import Vector
 
 
+# Flush surface layers sit on distinct heights above the deck top (0.010 m) so no
+# two visible faces are coplanar; coplanar decals z-fight non-deterministically
+# (T4 gate runs 20260922T185802Z and 190540Z of the same SHA disagreed).
 PIECES = [
     ("wet_concrete_deck", "deck", (0, 0, 0.005), (24, 24, 0.01), "concrete"),
     ("north_brick_facade", "wall", (0, 12, 2), (23.95, 0.45, 3.95), "brick"),
@@ -21,10 +24,10 @@ PIECES = [
     ("service_step_skin", "cover", (5, -2, 0.125), (2, 2, 0.25), "concrete"),
     ("suspended_gallery", "arch", (0, 6, 4.45), (8, 1, 0.5), "steel"),
     ("west_signage", "props", (-12.7, 2, 2.2), (0.5, 2, 1.5), "sign"),
-    ("shallow_puddles", "mark", (0, -6, 0.006), (5, 2, 0.008), "water"),
+    ("shallow_puddles", "mark", (0, -6, 0.012), (5, 2, 0.004), "water"),
     ("roof_service_truss", "struct", (0, 2, 4.45), (10, 0.6, 0.5), "steel"),
     ("outside_factory_tower", "beacon", (-13, 5, 2.5), (0.8, 1.5, 3), "steel"),
-    ("flush_hazard_trim", "trim", (6, -6, 0.005), (4, 2, 0.01), "hazard"),
+    ("flush_hazard_trim", "trim", (6, -6, 0.0115), (4, 2, 0.003), "hazard"),
 ]
 
 
@@ -178,7 +181,7 @@ def add_high_detail(groups, materials):
     # Flush hazard trim is a non-blocking surface graphic built from repeated
     # strips, not raised geometry.
     for index, x in enumerate((4.6, 5.2, 5.8, 6.4, 7.0)):
-        strip = detail_cube(f"IY_HazardStripe_{index:02d}", (x, -6.0, 0.013), (0.22, 1.7, 0.006), materials["hazard"], 0.001)
+        strip = detail_cube(f"IY_HazardStripe_{index:02d}", (x, -6.0, 0.016), (0.22, 1.7, 0.006), materials["hazard"], 0.001)
         add("trim", strip)
 
     # Non-authoritative industrial dressing: service conduits, panel doors,
