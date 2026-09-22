@@ -280,6 +280,17 @@ namespace STWGameplay
         size_t m_frameSampleCount = 0;
         float m_performanceDuration = 0.0f;
         bool m_performanceReported = false;
+        // Budget-protocol profile (Docs/PerformanceBudgets): 30 s warmup, then a 60 s window
+        // of gapless per-frame samples for frame, RHI CPU and root-pass GPU time.
+        static constexpr size_t ProfileSampleCapacity = 8192;
+        void RecordPerformanceProfile(float deltaTime);
+        AZStd::vector<float> m_profileFrameMs;
+        AZStd::vector<float> m_profileCpuMs;
+        AZStd::vector<float> m_profileGpuMs;
+        float m_profileElapsed = 0.0f;
+        float m_profileWindowElapsed = 0.0f;
+        bool m_profileGpuQueriesEnabled = false;
+        bool m_profileReported = false;
         bool m_automatedAcceptance = false;
         bool m_acceptanceReported = false;
         bool m_viewmodelAcceptanceReported = false;

@@ -925,7 +925,7 @@ for _ in $(seq 1 75); do
 done
 [[ -s "${FRAME_NATIVE}" ]]
 for _ in $(seq 1 180); do
-  runtime_grep -q 'PERFORMANCE_BASELINE' && runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS' && runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS' && runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS' && runtime_grep -q 'ENEMY_AI_ACCEPTANCE result=PASS' && runtime_grep -q 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'COMBAT_FEEDBACK_ACCEPTANCE result=PASS' && runtime_grep -q 'AUDIO_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'JUMP_ACCEPTANCE result=PASS' && runtime_grep -q 'CROUCH_ACCEPTANCE result=PASS' && runtime_grep -q 'SLIDE_ACCEPTANCE result=PASS' && runtime_grep -q 'MANTLE_ACCEPTANCE result=PASS' && runtime_grep -q 'TRAVERSAL_ARBITRATION_ACCEPTANCE result=PASS' && runtime_grep -q 'ENCOUNTER_ACCEPTANCE result=PASS' && runtime_grep -q 'MULTI_ENEMY_ACCEPTANCE result=PASS' && runtime_grep -q 'SPAWN_CHECKPOINT_ACCEPTANCE result=PASS' && runtime_grep -q 'WEAPON_SWITCH_ACCEPTANCE result=PASS' && runtime_grep -q 'LOADOUT_ACCEPTANCE result=PASS' && runtime_grep -q 'BLOCK_22_ANIMATION_ACCEPTANCE=PASS' && runtime_grep -q 'BODYCAM_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'ARENA_PRESENTATION_ACTIVE=1' && break
+  runtime_grep -q 'PERFORMANCE_BASELINE' && runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS' && runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS' && runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS' && runtime_grep -q 'ENEMY_AI_ACCEPTANCE result=PASS' && runtime_grep -q 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'COMBAT_FEEDBACK_ACCEPTANCE result=PASS' && runtime_grep -q 'AUDIO_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'JUMP_ACCEPTANCE result=PASS' && runtime_grep -q 'CROUCH_ACCEPTANCE result=PASS' && runtime_grep -q 'SLIDE_ACCEPTANCE result=PASS' && runtime_grep -q 'MANTLE_ACCEPTANCE result=PASS' && runtime_grep -q 'TRAVERSAL_ARBITRATION_ACCEPTANCE result=PASS' && runtime_grep -q 'ENCOUNTER_ACCEPTANCE result=PASS' && runtime_grep -q 'MULTI_ENEMY_ACCEPTANCE result=PASS' && runtime_grep -q 'SPAWN_CHECKPOINT_ACCEPTANCE result=PASS' && runtime_grep -q 'WEAPON_SWITCH_ACCEPTANCE result=PASS' && runtime_grep -q 'LOADOUT_ACCEPTANCE result=PASS' && runtime_grep -q 'BLOCK_22_ANIMATION_ACCEPTANCE=PASS' && runtime_grep -q 'BODYCAM_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'ARENA_PRESENTATION_ACTIVE=1' && runtime_grep -q 'PERFORMANCE_PROFILE ' && break
   kill -0 "${launcher_pid}" 2>/dev/null || { tail -n 200 "${LAUNCH_LOG}"; exit 1; }
   sleep 1
 done
@@ -1066,6 +1066,42 @@ runtime_grep -Eq 'SPAWN_CHECKPOINT_ACCEPTANCE result=PASS initial_spawn=1 defaul
 runtime_grep -Eq 'WEAPON_SWITCH_ACCEPTANCE result=PASS initial_slot=0 first_weapon_visible=1 first_switch_slot=1 second_switch_slot=0 weapon_a_ammo_preserved=1 weapon_b_ammo_changed_on_fire=1 inactive_weapon_ammo_unchanged=1 held_switch_retrigger_blocked=1'
 runtime_grep -Eq 'LOADOUT_ACCEPTANCE result=PASS primary_available=1 secondary_available=1 tactical_available=1 lethal_available=1 melee_available=1 independent_ammo=1 independent_charges=1 inactive_state_preserved=1 slot_validation=1 held_switch_blocked=1 authority_separation=PASS'
 runtime_grep -q 'PERFORMANCE_BASELINE'
+# Budget-protocol profile (stw-o3de/Docs/PerformanceBudgets): the telemetry itself is a
+# hard requirement - missing, zero or non-finite CPU/GPU time, fewer than 600 samples or
+# a frame sum that disagrees with the window by more than 5 % fails the gate. The
+# comparison with the PROVISIONAL scene budget is reported, not enforced: the T4 is a CI
+# measurement machine, not confirmed target hardware (policy.json, README).
+performance_profile_log="${RUN_DIR}/performance-profile.log"
+runtime_grep -h 'PERFORMANCE_PROFILE ' > "${performance_profile_log}"
+python3 - "${performance_profile_log}" "${GITHUB_WORKSPACE}/stw-o3de/Config/VisualForge/policy.json" <<'PY_PROFILE'
+import json, math, re, sys
+line = open(sys.argv[1], encoding="utf-8").read().strip().splitlines()[-1]
+fields = dict(re.findall(r"(\w+)=(\S+)", line))
+def series(name):
+    value = fields.get(name, "UNAVAILABLE")
+    if value == "UNAVAILABLE":
+        raise SystemExit(f"PERFORMANCE_PROFILE=FAIL {name} unavailable")
+    numbers = [float(v) for v in value.split("/")]
+    if len(numbers) != 3 or not all(math.isfinite(v) and v > 0 for v in numbers):
+        raise SystemExit(f"PERFORMANCE_PROFILE=FAIL {name} invalid {value}")
+    return dict(zip(("p50", "p95", "p99"), numbers))
+samples = int(fields["samples"]); window = float(fields["window_s"]); total = float(fields["frame_sum_s"])
+frame, cpu, gpu = series("frame_ms"), series("cpu_ms"), series("gpu_ms")
+if samples < 600:
+    raise SystemExit(f"PERFORMANCE_PROFILE=FAIL samples={samples} < 600")
+if abs(total - window) > 0.05 * window:
+    raise SystemExit(f"PERFORMANCE_PROFILE=FAIL frame_sum_s={total} window_s={window}")
+for name in ("cpu_samples", "gpu_samples"):
+    if int(fields[name]) < 0.95 * samples:
+        raise SystemExit(f"PERFORMANCE_PROFILE=FAIL {name}={fields[name]} covers < 95 % of {samples}")
+budget = json.load(open(sys.argv[2], encoding="utf-8"))["scene_budget"]
+checks = [("frame_p95_ms", frame["p95"]), ("frame_p99_ms", frame["p99"]),
+          ("cpu_p95_ms", cpu["p95"]), ("gpu_p95_ms", gpu["p95"])]
+for key, measured in checks:
+    verdict = "WITHIN" if measured <= budget[key] else "OVER"
+    print(f"PERFORMANCE_BUDGET {key} measured={measured:.3f} budget={budget[key]} verdict={verdict} scope=CI_HARDWARE_PROVISIONAL")
+print(f"PERFORMANCE_PROFILE=PASS samples={samples} window_s={window:.3f} frame_ms={frame} cpu_ms={cpu} gpu_ms={gpu}")
+PY_PROFILE
 
 # Renderer-quality guardrails: these are production defects, not informational noise.
 # A mesh missing required streams can silently bind dummy inputs, and a degenerate

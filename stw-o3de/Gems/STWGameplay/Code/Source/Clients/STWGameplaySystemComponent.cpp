@@ -24,6 +24,9 @@
 #include <Atom/RPI.Public/Model/Model.h>
 #include <Atom/RPI.Public/Model/ModelLod.h>
 #include <Atom/RPI.Public/Scene.h>
+#include <Atom/RPI.Public/Pass/ParentPass.h>
+#include <Atom/RPI.Public/Pass/PassSystemInterface.h>
+#include <Atom/RHI/RHISystemInterface.h>
 #include <Atom/RPI.Reflect/Material/MaterialAsset.h>
 #include <Atom/RPI.Reflect/Model/ModelAsset.h>
 #include <STWGameplay/STWGameplayTypeIds.h>
@@ -1470,8 +1473,104 @@ namespace STWGameplay
         }
     }
 
+    namespace
+    {
+        // Nearest-rank percentile, as required by Docs/PerformanceBudgets.
+        float NearestRankPercentile(AZStd::vector<float> values, float quantile)
+        {
+            if (values.empty())
+            {
+                return 0.0f;
+            }
+            std::sort(values.begin(), values.end());
+            const size_t rank = static_cast<size_t>(std::ceil(quantile * static_cast<float>(values.size())));
+            return values[AZStd::max<size_t>(rank, 1) - 1];
+        }
+    } // namespace
+
+    void STWGameplaySystemComponent::RecordPerformanceProfile(float deltaTime)
+    {
+        constexpr float WarmupSeconds = 30.0f;
+        constexpr float WindowSeconds = 60.0f;
+        if (m_profileReported || !std::isfinite(deltaTime) || deltaTime <= 0.0f)
+        {
+            return;
+        }
+
+        const AZ::RPI::Ptr<AZ::RPI::ParentPass>& rootPass =
+            AZ::RPI::PassSystemInterface::Get() ? AZ::RPI::PassSystemInterface::Get()->GetRootPass() : nullptr;
+        if (!m_profileGpuQueriesEnabled && rootPass)
+        {
+            // Queries run during warmup too, so the window only reads settled results.
+            rootPass->SetTimestampQueryEnabled(true);
+            m_profileGpuQueriesEnabled = true;
+        }
+
+        m_profileElapsed += deltaTime;
+        if (m_profileElapsed < WarmupSeconds)
+        {
+            return;
+        }
+        if (m_profileFrameMs.empty())
+        {
+            m_profileFrameMs.reserve(ProfileSampleCapacity);
+            m_profileCpuMs.reserve(ProfileSampleCapacity);
+            m_profileGpuMs.reserve(ProfileSampleCapacity);
+        }
+
+        m_profileWindowElapsed += deltaTime;
+        if (m_profileFrameMs.size() < ProfileSampleCapacity)
+        {
+            m_profileFrameMs.push_back(deltaTime * 1000.0f);
+            const double cpuMs = AZ::RHI::RHISystemInterface::Get() ? AZ::RHI::RHISystemInterface::Get()->GetCpuFrameTime() : 0.0;
+            if (std::isfinite(cpuMs) && cpuMs > 0.0)
+            {
+                m_profileCpuMs.push_back(static_cast<float>(cpuMs));
+            }
+            const uint64_t gpuNs = rootPass ? rootPass->GetLatestTimestampResult().GetDurationInNanoseconds() : 0;
+            if (gpuNs > 0)
+            {
+                m_profileGpuMs.push_back(static_cast<float>(static_cast<double>(gpuNs) / 1.0e6));
+            }
+        }
+        if (m_profileWindowElapsed < WindowSeconds)
+        {
+            return;
+        }
+
+        m_profileReported = true;
+        if (rootPass)
+        {
+            rootPass->SetTimestampQueryEnabled(false);
+        }
+        double frameSumMs = 0.0;
+        for (const float value : m_profileFrameMs)
+        {
+            frameSumMs += value;
+        }
+        const size_t samples = m_profileFrameMs.size();
+        const auto formatSeries = [](const AZStd::vector<float>& series) -> AZStd::string
+        {
+            if (series.empty())
+            {
+                return AZStd::string("UNAVAILABLE");
+            }
+            return AZStd::string::format("%.3f/%.3f/%.3f",
+                NearestRankPercentile(series, 0.50f), NearestRankPercentile(series, 0.95f), NearestRankPercentile(series, 0.99f));
+        };
+        // p50/p95/p99 in milliseconds. cpu/gpu coverage is the share of window frames with
+        // a valid sample; zero or missing telemetry is reported, never estimated from FPS.
+        AZ_Printf("STWGameplay",
+            "PERFORMANCE_PROFILE warmup_s=%.0f window_s=%.3f samples=%zu frame_sum_s=%.3f frame_ms=%s cpu_ms=%s gpu_ms=%s "
+            "cpu_samples=%zu gpu_samples=%zu cpu_source=RHI_FrameScheduler gpu_source=RootPassTimestamp resolution=1920x1080\n",
+            WarmupSeconds, m_profileWindowElapsed, samples, frameSumMs / 1000.0,
+            formatSeries(m_profileFrameMs).c_str(), formatSeries(m_profileCpuMs).c_str(), formatSeries(m_profileGpuMs).c_str(),
+            m_profileCpuMs.size(), m_profileGpuMs.size());
+    }
+
     void STWGameplaySystemComponent::RecordPerformance(float deltaTime)
     {
+        RecordPerformanceProfile(deltaTime);
         if (!std::isfinite(deltaTime) || deltaTime <= 0.0f || m_performanceReported)
         {
             return;
