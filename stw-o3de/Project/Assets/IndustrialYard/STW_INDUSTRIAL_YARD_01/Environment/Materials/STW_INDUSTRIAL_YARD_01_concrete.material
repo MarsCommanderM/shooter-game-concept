@@ -4,20 +4,20 @@
     "materialTypeVersion": 5,
     "properties": {
         "baseColor": {
-            "textureMap": "Textures/STW_INDUSTRIAL_YARD_01_concrete_basecolor.png"
+            "textureMap": "../Textures/STW_INDUSTRIAL_YARD_01_concrete_basecolor.png"
         },
         "metallic": {
-            "textureMap": "Textures/STW_INDUSTRIAL_YARD_01_concrete_metallic.png"
+            "textureMap": "../Textures/STW_INDUSTRIAL_YARD_01_concrete_metallic.png"
         },
         "roughness": {
-            "textureMap": "Textures/STW_INDUSTRIAL_YARD_01_concrete_roughness.png"
+            "textureMap": "../Textures/STW_INDUSTRIAL_YARD_01_concrete_roughness.png"
         },
         "normal": {
-            "textureMap": "Textures/STW_INDUSTRIAL_YARD_01_concrete_normal.png",
+            "textureMap": "../Textures/STW_INDUSTRIAL_YARD_01_concrete_normal.png",
             "factor": 1.0
         },
         "occlusion": {
-            "diffuseTextureMap": "Textures/STW_INDUSTRIAL_YARD_01_concrete_ao.png"
+            "diffuseTextureMap": "../Textures/STW_INDUSTRIAL_YARD_01_concrete_ao.png"
         },
         "specularF0": {
             "factor": 0.5

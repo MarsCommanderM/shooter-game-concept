@@ -1078,6 +1078,32 @@ echo "MESH_INPUT_STREAM_WARNINGS=${mesh_input_stream_warnings}"
 echo "ZERO_DETERMINANT_WARNINGS=${zero_determinant_warnings}"
 [[ "${mesh_input_stream_warnings}" -eq 0 ]]
 [[ "${zero_determinant_warnings}" -eq 0 ]]
+# A material whose texture reference does not resolve still builds; Atom then renders
+# the engine's MISSING placeholder while every presentation marker reports success.
+# Check the newest Asset Processor job log of every source (stale logs of earlier
+# builds are ignored, cached products are still covered by their last job log).
+python3 - "${PROJECT}/user/log/JobLogs" <<'PY_JOBLOGS'
+import os, re, sys
+root = sys.argv[1]
+newest = {}
+for directory, _, files in os.walk(root):
+    for name in files:
+        match = re.match(r"(.+)-\d+-\d+\.log$", name)
+        if not match:
+            continue
+        path = os.path.join(directory, name)
+        key = os.path.join(os.path.relpath(directory, root), match.group(1))
+        if key not in newest or os.path.getmtime(path) > os.path.getmtime(newest[key]):
+            newest[key] = path
+pattern = re.compile(r"could not resolve image|Could not find the image")
+unresolved = sorted(key for key, path in newest.items()
+                    if pattern.search(open(path, encoding="utf-8", errors="replace").read()))
+print(f"MATERIAL_UNRESOLVED_IMAGE_SOURCES={len(unresolved)} job_sources={len(newest)}")
+for key in unresolved:
+    print(f"MATERIAL_UNRESOLVED_IMAGE source={key}")
+if unresolved:
+    raise SystemExit("material texture references do not resolve")
+PY_JOBLOGS
 
 if runtime_grep -q 'Native Atom frame capture submitted'; then
   echo "FRAME_CAPTURE_SUBMISSION_LOG=CONFIRMED"

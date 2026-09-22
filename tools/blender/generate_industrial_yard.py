@@ -299,14 +299,14 @@ def write_material_sources(output, materials):
             "materialType": "Materials/Types/StandardPBR.materialtype",
             "materialTypeVersion": 5,
             "properties": {
-                "baseColor": {"textureMap": f"Textures/STW_INDUSTRIAL_YARD_01_{name}_basecolor.png"},
-                "metallic": {"textureMap": f"Textures/STW_INDUSTRIAL_YARD_01_{name}_metallic.png"},
-                "roughness": {"textureMap": f"Textures/STW_INDUSTRIAL_YARD_01_{name}_roughness.png"},
+                "baseColor": {"textureMap": f"../Textures/STW_INDUSTRIAL_YARD_01_{name}_basecolor.png"},
+                "metallic": {"textureMap": f"../Textures/STW_INDUSTRIAL_YARD_01_{name}_metallic.png"},
+                "roughness": {"textureMap": f"../Textures/STW_INDUSTRIAL_YARD_01_{name}_roughness.png"},
                 "normal": {
-                    "textureMap": f"Textures/STW_INDUSTRIAL_YARD_01_{name}_normal.png",
+                    "textureMap": f"../Textures/STW_INDUSTRIAL_YARD_01_{name}_normal.png",
                     "factor": 1.0,
                 },
-                "occlusion": {"diffuseTextureMap": f"Textures/STW_INDUSTRIAL_YARD_01_{name}_ao.png"},
+                "occlusion": {"diffuseTextureMap": f"../Textures/STW_INDUSTRIAL_YARD_01_{name}_ao.png"},
                 "specularF0": {"factor": 0.50},
             },
         }
