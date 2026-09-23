@@ -50,7 +50,11 @@ namespace STWGameplay
             ConnectorNE,
             //! The SE connector envelope: mirrors ConnectorNE across y=0 -
             //! links the East Containerhof directly to the South Verladezone.
-            ConnectorSE
+            ConnectorSE,
+            //! The SW connector envelope: mirrors ConnectorNW across y=0 -
+            //! links the West Annex directly to the South Verladezone,
+            //! closing the full loop of connectors around the yard.
+            ConnectorSW
         };
 
         struct Piece
@@ -70,7 +74,7 @@ namespace STWGameplay
             float m_metallic;
         };
 
-        static constexpr size_t PieceCount = 60;
+        static constexpr size_t PieceCount = 64;
         static constexpr size_t MaterialCount = 4;
 
         static AZStd::array<Piece, PieceCount> GetPieces();

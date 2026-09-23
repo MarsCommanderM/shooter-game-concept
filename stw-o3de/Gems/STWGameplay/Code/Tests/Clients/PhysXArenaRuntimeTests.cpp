@@ -96,6 +96,10 @@ namespace STWGameplay
             { "STW Connector SE Ground B", AZ::Vector3(10.0f, -13.0f, -0.05f), AZ::Vector3(12.0f, 3.0f, 0.1f), false },
             { "STW Connector SE Cover A", AZ::Vector3(16.8f, -9.5f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f), false },
             { "STW Connector SE Cover B", AZ::Vector3(10.0f, -13.8f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f), false },
+            { "STW Connector SW Ground A", AZ::Vector3(-16.0f, -8.5f, -0.05f), AZ::Vector3(3.0f, 9.0f, 0.1f), false },
+            { "STW Connector SW Ground B", AZ::Vector3(-10.0f, -13.0f, -0.05f), AZ::Vector3(12.0f, 3.0f, 0.1f), false },
+            { "STW Connector SW Cover A", AZ::Vector3(-16.8f, -8.5f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f), false },
+            { "STW Connector SW Cover B", AZ::Vector3(-10.0f, -13.8f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f), false },
         };
         ASSERT_EQ(AZ_ARRAY_SIZE(expectations), PhysXArenaRuntime::StaticColliderCount);
 
@@ -255,6 +259,26 @@ namespace STWGameplay
 
         // Mirror of the NE check across y=0: segment A's y-range (the more
         // negative side) must overlap segment B's min-y edge.
+        const float segmentAMinY = segmentA->m_center.GetY() - segmentA->m_dimensions.GetY() * 0.5f;
+        const float segmentBMinY = segmentB->m_center.GetY() - segmentB->m_dimensions.GetY() * 0.5f;
+        const float segmentBMaxY = segmentB->m_center.GetY() + segmentB->m_dimensions.GetY() * 0.5f;
+        EXPECT_LT(segmentAMinY, segmentBMaxY);
+        EXPECT_GT(segmentAMinY, segmentBMinY);
+    }
+
+    TEST(PhysXArenaRuntimeTests, ConnectorSWDeckSegmentsJoinWithoutAGap)
+    {
+        const auto& colliders = PhysXArenaRuntime::GetStaticColliderDescriptions();
+        const auto* segmentA = FindCollider(colliders, "STW Connector SW Ground A");
+        const auto* segmentB = FindCollider(colliders, "STW Connector SW Ground B");
+        ASSERT_NE(segmentA, nullptr);
+        ASSERT_NE(segmentB, nullptr);
+        const float segmentAMinX = segmentA->m_center.GetX() - segmentA->m_dimensions.GetX() * 0.5f;
+        const float segmentAMaxX = segmentA->m_center.GetX() + segmentA->m_dimensions.GetX() * 0.5f;
+        const float segmentBMinX = segmentB->m_center.GetX() - segmentB->m_dimensions.GetX() * 0.5f;
+        EXPECT_GT(segmentAMaxX, segmentBMinX);
+        EXPECT_LT(segmentAMinX, segmentBMinX);
+
         const float segmentAMinY = segmentA->m_center.GetY() - segmentA->m_dimensions.GetY() * 0.5f;
         const float segmentBMinY = segmentB->m_center.GetY() - segmentB->m_dimensions.GetY() * 0.5f;
         const float segmentBMaxY = segmentB->m_center.GetY() + segmentB->m_dimensions.GetY() * 0.5f;
