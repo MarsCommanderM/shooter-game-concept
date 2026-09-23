@@ -59,6 +59,14 @@ namespace STWGameplay
         BuildCampaignScreen();
 
         ShowScreen(MainMenuScreen::Main);
+
+        // Diagnostic evidence (MAIN_MENU_DIAGNOSTIC, gate run for b6c4f2b)
+        // showed every element correctly built and enabled but with a
+        // GetCanvasSpaceRectNoScaleRotate of exactly (0,0,0,0) - a clean
+        // "never computed" zero, not a garbage value. UiCanvasBus exposes
+        // RecomputeChangedLayouts() as an explicit public step for exactly
+        // this, so layout is not purely automatic on creation.
+        UiCanvasBus::Event(m_canvasId, &UiCanvasBus::Events::RecomputeChangedLayouts);
     }
 
     void MainMenuPresentation::Shutdown()
@@ -366,6 +374,14 @@ namespace STWGameplay
             }
         }
         return true;
+    }
+
+    void MainMenuPresentation::RecomputeLayout() const
+    {
+        if (m_canvasId.IsValid())
+        {
+            UiCanvasBus::Event(m_canvasId, &UiCanvasBus::Events::RecomputeChangedLayouts);
+        }
     }
 
     void MainMenuPresentation::LogDiagnostics() const

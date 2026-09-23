@@ -3145,6 +3145,7 @@ namespace STWGameplay
 
         m_mainMenuPresentation.TestClick("QuitButton");
         m_mainMenuPresentation.ShowScreen(MainMenuScreen::Main);
+        m_mainMenuPresentation.RecomputeLayout();
         m_mainMenuPresentation.LogDiagnostics();
 
         passed = passed && m_mainMenuPresentation.GetButtonCount() == 12

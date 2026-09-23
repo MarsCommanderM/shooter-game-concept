@@ -53,6 +53,10 @@ namespace STWGameplay
 
         void ShowScreen(MainMenuScreen screen);
         MainMenuScreen GetActiveScreen() const { return m_activeScreen; }
+        //! Forces LyShine to recompute element rects immediately rather than
+        //! waiting for its own lazy/automatic pass - see Initialize()'s
+        //! comment for why this is not optional.
+        void RecomputeLayout() const;
 
         //! Exposed for automated acceptance verification only - never
         //! written to by gameplay, read-only reflection of what was built.
