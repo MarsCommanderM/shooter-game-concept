@@ -37,3 +37,4 @@ stw-o3de/**/*.pyc
 /tools/cmake-*
 # Blender auto-save backups
 *.blend1
+imgui.ini
