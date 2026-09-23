@@ -88,6 +88,13 @@
   already correct; the flat look was thin material detail + UV stretch, not
   exposure) and by a close-range EEVEE render showing real concrete panel
   joints and normal-map bump before touching the production asset directory.
+- Secondary detail pass, Containerhof + Verladezone (added 2026-09-23): the
+  two greybox-only zones now get the same dressing density
+  add_high_detail() already gives the original arena, West Annex and North
+  Scrapyard - corrugated container/trailer ribs, door seams and hinges,
+  ISO-style container corner castings, dock bumper posts and warning-stripe
+  trim. Non-colliding, visual-only, same as add_high_detail()'s own dressing
+  (never added to PhysXArenaRuntime or IndustrialYardLookTemplate).
 - Quality boundary: this is authored production foundation data, not a
   blockout. It is still not the final AAA+ cinematic acceptance until O3DE
   import, Vulkan runtime capture, and T4 visual review pass.

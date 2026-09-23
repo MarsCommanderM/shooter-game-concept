@@ -4,7 +4,7 @@
     "description": "Outdoor L-shaped walkway linking the West Annex directly to the North Scrapyard, bypassing the central hof - the first genuine crossing route beyond the hub-and-spoke cardinal landmarks, per the route-network-first map design guide. Flat, no ramp."
   },
   "contract_valid": true,
-  "detail_object_count": 209,
+  "detail_object_count": 323,
   "east_containerhof": {
     "description": "Third landmark: stacked shipping-container cover with one elevated platform reached by a ramp - no walls, no crane, a deliberately different silhouette from the first two landmarks. Built as a real greybox pass (simple boxes, no high-detail dressing) per the route-network-first map design guide.",
     "doorway_y_span": [

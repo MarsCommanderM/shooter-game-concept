@@ -544,6 +544,48 @@ def add_east_containerhof(groups, materials, world_bounds):
     world_bounds[ramp["name"]] = {"center": list(ramp_center), "size": list(ramp_size), "group": ramp["group"]}
 
 
+def add_containerhof_detail(groups, materials):
+    """Secondary dressing pass for the East Containerhof, matching the detail
+    density add_high_detail() already gives the original arena, West Annex
+    and North Scrapyard: corrugated container ribs, door seams and hinges,
+    ISO-style corner castings, and platform trim. Non-colliding, visual-only
+    - never added to PhysXArenaRuntime or IndustrialYardLookTemplate, same
+    precedent as add_high_detail()'s own dressing."""
+    def add(group, obj):
+        groups.setdefault(group, []).append(obj)
+
+    for label, center_y in (("A", -4.3), ("B", 0.0), ("C", 4.3)):
+        for side, y_offset in (("N", 0.81), ("S", -0.81)):
+            for index, x in enumerate((12.9, 13.4, 13.9, 14.4, 14.9, 15.4)):
+                add("cover", detail_cube(
+                    f"IY_Container{label}Rib_{side}_{index:02d}",
+                    (x, center_y + y_offset, 1.2), (0.04, 0.02, 2.1),
+                    materials["steel"], 0.003))
+        add("cover", detail_cube(
+            f"IY_Container{label}DoorSeam", (12.51, center_y, 1.2), (0.02, 0.03, 2.1),
+            materials["hazard"], 0.002))
+        for index, z in enumerate((0.6, 1.8)):
+            add("cover", detail_cube(
+                f"IY_Container{label}Hinge_{index:02d}", (12.52, center_y - 0.5, z),
+                (0.05, 0.08, 0.10), materials["steel"], 0.003))
+        for x in (12.55, 15.45):
+            for sign in (-1, 1):
+                add("cover", detail_cube(
+                    f"IY_Container{label}Corner_{int(x * 100)}_{sign}",
+                    (x, center_y + sign * 0.76, 2.42), (0.10, 0.10, 0.10),
+                    materials["steel"], 0.004))
+
+    for side, y_offset in (("N", 1.51), ("S", -1.51)):
+        for index, x in enumerate((17.2, 17.7, 18.2, 18.7, 19.2, 19.8)):
+            add("cover", detail_cube(
+                f"IY_PlatformRib_{side}_{index:02d}", (x, y_offset, 1.2),
+                (0.04, 0.02, 2.0), materials["steel"], 0.003))
+    for index, x in enumerate((17.0, 17.8, 18.6, 19.4, 20.0)):
+        add("trim", detail_cube(
+            f"IY_PlatformStripe_{index:02d}", (x, -1.6, 2.605), (0.5, 0.12, 0.006),
+            materials["hazard"], 0.001))
+
+
 def add_south_verladezone(groups, materials, world_bounds):
     """Fourth and final cardinal landmark: raised loading dock + parked
     trailers, structurally distinct from the building/crane/containers
@@ -562,6 +604,41 @@ def add_south_verladezone(groups, materials, world_bounds):
     ramp_center, ramp_size = world_bounds_of(ramp_obj)
     groups.setdefault(ramp["group"], []).append(ramp_obj)
     world_bounds[ramp["name"]] = {"center": list(ramp_center), "size": list(ramp_size), "group": ramp["group"]}
+
+
+def add_verladezone_detail(groups, materials):
+    """Secondary dressing pass for the South Verladezone, matching
+    add_containerhof_detail()'s density: corrugated trailer ribs, rear door
+    seams and hinges, dock-edge bumpers and a warning-stripe trim. Non-
+    colliding, visual-only."""
+    def add(group, obj):
+        groups.setdefault(group, []).append(obj)
+
+    for label, center_x, inner_face_x, outer_face_x in (
+        ("A", -2.6, -1.71, -3.49),
+        ("B", 2.6, 1.71, 3.49),
+    ):
+        for side, face_x in (("In", inner_face_x), ("Out", outer_face_x)):
+            for index, y in enumerate((-16.5, -15.8, -15.1, -14.4, -13.7, -13.0)):
+                add("cover", detail_cube(
+                    f"IY_Trailer{label}Rib_{side}_{index:02d}", (face_x, y, 1.1),
+                    (0.02, 0.04, 2.0), materials["steel"], 0.003))
+        add("cover", detail_cube(
+            f"IY_Trailer{label}DoorSeam", (center_x, -12.76, 1.1), (0.9, 0.02, 2.0),
+            materials["hazard"], 0.002))
+        for index, z in enumerate((0.5, 1.7)):
+            add("cover", detail_cube(
+                f"IY_Trailer{label}Hinge_{index:02d}", (center_x - 0.5, -12.77, z),
+                (0.10, 0.05, 0.10), materials["steel"], 0.003))
+
+    for index, x in enumerate((-1.8, -0.9, 0.0, 0.9, 1.8)):
+        add("cover", detail_cylinder(
+            f"IY_DockBumper_{index:02d}", (x, -19.3, 1.3), 0.10, 0.30,
+            materials["steel"], 10))
+    for index, x in enumerate((-2.3, -1.15, 0.0, 1.15, 2.3)):
+        add("trim", detail_cube(
+            f"IY_DockStripe_{index:02d}", (x, -19.26, 1.205), (0.4, 0.10, 0.006),
+            materials["hazard"], 0.001))
 
 
 def add_connector_nw(groups, materials, world_bounds):
@@ -792,7 +869,9 @@ def main():
     add_west_annex(groups, materials, world_bounds)
     add_north_scrapyard(groups, materials, world_bounds)
     add_east_containerhof(groups, materials, world_bounds)
+    add_containerhof_detail(groups, materials)
     add_south_verladezone(groups, materials, world_bounds)
+    add_verladezone_detail(groups, materials)
     add_connector_nw(groups, materials, world_bounds)
     add_connector_ne(groups, materials, world_bounds)
     add_connector_se(groups, materials, world_bounds)
