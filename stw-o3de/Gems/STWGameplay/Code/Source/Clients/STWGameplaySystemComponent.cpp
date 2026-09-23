@@ -17,6 +17,7 @@
 #include <AzFramework/Entity/EntityDebugDisplayBus.h>
 #include <AzFramework/Input/Devices/Keyboard/InputDeviceKeyboard.h>
 #include <AzFramework/Input/Devices/Mouse/InputDeviceMouse.h>
+#include <AzFramework/Input/Devices/Gamepad/InputDeviceGamepad.h>
 #include <AzFramework/Entity/GameEntityContextBus.h>
 #include <Atom/Feature/Utils/FrameCaptureBus.h>
 #include <Atom/RPI.Public/Material/Material.h>
@@ -1064,6 +1065,7 @@ namespace STWGameplay
             TryStartArenaMesh();
         }
 
+        SampleGamepadLook(deltaTime);
         UpdateAutomatedAcceptance(deltaTime);
         const FixedSimulationFrameResult simulation = RunFixedGameplaySteps(deltaTime);
         RunAdditionalNetworkPlayerSteps(simulation.m_fixedStepCount);
@@ -2618,14 +2620,63 @@ namespace STWGameplay
         }
     }
 
+    void STWGameplaySystemComponent::SampleGamepadLook(float deltaTime)
+    {
+        if (!std::isfinite(deltaTime) || deltaTime <= 0.0f)
+        {
+            return;
+        }
+        const auto applyDeadZone = [](float value)
+        {
+            return std::fabs(value) < GamepadLookDeadZone ? 0.0f : value;
+        };
+        const float stickX = applyDeadZone(m_gamepadLookStickX);
+        const float stickY = applyDeadZone(m_gamepadLookStickY);
+        if (stickX == 0.0f && stickY == 0.0f)
+        {
+            return;
+        }
+        // Unlike a mouse movement channel (each event already is a delta), a thumb-stick
+        // channel reports the current deflection every frame it is non-idle, so the look
+        // contribution here is deflection * sensitivity * deltaTime, matched to the same
+        // m_pendingLookX/Y accumulator the mouse path feeds so both sources are consumed
+        // identically by CreateNetworkCommand/RunFixedGameplaySteps.
+        const float lookDeltaX = stickX * GamepadLookSensitivity * deltaTime;
+        const float lookDeltaY = -stickY * GamepadLookSensitivity * deltaTime; // stick up = look up
+        m_input.m_lookX += lookDeltaX;
+        m_input.m_lookY += lookDeltaY;
+        m_pendingLookX += lookDeltaX;
+        m_pendingLookY += lookDeltaY;
+    }
+
     bool STWGameplaySystemComponent::OnInputChannelEventFiltered(const AzFramework::InputChannel& channel)
     {
         const auto& id = channel.GetInputChannelId();
         const bool active = channel.IsActive();
         using Keyboard = AzFramework::InputDeviceKeyboard;
         using Mouse = AzFramework::InputDeviceMouse;
+        using Gamepad = AzFramework::InputDeviceGamepad;
 
-        if (id == Keyboard::Key::AlphanumericW) { m_input.m_forward = active ? 1.0f : (m_input.m_forward > 0.0f ? 0.0f : m_input.m_forward); }
+        // Gamepad: left stick moves, right stick looks (integrated per-frame in
+        // SampleGamepadLook, since a stick reports absolute deflection, not a delta like
+        // mouse movement), triggers fire/aim, face buttons mirror the keyboard actions.
+        if (id == Gamepad::ThumbStickAxis1D::LY) { m_input.m_forward = channel.GetValue(); }
+        else if (id == Gamepad::ThumbStickAxis1D::LX) { m_input.m_strafe = channel.GetValue(); }
+        else if (id == Gamepad::ThumbStickAxis1D::RX) { m_gamepadLookStickX = channel.GetValue(); }
+        else if (id == Gamepad::ThumbStickAxis1D::RY) { m_gamepadLookStickY = channel.GetValue(); }
+        else if (id == Gamepad::Trigger::R2) { m_input.m_fire = channel.GetValue() > 0.35f; }
+        else if (id == Gamepad::Trigger::L2) { m_adsHeld = channel.GetValue() > 0.35f; }
+        else if (id == Gamepad::Button::A) { m_input.m_jump = active; }
+        else if (id == Gamepad::Button::B) { m_input.m_crouch = active; }
+        else if (id == Gamepad::Button::X && channel.IsStateBegan())
+        {
+            m_input.m_reload = true;
+            m_pendingReload = true;
+        }
+        else if (id == Gamepad::Button::Y) { m_input.m_switchWeapon = active; }
+        else if (id == Gamepad::Button::L1) { m_input.m_sprint = active; }
+        else if (id == Gamepad::Button::R1) { m_input.m_mantle = active; }
+        else if (id == Keyboard::Key::AlphanumericW) { m_input.m_forward = active ? 1.0f : (m_input.m_forward > 0.0f ? 0.0f : m_input.m_forward); }
         else if (id == Keyboard::Key::AlphanumericS) { m_input.m_forward = active ? -1.0f : (m_input.m_forward < 0.0f ? 0.0f : m_input.m_forward); }
         else if (id == Keyboard::Key::AlphanumericD) { m_input.m_strafe = active ? 1.0f : (m_input.m_strafe > 0.0f ? 0.0f : m_input.m_strafe); }
         else if (id == Keyboard::Key::AlphanumericA) { m_input.m_strafe = active ? -1.0f : (m_input.m_strafe < 0.0f ? 0.0f : m_input.m_strafe); }

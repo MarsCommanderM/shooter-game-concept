@@ -96,6 +96,7 @@ namespace STWGameplay
 
     private:
         bool OnInputChannelEventFiltered(const AzFramework::InputChannel& inputChannel) override;
+        void SampleGamepadLook(float deltaTime);
         void UpdateCamera();
         void DrawPresentation();
         void RecordPerformance(float deltaTime);
@@ -264,6 +265,14 @@ namespace STWGameplay
         PlayerSnapshotSequence m_lastAcceptedSnapshotSequence = InvalidPlayerSimulationSequence;
         ReconciliationEvaluation m_lastReconciliationEvaluation;
         bool m_adsHeld = false;
+        // Analog thumb-stick deflection persists between input events (unlike a mouse delta,
+        // a stick reports its current position, not a movement delta), so look integration
+        // happens once per fixed step in SampleGamepadLook() rather than accumulating directly
+        // in the input-channel callback.
+        float m_gamepadLookStickX = 0.0f;
+        float m_gamepadLookStickY = 0.0f;
+        static constexpr float GamepadLookDeadZone = 0.15f;
+        static constexpr float GamepadLookSensitivity = 3.5f; // radians/sec at full deflection; needs real-pad tuning
         AZStd::string m_nativeCapturePath;
         float m_nativeCaptureDelay = 0.0f;
         bool m_nativeCaptureAttempted = false;
