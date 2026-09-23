@@ -2,6 +2,7 @@
 
 #include <cstddef>
 
+#include <AzCore/Math/Quaternion.h>
 #include <AzCore/Math/Vector3.h>
 #include <AzCore/std/containers/array.h>
 #include <AzCore/std/containers/vector.h>
@@ -23,9 +24,12 @@ namespace STWGameplay
             const char* m_name = nullptr;
             AZ::Vector3 m_center = AZ::Vector3::CreateZero();
             AZ::Vector3 m_dimensions = AZ::Vector3::CreateZero();
+            //! Identity for every existing axis-aligned box. Only the West Annex
+            //! ramp uses a non-identity rotation (its walkable slope).
+            AZ::Quaternion m_rotation = AZ::Quaternion::CreateIdentity();
         };
 
-        static constexpr size_t StaticColliderCount = 8;
+        static constexpr size_t StaticColliderCount = 18;
 
         ~PhysXArenaRuntime();
 

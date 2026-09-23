@@ -1,7 +1,7 @@
 {
   "asset_family": "STW_INDUSTRIAL_YARD_01",
   "contract_valid": true,
-  "detail_object_count": 159,
+  "detail_object_count": 169,
   "groups": [
     "arch",
     "beacon",
@@ -29,10 +29,152 @@
     "M_IY_SteelPainted",
     "M_IY_Water"
   ],
-  "piece_count": 14,
+  "piece_count": 24,
   "quality_status": "source-generated; O3DE import and T4 visual review pending",
   "quality_tier": "high_end_procedural_foundation",
+  "west_annex": {
+    "description": "First enterable multi-storey building: doorway in the split west wall, ground floor, ramp to a real upper floor, open window band over the yard.",
+    "doorway_y_span": [
+      -1.5,
+      1.5
+    ],
+    "ground_floor_height": 3.5,
+    "ramp": {
+      "end": [
+        -19,
+        0,
+        3.45
+      ],
+      "group": "struct",
+      "material": "steel",
+      "name": "annex_ramp",
+      "start": [
+        -13,
+        0,
+        0.05
+      ],
+      "thickness": 0.2,
+      "width": 2.5
+    }
+  },
   "world_bounds": {
+    "annex_east_wall_north": {
+      "center": [
+        -12,
+        2.75,
+        1.75
+      ],
+      "group": "wall",
+      "size": [
+        0.3,
+        2.5,
+        3.5
+      ]
+    },
+    "annex_east_wall_south": {
+      "center": [
+        -12,
+        -2.75,
+        1.75
+      ],
+      "group": "wall",
+      "size": [
+        0.3,
+        2.5,
+        3.5
+      ]
+    },
+    "annex_far_wall": {
+      "center": [
+        -20,
+        0,
+        1.75
+      ],
+      "group": "wall",
+      "size": [
+        0.3,
+        8,
+        3.5
+      ]
+    },
+    "annex_ground_floor": {
+      "center": [
+        -16,
+        0,
+        -0.05
+      ],
+      "group": "deck",
+      "size": [
+        8,
+        8,
+        0.1
+      ]
+    },
+    "annex_north_wall": {
+      "center": [
+        -16,
+        4,
+        1.75
+      ],
+      "group": "wall",
+      "size": [
+        8,
+        0.3,
+        3.5
+      ]
+    },
+    "annex_ramp": {
+      "center": [
+        -16.0,
+        0.0,
+        1.7499999813735485
+      ],
+      "group": "struct",
+      "size": [
+        6.098602294921875,
+        2.500000476837158,
+        3.57400468736887
+      ]
+    },
+    "annex_south_wall": {
+      "center": [
+        -16,
+        -4,
+        1.75
+      ],
+      "group": "wall",
+      "size": [
+        8,
+        0.3,
+        3.5
+      ]
+    },
+    "annex_upper_floor_north": {
+      "center": [
+        -16,
+        2.625,
+        3.5
+      ],
+      "group": "deck",
+      "size": [
+        6,
+        2.75,
+        0.15
+      ]
+    },
+    "annex_upper_floor_south": {
+      "center": [
+        -16,
+        -2.625,
+        3.5
+      ],
+      "group": "deck",
+      "size": [
+        6,
+        2.75,
+        0.15
+      ]
+    },
     "east_steel_facade": {
       "center": [
         12,
@@ -189,16 +331,29 @@
         1.5
       ]
     },
-    "west_steel_facade": {
+    "west_steel_facade_left": {
       "center": [
         -12,
-        0,
+        -6.75,
         2
       ],
       "group": "wall",
       "size": [
         0.45,
-        23.95,
+        10.5,
+        3.95
+      ]
+    },
+    "west_steel_facade_right": {
+      "center": [
+        -12,
+        6.75,
+        2
+      ],
+      "group": "wall",
+      "size": [
+        0.45,
+        10.5,
         3.95
       ]
     },

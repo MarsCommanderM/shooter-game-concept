@@ -12,16 +12,46 @@ namespace STWGameplay
 {
     namespace
     {
+        // The ramp is the only non-axis-aligned collider: its rotation is the
+        // shortest arc from +X to the actual start->end climb direction, so the
+        // box's local X (length) axis exactly follows the walkable slope -
+        // computed, not hand-picked Euler angles. Endpoints/width/thickness must
+        // match tools/blender/generate_industrial_yard.py's ANNEX_RAMP exactly;
+        // the two are independent authorings of the same physical ramp (visual
+        // mesh vs. collision), not one generated from the other.
+        const AZ::Vector3 RampStart(-13.0f, 0.0f, 0.05f);
+        const AZ::Vector3 RampEnd(-19.0f, 0.0f, 3.45f);
+        const AZ::Vector3 RampDirection = RampEnd - RampStart;
+
         const AZStd::array<PhysXArenaRuntime::StaticColliderDescription, PhysXArenaRuntime::StaticColliderCount>
             StaticColliderDescriptions = {{
                 { "STW Floor", AZ::Vector3(0.0f, 0.0f, -0.5f), AZ::Vector3(24.0f, 24.0f, 1.0f) },
                 { "STW North Wall", AZ::Vector3(0.0f, 12.0f, 2.0f), AZ::Vector3(24.0f, 0.5f, 4.0f) },
                 { "STW South Wall", AZ::Vector3(0.0f, -12.0f, 2.0f), AZ::Vector3(24.0f, 0.5f, 4.0f) },
                 { "STW East Wall", AZ::Vector3(12.0f, 0.0f, 2.0f), AZ::Vector3(0.5f, 24.0f, 4.0f) },
-                { "STW West Wall", AZ::Vector3(-12.0f, 0.0f, 2.0f), AZ::Vector3(0.5f, 24.0f, 4.0f) },
+                // West wall is split around a 3 m doorway (y -1.5..1.5) into the
+                // West Annex building instead of one solid facade.
+                { "STW West Wall Left", AZ::Vector3(-12.0f, -6.75f, 2.0f), AZ::Vector3(0.5f, 10.5f, 4.0f) },
+                { "STW West Wall Right", AZ::Vector3(-12.0f, 6.75f, 2.0f), AZ::Vector3(0.5f, 10.5f, 4.0f) },
                 { "STW Left Cover", AZ::Vector3(-2.25f, 0.0f, 1.25f), AZ::Vector3(1.5f, 2.0f, 2.5f) },
                 { "STW Right Cover", AZ::Vector3(2.25f, 0.0f, 1.25f), AZ::Vector3(1.5f, 2.0f, 2.5f) },
-                { "STW Step", AZ::Vector3(5.0f, -2.0f, 0.125f), AZ::Vector3(2.0f, 2.0f, 0.25f) }
+                { "STW Step", AZ::Vector3(5.0f, -2.0f, 0.125f), AZ::Vector3(2.0f, 2.0f, 0.25f) },
+                // West Annex: first enterable, multi-storey building. Ground
+                // floor entered through the west wall doorway; a real ramp
+                // (not a lift/teleport) climbs to a genuine upper floor, open
+                // above the 3.5 m annex wall height on every side as an
+                // unglazed window/balcony over the arena.
+                { "STW Annex Ground Floor", AZ::Vector3(-16.0f, 0.0f, -0.05f), AZ::Vector3(8.0f, 8.0f, 0.1f) },
+                { "STW Annex North Wall", AZ::Vector3(-16.0f, 4.0f, 1.75f), AZ::Vector3(8.0f, 0.3f, 3.5f) },
+                { "STW Annex South Wall", AZ::Vector3(-16.0f, -4.0f, 1.75f), AZ::Vector3(8.0f, 0.3f, 3.5f) },
+                { "STW Annex Far Wall", AZ::Vector3(-20.0f, 0.0f, 1.75f), AZ::Vector3(0.3f, 8.0f, 3.5f) },
+                { "STW Annex East Wall North", AZ::Vector3(-12.0f, 2.75f, 1.75f), AZ::Vector3(0.3f, 2.5f, 3.5f) },
+                { "STW Annex East Wall South", AZ::Vector3(-12.0f, -2.75f, 1.75f), AZ::Vector3(0.3f, 2.5f, 3.5f) },
+                { "STW Annex Ramp", (RampStart + RampEnd) * 0.5f,
+                    AZ::Vector3(RampDirection.GetLength(), 2.5f, 0.2f),
+                    AZ::Quaternion::CreateShortestArc(AZ::Vector3::CreateAxisX(), RampDirection.GetNormalized()) },
+                { "STW Annex Upper Floor North", AZ::Vector3(-16.0f, 2.625f, 3.5f), AZ::Vector3(6.0f, 2.75f, 0.15f) },
+                { "STW Annex Upper Floor South", AZ::Vector3(-16.0f, -2.625f, 3.5f), AZ::Vector3(6.0f, 2.75f, 0.15f) }
             }};
 
         void DeactivateArenaEntity(AZStd::unique_ptr<AZ::Entity>& entity)
@@ -87,7 +117,8 @@ namespace STWGameplay
     bool PhysXArenaRuntime::CreateStaticBox(const StaticColliderDescription& description)
     {
         if (description.m_name == nullptr || !description.m_center.IsFinite()
-            || !description.m_dimensions.IsFinite() || description.m_dimensions.GetMinElement() <= 0.0f)
+            || !description.m_dimensions.IsFinite() || description.m_dimensions.GetMinElement() <= 0.0f
+            || !description.m_rotation.IsFinite())
         {
             return false;
         }
@@ -98,7 +129,8 @@ namespace STWGameplay
         {
             return false;
         }
-        transform->SetWorldTM(AZ::Transform::CreateTranslation(description.m_center));
+        transform->SetWorldTM(
+            AZ::Transform::CreateFromQuaternionAndTranslation(description.m_rotation, description.m_center));
 
         auto* collider = entity->CreateComponent<PhysX::BoxColliderComponent>();
         if (collider == nullptr)

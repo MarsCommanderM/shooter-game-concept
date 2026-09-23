@@ -21,7 +21,11 @@ namespace STWGameplay
             RightCover,
             Step,
             AboveArena,
-            BeyondWestWall
+            BeyondWestWall,
+            //! The West Annex building envelope: flush with the west wall's
+            //! doorway plane (x=-12), unlike BeyondWestWall's 0.25 m clearance
+            //! requirement, which a seamless doorway connection cannot satisfy.
+            WestAnnex
         };
 
         struct Piece
@@ -41,7 +45,7 @@ namespace STWGameplay
             float m_metallic;
         };
 
-        static constexpr size_t PieceCount = 14;
+        static constexpr size_t PieceCount = 24;
         static constexpr size_t MaterialCount = 4;
 
         static AZStd::array<Piece, PieceCount> GetPieces();

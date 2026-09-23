@@ -18,7 +18,10 @@ PIECES = [
     ("north_brick_facade", "wall", (0, 12, 2), (23.95, 0.45, 3.95), "brick"),
     ("south_concrete_facade", "wall", (0, -12, 2), (23.95, 0.45, 3.95), "concrete"),
     ("east_steel_facade", "wall", (12, 0, 2), (0.45, 23.95, 3.95), "steel"),
-    ("west_steel_facade", "wall", (-12, 0, 2), (0.45, 23.95, 3.95), "steel"),
+    # West wall is split around a 3 m doorway (y -1.5..1.5) into the West Annex
+    # building instead of one solid facade - see add_west_annex().
+    ("west_steel_facade_left", "wall", (-12, -6.75, 2), (0.45, 10.5, 3.95), "steel"),
+    ("west_steel_facade_right", "wall", (-12, 6.75, 2), (0.45, 10.5, 3.95), "steel"),
     ("left_cover_cladding", "cover", (-2.25, 0, 1.25), (1.5, 2, 2.5), "steel"),
     ("right_cover_cladding", "cover", (2.25, 0, 1.25), (1.5, 2, 2.5), "steel"),
     ("service_step_skin", "cover", (5, -2, 0.125), (2, 2, 0.25), "concrete"),
@@ -29,6 +32,39 @@ PIECES = [
     ("outside_factory_tower", "beacon", (-13, 5, 2.5), (0.8, 1.5, 3), "steel"),
     ("flush_hazard_trim", "trim", (6, -6, 0.0115), (4, 2, 0.003), "hazard"),
 ]
+
+# West Annex: the first enterable, multi-storey production building. Entered
+# through the doorway gap in the split west wall above. Ground floor at
+# z=0..3.5, an industrial loading ramp climbs to a real upper floor at
+# z=3.5, open above the east wall's 3.5 m height (0.5 m open band, full
+# annex width) as an unglazed window/balcony overlooking the yard - the
+# player can fire down into the arena from up there. Pieces are bucketed
+# into the existing deck/wall/struct groups (no new visual group, no gate
+# script change needed - report.json bounds are a union over all pieces in
+# a group and the runtime group AABB comes from the live merged mesh, so an
+# annex piece just extends that group's envelope).
+ANNEX_PIECES = [
+    ("annex_ground_floor", "deck", (-16, 0, -0.05), (8, 8, 0.1), "concrete"),
+    ("annex_north_wall", "wall", (-16, 4, 1.75), (8, 0.3, 3.5), "brick"),
+    ("annex_south_wall", "wall", (-16, -4, 1.75), (8, 0.3, 3.5), "brick"),
+    ("annex_far_wall", "wall", (-20, 0, 1.75), (0.3, 8, 3.5), "brick"),
+    ("annex_east_wall_north", "wall", (-12, 2.75, 1.75), (0.3, 2.5, 3.5), "brick"),
+    ("annex_east_wall_south", "wall", (-12, -2.75, 1.75), (0.3, 2.5, 3.5), "brick"),
+    ("annex_upper_floor_north", "deck", (-16, 2.625, 3.5), (6, 2.75, 0.15), "concrete"),
+    ("annex_upper_floor_south", "deck", (-16, -2.625, 3.5), (6, 2.75, 0.15), "concrete"),
+]
+# Ramp is not axis-aligned, built separately in add_west_annex() with
+# detail_box_between(). Endpoints recorded here so report.json/LookTemplate
+# derive the same envelope the physics/visual ramp actually occupies.
+ANNEX_RAMP = {
+    "name": "annex_ramp",
+    "group": "struct",
+    "start": (-13, 0, 0.05),
+    "end": (-19, 0, 3.45),
+    "width": 2.5,
+    "thickness": 0.2,
+    "material": "steel",
+}
 
 
 def args():
@@ -133,6 +169,19 @@ def detail_cylinder_between(name, start, end, radius, material, vertices=12):
     return obj
 
 
+def detail_box_between(name, start, end, width, thickness, material, bevel=0.012):
+    """A walkable ramp: a box whose local X axis (length) is rotated to
+    point from start to end, so its top surface climbs at exactly the
+    start->end slope. width is horizontal (local Y), thickness is the slab
+    depth (local Z)."""
+    start = Vector(start)
+    end = Vector(end)
+    direction = end - start
+    obj = detail_cube(name, (start + end) * 0.5, (direction.length, width, thickness), material, bevel)
+    obj.rotation_euler = direction.to_track_quat("X", "Z").to_euler()
+    return obj, direction.length
+
+
 def add_high_detail(groups, materials):
     def add(group, obj):
         groups[group].append(obj)
@@ -209,6 +258,45 @@ def add_high_detail(groups, materials):
 
     for index, z in enumerate((0.9, 1.35, 1.8, 2.25, 2.7, 3.15)):
         add("beacon", detail_cylinder_between(f"IY_BeaconLadder_{index:02d}", (-13.44, 5.0, z), (-12.56, 5.0, z), 0.026, materials["steel"], 12))
+
+
+def world_bounds_of(obj):
+    """Real min/max corners of obj in world space, computed from its actual
+    evaluated bound_box (not hand-derived), so a rotated piece (the ramp)
+    reports its true AABB rather than an estimate."""
+    corners = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
+    xs = [c.x for c in corners]
+    ys = [c.y for c in corners]
+    zs = [c.z for c in corners]
+    lo = (min(xs), min(ys), min(zs))
+    hi = (max(xs), max(ys), max(zs))
+    center = tuple((a + b) / 2.0 for a, b in zip(lo, hi))
+    size = tuple(b - a for a, b in zip(lo, hi))
+    return center, size
+
+
+def add_west_annex(groups, materials, world_bounds):
+    """The first enterable, multi-storey production building: ground floor
+    entered through the doorway gap left in the split west wall, a real
+    walkable ramp up to a genuine upper floor, open above the 3.5 m annex
+    wall height as an unglazed window/balcony over the yard. Every piece is
+    bucketed into the existing deck/wall/struct groups (see PIECES/ANNEX_
+    PIECES/ANNEX_RAMP module docstrings for why that keeps the 9-group,
+    gate-verified contract intact)."""
+    for name, group, center, size, material_name in ANNEX_PIECES:
+        obj = detail_cube(name, center, size, materials[material_name])
+        groups.setdefault(group, []).append(obj)
+        world_bounds[name] = {"center": list(center), "size": list(size), "group": group}
+
+    ramp = ANNEX_RAMP
+    ramp_obj, _length = detail_box_between(
+        ramp["name"], ramp["start"], ramp["end"], ramp["width"], ramp["thickness"],
+        materials[ramp["material"]], bevel=0.01,
+    )
+    bpy.context.view_layer.update()
+    ramp_center, ramp_size = world_bounds_of(ramp_obj)
+    groups.setdefault(ramp["group"], []).append(ramp_obj)
+    world_bounds[ramp["name"]] = {"center": list(ramp_center), "size": list(ramp_size), "group": ramp["group"]}
 
 
 def write_material_sources(output, materials):
@@ -364,6 +452,12 @@ def main():
         },
     )
 
+    world_bounds = {
+        name: {"center": list(center), "size": list(size), "group": group}
+        for name, group, center, size, _ in PIECES
+    }
+    add_west_annex(groups, materials, world_bounds)
+
     write_material_sources(options.output, materials)
 
     for group, objects in sorted(groups.items()):
@@ -385,13 +479,18 @@ def main():
         render_preview(options.output)
     report = {
         "asset_family": "STW_INDUSTRIAL_YARD_01",
-        "piece_count": len(PIECES),
+        "piece_count": len(world_bounds),
         "detail_object_count": sum(len(objects) for objects in groups.values()),
         "groups": sorted(groups),
-        "contract_valid": len(PIECES) == 14 and len(groups) == 9,
-        "world_bounds": {
-            name: {"center": list(center), "size": list(size), "group": group}
-            for name, group, center, size, _ in PIECES
+        "contract_valid": len(PIECES) == 15 and len(ANNEX_PIECES) == 8 and len(groups) == 9,
+        "world_bounds": world_bounds,
+        "west_annex": {
+            "description": "First enterable multi-storey building: doorway "
+                "in the split west wall, ground floor, ramp to a real upper "
+                "floor, open window band over the yard.",
+            "doorway_y_span": [-1.5, 1.5],
+            "ground_floor_height": 3.5,
+            "ramp": ANNEX_RAMP,
         },
         "materials": sorted(value.name for value in materials.values()),
         "material_sources": sorted(
