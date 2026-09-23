@@ -1386,6 +1386,7 @@ namespace STWGameplay
         }
         UpdateSpawnCheckpointAcceptance();
         UpdateEnemyAiAcceptance(deltaTime);
+        UpdateInteractivePlayerRespawn(deltaTime);
         UpdateEnemyPresentationAcceptance();
         UpdateSkeletalCharacterAcceptance();
         UpdateCombatFeedbackAcceptance();
@@ -4165,6 +4166,42 @@ namespace STWGameplay
                 enemy.m_respawnEvents);
             m_enemyAiAcceptanceReported = true;
         }
+    }
+
+    void STWGameplaySystemComponent::UpdateInteractivePlayerRespawn(float deltaTime)
+    {
+        // The gate's scripted respawn above is a one-shot step timed for its exact acceptance
+        // sequence and only runs while m_automatedAcceptance is true. This path is its mirror
+        // for real play: it only runs while m_automatedAcceptance is false, so the two never
+        // fire in the same session.
+        if (m_automatedAcceptance)
+        {
+            return;
+        }
+
+        const PlayerState& player = m_model.GetPlayer();
+        if (player.m_alive)
+        {
+            m_interactiveRespawnDelay = 0.0f;
+            return;
+        }
+
+        m_interactiveRespawnDelay += deltaTime;
+        if (m_interactiveRespawnDelay < InteractiveRespawnDelaySeconds)
+        {
+            return;
+        }
+
+        const int deathEventsBeforeReset = player.m_deathEvents;
+        m_model.ResetPlayer();
+        m_commandHistory.Clear();
+        const AZ::Vector3 respawnPosition = m_spawnCheckpoint.ResolveRespawnPosition();
+        m_model.SetPlayerPosition(respawnPosition);
+        m_physicsPlayer.ResetPosition(respawnPosition);
+        m_interactiveRespawnDelay = 0.0f;
+        AZ_Printf(
+            "STWGameplay", "STW_DIAG_INTERACTIVE_RESPAWN position=(%.2f,%.2f,%.2f) death_events_before=%d\n",
+            respawnPosition.GetX(), respawnPosition.GetY(), respawnPosition.GetZ(), deathEventsBeforeReset);
     }
 
     void STWGameplaySystemComponent::UpdateEnemyPresentationAcceptance()

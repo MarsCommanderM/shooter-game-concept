@@ -176,6 +176,12 @@ namespace STWGameplay
         void UpdateCrouchAcceptance(bool physicalStateSynchronized);
         void UpdateSlideAcceptance(bool physicalStateSynchronized);
         void UpdateMantleAcceptance(bool physicalStateSynchronized);
+        // Real interactive play has no scripted acceptance driver to respawn the player, so a
+        // dead player previously stayed dead forever outside the T4 gate's scripted sequence.
+        // Mutually exclusive with the gate's one-shot acceptance respawn in
+        // UpdateEnemyAiAcceptance(): that path only runs when m_automatedAcceptance is true,
+        // this one only when it is false.
+        void UpdateInteractivePlayerRespawn(float deltaTime);
 
         // The PhysX character controller cannot be created during Activate() because the
         // default physics scene does not exist yet; creation is deferred to OnTick.
@@ -306,6 +312,8 @@ namespace STWGameplay
         bool m_profileGpuQueriesEnabled = false;
         bool m_profileReported = false;
         bool m_automatedAcceptance = false;
+        float m_interactiveRespawnDelay = 0.0f;
+        static constexpr float InteractiveRespawnDelaySeconds = 2.0f;
         bool m_acceptanceReported = false;
         bool m_viewmodelAcceptanceReported = false;
         bool m_adsAcceptanceBegun = false;
