@@ -30,7 +30,12 @@ namespace STWGameplay
             //! wall's doorway plane (y=12), and tall enough (the boom reaches
             //! z~7.1 m) that AboveArena's arena-footprint x/y bound would
             //! reject it - the boom deliberately reaches back over the yard.
-            NorthScrapyard
+            NorthScrapyard,
+            //! The East Containerhof envelope: flush with the east wall's
+            //! doorway plane (x=12). A third, low-rise landmark (max height
+            //! ~2.6 m) - too short for AboveArena and on the wrong side for
+            //! BeyondWestWall/WestAnnex/NorthScrapyard.
+            EastContainerhof
         };
 
         struct Piece
@@ -50,7 +55,7 @@ namespace STWGameplay
             float m_metallic;
         };
 
-        static constexpr size_t PieceCount = 33;
+        static constexpr size_t PieceCount = 41;
         static constexpr size_t MaterialCount = 4;
 
         static AZStd::array<Piece, PieceCount> GetPieces();

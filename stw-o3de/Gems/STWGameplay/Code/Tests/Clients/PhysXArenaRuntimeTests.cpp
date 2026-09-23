@@ -46,7 +46,8 @@ namespace STWGameplay
             { "STW North Wall Left", AZ::Vector3(-6.75f, 12.0f, 2.0f), AZ::Vector3(10.5f, 0.5f, 4.0f), false },
             { "STW North Wall Right", AZ::Vector3(6.75f, 12.0f, 2.0f), AZ::Vector3(10.5f, 0.5f, 4.0f), false },
             { "STW South Wall", AZ::Vector3(0.0f, -12.0f, 2.0f), AZ::Vector3(24.0f, 0.5f, 4.0f), false },
-            { "STW East Wall", AZ::Vector3(12.0f, 0.0f, 2.0f), AZ::Vector3(0.5f, 24.0f, 4.0f), false },
+            { "STW East Wall Left", AZ::Vector3(12.0f, -6.75f, 2.0f), AZ::Vector3(0.5f, 10.5f, 4.0f), false },
+            { "STW East Wall Right", AZ::Vector3(12.0f, 6.75f, 2.0f), AZ::Vector3(0.5f, 10.5f, 4.0f), false },
             { "STW West Wall Left", AZ::Vector3(-12.0f, -6.75f, 2.0f), AZ::Vector3(0.5f, 10.5f, 4.0f), false },
             { "STW West Wall Right", AZ::Vector3(-12.0f, 6.75f, 2.0f), AZ::Vector3(0.5f, 10.5f, 4.0f), false },
             { "STW Left Cover", AZ::Vector3(-2.25f, 0.0f, 1.25f), AZ::Vector3(1.5f, 2.0f, 2.5f), false },
@@ -69,6 +70,13 @@ namespace STWGameplay
             { "STW Crane Ramp 2", AZ::Vector3(1.5f, 18.0f, 5.275f), AZ::Vector3(6.0747f, 1.8f, 0.2f), true },
             { "STW Crane Top Platform", AZ::Vector3(0.0f, 17.0f, 7.05f), AZ::Vector3(4.0f, 2.2f, 0.2f), false },
             { "STW Crane Boom", AZ::Vector3(0.0f, 8.5f, 7.1f), AZ::Vector3(1.4f, 15.0f, 0.2f), false },
+            { "STW Containerhof Ground", AZ::Vector3(16.0f, 0.0f, -0.05f), AZ::Vector3(8.0f, 12.0f, 0.1f), false },
+            { "STW Container Low A", AZ::Vector3(14.0f, -4.3f, 1.25f), AZ::Vector3(3.0f, 1.6f, 2.5f), false },
+            { "STW Container Low B", AZ::Vector3(14.0f, 0.0f, 1.25f), AZ::Vector3(3.0f, 1.6f, 2.5f), false },
+            { "STW Container Low C", AZ::Vector3(14.0f, 4.3f, 1.25f), AZ::Vector3(3.0f, 1.6f, 2.5f), false },
+            { "STW Container Platform Support", AZ::Vector3(18.5f, 0.0f, 1.2f), AZ::Vector3(3.0f, 3.0f, 2.4f), false },
+            { "STW Container Ramp", AZ::Vector3(17.0f, -2.0f, 1.225f), AZ::Vector3(3.8108f, 1.8f, 0.2f), true },
+            { "STW Container Platform", AZ::Vector3(18.5f, 0.0f, 2.5f), AZ::Vector3(3.4f, 3.4f, 0.2f), false },
         };
         ASSERT_EQ(AZ_ARRAY_SIZE(expectations), PhysXArenaRuntime::StaticColliderCount);
 
@@ -141,5 +149,18 @@ namespace STWGameplay
         EXPECT_GT(direction1.GetZ(), 0.0f);
         EXPECT_GT(direction2.GetZ(), 0.0f);
         EXPECT_LT(direction1.GetY() * direction2.GetY(), 0.0f);
+    }
+
+    TEST(PhysXArenaRuntimeTests, ContainerRampClimbsFromGroundToPlatformHeight)
+    {
+        const auto& colliders = PhysXArenaRuntime::GetStaticColliderDescriptions();
+        const auto* ramp = FindCollider(colliders, "STW Container Ramp");
+        ASSERT_NE(ramp, nullptr);
+        // Climbs from the doorway lane (low, x=15.5) toward the container
+        // platform (high, x=18.5, z~2.4) - otherwise it is rotated but
+        // climbs the wrong way.
+        const AZ::Vector3 climbDirection = ramp->m_rotation.TransformVector(AZ::Vector3::CreateAxisX());
+        EXPECT_GT(climbDirection.GetX(), 0.0f);
+        EXPECT_GT(climbDirection.GetZ(), 0.0f);
     }
 }

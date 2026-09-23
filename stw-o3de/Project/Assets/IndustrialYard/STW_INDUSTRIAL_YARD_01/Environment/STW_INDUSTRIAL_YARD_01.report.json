@@ -1,7 +1,32 @@
 {
   "asset_family": "STW_INDUSTRIAL_YARD_01",
   "contract_valid": true,
-  "detail_object_count": 178,
+  "detail_object_count": 186,
+  "east_containerhof": {
+    "description": "Third landmark: stacked shipping-container cover with one elevated platform reached by a ramp - no walls, no crane, a deliberately different silhouette from the first two landmarks. Built as a real greybox pass (simple boxes, no high-detail dressing) per the route-network-first map design guide.",
+    "doorway_y_span": [
+      -1.5,
+      1.5
+    ],
+    "platform_height": 2.5,
+    "ramp": {
+      "end": [
+        18.5,
+        -2.0,
+        2.4
+      ],
+      "group": "struct",
+      "material": "steel",
+      "name": "container_ramp",
+      "start": [
+        15.5,
+        -2.0,
+        0.05
+      ],
+      "thickness": 0.2,
+      "width": 1.8
+    }
+  },
   "groups": [
     "arch",
     "beacon",
@@ -73,7 +98,7 @@
       }
     ]
   },
-  "piece_count": 33,
+  "piece_count": 41,
   "quality_status": "source-generated; O3DE import and T4 visual review pending",
   "quality_tier": "high_end_procedural_foundation",
   "west_annex": {
@@ -219,6 +244,97 @@
         0.15
       ]
     },
+    "container_low_a": {
+      "center": [
+        14,
+        -4.3,
+        1.25
+      ],
+      "group": "cover",
+      "size": [
+        3,
+        1.6,
+        2.5
+      ]
+    },
+    "container_low_b": {
+      "center": [
+        14,
+        0,
+        1.25
+      ],
+      "group": "cover",
+      "size": [
+        3,
+        1.6,
+        2.5
+      ]
+    },
+    "container_low_c": {
+      "center": [
+        14,
+        4.3,
+        1.25
+      ],
+      "group": "cover",
+      "size": [
+        3,
+        1.6,
+        2.5
+      ]
+    },
+    "container_platform": {
+      "center": [
+        18.5,
+        0,
+        2.5
+      ],
+      "group": "struct",
+      "size": [
+        3.4,
+        3.4,
+        0.2
+      ]
+    },
+    "container_platform_support": {
+      "center": [
+        18.5,
+        0,
+        1.2
+      ],
+      "group": "cover",
+      "size": [
+        3,
+        3,
+        2.4
+      ]
+    },
+    "container_ramp": {
+      "center": [
+        17.0,
+        -2.0000000596046448,
+        1.225000038743019
+      ],
+      "group": "struct",
+      "size": [
+        3.123332977294922,
+        1.8000000715255737,
+        2.5074455440044403
+      ]
+    },
+    "containerhof_ground": {
+      "center": [
+        16,
+        0,
+        -0.05
+      ],
+      "group": "deck",
+      "size": [
+        8,
+        12,
+        0.1
+      ]
+    },
     "crane_boom": {
       "center": [
         0,
@@ -284,16 +400,29 @@
         0.2
       ]
     },
-    "east_steel_facade": {
+    "east_steel_facade_left": {
       "center": [
         12,
-        0,
+        -6.75,
         2
       ],
       "group": "wall",
       "size": [
         0.45,
-        23.95,
+        10.5,
+        3.95
+      ]
+    },
+    "east_steel_facade_right": {
+      "center": [
+        12,
+        6.75,
+        2
+      ],
+      "group": "wall",
+      "size": [
+        0.45,
+        10.5,
         3.95
       ]
     },

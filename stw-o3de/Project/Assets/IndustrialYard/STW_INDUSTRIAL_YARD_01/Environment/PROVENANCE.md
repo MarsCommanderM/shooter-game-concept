@@ -8,7 +8,7 @@
   `9ba871ff2ecd36526b77432745980b7e6664ecd0c7ca11c48849073dcfe06da3`.
 - Coordinate convention: source Z-up; FBX export forward `-Y`, up `Z`.
 - License status: original project work; no third-party asset license attached.
-- Validation: `STW_INDUSTRIAL_YARD_01.report.json` records all 33 post-import
+- Validation: `STW_INDUSTRIAL_YARD_01.report.json` records all 41 post-import
   target AABBs and nine group identities.
 - Production foundation: repeated facade ribs, service bands, fasteners,
   truss/gallery details, beacon hardware, flush hazard treatment, and six
@@ -33,6 +33,18 @@
   pattern as the West Annex; validated by a new Anchor::WestAnnex-style
   envelope (Anchor::NorthScrapyard) since the boom deliberately reaches
   back over the yard well above the 4 m wall height.
+- East Containerhof (added 2026-09-23): a third landmark, deliberately not a
+  copy of either of the first two. The east wall was split around a 3 m
+  doorway; beyond it are stacked shipping containers used as low cover with
+  one elevated platform (~2.5 m) reached by a straight ramp - no walls, no
+  crane, a genuinely different silhouette and a much lower max height (~2.6 m)
+  than either prior landmark. Built as a real greybox pass (simple boxes, no
+  high-detail dressing) as the first step of a route-network-first map plan:
+  the yard now has three enterable directions (west/north/east) plus a
+  fourth planned (south), meant to give the central hof real crossing routes
+  rather than a single hub with isolated dead-end arms. Same bucketing/
+  physics pattern as the other two; validated by a new Anchor::
+  EastContainerhof envelope.
 - Quality boundary: this is authored production foundation data, not a
   blockout. It is still not the final AAA+ cinematic acceptance until O3DE
   import, Vulkan runtime capture, and T4 visual review pass.

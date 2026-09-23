@@ -23,7 +23,12 @@ PIECES = [
     ("north_brick_facade_left", "wall", (-6.75, 12, 2), (10.5, 0.45, 3.95), "brick"),
     ("north_brick_facade_right", "wall", (6.75, 12, 2), (10.5, 0.45, 3.95), "brick"),
     ("south_concrete_facade", "wall", (0, -12, 2), (23.95, 0.45, 3.95), "concrete"),
-    ("east_steel_facade", "wall", (12, 0, 2), (0.45, 23.95, 3.95), "steel"),
+    # East wall is split around a 3 m doorway (y -1.5..1.5) into the East
+    # Containerhof - see add_east_containerhof(). A third, again distinct
+    # silhouette: no building, no crane - stacked shipping containers as
+    # cover with one elevated platform for verticality.
+    ("east_steel_facade_left", "wall", (12, -6.75, 2), (0.45, 10.5, 3.95), "steel"),
+    ("east_steel_facade_right", "wall", (12, 6.75, 2), (0.45, 10.5, 3.95), "steel"),
     # West wall is split around a 3 m doorway (y -1.5..1.5) into the West Annex
     # building instead of one solid facade - see add_west_annex().
     ("west_steel_facade_left", "wall", (-12, -6.75, 2), (0.45, 10.5, 3.95), "steel"),
@@ -100,6 +105,30 @@ CRANE_RAMPS = [
         "width": 1.8, "thickness": 0.2, "material": "steel",
     },
 ]
+
+# East Containerhof: a third landmark, deliberately unlike either of the
+# first two - no building, no crane. Stacked shipping-container cover with
+# one elevated platform reached by a ramp for verticality. Kept as a real
+# greybox pass (simple boxes, no add_high_detail-style dressing pass) per
+# the map-design guide: route network / combat-zone layout first, detail
+# later. Doorway gap matches the east wall split above.
+EAST_CONTAINERHOF_PIECES = [
+    ("containerhof_ground", "deck", (16, 0, -0.05), (8, 12, 0.1), "concrete"),
+    ("container_low_a", "cover", (14, -4.3, 1.25), (3, 1.6, 2.5), "steel"),
+    ("container_low_b", "cover", (14, 0, 1.25), (3, 1.6, 2.5), "steel"),
+    ("container_low_c", "cover", (14, 4.3, 1.25), (3, 1.6, 2.5), "steel"),
+    ("container_platform_support", "cover", (18.5, 0, 1.2), (3, 3, 2.4), "steel"),
+    ("container_platform", "struct", (18.5, 0, 2.5), (3.4, 3.4, 0.2), "steel"),
+]
+CONTAINER_RAMP = {
+    "name": "container_ramp",
+    "group": "struct",
+    "start": (15.5, -2.0, 0.05),
+    "end": (18.5, -2.0, 2.4),
+    "width": 1.8,
+    "thickness": 0.2,
+    "material": "steel",
+}
 
 
 def args():
@@ -354,6 +383,26 @@ def add_north_scrapyard(groups, materials, world_bounds):
         world_bounds[ramp["name"]] = {"center": list(ramp_center), "size": list(ramp_size), "group": ramp["group"]}
 
 
+def add_east_containerhof(groups, materials, world_bounds):
+    """Third landmark: stacked-container cover + one elevated platform,
+    structurally distinct from both add_west_annex() (walled building) and
+    add_north_scrapyard() (open crane lattice)."""
+    for name, group, center, size, material_name in EAST_CONTAINERHOF_PIECES:
+        obj = detail_cube(name, center, size, materials[material_name])
+        groups.setdefault(group, []).append(obj)
+        world_bounds[name] = {"center": list(center), "size": list(size), "group": group}
+
+    ramp = CONTAINER_RAMP
+    ramp_obj, _length = detail_box_between(
+        ramp["name"], ramp["start"], ramp["end"], ramp["width"], ramp["thickness"],
+        materials[ramp["material"]], bevel=0.01,
+    )
+    bpy.context.view_layer.update()
+    ramp_center, ramp_size = world_bounds_of(ramp_obj)
+    groups.setdefault(ramp["group"], []).append(ramp_obj)
+    world_bounds[ramp["name"]] = {"center": list(ramp_center), "size": list(ramp_size), "group": ramp["group"]}
+
+
 def write_material_sources(output, materials):
     material_dir = output / "Materials"
     texture_dir = output / "Textures"
@@ -513,6 +562,7 @@ def main():
     }
     add_west_annex(groups, materials, world_bounds)
     add_north_scrapyard(groups, materials, world_bounds)
+    add_east_containerhof(groups, materials, world_bounds)
 
     write_material_sources(options.output, materials)
 
@@ -538,8 +588,9 @@ def main():
         "piece_count": len(world_bounds),
         "detail_object_count": sum(len(objects) for objects in groups.values()),
         "groups": sorted(groups),
-        "contract_valid": len(PIECES) == 16 and len(ANNEX_PIECES) == 8
-            and len(SCRAPYARD_PIECES) == 6 and len(groups) == 9,
+        "contract_valid": len(PIECES) == 17 and len(ANNEX_PIECES) == 8
+            and len(SCRAPYARD_PIECES) == 6 and len(EAST_CONTAINERHOF_PIECES) == 6
+            and len(groups) == 9,
         "world_bounds": world_bounds,
         "west_annex": {
             "description": "First enterable multi-storey building: doorway "
@@ -558,6 +609,17 @@ def main():
             "doorway_x_span": [-1.5, 1.5],
             "platform_height": 7.05,
             "ramps": CRANE_RAMPS,
+        },
+        "east_containerhof": {
+            "description": "Third landmark: stacked shipping-container cover "
+                "with one elevated platform reached by a ramp - no walls, no "
+                "crane, a deliberately different silhouette from the first "
+                "two landmarks. Built as a real greybox pass (simple boxes, "
+                "no high-detail dressing) per the route-network-first map "
+                "design guide.",
+            "doorway_y_span": [-1.5, 1.5],
+            "platform_height": 2.5,
+            "ramp": CONTAINER_RAMP,
         },
         "materials": sorted(value.name for value in materials.values()),
         "material_sources": sorted(
