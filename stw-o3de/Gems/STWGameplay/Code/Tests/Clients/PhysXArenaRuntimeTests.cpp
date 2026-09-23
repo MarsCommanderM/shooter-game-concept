@@ -6,79 +6,98 @@
 
 namespace STWGameplay
 {
+    namespace
+    {
+        const PhysXArenaRuntime::StaticColliderDescription* FindCollider(
+            const AZStd::array<PhysXArenaRuntime::StaticColliderDescription, PhysXArenaRuntime::StaticColliderCount>&
+                colliders,
+            const char* name)
+        {
+            for (const auto& collider : colliders)
+            {
+                if (collider.m_name != nullptr && std::strcmp(collider.m_name, name) == 0)
+                {
+                    return &collider;
+                }
+            }
+            return nullptr;
+        }
+
+        struct Expectation
+        {
+            const char* m_name;
+            AZ::Vector3 m_center;
+            AZ::Vector3 m_dimensions;
+            bool m_rotated; // true only for the switchback/loading ramps
+        };
+    }
+
+    // Name-based, not index-based: a new collider inserted anywhere in the
+    // array (as every West Annex / North Scrapyard addition did) must not
+    // silently shift every later expectation - that already broke this test
+    // once this session.
     TEST(PhysXArenaRuntimeTests, StaticColliderContractRemainsCanonical)
     {
         const auto& colliders = PhysXArenaRuntime::GetStaticColliderDescriptions();
         ASSERT_EQ(colliders.size(), PhysXArenaRuntime::StaticColliderCount);
 
-        // Original arena (west wall now split around the West Annex doorway)
-        // plus the West Annex itself: ground floor, four walls (one split
-        // around the doorway), the climb ramp, and the two-piece upper floor.
-        const AZ::Vector3 expectedCenters[] = {
-            AZ::Vector3(0.0f, 0.0f, -0.5f),
-            AZ::Vector3(0.0f, 12.0f, 2.0f),
-            AZ::Vector3(0.0f, -12.0f, 2.0f),
-            AZ::Vector3(12.0f, 0.0f, 2.0f),
-            AZ::Vector3(-12.0f, -6.75f, 2.0f),
-            AZ::Vector3(-12.0f, 6.75f, 2.0f),
-            AZ::Vector3(-2.25f, 0.0f, 1.25f),
-            AZ::Vector3(2.25f, 0.0f, 1.25f),
-            AZ::Vector3(5.0f, -2.0f, 0.125f),
-            AZ::Vector3(-16.0f, 0.0f, -0.05f),
-            AZ::Vector3(-16.0f, 4.0f, 1.75f),
-            AZ::Vector3(-16.0f, -4.0f, 1.75f),
-            AZ::Vector3(-20.0f, 0.0f, 1.75f),
-            AZ::Vector3(-12.0f, 2.75f, 1.75f),
-            AZ::Vector3(-12.0f, -2.75f, 1.75f),
-            AZ::Vector3(-16.0f, 0.0f, 1.75f),
-            AZ::Vector3(-16.0f, 2.625f, 3.5f),
-            AZ::Vector3(-16.0f, -2.625f, 3.5f)
+        const Expectation expectations[] = {
+            { "STW Floor", AZ::Vector3(0.0f, 0.0f, -0.5f), AZ::Vector3(24.0f, 24.0f, 1.0f), false },
+            { "STW North Wall Left", AZ::Vector3(-6.75f, 12.0f, 2.0f), AZ::Vector3(10.5f, 0.5f, 4.0f), false },
+            { "STW North Wall Right", AZ::Vector3(6.75f, 12.0f, 2.0f), AZ::Vector3(10.5f, 0.5f, 4.0f), false },
+            { "STW South Wall", AZ::Vector3(0.0f, -12.0f, 2.0f), AZ::Vector3(24.0f, 0.5f, 4.0f), false },
+            { "STW East Wall", AZ::Vector3(12.0f, 0.0f, 2.0f), AZ::Vector3(0.5f, 24.0f, 4.0f), false },
+            { "STW West Wall Left", AZ::Vector3(-12.0f, -6.75f, 2.0f), AZ::Vector3(0.5f, 10.5f, 4.0f), false },
+            { "STW West Wall Right", AZ::Vector3(-12.0f, 6.75f, 2.0f), AZ::Vector3(0.5f, 10.5f, 4.0f), false },
+            { "STW Left Cover", AZ::Vector3(-2.25f, 0.0f, 1.25f), AZ::Vector3(1.5f, 2.0f, 2.5f), false },
+            { "STW Right Cover", AZ::Vector3(2.25f, 0.0f, 1.25f), AZ::Vector3(1.5f, 2.0f, 2.5f), false },
+            { "STW Step", AZ::Vector3(5.0f, -2.0f, 0.125f), AZ::Vector3(2.0f, 2.0f, 0.25f), false },
+            { "STW Annex Ground Floor", AZ::Vector3(-16.0f, 0.0f, -0.05f), AZ::Vector3(8.0f, 8.0f, 0.1f), false },
+            { "STW Annex North Wall", AZ::Vector3(-16.0f, 4.0f, 1.75f), AZ::Vector3(8.0f, 0.3f, 3.5f), false },
+            { "STW Annex South Wall", AZ::Vector3(-16.0f, -4.0f, 1.75f), AZ::Vector3(8.0f, 0.3f, 3.5f), false },
+            { "STW Annex Far Wall", AZ::Vector3(-20.0f, 0.0f, 1.75f), AZ::Vector3(0.3f, 8.0f, 3.5f), false },
+            { "STW Annex East Wall North", AZ::Vector3(-12.0f, 2.75f, 1.75f), AZ::Vector3(0.3f, 2.5f, 3.5f), false },
+            { "STW Annex East Wall South", AZ::Vector3(-12.0f, -2.75f, 1.75f), AZ::Vector3(0.3f, 2.5f, 3.5f), false },
+            { "STW Annex Ramp", AZ::Vector3(-16.0f, 0.0f, 1.75f), AZ::Vector3(6.8963f, 2.5f, 0.2f), true },
+            { "STW Annex Upper Floor North", AZ::Vector3(-16.0f, 2.625f, 3.5f), AZ::Vector3(6.0f, 2.75f, 0.15f), false },
+            { "STW Annex Upper Floor South", AZ::Vector3(-16.0f, -2.625f, 3.5f), AZ::Vector3(6.0f, 2.75f, 0.15f), false },
+            { "STW Scrapyard Ground", AZ::Vector3(0.0f, 17.0f, -0.05f), AZ::Vector3(8.0f, 10.0f, 0.1f), false },
+            { "STW Scrapyard Cover A", AZ::Vector3(-2.5f, 14.0f, 0.6f), AZ::Vector3(1.4f, 1.4f, 1.2f), false },
+            { "STW Scrapyard Cover B", AZ::Vector3(2.5f, 15.5f, 0.75f), AZ::Vector3(1.6f, 1.6f, 1.5f), false },
+            { "STW Crane Ramp 1", AZ::Vector3(-1.5f, 18.0f, 1.775f), AZ::Vector3(6.0747f, 1.8f, 0.2f), true },
+            { "STW Crane Landing", AZ::Vector3(-1.0f, 20.0f, 3.5f), AZ::Vector3(2.0f, 1.2f, 0.15f), false },
+            { "STW Crane Ramp 2", AZ::Vector3(1.5f, 18.0f, 5.275f), AZ::Vector3(6.0747f, 1.8f, 0.2f), true },
+            { "STW Crane Top Platform", AZ::Vector3(0.0f, 17.0f, 7.05f), AZ::Vector3(4.0f, 2.2f, 0.2f), false },
+            { "STW Crane Boom", AZ::Vector3(0.0f, 8.5f, 7.1f), AZ::Vector3(1.4f, 15.0f, 0.2f), false },
         };
-        const AZ::Vector3 expectedDimensions[] = {
-            AZ::Vector3(24.0f, 24.0f, 1.0f),
-            AZ::Vector3(24.0f, 0.5f, 4.0f),
-            AZ::Vector3(24.0f, 0.5f, 4.0f),
-            AZ::Vector3(0.5f, 24.0f, 4.0f),
-            AZ::Vector3(0.5f, 10.5f, 4.0f),
-            AZ::Vector3(0.5f, 10.5f, 4.0f),
-            AZ::Vector3(1.5f, 2.0f, 2.5f),
-            AZ::Vector3(1.5f, 2.0f, 2.5f),
-            AZ::Vector3(2.0f, 2.0f, 0.25f),
-            AZ::Vector3(8.0f, 8.0f, 0.1f),
-            AZ::Vector3(8.0f, 0.3f, 3.5f),
-            AZ::Vector3(8.0f, 0.3f, 3.5f),
-            AZ::Vector3(0.3f, 8.0f, 3.5f),
-            AZ::Vector3(0.3f, 2.5f, 3.5f),
-            AZ::Vector3(0.3f, 2.5f, 3.5f),
-            AZ::Vector3(6.8963f, 2.5f, 0.2f),
-            AZ::Vector3(6.0f, 2.75f, 0.15f),
-            AZ::Vector3(6.0f, 2.75f, 0.15f)
-        };
-        constexpr size_t RampIndex = 15;
+        ASSERT_EQ(AZ_ARRAY_SIZE(expectations), PhysXArenaRuntime::StaticColliderCount);
+
+        for (const Expectation& expectation : expectations)
+        {
+            const auto* collider = FindCollider(colliders, expectation.m_name);
+            ASSERT_NE(collider, nullptr) << "missing collider: " << expectation.m_name;
+            EXPECT_TRUE(collider->m_center.IsClose(expectation.m_center)) << expectation.m_name;
+            EXPECT_TRUE(collider->m_dimensions.IsClose(expectation.m_dimensions, 0.001f)) << expectation.m_name;
+            EXPECT_TRUE(collider->m_center.IsFinite());
+            EXPECT_TRUE(collider->m_dimensions.IsFinite());
+            EXPECT_TRUE(collider->m_rotation.IsFinite());
+            EXPECT_GT(collider->m_dimensions.GetMinElement(), 0.0f);
+            // Ramps must actually be rotated to follow their climb slope -
+            // not left flat and merely mislabeled; everything else must
+            // stay axis-aligned.
+            if (expectation.m_rotated)
+            {
+                EXPECT_FALSE(collider->m_rotation.IsClose(AZ::Quaternion::CreateIdentity())) << expectation.m_name;
+            }
+            else
+            {
+                EXPECT_TRUE(collider->m_rotation.IsClose(AZ::Quaternion::CreateIdentity())) << expectation.m_name;
+            }
+        }
 
         for (size_t index = 0; index < colliders.size(); ++index)
         {
             ASSERT_NE(colliders[index].m_name, nullptr);
-            EXPECT_TRUE(colliders[index].m_center.IsClose(expectedCenters[index]))
-                << "index " << index << " (" << colliders[index].m_name << ")";
-            EXPECT_TRUE(colliders[index].m_dimensions.IsClose(expectedDimensions[index], 0.001f))
-                << "index " << index << " (" << colliders[index].m_name << ")";
-            EXPECT_TRUE(colliders[index].m_center.IsFinite());
-            EXPECT_TRUE(colliders[index].m_dimensions.IsFinite());
-            EXPECT_TRUE(colliders[index].m_rotation.IsFinite());
-            EXPECT_GT(colliders[index].m_dimensions.GetMinElement(), 0.0f);
-            // Every collider is axis-aligned except the ramp, which must
-            // actually be rotated to follow its climb slope - not left flat
-            // and merely mislabeled.
-            if (index == RampIndex)
-            {
-                EXPECT_FALSE(colliders[index].m_rotation.IsClose(AZ::Quaternion::CreateIdentity()));
-            }
-            else
-            {
-                EXPECT_TRUE(colliders[index].m_rotation.IsClose(AZ::Quaternion::CreateIdentity()))
-                    << "index " << index << " (" << colliders[index].m_name << ")";
-            }
             for (size_t other = index + 1; other < colliders.size(); ++other)
             {
                 EXPECT_STRNE(colliders[index].m_name, colliders[other].m_name);
@@ -96,15 +115,7 @@ namespace STWGameplay
     TEST(PhysXArenaRuntimeTests, WestAnnexRampClimbsFromGroundToUpperFloor)
     {
         const auto& colliders = PhysXArenaRuntime::GetStaticColliderDescriptions();
-        const PhysXArenaRuntime::StaticColliderDescription* ramp = nullptr;
-        for (const auto& collider : colliders)
-        {
-            if (collider.m_name != nullptr && std::strcmp(collider.m_name, "STW Annex Ramp") == 0)
-            {
-                ramp = &collider;
-                break;
-            }
-        }
+        const auto* ramp = FindCollider(colliders, "STW Annex Ramp");
         ASSERT_NE(ramp, nullptr);
         // The ramp's local X (length) axis, rotated into world space, must
         // point from the doorway (low, near x=-12) toward the annex's far
@@ -113,5 +124,22 @@ namespace STWGameplay
         const AZ::Vector3 climbDirection = ramp->m_rotation.TransformVector(AZ::Vector3::CreateAxisX());
         EXPECT_LT(climbDirection.GetX(), 0.0f);
         EXPECT_GT(climbDirection.GetZ(), 0.0f);
+    }
+
+    TEST(PhysXArenaRuntimeTests, CraneSwitchbackRampsClimbInOppositeHorizontalDirections)
+    {
+        const auto& colliders = PhysXArenaRuntime::GetStaticColliderDescriptions();
+        const auto* ramp1 = FindCollider(colliders, "STW Crane Ramp 1");
+        const auto* ramp2 = FindCollider(colliders, "STW Crane Ramp 2");
+        ASSERT_NE(ramp1, nullptr);
+        ASSERT_NE(ramp2, nullptr);
+        const AZ::Vector3 direction1 = ramp1->m_rotation.TransformVector(AZ::Vector3::CreateAxisX());
+        const AZ::Vector3 direction2 = ramp2->m_rotation.TransformVector(AZ::Vector3::CreateAxisX());
+        // Both climb (positive Z), but a real switchback reverses horizontal
+        // direction between flights - if it didn't, this would be one long
+        // straight ramp, not a switchback fitting a compact tower footprint.
+        EXPECT_GT(direction1.GetZ(), 0.0f);
+        EXPECT_GT(direction2.GetZ(), 0.0f);
+        EXPECT_LT(direction1.GetY() * direction2.GetY(), 0.0f);
     }
 }

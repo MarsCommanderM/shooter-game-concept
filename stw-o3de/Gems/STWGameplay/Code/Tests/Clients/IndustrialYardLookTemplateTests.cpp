@@ -74,4 +74,26 @@ namespace STWGameplay
         intrusion.m_center = AZ::Vector3(-8.0f, 0.0f, -0.05f);
         EXPECT_FALSE(IndustrialYardLookTemplate::ValidatePiece(intrusion));
     }
+
+    TEST(IndustrialYardLookTemplateTests, NorthScrapyardCraneBoomReachesOverTheYard)
+    {
+        auto pieces = IndustrialYardLookTemplate::GetPieces();
+        const size_t index = FindPieceIndex(pieces, "crane_boom");
+        ASSERT_LT(index, pieces.size());
+        EXPECT_EQ(pieces[index].m_anchor, IndustrialYardLookTemplate::Anchor::NorthScrapyard);
+        // The boom is the one piece that legitimately reaches back over the
+        // main arena floor (y well below the 12 m wall) while staying well
+        // above the 4 m wall height - that combination is exactly why
+        // NorthScrapyard exists instead of reusing AboveArena or
+        // BeyondWestWall-style anchors.
+        EXPECT_LT(pieces[index].m_center.GetY() - pieces[index].m_size.GetY() * 0.5f, 12.0f);
+        EXPECT_GT(pieces[index].m_center.GetZ(), 4.0f);
+        EXPECT_TRUE(IndustrialYardLookTemplate::ValidatePiece(pieces[index]));
+
+        // A piece that strays outside the crane's authored envelope must
+        // still be rejected.
+        auto intrusion = pieces[index];
+        intrusion.m_center = AZ::Vector3(20.0f, 8.5f, 7.1f);
+        EXPECT_FALSE(IndustrialYardLookTemplate::ValidatePiece(intrusion));
+    }
 }

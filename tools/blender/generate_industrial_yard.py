@@ -15,7 +15,13 @@ from mathutils import Vector
 # (T4 gate runs 20260922T185802Z and 190540Z of the same SHA disagreed).
 PIECES = [
     ("wet_concrete_deck", "deck", (0, 0, 0.005), (24, 24, 0.01), "concrete"),
-    ("north_brick_facade", "wall", (0, 12, 2), (23.95, 0.45, 3.95), "brick"),
+    # North wall is split around a 3 m doorway (x -1.5..1.5) into the North
+    # Scrapyard/crane landmark instead of one solid facade - see
+    # add_north_scrapyard(). Deliberately a different silhouette from the
+    # West Annex (open steel-lattice crane, not a walled building) so the
+    # map reads as varied, not one building copy-pasted around.
+    ("north_brick_facade_left", "wall", (-6.75, 12, 2), (10.5, 0.45, 3.95), "brick"),
+    ("north_brick_facade_right", "wall", (6.75, 12, 2), (10.5, 0.45, 3.95), "brick"),
     ("south_concrete_facade", "wall", (0, -12, 2), (23.95, 0.45, 3.95), "concrete"),
     ("east_steel_facade", "wall", (12, 0, 2), (0.45, 23.95, 3.95), "steel"),
     # West wall is split around a 3 m doorway (y -1.5..1.5) into the West Annex
@@ -65,6 +71,35 @@ ANNEX_RAMP = {
     "thickness": 0.2,
     "material": "steel",
 }
+
+# North Scrapyard + crane: a second landmark, deliberately not a copy of the
+# West Annex. An open steel-lattice tower (no walls - a real gantry crane
+# reads as girders, not a building), reached by two switchback ramps around
+# a small yard footprint, topped with a platform and an 15 m cantilevered
+# boom walked out over the whole arena - a sniper/camper perch, as asked
+# for. Ground level has short crate cover for close-range hideouts. Doorway
+# gap matches the north wall split above.
+SCRAPYARD_PIECES = [
+    ("scrapyard_ground", "deck", (0, 17, -0.05), (8, 10, 0.1), "concrete"),
+    ("scrapyard_cover_a", "cover", (-2.5, 14, 0.6), (1.4, 1.4, 1.2), "hazard"),
+    ("scrapyard_cover_b", "cover", (2.5, 15.5, 0.75), (1.6, 1.6, 1.5), "hazard"),
+    ("crane_landing", "struct", (-1, 20, 3.5), (2, 1.2, 0.15), "steel"),
+    ("crane_top_platform", "struct", (0, 17, 7.05), (4, 2.2, 0.2), "steel"),
+    # Straight, axis-aligned - no rotation needed, unlike the ramps.
+    ("crane_boom", "struct", (0, 8.5, 7.1), (1.4, 15.0, 0.2), "steel"),
+]
+CRANE_RAMPS = [
+    {
+        "name": "crane_ramp_1", "group": "struct",
+        "start": (-1.5, 15.5, 0.05), "end": (-1.5, 20.5, 3.5),
+        "width": 1.8, "thickness": 0.2, "material": "steel",
+    },
+    {
+        "name": "crane_ramp_2", "group": "struct",
+        "start": (1.5, 20.5, 3.55), "end": (1.5, 15.5, 7.0),
+        "width": 1.8, "thickness": 0.2, "material": "steel",
+    },
+]
 
 
 def args():
@@ -299,6 +334,26 @@ def add_west_annex(groups, materials, world_bounds):
     world_bounds[ramp["name"]] = {"center": list(ramp_center), "size": list(ramp_size), "group": ramp["group"]}
 
 
+def add_north_scrapyard(groups, materials, world_bounds):
+    """North landmark: open crane lattice + scrapyard cover, structurally
+    distinct from add_west_annex() (no walls, two switchback ramps instead
+    of one straight ramp, a long cantilevered boom instead of a floor)."""
+    for name, group, center, size, material_name in SCRAPYARD_PIECES:
+        obj = detail_cube(name, center, size, materials[material_name])
+        groups.setdefault(group, []).append(obj)
+        world_bounds[name] = {"center": list(center), "size": list(size), "group": group}
+
+    for ramp in CRANE_RAMPS:
+        ramp_obj, _length = detail_box_between(
+            ramp["name"], ramp["start"], ramp["end"], ramp["width"], ramp["thickness"],
+            materials[ramp["material"]], bevel=0.01,
+        )
+        bpy.context.view_layer.update()
+        ramp_center, ramp_size = world_bounds_of(ramp_obj)
+        groups.setdefault(ramp["group"], []).append(ramp_obj)
+        world_bounds[ramp["name"]] = {"center": list(ramp_center), "size": list(ramp_size), "group": ramp["group"]}
+
+
 def write_material_sources(output, materials):
     material_dir = output / "Materials"
     texture_dir = output / "Textures"
@@ -457,6 +512,7 @@ def main():
         for name, group, center, size, _ in PIECES
     }
     add_west_annex(groups, materials, world_bounds)
+    add_north_scrapyard(groups, materials, world_bounds)
 
     write_material_sources(options.output, materials)
 
@@ -482,7 +538,8 @@ def main():
         "piece_count": len(world_bounds),
         "detail_object_count": sum(len(objects) for objects in groups.values()),
         "groups": sorted(groups),
-        "contract_valid": len(PIECES) == 15 and len(ANNEX_PIECES) == 8 and len(groups) == 9,
+        "contract_valid": len(PIECES) == 16 and len(ANNEX_PIECES) == 8
+            and len(SCRAPYARD_PIECES) == 6 and len(groups) == 9,
         "world_bounds": world_bounds,
         "west_annex": {
             "description": "First enterable multi-storey building: doorway "
@@ -491,6 +548,16 @@ def main():
             "doorway_y_span": [-1.5, 1.5],
             "ground_floor_height": 3.5,
             "ramp": ANNEX_RAMP,
+        },
+        "north_scrapyard": {
+            "description": "Second landmark, deliberately not a copy of the "
+                "West Annex: open steel-lattice crane (no walls), two "
+                "switchback ramps, short crate cover at ground level, a "
+                "15 m cantilevered boom walked out over the whole arena as "
+                "a sniper/camper perch.",
+            "doorway_x_span": [-1.5, 1.5],
+            "platform_height": 7.05,
+            "ramps": CRANE_RAMPS,
         },
         "materials": sorted(value.name for value in materials.values()),
         "material_sources": sorted(

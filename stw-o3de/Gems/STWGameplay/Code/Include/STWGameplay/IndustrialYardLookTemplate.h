@@ -25,7 +25,12 @@ namespace STWGameplay
             //! The West Annex building envelope: flush with the west wall's
             //! doorway plane (x=-12), unlike BeyondWestWall's 0.25 m clearance
             //! requirement, which a seamless doorway connection cannot satisfy.
-            WestAnnex
+            WestAnnex,
+            //! The North Scrapyard/crane envelope: flush with the north
+            //! wall's doorway plane (y=12), and tall enough (the boom reaches
+            //! z~7.1 m) that AboveArena's arena-footprint x/y bound would
+            //! reject it - the boom deliberately reaches back over the yard.
+            NorthScrapyard
         };
 
         struct Piece
@@ -45,7 +50,7 @@ namespace STWGameplay
             float m_metallic;
         };
 
-        static constexpr size_t PieceCount = 24;
+        static constexpr size_t PieceCount = 33;
         static constexpr size_t MaterialCount = 4;
 
         static AZStd::array<Piece, PieceCount> GetPieces();

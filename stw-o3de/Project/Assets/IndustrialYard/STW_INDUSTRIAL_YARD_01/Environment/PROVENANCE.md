@@ -8,7 +8,7 @@
   `9ba871ff2ecd36526b77432745980b7e6664ecd0c7ca11c48849073dcfe06da3`.
 - Coordinate convention: source Z-up; FBX export forward `-Y`, up `Z`.
 - License status: original project work; no third-party asset license attached.
-- Validation: `STW_INDUSTRIAL_YARD_01.report.json` records all 24 post-import
+- Validation: `STW_INDUSTRIAL_YARD_01.report.json` records all 33 post-import
   target AABBs and nine group identities.
 - Production foundation: repeated facade ribs, service bands, fasteners,
   truss/gallery details, beacon hardware, flush hazard treatment, and six
@@ -23,6 +23,16 @@
   wall/struct groups, so the gate's 9-group contract is unchanged. Physics
   collision for it lives in `PhysXArenaRuntime` alongside the rest of the
   arena's static colliders, not in this Blender-only visual set.
+- North Scrapyard + crane (added 2026-09-23): a second landmark, deliberately
+  not a copy of the West Annex. The north wall was split around a 3 m
+  doorway; beyond it is an open steel-lattice gantry crane (no walls - a
+  real crane reads as girders) reached by two switchback ramps around a
+  small tower footprint, topped with a platform and a 15 m cantilevered
+  boom walked out over the whole arena as a sniper/camper perch. Short
+  crate cover sits at scrapyard ground level. Same bucketing/physics
+  pattern as the West Annex; validated by a new Anchor::WestAnnex-style
+  envelope (Anchor::NorthScrapyard) since the boom deliberately reaches
+  back over the yard well above the 4 m wall height.
 - Quality boundary: this is authored production foundation data, not a
   blockout. It is still not the final AAA+ cinematic acceptance until O3DE
   import, Vulkan runtime capture, and T4 visual review pass.

@@ -55,8 +55,10 @@ namespace STWGameplay
         return {{
             { "wet_concrete_deck", "deck", AZ::Vector3(0.0f, 0.0f, 0.005f),
                 AZ::Vector3(24.0f, 24.0f, 0.01f), Anchor::FloorSurface },
-            { "north_brick_facade", "wall", AZ::Vector3(0.0f, 12.0f, 2.0f),
-                AZ::Vector3(23.95f, 0.45f, 3.95f), Anchor::NorthWall },
+            { "north_brick_facade_left", "wall", AZ::Vector3(-6.75f, 12.0f, 2.0f),
+                AZ::Vector3(10.5f, 0.45f, 3.95f), Anchor::NorthWall },
+            { "north_brick_facade_right", "wall", AZ::Vector3(6.75f, 12.0f, 2.0f),
+                AZ::Vector3(10.5f, 0.45f, 3.95f), Anchor::NorthWall },
             { "south_concrete_facade", "wall", AZ::Vector3(0.0f, -12.0f, 2.0f),
                 AZ::Vector3(23.95f, 0.45f, 3.95f), Anchor::SouthWall },
             { "east_steel_facade", "wall", AZ::Vector3(12.0f, 0.0f, 2.0f),
@@ -110,7 +112,29 @@ namespace STWGameplay
             { "annex_upper_floor_north", "deck", AZ::Vector3(-16.0f, 2.625f, 3.5f),
                 AZ::Vector3(6.0f, 2.75f, 0.15f), Anchor::WestAnnex },
             { "annex_upper_floor_south", "deck", AZ::Vector3(-16.0f, -2.625f, 3.5f),
-                AZ::Vector3(6.0f, 2.75f, 0.15f), Anchor::WestAnnex }
+                AZ::Vector3(6.0f, 2.75f, 0.15f), Anchor::WestAnnex },
+            // North Scrapyard + crane: second landmark, deliberately not a
+            // copy of the West Annex (open lattice, no walls, two switchback
+            // ramps, a long cantilevered boom). Mirrors tools/blender/
+            // generate_industrial_yard.py's SCRAPYARD_PIECES/CRANE_RAMPS.
+            { "scrapyard_ground", "deck", AZ::Vector3(0.0f, 17.0f, -0.05f),
+                AZ::Vector3(8.0f, 10.0f, 0.1f), Anchor::NorthScrapyard },
+            { "scrapyard_cover_a", "cover", AZ::Vector3(-2.5f, 14.0f, 0.6f),
+                AZ::Vector3(1.4f, 1.4f, 1.2f), Anchor::NorthScrapyard },
+            { "scrapyard_cover_b", "cover", AZ::Vector3(2.5f, 15.5f, 0.75f),
+                AZ::Vector3(1.6f, 1.6f, 1.5f), Anchor::NorthScrapyard },
+            { "crane_landing", "struct", AZ::Vector3(-1.0f, 20.0f, 3.5f),
+                AZ::Vector3(2.0f, 1.2f, 0.15f), Anchor::NorthScrapyard },
+            { "crane_top_platform", "struct", AZ::Vector3(0.0f, 17.0f, 7.05f),
+                AZ::Vector3(4.0f, 2.2f, 0.2f), Anchor::NorthScrapyard },
+            { "crane_boom", "struct", AZ::Vector3(0.0f, 8.5f, 7.1f),
+                AZ::Vector3(1.4f, 15.0f, 0.2f), Anchor::NorthScrapyard },
+            // Real (not hand-estimated) AABBs of the rotated ramp meshes,
+            // read back from Blender's evaluated bound_box.
+            { "crane_ramp_1", "struct", AZ::Vector3(-1.5f, 18.0f, 1.775f),
+                AZ::Vector3(1.8f, 5.114f, 3.615f), Anchor::NorthScrapyard },
+            { "crane_ramp_2", "struct", AZ::Vector3(1.5f, 18.0f, 5.275f),
+                AZ::Vector3(1.8f, 5.114f, 3.615f), Anchor::NorthScrapyard }
         }};
     }
 
@@ -178,6 +202,18 @@ namespace STWGameplay
                 && piece.m_center.GetY() + piece.m_size.GetY() * 0.5f <= 4.25f + BoundsTolerance
                 && piece.m_center.GetZ() - piece.m_size.GetZ() * 0.5f >= -0.15f - BoundsTolerance
                 && piece.m_center.GetZ() + piece.m_size.GetZ() * 0.5f <= 4.45f + BoundsTolerance;
+        case Anchor::NorthScrapyard:
+            // Envelope of the whole scrapyard+crane structure: flush with
+            // the doorway plane on the south side (y=12, no clearance
+            // requirement), bounded by the crane's actual authored reach -
+            // including the boom, which deliberately extends back over the
+            // yard (y down to ~1) well above the 4 m wall height.
+            return piece.m_center.GetX() - piece.m_size.GetX() * 0.5f >= -4.5f - BoundsTolerance
+                && piece.m_center.GetX() + piece.m_size.GetX() * 0.5f <= 4.5f + BoundsTolerance
+                && piece.m_center.GetY() - piece.m_size.GetY() * 0.5f >= 0.5f - BoundsTolerance
+                && piece.m_center.GetY() + piece.m_size.GetY() * 0.5f <= 23.0f + BoundsTolerance
+                && piece.m_center.GetZ() - piece.m_size.GetZ() * 0.5f >= -0.15f - BoundsTolerance
+                && piece.m_center.GetZ() + piece.m_size.GetZ() * 0.5f <= 7.4f + BoundsTolerance;
         }
         return false;
     }

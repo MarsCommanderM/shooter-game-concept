@@ -1,7 +1,7 @@
 {
   "asset_family": "STW_INDUSTRIAL_YARD_01",
   "contract_valid": true,
-  "detail_object_count": 169,
+  "detail_object_count": 178,
   "groups": [
     "arch",
     "beacon",
@@ -29,7 +29,51 @@
     "M_IY_SteelPainted",
     "M_IY_Water"
   ],
-  "piece_count": 24,
+  "north_scrapyard": {
+    "description": "Second landmark, deliberately not a copy of the West Annex: open steel-lattice crane (no walls), two switchback ramps, short crate cover at ground level, a 15 m cantilevered boom walked out over the whole arena as a sniper/camper perch.",
+    "doorway_x_span": [
+      -1.5,
+      1.5
+    ],
+    "platform_height": 7.05,
+    "ramps": [
+      {
+        "end": [
+          -1.5,
+          20.5,
+          3.5
+        ],
+        "group": "struct",
+        "material": "steel",
+        "name": "crane_ramp_1",
+        "start": [
+          -1.5,
+          15.5,
+          0.05
+        ],
+        "thickness": 0.2,
+        "width": 1.8
+      },
+      {
+        "end": [
+          1.5,
+          15.5,
+          7.0
+        ],
+        "group": "struct",
+        "material": "steel",
+        "name": "crane_ramp_2",
+        "start": [
+          1.5,
+          20.5,
+          3.55
+        ],
+        "thickness": 0.2,
+        "width": 1.8
+      }
+    ]
+  },
+  "piece_count": 33,
   "quality_status": "source-generated; O3DE import and T4 visual review pending",
   "quality_tier": "high_end_procedural_foundation",
   "west_annex": {
@@ -175,6 +219,71 @@
         0.15
       ]
     },
+    "crane_boom": {
+      "center": [
+        0,
+        8.5,
+        7.1
+      ],
+      "group": "struct",
+      "size": [
+        1.4,
+        15.0,
+        0.2
+      ]
+    },
+    "crane_landing": {
+      "center": [
+        -1,
+        20,
+        3.5
+      ],
+      "group": "struct",
+      "size": [
+        2,
+        1.2,
+        0.15
+      ]
+    },
+    "crane_ramp_1": {
+      "center": [
+        -1.5,
+        18.000000476837158,
+        1.774999937042594
+      ],
+      "group": "struct",
+      "size": [
+        1.8000001907348633,
+        5.113585472106934,
+        3.614616233855486
+      ]
+    },
+    "crane_ramp_2": {
+      "center": [
+        1.5,
+        18.000000476837158,
+        5.275000095367432
+      ],
+      "group": "struct",
+      "size": [
+        1.8000001907348633,
+        5.113585472106934,
+        3.6146163940429688
+      ]
+    },
+    "crane_top_platform": {
+      "center": [
+        0,
+        17,
+        7.05
+      ],
+      "group": "struct",
+      "size": [
+        4,
+        2.2,
+        0.2
+      ]
+    },
     "east_steel_facade": {
       "center": [
         12,
@@ -214,15 +323,28 @@
         2.5
       ]
     },
-    "north_brick_facade": {
+    "north_brick_facade_left": {
       "center": [
-        0,
+        -6.75,
         12,
         2
       ],
       "group": "wall",
       "size": [
-        23.95,
+        10.5,
+        0.45,
+        3.95
+      ]
+    },
+    "north_brick_facade_right": {
+      "center": [
+        6.75,
+        12,
+        2
+      ],
+      "group": "wall",
+      "size": [
+        10.5,
         0.45,
         3.95
       ]
@@ -264,6 +386,45 @@
         10,
         0.6,
         0.5
+      ]
+    },
+    "scrapyard_cover_a": {
+      "center": [
+        -2.5,
+        14,
+        0.6
+      ],
+      "group": "cover",
+      "size": [
+        1.4,
+        1.4,
+        1.2
+      ]
+    },
+    "scrapyard_cover_b": {
+      "center": [
+        2.5,
+        15.5,
+        0.75
+      ],
+      "group": "cover",
+      "size": [
+        1.6,
+        1.6,
+        1.5
+      ]
+    },
+    "scrapyard_ground": {
+      "center": [
+        0,
+        17,
+        -0.05
+      ],
+      "group": "deck",
+      "size": [
+        8,
+        10,
+        0.1
       ]
     },
     "service_step_skin": {

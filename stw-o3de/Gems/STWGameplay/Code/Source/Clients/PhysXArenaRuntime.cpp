@@ -23,10 +23,23 @@ namespace STWGameplay
         const AZ::Vector3 RampEnd(-19.0f, 0.0f, 3.45f);
         const AZ::Vector3 RampDirection = RampEnd - RampStart;
 
+        // North Scrapyard crane: two switchback ramps, same compute-don't-
+        // guess rotation approach. Endpoints must match tools/blender/
+        // generate_industrial_yard.py's CRANE_RAMPS exactly.
+        const AZ::Vector3 CraneRamp1Start(-1.5f, 15.5f, 0.05f);
+        const AZ::Vector3 CraneRamp1End(-1.5f, 20.5f, 3.5f);
+        const AZ::Vector3 CraneRamp1Direction = CraneRamp1End - CraneRamp1Start;
+        const AZ::Vector3 CraneRamp2Start(1.5f, 20.5f, 3.55f);
+        const AZ::Vector3 CraneRamp2End(1.5f, 15.5f, 7.0f);
+        const AZ::Vector3 CraneRamp2Direction = CraneRamp2End - CraneRamp2Start;
+
         const AZStd::array<PhysXArenaRuntime::StaticColliderDescription, PhysXArenaRuntime::StaticColliderCount>
             StaticColliderDescriptions = {{
                 { "STW Floor", AZ::Vector3(0.0f, 0.0f, -0.5f), AZ::Vector3(24.0f, 24.0f, 1.0f) },
-                { "STW North Wall", AZ::Vector3(0.0f, 12.0f, 2.0f), AZ::Vector3(24.0f, 0.5f, 4.0f) },
+                // North wall is split around a 3 m doorway (x -1.5..1.5) into
+                // the North Scrapyard/crane landmark instead of one solid facade.
+                { "STW North Wall Left", AZ::Vector3(-6.75f, 12.0f, 2.0f), AZ::Vector3(10.5f, 0.5f, 4.0f) },
+                { "STW North Wall Right", AZ::Vector3(6.75f, 12.0f, 2.0f), AZ::Vector3(10.5f, 0.5f, 4.0f) },
                 { "STW South Wall", AZ::Vector3(0.0f, -12.0f, 2.0f), AZ::Vector3(24.0f, 0.5f, 4.0f) },
                 { "STW East Wall", AZ::Vector3(12.0f, 0.0f, 2.0f), AZ::Vector3(0.5f, 24.0f, 4.0f) },
                 // West wall is split around a 3 m doorway (y -1.5..1.5) into the
@@ -51,7 +64,23 @@ namespace STWGameplay
                     AZ::Vector3(RampDirection.GetLength(), 2.5f, 0.2f),
                     AZ::Quaternion::CreateShortestArc(AZ::Vector3::CreateAxisX(), RampDirection.GetNormalized()) },
                 { "STW Annex Upper Floor North", AZ::Vector3(-16.0f, 2.625f, 3.5f), AZ::Vector3(6.0f, 2.75f, 0.15f) },
-                { "STW Annex Upper Floor South", AZ::Vector3(-16.0f, -2.625f, 3.5f), AZ::Vector3(6.0f, 2.75f, 0.15f) }
+                { "STW Annex Upper Floor South", AZ::Vector3(-16.0f, -2.625f, 3.5f), AZ::Vector3(6.0f, 2.75f, 0.15f) },
+                // North Scrapyard + crane: open steel-lattice tower (no
+                // walls, unlike the West Annex), short crate cover at
+                // ground level, two switchback ramps up to a platform and
+                // a long cantilevered sniper boom over the whole arena.
+                { "STW Scrapyard Ground", AZ::Vector3(0.0f, 17.0f, -0.05f), AZ::Vector3(8.0f, 10.0f, 0.1f) },
+                { "STW Scrapyard Cover A", AZ::Vector3(-2.5f, 14.0f, 0.6f), AZ::Vector3(1.4f, 1.4f, 1.2f) },
+                { "STW Scrapyard Cover B", AZ::Vector3(2.5f, 15.5f, 0.75f), AZ::Vector3(1.6f, 1.6f, 1.5f) },
+                { "STW Crane Ramp 1", (CraneRamp1Start + CraneRamp1End) * 0.5f,
+                    AZ::Vector3(CraneRamp1Direction.GetLength(), 1.8f, 0.2f),
+                    AZ::Quaternion::CreateShortestArc(AZ::Vector3::CreateAxisX(), CraneRamp1Direction.GetNormalized()) },
+                { "STW Crane Landing", AZ::Vector3(-1.0f, 20.0f, 3.5f), AZ::Vector3(2.0f, 1.2f, 0.15f) },
+                { "STW Crane Ramp 2", (CraneRamp2Start + CraneRamp2End) * 0.5f,
+                    AZ::Vector3(CraneRamp2Direction.GetLength(), 1.8f, 0.2f),
+                    AZ::Quaternion::CreateShortestArc(AZ::Vector3::CreateAxisX(), CraneRamp2Direction.GetNormalized()) },
+                { "STW Crane Top Platform", AZ::Vector3(0.0f, 17.0f, 7.05f), AZ::Vector3(4.0f, 2.2f, 0.2f) },
+                { "STW Crane Boom", AZ::Vector3(0.0f, 8.5f, 7.1f), AZ::Vector3(1.4f, 15.0f, 0.2f) }
             }};
 
         void DeactivateArenaEntity(AZStd::unique_ptr<AZ::Entity>& entity)
