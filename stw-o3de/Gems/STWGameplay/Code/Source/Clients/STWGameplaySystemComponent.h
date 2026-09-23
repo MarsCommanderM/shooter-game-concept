@@ -21,6 +21,7 @@
 #include <STWGameplay/AudioFeedbackPresentation.h>
 #include <STWGameplay/ArenaPresentation.h>
 #include <STWGameplay/EnvironmentPresentation.h>
+#include <STWGameplay/MainMenuPresentation.h>
 #include <STWGameplay/STWSkeletalCharacterPresentation.h>
 #include <STWGameplay/STWFirstPersonArmsPresentation.h>
 #include <STWGameplay/ViewmodelPresentation.h>
@@ -166,6 +167,7 @@ namespace STWGameplay
         void UpdateEnemyPresentationAcceptance();
         void UpdateSkeletalCharacterAcceptance();
         void UpdateBodycamAcceptance();
+        void UpdateMainMenuAcceptance();
         void UpdateCombatFeedbackAcceptance();
         void UpdateAudioAcceptance();
         void UpdateEncounterAcceptance();
@@ -229,6 +231,9 @@ namespace STWGameplay
         bool m_arenaAcceptanceReported = false;
         ArenaPresentation m_arenaPresentation;
         EnvironmentPresentation m_environmentPresentation;
+        MainMenuPresentation m_mainMenuPresentation;
+        bool m_mainMenuInitialized = false;
+        bool m_mainMenuAcceptanceReported = false;
 
         PlayerSliceModel m_model;
         BodycamCameraPresentation m_bodycamCameraPresentation;

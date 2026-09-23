@@ -28,6 +28,7 @@ ly_add_target(
         Gem::Multiplayer.Client
         Gem::MiniAudio.API
         Gem::PhysX5.Static
+        Gem::LyShine.Static
     PRIVATE
         Gem::Multiplayer.Client.Static
     AUTOGEN_RULES
@@ -56,6 +57,7 @@ ly_add_target(
         Gem::Multiplayer.Server
         Gem::MiniAudio.API
         Gem::PhysX5.Static
+        Gem::LyShine.Static
     PRIVATE
         Gem::Multiplayer.Server.Static
     AUTOGEN_RULES

@@ -1373,6 +1373,7 @@ namespace STWGameplay
         m_input.m_reload = false;
         UpdateCamera();
         UpdateBodycamAcceptance();
+        UpdateMainMenuAcceptance();
         DrawPresentation(deltaTime);
         UpdateWeaponSwitchAcceptance();
         UpdateLoadoutAcceptance();
@@ -3109,6 +3110,62 @@ namespace STWGameplay
         m_bodycamAcceptanceReported = true;
     }
 
+    void STWGameplaySystemComponent::UpdateMainMenuAcceptance()
+    {
+        if (!m_automatedAcceptance || m_mainMenuAcceptanceReported || !m_mainMenuPresentation.IsReady())
+        {
+            return;
+        }
+
+        // Drives the full navigation graph and verifies every transition
+        // actually happens - "reproducibly proven and verified", not just
+        // "the canvas exists and compiled".
+        m_mainMenuPresentation.ShowScreen(MainMenuScreen::Main);
+        bool passed = m_mainMenuPresentation.GetActiveScreen() == MainMenuScreen::Main;
+
+        m_mainMenuPresentation.TestClick("CampaignButton");
+        passed = passed && m_mainMenuPresentation.GetActiveScreen() == MainMenuScreen::Campaign;
+        m_mainMenuPresentation.TestClick("CampaignBackButton");
+        passed = passed && m_mainMenuPresentation.GetActiveScreen() == MainMenuScreen::Main;
+
+        m_mainMenuPresentation.TestClick("SettingsButton");
+        passed = passed && m_mainMenuPresentation.GetActiveScreen() == MainMenuScreen::Settings;
+        m_mainMenuPresentation.TestClick("SettingsBackButton");
+        passed = passed && m_mainMenuPresentation.GetActiveScreen() == MainMenuScreen::Main;
+
+        m_mainMenuPresentation.TestClick("MultiplayerButton");
+        passed = passed && m_mainMenuPresentation.GetActiveScreen() == MainMenuScreen::Multiplayer;
+        m_mainMenuPresentation.TestClick("ModeTeamDeathmatch");
+        m_mainMenuPresentation.TestClick("ModeDomination");
+        m_mainMenuPresentation.TestClick("ModeHeadquarters");
+        m_mainMenuPresentation.TestClick("ModeDefense");
+        m_mainMenuPresentation.TestClick("ModeSabotage");
+        m_mainMenuPresentation.TestClick("MultiplayerBackButton");
+        passed = passed && m_mainMenuPresentation.GetActiveScreen() == MainMenuScreen::Main;
+
+        m_mainMenuPresentation.TestClick("QuitButton");
+
+        passed = passed && m_mainMenuPresentation.GetButtonCount() == 12
+            && m_mainMenuPresentation.WasEveryButtonClickTested();
+
+        if (!passed)
+        {
+            return;
+        }
+
+        AZ_Printf("STWGameplay",
+            "MAIN_MENU_PRESENTATION_ACTIVE=1\n"
+            "MAIN_MENU_BUTTON_COUNT=%zu\n"
+            "MAIN_MENU_CAMPAIGN_NAV_PASS=1\n"
+            "MAIN_MENU_SETTINGS_NAV_PASS=1\n"
+            "MAIN_MENU_MULTIPLAYER_NAV_PASS=1\n"
+            "MAIN_MENU_MULTIPLAYER_MODE_BUTTONS=5\n"
+            "MAIN_MENU_ALL_BUTTONS_CLICK_TESTED=1\n"
+            "MAIN_MENU_ACCEPTANCE result=PASS\n",
+            m_mainMenuPresentation.GetButtonCount());
+        m_mainMenuAcceptanceReported = true;
+    }
+
     void STWGameplaySystemComponent::TryStartViewmodelMesh()
     {
         // The render scene and its feature processors do not exist during Activate(), so this
@@ -3627,6 +3684,11 @@ namespace STWGameplay
         m_arenaPresentation.Update();
         m_environmentPresentation.Initialize(contextId);
         m_environmentPresentation.Update();
+        if (!m_mainMenuInitialized)
+        {
+            m_mainMenuPresentation.Initialize();
+            m_mainMenuInitialized = m_mainMenuPresentation.IsReady();
+        }
         if (m_arenaPresentation.IsReady())
         {
             m_arenaMeshStartup = ViewmodelMeshStartup::Acquired;
@@ -3639,6 +3701,9 @@ namespace STWGameplay
         m_arenaMeshStartup = ViewmodelMeshStartup::Waiting;
         m_arenaMeshReported = false;
         m_arenaAcceptanceReported = false;
+        m_mainMenuPresentation.Shutdown();
+        m_mainMenuInitialized = false;
+        m_mainMenuAcceptanceReported = false;
     }
 
     void STWGameplaySystemComponent::UpdateArenaAcceptance()

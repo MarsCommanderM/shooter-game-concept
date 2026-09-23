@@ -22,6 +22,7 @@ set(FILES
     Source/ViewmodelPresentation.cpp
     Source/IndustrialYardLookTemplate.cpp
     Source/IndustrialYardArenaVariant.cpp
+    Source/MainMenuPresentation.cpp
     Source/STWGameplayModuleInterface.cpp
     Source/STWGameplayModuleInterface.h
     Source/Clients/STWGameplaySystemComponent.cpp
