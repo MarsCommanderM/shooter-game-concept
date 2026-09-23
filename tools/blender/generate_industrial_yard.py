@@ -581,7 +581,12 @@ def add_containerhof_detail(groups, materials):
                 f"IY_PlatformRib_{side}_{index:02d}", (x, y_offset, 1.2),
                 (0.04, 0.02, 2.0), materials["steel"], 0.003))
     for index, x in enumerate((17.0, 17.8, 18.6, 19.4, 20.0)):
-        add("trim", detail_cube(
+        # "struct", not "trim": the gate's per-group bounds check compares
+        # against an envelope built only from named PIECES, not dressing -
+        # "trim"'s only named piece is the small flush_hazard_trim strip near
+        # (6,-6), while "struct" already spans the whole containerhof/crane/
+        # ramp footprint and safely contains this platform-edge position.
+        add("struct", detail_cube(
             f"IY_PlatformStripe_{index:02d}", (x, -1.6, 2.605), (0.5, 0.12, 0.006),
             materials["hazard"], 0.001))
 
@@ -631,12 +636,17 @@ def add_verladezone_detail(groups, materials):
                 f"IY_Trailer{label}Hinge_{index:02d}", (center_x - 0.5, -12.77, z),
                 (0.10, 0.05, 0.10), materials["steel"], 0.003))
 
+    # "struct", not "cover"/"trim": these sit at the dock_platform's edge
+    # (y~-19.3), which "struct" already covers via dock_platform itself -
+    # "cover"'s named pieces are the trailers/containers (nowhere near here)
+    # and "trim"'s only named piece is the small strip near (6,-6). Same
+    # gate-bounds reasoning as add_containerhof_detail()'s platform stripe.
     for index, x in enumerate((-1.8, -0.9, 0.0, 0.9, 1.8)):
-        add("cover", detail_cylinder(
+        add("struct", detail_cylinder(
             f"IY_DockBumper_{index:02d}", (x, -19.3, 1.3), 0.10, 0.30,
             materials["steel"], 10))
     for index, x in enumerate((-2.3, -1.15, 0.0, 1.15, 2.3)):
-        add("trim", detail_cube(
+        add("struct", detail_cube(
             f"IY_DockStripe_{index:02d}", (x, -19.26, 1.205), (0.4, 0.10, 0.006),
             materials["hazard"], 0.001))
 
