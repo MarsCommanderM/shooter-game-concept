@@ -22,7 +22,12 @@ PIECES = [
     # map reads as varied, not one building copy-pasted around.
     ("north_brick_facade_left", "wall", (-6.75, 12, 2), (10.5, 0.45, 3.95), "brick"),
     ("north_brick_facade_right", "wall", (6.75, 12, 2), (10.5, 0.45, 3.95), "brick"),
-    ("south_concrete_facade", "wall", (0, -12, 2), (23.95, 0.45, 3.95), "concrete"),
+    # South wall is split around a 3 m doorway (x -1.5..1.5) into the South
+    # Verladezone - see add_south_verladezone(). Fourth and final cardinal
+    # zone: completes the crossing route network (west<->east, north<->
+    # south through the center) instead of a hub with three dead-end arms.
+    ("south_concrete_facade_left", "wall", (-6.75, -12, 2), (10.5, 0.45, 3.95), "concrete"),
+    ("south_concrete_facade_right", "wall", (6.75, -12, 2), (10.5, 0.45, 3.95), "concrete"),
     # East wall is split around a 3 m doorway (y -1.5..1.5) into the East
     # Containerhof - see add_east_containerhof(). A third, again distinct
     # silhouette: no building, no crane - stacked shipping containers as
@@ -128,6 +133,29 @@ CONTAINER_RAMP = {
     "width": 1.8,
     "thickness": 0.2,
     "material": "steel",
+}
+
+# South Verladezone: fourth and final cardinal landmark, deliberately unlike
+# the first three - a raised concrete loading dock platform (not a building,
+# crane, or container stack), flanked by two long parked-trailer cover
+# blocks that split the approach into two lanes, plus a small crate cluster
+# near the doorway. Concrete ramp (not steel, unlike every other ramp so
+# far) for material variety. Doorway gap matches the south wall split above.
+VERLADEZONE_PIECES = [
+    ("verladezone_ground", "deck", (0, -17, -0.05), (8, 10, 0.1), "concrete"),
+    ("dock_platform", "struct", (0, -20.5, 0.6), (5, 2.5, 1.2), "concrete"),
+    ("truck_trailer_a", "cover", (-2.6, -15, 1.1), (1.8, 4.5, 2.2), "steel"),
+    ("truck_trailer_b", "cover", (2.6, -15, 1.1), (1.8, 4.5, 2.2), "steel"),
+    ("loading_crates", "cover", (0, -13, 0.75), (2.2, 1.6, 1.5), "hazard"),
+]
+DOCK_RAMP = {
+    "name": "dock_ramp",
+    "group": "struct",
+    "start": (0, -17.5, 0.05),
+    "end": (0, -20.0, 1.2),
+    "width": 2.5,
+    "thickness": 0.2,
+    "material": "concrete",
 }
 
 
@@ -403,6 +431,26 @@ def add_east_containerhof(groups, materials, world_bounds):
     world_bounds[ramp["name"]] = {"center": list(ramp_center), "size": list(ramp_size), "group": ramp["group"]}
 
 
+def add_south_verladezone(groups, materials, world_bounds):
+    """Fourth and final cardinal landmark: raised loading dock + parked
+    trailers, structurally distinct from the building/crane/containers
+    already built on the other three sides."""
+    for name, group, center, size, material_name in VERLADEZONE_PIECES:
+        obj = detail_cube(name, center, size, materials[material_name])
+        groups.setdefault(group, []).append(obj)
+        world_bounds[name] = {"center": list(center), "size": list(size), "group": group}
+
+    ramp = DOCK_RAMP
+    ramp_obj, _length = detail_box_between(
+        ramp["name"], ramp["start"], ramp["end"], ramp["width"], ramp["thickness"],
+        materials[ramp["material"]], bevel=0.01,
+    )
+    bpy.context.view_layer.update()
+    ramp_center, ramp_size = world_bounds_of(ramp_obj)
+    groups.setdefault(ramp["group"], []).append(ramp_obj)
+    world_bounds[ramp["name"]] = {"center": list(ramp_center), "size": list(ramp_size), "group": ramp["group"]}
+
+
 def write_material_sources(output, materials):
     material_dir = output / "Materials"
     texture_dir = output / "Textures"
@@ -563,6 +611,7 @@ def main():
     add_west_annex(groups, materials, world_bounds)
     add_north_scrapyard(groups, materials, world_bounds)
     add_east_containerhof(groups, materials, world_bounds)
+    add_south_verladezone(groups, materials, world_bounds)
 
     write_material_sources(options.output, materials)
 
@@ -588,9 +637,9 @@ def main():
         "piece_count": len(world_bounds),
         "detail_object_count": sum(len(objects) for objects in groups.values()),
         "groups": sorted(groups),
-        "contract_valid": len(PIECES) == 17 and len(ANNEX_PIECES) == 8
+        "contract_valid": len(PIECES) == 18 and len(ANNEX_PIECES) == 8
             and len(SCRAPYARD_PIECES) == 6 and len(EAST_CONTAINERHOF_PIECES) == 6
-            and len(groups) == 9,
+            and len(VERLADEZONE_PIECES) == 5 and len(groups) == 9,
         "world_bounds": world_bounds,
         "west_annex": {
             "description": "First enterable multi-storey building: doorway "
@@ -620,6 +669,17 @@ def main():
             "doorway_y_span": [-1.5, 1.5],
             "platform_height": 2.5,
             "ramp": CONTAINER_RAMP,
+        },
+        "south_verladezone": {
+            "description": "Fourth and final cardinal landmark: raised "
+                "concrete loading dock platform flanked by two parked-"
+                "trailer cover lanes and a small crate cluster near the "
+                "doorway. Completes the crossing route network (west<->east, "
+                "north<->south through the central hof) per the route-"
+                "network-first map design guide.",
+            "doorway_x_span": [-1.5, 1.5],
+            "platform_height": 1.2,
+            "ramp": DOCK_RAMP,
         },
         "materials": sorted(value.name for value in materials.values()),
         "material_sources": sorted(

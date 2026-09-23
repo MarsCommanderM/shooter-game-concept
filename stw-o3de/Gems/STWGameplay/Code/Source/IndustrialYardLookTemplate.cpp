@@ -59,8 +59,10 @@ namespace STWGameplay
                 AZ::Vector3(10.5f, 0.45f, 3.95f), Anchor::NorthWall },
             { "north_brick_facade_right", "wall", AZ::Vector3(6.75f, 12.0f, 2.0f),
                 AZ::Vector3(10.5f, 0.45f, 3.95f), Anchor::NorthWall },
-            { "south_concrete_facade", "wall", AZ::Vector3(0.0f, -12.0f, 2.0f),
-                AZ::Vector3(23.95f, 0.45f, 3.95f), Anchor::SouthWall },
+            { "south_concrete_facade_left", "wall", AZ::Vector3(-6.75f, -12.0f, 2.0f),
+                AZ::Vector3(10.5f, 0.45f, 3.95f), Anchor::SouthWall },
+            { "south_concrete_facade_right", "wall", AZ::Vector3(6.75f, -12.0f, 2.0f),
+                AZ::Vector3(10.5f, 0.45f, 3.95f), Anchor::SouthWall },
             { "east_steel_facade_left", "wall", AZ::Vector3(12.0f, -6.75f, 2.0f),
                 AZ::Vector3(0.45f, 10.5f, 3.95f), Anchor::EastWall },
             { "east_steel_facade_right", "wall", AZ::Vector3(12.0f, 6.75f, 2.0f),
@@ -158,7 +160,27 @@ namespace STWGameplay
             // Real (not hand-estimated) AABB of the rotated ramp mesh, read
             // back from Blender's evaluated bound_box at generation time.
             { "container_ramp", "struct", AZ::Vector3(17.0f, -2.0f, 1.225f),
-                AZ::Vector3(3.123f, 1.8f, 2.508f), Anchor::EastContainerhof }
+                AZ::Vector3(3.123f, 1.8f, 2.508f), Anchor::EastContainerhof },
+            // South Verladezone: fourth and final cardinal landmark - raised
+            // loading dock, parked-trailer cover lanes, doorway crate
+            // cluster. Mirrors tools/blender/generate_industrial_yard.py's
+            // VERLADEZONE_PIECES/DOCK_RAMP. Completes the crossing route
+            // network (west<->east, north<->south) per the route-network-
+            // first map design guide.
+            { "verladezone_ground", "deck", AZ::Vector3(0.0f, -17.0f, -0.05f),
+                AZ::Vector3(8.0f, 10.0f, 0.1f), Anchor::SouthVerladezone },
+            { "dock_platform", "struct", AZ::Vector3(0.0f, -20.5f, 0.6f),
+                AZ::Vector3(5.0f, 2.5f, 1.2f), Anchor::SouthVerladezone },
+            { "truck_trailer_a", "cover", AZ::Vector3(-2.6f, -15.0f, 1.1f),
+                AZ::Vector3(1.8f, 4.5f, 2.2f), Anchor::SouthVerladezone },
+            { "truck_trailer_b", "cover", AZ::Vector3(2.6f, -15.0f, 1.1f),
+                AZ::Vector3(1.8f, 4.5f, 2.2f), Anchor::SouthVerladezone },
+            { "loading_crates", "cover", AZ::Vector3(0.0f, -13.0f, 0.75f),
+                AZ::Vector3(2.2f, 1.6f, 1.5f), Anchor::SouthVerladezone },
+            // Real (not hand-estimated) AABB of the rotated ramp mesh, read
+            // back from Blender's evaluated bound_box at generation time.
+            { "dock_ramp", "struct", AZ::Vector3(0.0f, -18.75f, 0.625f),
+                AZ::Vector3(2.5f, 2.584f, 1.332f), Anchor::SouthVerladezone }
         }};
     }
 
@@ -250,6 +272,17 @@ namespace STWGameplay
                 && piece.m_center.GetY() + piece.m_size.GetY() * 0.5f <= 6.25f + BoundsTolerance
                 && piece.m_center.GetZ() - piece.m_size.GetZ() * 0.5f >= -0.15f - BoundsTolerance
                 && piece.m_center.GetZ() + piece.m_size.GetZ() * 0.5f <= 2.75f + BoundsTolerance;
+        case Anchor::SouthVerladezone:
+            // Envelope of the whole verladezone: flush with the doorway
+            // plane on the north side (y=-12, no clearance requirement),
+            // bounded by the actual authored footprint (8x10 m ground plane
+            // plus the parked trailers, max height ~2.2 m).
+            return piece.m_center.GetX() - piece.m_size.GetX() * 0.5f >= -4.25f - BoundsTolerance
+                && piece.m_center.GetX() + piece.m_size.GetX() * 0.5f <= 4.25f + BoundsTolerance
+                && piece.m_center.GetY() - piece.m_size.GetY() * 0.5f >= -22.25f - BoundsTolerance
+                && piece.m_center.GetY() + piece.m_size.GetY() * 0.5f <= -11.80f + BoundsTolerance
+                && piece.m_center.GetZ() - piece.m_size.GetZ() * 0.5f >= -0.15f - BoundsTolerance
+                && piece.m_center.GetZ() + piece.m_size.GetZ() * 0.5f <= 2.35f + BoundsTolerance;
         }
         return false;
     }

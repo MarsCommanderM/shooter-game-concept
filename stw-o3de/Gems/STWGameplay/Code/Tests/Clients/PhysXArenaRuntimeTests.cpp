@@ -45,7 +45,8 @@ namespace STWGameplay
             { "STW Floor", AZ::Vector3(0.0f, 0.0f, -0.5f), AZ::Vector3(24.0f, 24.0f, 1.0f), false },
             { "STW North Wall Left", AZ::Vector3(-6.75f, 12.0f, 2.0f), AZ::Vector3(10.5f, 0.5f, 4.0f), false },
             { "STW North Wall Right", AZ::Vector3(6.75f, 12.0f, 2.0f), AZ::Vector3(10.5f, 0.5f, 4.0f), false },
-            { "STW South Wall", AZ::Vector3(0.0f, -12.0f, 2.0f), AZ::Vector3(24.0f, 0.5f, 4.0f), false },
+            { "STW South Wall Left", AZ::Vector3(-6.75f, -12.0f, 2.0f), AZ::Vector3(10.5f, 0.5f, 4.0f), false },
+            { "STW South Wall Right", AZ::Vector3(6.75f, -12.0f, 2.0f), AZ::Vector3(10.5f, 0.5f, 4.0f), false },
             { "STW East Wall Left", AZ::Vector3(12.0f, -6.75f, 2.0f), AZ::Vector3(0.5f, 10.5f, 4.0f), false },
             { "STW East Wall Right", AZ::Vector3(12.0f, 6.75f, 2.0f), AZ::Vector3(0.5f, 10.5f, 4.0f), false },
             { "STW West Wall Left", AZ::Vector3(-12.0f, -6.75f, 2.0f), AZ::Vector3(0.5f, 10.5f, 4.0f), false },
@@ -77,6 +78,12 @@ namespace STWGameplay
             { "STW Container Platform Support", AZ::Vector3(18.5f, 0.0f, 1.2f), AZ::Vector3(3.0f, 3.0f, 2.4f), false },
             { "STW Container Ramp", AZ::Vector3(17.0f, -2.0f, 1.225f), AZ::Vector3(3.8108f, 1.8f, 0.2f), true },
             { "STW Container Platform", AZ::Vector3(18.5f, 0.0f, 2.5f), AZ::Vector3(3.4f, 3.4f, 0.2f), false },
+            { "STW Verladezone Ground", AZ::Vector3(0.0f, -17.0f, -0.05f), AZ::Vector3(8.0f, 10.0f, 0.1f), false },
+            { "STW Dock Platform", AZ::Vector3(0.0f, -20.5f, 0.6f), AZ::Vector3(5.0f, 2.5f, 1.2f), false },
+            { "STW Truck Trailer A", AZ::Vector3(-2.6f, -15.0f, 1.1f), AZ::Vector3(1.8f, 4.5f, 2.2f), false },
+            { "STW Truck Trailer B", AZ::Vector3(2.6f, -15.0f, 1.1f), AZ::Vector3(1.8f, 4.5f, 2.2f), false },
+            { "STW Loading Crates", AZ::Vector3(0.0f, -13.0f, 0.75f), AZ::Vector3(2.2f, 1.6f, 1.5f), false },
+            { "STW Dock Ramp", AZ::Vector3(0.0f, -18.75f, 0.625f), AZ::Vector3(2.7518f, 2.5f, 0.2f), true },
         };
         ASSERT_EQ(AZ_ARRAY_SIZE(expectations), PhysXArenaRuntime::StaticColliderCount);
 
@@ -161,6 +168,18 @@ namespace STWGameplay
         // climbs the wrong way.
         const AZ::Vector3 climbDirection = ramp->m_rotation.TransformVector(AZ::Vector3::CreateAxisX());
         EXPECT_GT(climbDirection.GetX(), 0.0f);
+        EXPECT_GT(climbDirection.GetZ(), 0.0f);
+    }
+
+    TEST(PhysXArenaRuntimeTests, DockRampClimbsFromGroundToPlatformHeight)
+    {
+        const auto& colliders = PhysXArenaRuntime::GetStaticColliderDescriptions();
+        const auto* ramp = FindCollider(colliders, "STW Dock Ramp");
+        ASSERT_NE(ramp, nullptr);
+        // Climbs from the doorway lane (low, y=-17.5) deeper into the
+        // verladezone (high, y=-20, z~1.2) toward the dock platform.
+        const AZ::Vector3 climbDirection = ramp->m_rotation.TransformVector(AZ::Vector3::CreateAxisX());
+        EXPECT_LT(climbDirection.GetY(), 0.0f);
         EXPECT_GT(climbDirection.GetZ(), 0.0f);
     }
 }

@@ -8,7 +8,7 @@
   `9ba871ff2ecd36526b77432745980b7e6664ecd0c7ca11c48849073dcfe06da3`.
 - Coordinate convention: source Z-up; FBX export forward `-Y`, up `Z`.
 - License status: original project work; no third-party asset license attached.
-- Validation: `STW_INDUSTRIAL_YARD_01.report.json` records all 41 post-import
+- Validation: `STW_INDUSTRIAL_YARD_01.report.json` records all 48 post-import
   target AABBs and nine group identities.
 - Production foundation: repeated facade ribs, service bands, fasteners,
   truss/gallery details, beacon hardware, flush hazard treatment, and six
@@ -45,6 +45,16 @@
   rather than a single hub with isolated dead-end arms. Same bucketing/
   physics pattern as the other two; validated by a new Anchor::
   EastContainerhof envelope.
+- South Verladezone (added 2026-09-23): fourth and final cardinal landmark.
+  The south wall was split around a 3 m doorway; beyond it is a raised
+  concrete loading dock platform reached by a concrete ramp (every other
+  ramp so far is steel - deliberate material variety), flanked by two
+  parked-trailer cover blocks that split the approach into two lanes, plus
+  a small crate cluster near the doorway. Completes the yard's crossing
+  route network (west<->east, north<->south through the central hof)
+  instead of a hub with isolated dead-end arms, per the route-network-first
+  map design guide shared this session. Same bucketing/physics pattern as
+  the other three; validated by a new Anchor::SouthVerladezone envelope.
 - Quality boundary: this is authored production foundation data, not a
   blockout. It is still not the final AAA+ cinematic acceptance until O3DE
   import, Vulkan runtime capture, and T4 visual review pass.

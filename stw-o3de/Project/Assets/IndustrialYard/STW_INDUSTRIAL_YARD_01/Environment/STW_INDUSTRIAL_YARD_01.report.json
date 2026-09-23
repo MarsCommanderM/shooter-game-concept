@@ -1,7 +1,7 @@
 {
   "asset_family": "STW_INDUSTRIAL_YARD_01",
   "contract_valid": true,
-  "detail_object_count": 186,
+  "detail_object_count": 193,
   "east_containerhof": {
     "description": "Third landmark: stacked shipping-container cover with one elevated platform reached by a ramp - no walls, no crane, a deliberately different silhouette from the first two landmarks. Built as a real greybox pass (simple boxes, no high-detail dressing) per the route-network-first map design guide.",
     "doorway_y_span": [
@@ -98,9 +98,34 @@
       }
     ]
   },
-  "piece_count": 41,
+  "piece_count": 48,
   "quality_status": "source-generated; O3DE import and T4 visual review pending",
   "quality_tier": "high_end_procedural_foundation",
+  "south_verladezone": {
+    "description": "Fourth and final cardinal landmark: raised concrete loading dock platform flanked by two parked-trailer cover lanes and a small crate cluster near the doorway. Completes the crossing route network (west<->east, north<->south through the central hof) per the route-network-first map design guide.",
+    "doorway_x_span": [
+      -1.5,
+      1.5
+    ],
+    "platform_height": 1.2,
+    "ramp": {
+      "end": [
+        0,
+        -20.0,
+        1.2
+      ],
+      "group": "struct",
+      "material": "concrete",
+      "name": "dock_ramp",
+      "start": [
+        0,
+        -17.5,
+        0.05
+      ],
+      "thickness": 0.2,
+      "width": 2.5
+    }
+  },
   "west_annex": {
     "description": "First enterable multi-storey building: doorway in the split west wall, ground floor, ramp to a real upper floor, open window band over the yard.",
     "doorway_y_span": [
@@ -400,6 +425,32 @@
         0.2
       ]
     },
+    "dock_platform": {
+      "center": [
+        0,
+        -20.5,
+        0.6
+      ],
+      "group": "struct",
+      "size": [
+        5,
+        2.5,
+        1.2
+      ]
+    },
+    "dock_ramp": {
+      "center": [
+        0.0,
+        -18.75,
+        0.6249999906867743
+      ],
+      "group": "struct",
+      "size": [
+        2.500000238418579,
+        2.5835800170898438,
+        1.3316984362900257
+      ]
+    },
     "east_steel_facade_left": {
       "center": [
         12,
@@ -450,6 +501,19 @@
         1.5,
         2,
         2.5
+      ]
+    },
+    "loading_crates": {
+      "center": [
+        0,
+        -13,
+        0.75
+      ],
+      "group": "cover",
+      "size": [
+        2.2,
+        1.6,
+        1.5
       ]
     },
     "north_brick_facade_left": {
@@ -582,15 +646,28 @@
         0.004
       ]
     },
-    "south_concrete_facade": {
+    "south_concrete_facade_left": {
       "center": [
-        0,
+        -6.75,
         -12,
         2
       ],
       "group": "wall",
       "size": [
-        23.95,
+        10.5,
+        0.45,
+        3.95
+      ]
+    },
+    "south_concrete_facade_right": {
+      "center": [
+        6.75,
+        -12,
+        2
+      ],
+      "group": "wall",
+      "size": [
+        10.5,
         0.45,
         3.95
       ]
@@ -606,6 +683,45 @@
         8,
         1,
         0.5
+      ]
+    },
+    "truck_trailer_a": {
+      "center": [
+        -2.6,
+        -15,
+        1.1
+      ],
+      "group": "cover",
+      "size": [
+        1.8,
+        4.5,
+        2.2
+      ]
+    },
+    "truck_trailer_b": {
+      "center": [
+        2.6,
+        -15,
+        1.1
+      ],
+      "group": "cover",
+      "size": [
+        1.8,
+        4.5,
+        2.2
+      ]
+    },
+    "verladezone_ground": {
+      "center": [
+        0,
+        -17,
+        -0.05
+      ],
+      "group": "deck",
+      "size": [
+        8,
+        10,
+        0.1
       ]
     },
     "west_signage": {

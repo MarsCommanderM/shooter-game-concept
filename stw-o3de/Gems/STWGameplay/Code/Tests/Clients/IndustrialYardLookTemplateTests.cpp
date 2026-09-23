@@ -112,4 +112,20 @@ namespace STWGameplay
         intrusion.m_center = AZ::Vector3(8.0f, 0.0f, -0.05f);
         EXPECT_FALSE(IndustrialYardLookTemplate::ValidatePiece(intrusion));
     }
+
+    TEST(IndustrialYardLookTemplateTests, SouthVerladezoneDockPlatformSitsFlushWithDoorwayPlane)
+    {
+        auto pieces = IndustrialYardLookTemplate::GetPieces();
+        const size_t index = FindPieceIndex(pieces, "dock_platform");
+        ASSERT_LT(index, pieces.size());
+        EXPECT_EQ(pieces[index].m_anchor, IndustrialYardLookTemplate::Anchor::SouthVerladezone);
+        EXPECT_TRUE(IndustrialYardLookTemplate::ValidatePiece(pieces[index]));
+
+        // A piece that reaches back across the doorway into the main arena
+        // floor must still be rejected - SouthVerladezone is a bounded
+        // envelope, not an "anything goes" anchor.
+        auto intrusion = pieces[index];
+        intrusion.m_center = AZ::Vector3(0.0f, -8.0f, -0.05f);
+        EXPECT_FALSE(IndustrialYardLookTemplate::ValidatePiece(intrusion));
+    }
 }

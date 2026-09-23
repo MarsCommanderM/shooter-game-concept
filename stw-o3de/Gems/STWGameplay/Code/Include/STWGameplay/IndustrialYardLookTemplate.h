@@ -35,7 +35,11 @@ namespace STWGameplay
             //! doorway plane (x=12). A third, low-rise landmark (max height
             //! ~2.6 m) - too short for AboveArena and on the wrong side for
             //! BeyondWestWall/WestAnnex/NorthScrapyard.
-            EastContainerhof
+            EastContainerhof,
+            //! The South Verladezone envelope: flush with the south wall's
+            //! doorway plane (y=-12). Fourth and final cardinal landmark -
+            //! completes the crossing route network.
+            SouthVerladezone
         };
 
         struct Piece
@@ -55,7 +59,7 @@ namespace STWGameplay
             float m_metallic;
         };
 
-        static constexpr size_t PieceCount = 41;
+        static constexpr size_t PieceCount = 48;
         static constexpr size_t MaterialCount = 4;
 
         static AZStd::array<Piece, PieceCount> GetPieces();

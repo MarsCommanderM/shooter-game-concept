@@ -40,6 +40,13 @@ namespace STWGameplay
         const AZ::Vector3 ContainerRampEnd(18.5f, -2.0f, 2.4f);
         const AZ::Vector3 ContainerRampDirection = ContainerRampEnd - ContainerRampStart;
 
+        // South Verladezone dock ramp: same compute-don't-guess rotation
+        // approach. Endpoints must match tools/blender/
+        // generate_industrial_yard.py's DOCK_RAMP exactly.
+        const AZ::Vector3 DockRampStart(0.0f, -17.5f, 0.05f);
+        const AZ::Vector3 DockRampEnd(0.0f, -20.0f, 1.2f);
+        const AZ::Vector3 DockRampDirection = DockRampEnd - DockRampStart;
+
         const AZStd::array<PhysXArenaRuntime::StaticColliderDescription, PhysXArenaRuntime::StaticColliderCount>
             StaticColliderDescriptions = {{
                 { "STW Floor", AZ::Vector3(0.0f, 0.0f, -0.5f), AZ::Vector3(24.0f, 24.0f, 1.0f) },
@@ -47,7 +54,10 @@ namespace STWGameplay
                 // the North Scrapyard/crane landmark instead of one solid facade.
                 { "STW North Wall Left", AZ::Vector3(-6.75f, 12.0f, 2.0f), AZ::Vector3(10.5f, 0.5f, 4.0f) },
                 { "STW North Wall Right", AZ::Vector3(6.75f, 12.0f, 2.0f), AZ::Vector3(10.5f, 0.5f, 4.0f) },
-                { "STW South Wall", AZ::Vector3(0.0f, -12.0f, 2.0f), AZ::Vector3(24.0f, 0.5f, 4.0f) },
+                // South wall is split around a 3 m doorway (x -1.5..1.5) into
+                // the South Verladezone instead of one solid facade.
+                { "STW South Wall Left", AZ::Vector3(-6.75f, -12.0f, 2.0f), AZ::Vector3(10.5f, 0.5f, 4.0f) },
+                { "STW South Wall Right", AZ::Vector3(6.75f, -12.0f, 2.0f), AZ::Vector3(10.5f, 0.5f, 4.0f) },
                 // East wall is split around a 3 m doorway (y -1.5..1.5) into
                 // the East Containerhof instead of one solid facade.
                 { "STW East Wall Left", AZ::Vector3(12.0f, -6.75f, 2.0f), AZ::Vector3(0.5f, 10.5f, 4.0f) },
@@ -102,7 +112,18 @@ namespace STWGameplay
                 { "STW Container Ramp", (ContainerRampStart + ContainerRampEnd) * 0.5f,
                     AZ::Vector3(ContainerRampDirection.GetLength(), 1.8f, 0.2f),
                     AZ::Quaternion::CreateShortestArc(AZ::Vector3::CreateAxisX(), ContainerRampDirection.GetNormalized()) },
-                { "STW Container Platform", AZ::Vector3(18.5f, 0.0f, 2.5f), AZ::Vector3(3.4f, 3.4f, 0.2f) }
+                { "STW Container Platform", AZ::Vector3(18.5f, 0.0f, 2.5f), AZ::Vector3(3.4f, 3.4f, 0.2f) },
+                // South Verladezone: fourth and final cardinal landmark -
+                // raised loading dock platform, two parked-trailer cover
+                // lanes, small crate cluster at the doorway.
+                { "STW Verladezone Ground", AZ::Vector3(0.0f, -17.0f, -0.05f), AZ::Vector3(8.0f, 10.0f, 0.1f) },
+                { "STW Dock Platform", AZ::Vector3(0.0f, -20.5f, 0.6f), AZ::Vector3(5.0f, 2.5f, 1.2f) },
+                { "STW Truck Trailer A", AZ::Vector3(-2.6f, -15.0f, 1.1f), AZ::Vector3(1.8f, 4.5f, 2.2f) },
+                { "STW Truck Trailer B", AZ::Vector3(2.6f, -15.0f, 1.1f), AZ::Vector3(1.8f, 4.5f, 2.2f) },
+                { "STW Loading Crates", AZ::Vector3(0.0f, -13.0f, 0.75f), AZ::Vector3(2.2f, 1.6f, 1.5f) },
+                { "STW Dock Ramp", (DockRampStart + DockRampEnd) * 0.5f,
+                    AZ::Vector3(DockRampDirection.GetLength(), 2.5f, 0.2f),
+                    AZ::Quaternion::CreateShortestArc(AZ::Vector3::CreateAxisX(), DockRampDirection.GetNormalized()) }
             }};
 
         void DeactivateArenaEntity(AZStd::unique_ptr<AZ::Entity>& entity)
