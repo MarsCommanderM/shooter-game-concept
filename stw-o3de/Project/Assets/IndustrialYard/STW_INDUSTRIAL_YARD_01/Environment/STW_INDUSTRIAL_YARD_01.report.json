@@ -4,7 +4,7 @@
     "description": "Outdoor L-shaped walkway linking the West Annex directly to the North Scrapyard, bypassing the central hof - the first genuine crossing route beyond the hub-and-spoke cardinal landmarks, per the route-network-first map design guide. Flat, no ramp."
   },
   "contract_valid": true,
-  "detail_object_count": 323,
+  "detail_object_count": 331,
   "east_containerhof": {
     "description": "Third landmark: stacked shipping-container cover with one elevated platform reached by a ramp - no walls, no crane, a deliberately different silhouette from the first two landmarks. Built as a real greybox pass (simple boxes, no high-detail dressing) per the route-network-first map design guide.",
     "doorway_y_span": [
@@ -101,7 +101,7 @@
       }
     ]
   },
-  "piece_count": 64,
+  "piece_count": 72,
   "quality_status": "source-generated; O3DE import and T4 visual review pending",
   "quality_tier": "high_end_procedural_foundation",
   "south_verladezone": {
@@ -270,6 +270,110 @@
         6,
         2.75,
         0.15
+      ]
+    },
+    "central_cover_ne_high": {
+      "center": [
+        7.9,
+        7.9,
+        0.9
+      ],
+      "group": "cover",
+      "size": [
+        1.4,
+        1.4,
+        1.8
+      ]
+    },
+    "central_cover_ne_low": {
+      "center": [
+        7.0,
+        7.0,
+        0.6
+      ],
+      "group": "cover",
+      "size": [
+        1.6,
+        1.6,
+        1.2
+      ]
+    },
+    "central_cover_nw_high": {
+      "center": [
+        -7.9,
+        7.9,
+        0.9
+      ],
+      "group": "cover",
+      "size": [
+        1.4,
+        1.4,
+        1.8
+      ]
+    },
+    "central_cover_nw_low": {
+      "center": [
+        -7.0,
+        7.0,
+        0.6
+      ],
+      "group": "cover",
+      "size": [
+        1.6,
+        1.6,
+        1.2
+      ]
+    },
+    "central_cover_se_high": {
+      "center": [
+        7.9,
+        -8.9,
+        0.9
+      ],
+      "group": "cover",
+      "size": [
+        1.4,
+        1.4,
+        1.8
+      ]
+    },
+    "central_cover_se_low": {
+      "center": [
+        7.0,
+        -8.0,
+        0.6
+      ],
+      "group": "cover",
+      "size": [
+        1.6,
+        1.6,
+        1.2
+      ]
+    },
+    "central_cover_sw_high": {
+      "center": [
+        -7.9,
+        -8.9,
+        0.9
+      ],
+      "group": "cover",
+      "size": [
+        1.4,
+        1.4,
+        1.8
+      ]
+    },
+    "central_cover_sw_low": {
+      "center": [
+        -7.0,
+        -8.0,
+        0.6
+      ],
+      "group": "cover",
+      "size": [
+        1.6,
+        1.6,
+        1.2
       ]
     },
     "connector_ne_cover_a": {

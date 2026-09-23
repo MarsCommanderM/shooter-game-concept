@@ -224,7 +224,26 @@ namespace STWGameplay
             { "connector_sw_cover_a", "cover", AZ::Vector3(-16.8f, -8.5f, 0.75f),
                 AZ::Vector3(1.2f, 1.2f, 1.5f), Anchor::ConnectorSW },
             { "connector_sw_cover_b", "cover", AZ::Vector3(-10.0f, -13.8f, 0.75f),
-                AZ::Vector3(1.2f, 1.2f, 1.5f), Anchor::ConnectorSW }
+                AZ::Vector3(1.2f, 1.2f, 1.5f), Anchor::ConnectorSW },
+            // Central hof height variation + sightline breaks: mirrors
+            // tools/blender/generate_industrial_yard.py's
+            // CENTRAL_YARD_COVER_PIECES.
+            { "central_cover_ne_low", "cover", AZ::Vector3(7.0f, 7.0f, 0.6f),
+                AZ::Vector3(1.6f, 1.6f, 1.2f), Anchor::CentralYardCover },
+            { "central_cover_ne_high", "cover", AZ::Vector3(7.9f, 7.9f, 0.9f),
+                AZ::Vector3(1.4f, 1.4f, 1.8f), Anchor::CentralYardCover },
+            { "central_cover_nw_low", "cover", AZ::Vector3(-7.0f, 7.0f, 0.6f),
+                AZ::Vector3(1.6f, 1.6f, 1.2f), Anchor::CentralYardCover },
+            { "central_cover_nw_high", "cover", AZ::Vector3(-7.9f, 7.9f, 0.9f),
+                AZ::Vector3(1.4f, 1.4f, 1.8f), Anchor::CentralYardCover },
+            { "central_cover_se_low", "cover", AZ::Vector3(7.0f, -8.0f, 0.6f),
+                AZ::Vector3(1.6f, 1.6f, 1.2f), Anchor::CentralYardCover },
+            { "central_cover_se_high", "cover", AZ::Vector3(7.9f, -8.9f, 0.9f),
+                AZ::Vector3(1.4f, 1.4f, 1.8f), Anchor::CentralYardCover },
+            { "central_cover_sw_low", "cover", AZ::Vector3(-7.0f, -8.0f, 0.6f),
+                AZ::Vector3(1.6f, 1.6f, 1.2f), Anchor::CentralYardCover },
+            { "central_cover_sw_high", "cover", AZ::Vector3(-7.9f, -8.9f, 0.9f),
+                AZ::Vector3(1.4f, 1.4f, 1.8f), Anchor::CentralYardCover }
         }};
     }
 
@@ -361,6 +380,16 @@ namespace STWGameplay
                 && piece.m_center.GetY() + piece.m_size.GetY() * 0.5f <= -3.75f + BoundsTolerance
                 && piece.m_center.GetZ() - piece.m_size.GetZ() * 0.5f >= -0.15f - BoundsTolerance
                 && piece.m_center.GetZ() + piece.m_size.GetZ() * 0.5f <= 1.75f + BoundsTolerance;
+        case Anchor::CentralYardCover:
+            // Bounded by the hof's own floor footprint (matches
+            // Anchor::FloorSurface's x/y bound), with height room for the
+            // two-tier crate stacks (max top at 0.9+0.9=1.8 m).
+            return piece.m_center.GetX() - piece.m_size.GetX() * 0.5f >= -12.25f - BoundsTolerance
+                && piece.m_center.GetX() + piece.m_size.GetX() * 0.5f <= 12.25f + BoundsTolerance
+                && piece.m_center.GetY() - piece.m_size.GetY() * 0.5f >= -12.25f - BoundsTolerance
+                && piece.m_center.GetY() + piece.m_size.GetY() * 0.5f <= 12.25f + BoundsTolerance
+                && piece.m_center.GetZ() - piece.m_size.GetZ() * 0.5f >= -0.15f - BoundsTolerance
+                && piece.m_center.GetZ() + piece.m_size.GetZ() * 0.5f <= 2.5f + BoundsTolerance;
         }
         return false;
     }

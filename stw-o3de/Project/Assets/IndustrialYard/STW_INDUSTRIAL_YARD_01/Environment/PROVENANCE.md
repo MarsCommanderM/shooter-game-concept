@@ -8,7 +8,7 @@
   `9ba871ff2ecd36526b77432745980b7e6664ecd0c7ca11c48849073dcfe06da3`.
 - Coordinate convention: source Z-up; FBX export forward `-Y`, up `Z`.
 - License status: original project work; no third-party asset license attached.
-- Validation: `STW_INDUSTRIAL_YARD_01.report.json` records all 64 post-import
+- Validation: `STW_INDUSTRIAL_YARD_01.report.json` records all 72 post-import
   target AABBs and nine group identities.
 - Production foundation: repeated facade ribs, service bands, fasteners,
   truss/gallery details, beacon hardware, flush hazard treatment, and six
@@ -95,6 +95,14 @@
   ISO-style container corner castings, dock bumper posts and warning-stripe
   trim. Non-colliding, visual-only, same as add_high_detail()'s own dressing
   (never added to PhysXArenaRuntime or IndustrialYardLookTemplate).
+- Central hof height variation + sightline breaks (added 2026-09-23): with
+  doorways open on all four walls, the diagonals between adjacent cardinal
+  doorways ran completely uncontested. Four two-tier crate clusters, one per
+  quadrant, break those diagonals and add real verticality (jump up from
+  the low crate to the high one) inside the hof itself, not just at the
+  landmarks around it. Real collision, not decoration - validated by a new
+  Anchor::CentralYardCover envelope bounded by the hof's own floor
+  footprint.
 - Quality boundary: this is authored production foundation data, not a
   blockout. It is still not the final AAA+ cinematic acceptance until O3DE
   import, Vulkan runtime capture, and T4 visual review pass.

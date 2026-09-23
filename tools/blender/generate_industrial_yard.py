@@ -202,6 +202,24 @@ CONNECTOR_SW_PIECES = [
     ("connector_sw_cover_b", "cover", (-10.0, -13.8, 0.75), (1.2, 1.2, 1.5), "hazard"),
 ]
 
+# Central yard height variation + sightline breaks: the 24x24 hof itself only
+# ever had the two center cover boxes - with doorways now open on all four
+# walls, the diagonals between adjacent doorways (e.g. north door to east
+# door) run completely uncontested. Four two-tier crate clusters, one per
+# corner region, break those diagonals and give real verticality (jump up
+# from the low crate to the high one) inside the hof itself, not just at
+# the cardinal landmarks - per the design guide's step 4/5.
+CENTRAL_YARD_COVER_PIECES = [
+    ("central_cover_ne_low", "cover", (7.0, 7.0, 0.6), (1.6, 1.6, 1.2), "steel"),
+    ("central_cover_ne_high", "cover", (7.9, 7.9, 0.9), (1.4, 1.4, 1.8), "steel"),
+    ("central_cover_nw_low", "cover", (-7.0, 7.0, 0.6), (1.6, 1.6, 1.2), "steel"),
+    ("central_cover_nw_high", "cover", (-7.9, 7.9, 0.9), (1.4, 1.4, 1.8), "steel"),
+    ("central_cover_se_low", "cover", (7.0, -8.0, 0.6), (1.6, 1.6, 1.2), "steel"),
+    ("central_cover_se_high", "cover", (7.9, -8.9, 0.9), (1.4, 1.4, 1.8), "steel"),
+    ("central_cover_sw_low", "cover", (-7.0, -8.0, 0.6), (1.6, 1.6, 1.2), "steel"),
+    ("central_cover_sw_high", "cover", (-7.9, -8.9, 0.9), (1.4, 1.4, 1.8), "steel"),
+]
+
 
 def args():
     values = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
@@ -689,6 +707,17 @@ def add_connector_sw(groups, materials, world_bounds):
         world_bounds[name] = {"center": list(center), "size": list(size), "group": group}
 
 
+def add_central_yard_cover(groups, materials, world_bounds):
+    """Four two-tier crate clusters inside the central hof itself, breaking
+    the open diagonals between adjacent cardinal doorways and giving real
+    verticality (jump up from the low crate to the high one) in the hub,
+    not just at the four landmarks around it."""
+    for name, group, center, size, material_name in CENTRAL_YARD_COVER_PIECES:
+        obj = detail_cube(name, center, size, materials[material_name])
+        groups.setdefault(group, []).append(obj)
+        world_bounds[name] = {"center": list(center), "size": list(size), "group": group}
+
+
 def write_material_sources(output, materials):
     material_dir = output / "Materials"
     texture_dir = output / "Textures"
@@ -886,6 +915,7 @@ def main():
     add_connector_ne(groups, materials, world_bounds)
     add_connector_se(groups, materials, world_bounds)
     add_connector_sw(groups, materials, world_bounds)
+    add_central_yard_cover(groups, materials, world_bounds)
 
     write_material_sources(options.output, materials)
 
@@ -915,7 +945,8 @@ def main():
             and len(SCRAPYARD_PIECES) == 6 and len(EAST_CONTAINERHOF_PIECES) == 6
             and len(VERLADEZONE_PIECES) == 5 and len(CONNECTOR_NW_PIECES) == 4
             and len(CONNECTOR_NE_PIECES) == 4 and len(CONNECTOR_SE_PIECES) == 4
-            and len(CONNECTOR_SW_PIECES) == 4 and len(groups) == 9,
+            and len(CONNECTOR_SW_PIECES) == 4 and len(CENTRAL_YARD_COVER_PIECES) == 8
+            and len(groups) == 9,
         "world_bounds": world_bounds,
         "west_annex": {
             "description": "First enterable multi-storey building: doorway "

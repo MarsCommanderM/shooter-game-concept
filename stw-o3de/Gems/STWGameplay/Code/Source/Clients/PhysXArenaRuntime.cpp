@@ -152,7 +152,19 @@ namespace STWGameplay
                 { "STW Connector SW Ground A", AZ::Vector3(-16.0f, -8.5f, -0.05f), AZ::Vector3(3.0f, 9.0f, 0.1f) },
                 { "STW Connector SW Ground B", AZ::Vector3(-10.0f, -13.0f, -0.05f), AZ::Vector3(12.0f, 3.0f, 0.1f) },
                 { "STW Connector SW Cover A", AZ::Vector3(-16.8f, -8.5f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f) },
-                { "STW Connector SW Cover B", AZ::Vector3(-10.0f, -13.8f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f) }
+                { "STW Connector SW Cover B", AZ::Vector3(-10.0f, -13.8f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f) },
+                // Central hof height variation + sightline breaks: four
+                // two-tier crate clusters, one per quadrant, breaking the
+                // open diagonals between adjacent cardinal doorways and
+                // giving real verticality inside the hof itself.
+                { "STW Central Cover NE Low", AZ::Vector3(7.0f, 7.0f, 0.6f), AZ::Vector3(1.6f, 1.6f, 1.2f) },
+                { "STW Central Cover NE High", AZ::Vector3(7.9f, 7.9f, 0.9f), AZ::Vector3(1.4f, 1.4f, 1.8f) },
+                { "STW Central Cover NW Low", AZ::Vector3(-7.0f, 7.0f, 0.6f), AZ::Vector3(1.6f, 1.6f, 1.2f) },
+                { "STW Central Cover NW High", AZ::Vector3(-7.9f, 7.9f, 0.9f), AZ::Vector3(1.4f, 1.4f, 1.8f) },
+                { "STW Central Cover SE Low", AZ::Vector3(7.0f, -8.0f, 0.6f), AZ::Vector3(1.6f, 1.6f, 1.2f) },
+                { "STW Central Cover SE High", AZ::Vector3(7.9f, -8.9f, 0.9f), AZ::Vector3(1.4f, 1.4f, 1.8f) },
+                { "STW Central Cover SW Low", AZ::Vector3(-7.0f, -8.0f, 0.6f), AZ::Vector3(1.6f, 1.6f, 1.2f) },
+                { "STW Central Cover SW High", AZ::Vector3(-7.9f, -8.9f, 0.9f), AZ::Vector3(1.4f, 1.4f, 1.8f) }
             }};
 
         void DeactivateArenaEntity(AZStd::unique_ptr<AZ::Entity>& entity)

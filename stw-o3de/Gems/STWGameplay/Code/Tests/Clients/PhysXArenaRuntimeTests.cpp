@@ -100,6 +100,14 @@ namespace STWGameplay
             { "STW Connector SW Ground B", AZ::Vector3(-10.0f, -13.0f, -0.05f), AZ::Vector3(12.0f, 3.0f, 0.1f), false },
             { "STW Connector SW Cover A", AZ::Vector3(-16.8f, -8.5f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f), false },
             { "STW Connector SW Cover B", AZ::Vector3(-10.0f, -13.8f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f), false },
+            { "STW Central Cover NE Low", AZ::Vector3(7.0f, 7.0f, 0.6f), AZ::Vector3(1.6f, 1.6f, 1.2f), false },
+            { "STW Central Cover NE High", AZ::Vector3(7.9f, 7.9f, 0.9f), AZ::Vector3(1.4f, 1.4f, 1.8f), false },
+            { "STW Central Cover NW Low", AZ::Vector3(-7.0f, 7.0f, 0.6f), AZ::Vector3(1.6f, 1.6f, 1.2f), false },
+            { "STW Central Cover NW High", AZ::Vector3(-7.9f, 7.9f, 0.9f), AZ::Vector3(1.4f, 1.4f, 1.8f), false },
+            { "STW Central Cover SE Low", AZ::Vector3(7.0f, -8.0f, 0.6f), AZ::Vector3(1.6f, 1.6f, 1.2f), false },
+            { "STW Central Cover SE High", AZ::Vector3(7.9f, -8.9f, 0.9f), AZ::Vector3(1.4f, 1.4f, 1.8f), false },
+            { "STW Central Cover SW Low", AZ::Vector3(-7.0f, -8.0f, 0.6f), AZ::Vector3(1.6f, 1.6f, 1.2f), false },
+            { "STW Central Cover SW High", AZ::Vector3(-7.9f, -8.9f, 0.9f), AZ::Vector3(1.4f, 1.4f, 1.8f), false },
         };
         ASSERT_EQ(AZ_ARRAY_SIZE(expectations), PhysXArenaRuntime::StaticColliderCount);
 
@@ -284,5 +292,36 @@ namespace STWGameplay
         const float segmentBMaxY = segmentB->m_center.GetY() + segmentB->m_dimensions.GetY() * 0.5f;
         EXPECT_LT(segmentAMinY, segmentBMaxY);
         EXPECT_GT(segmentAMinY, segmentBMinY);
+    }
+
+    TEST(PhysXArenaRuntimeTests, CentralYardCoverClustersFormARealStepUp)
+    {
+        const auto& colliders = PhysXArenaRuntime::GetStaticColliderDescriptions();
+        const char* pairs[4][2] = {
+            { "STW Central Cover NE Low", "STW Central Cover NE High" },
+            { "STW Central Cover NW Low", "STW Central Cover NW High" },
+            { "STW Central Cover SE Low", "STW Central Cover SE High" },
+            { "STW Central Cover SW Low", "STW Central Cover SW High" },
+        };
+        for (const auto& pair : pairs)
+        {
+            const auto* low = FindCollider(colliders, pair[0]);
+            const auto* high = FindCollider(colliders, pair[1]);
+            ASSERT_NE(low, nullptr) << pair[0];
+            ASSERT_NE(high, nullptr) << pair[1];
+
+            const float lowTop = low->m_center.GetZ() + low->m_dimensions.GetZ() * 0.5f;
+            const float highTop = high->m_center.GetZ() + high->m_dimensions.GetZ() * 0.5f;
+            // A real jump-up step, not a flush or overlapping pair: the high
+            // crate's top must clear the low crate's top by a meaningful,
+            // still-jumpable amount.
+            EXPECT_GT(highTop - lowTop, 0.3f) << pair[1];
+            EXPECT_LT(highTop - lowTop, 1.0f) << pair[1];
+
+            // The two crates must not occupy the same footprint (a real
+            // staggered pair, not one box hidden inside the other).
+            const float planarOffset = (high->m_center - low->m_center).GetLengthSq();
+            EXPECT_GT(planarOffset, 0.5f) << pair[1];
+        }
     }
 }

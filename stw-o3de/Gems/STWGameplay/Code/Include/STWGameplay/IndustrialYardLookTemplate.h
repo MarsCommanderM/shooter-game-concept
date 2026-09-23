@@ -54,7 +54,13 @@ namespace STWGameplay
             //! The SW connector envelope: mirrors ConnectorNW across y=0 -
             //! links the West Annex directly to the South Verladezone,
             //! closing the full loop of connectors around the yard.
-            ConnectorSW
+            ConnectorSW,
+            //! The central hof cover envelope: the four two-tier crate
+            //! clusters that break the open diagonals between adjacent
+            //! cardinal doorways and add verticality inside the hof itself,
+            //! bounded by the hof's own floor footprint (unlike LeftCover/
+            //! RightCover, which are single-collider-specific anchors).
+            CentralYardCover
         };
 
         struct Piece
@@ -74,7 +80,7 @@ namespace STWGameplay
             float m_metallic;
         };
 
-        static constexpr size_t PieceCount = 64;
+        static constexpr size_t PieceCount = 72;
         static constexpr size_t MaterialCount = 4;
 
         static AZStd::array<Piece, PieceCount> GetPieces();

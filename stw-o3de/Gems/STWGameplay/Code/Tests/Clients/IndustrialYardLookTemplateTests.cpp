@@ -183,4 +183,21 @@ namespace STWGameplay
         intrusion.m_center = AZ::Vector3(0.0f, 0.0f, -0.05f);
         EXPECT_FALSE(IndustrialYardLookTemplate::ValidatePiece(intrusion));
     }
+
+    TEST(IndustrialYardLookTemplateTests, CentralYardCoverStaysWithinTheHofFloorFootprint)
+    {
+        auto pieces = IndustrialYardLookTemplate::GetPieces();
+        const size_t index = FindPieceIndex(pieces, "central_cover_ne_high");
+        ASSERT_LT(index, pieces.size());
+        EXPECT_EQ(pieces[index].m_anchor, IndustrialYardLookTemplate::Anchor::CentralYardCover);
+        EXPECT_TRUE(IndustrialYardLookTemplate::ValidatePiece(pieces[index]));
+
+        // Unlike WestAnnex/NorthScrapyard/etc, CentralYardCover's envelope
+        // legitimately includes the hof's center (x=0,y=0) - so the
+        // meaningful rejection case is height, not position: a piece that
+        // reaches up into AboveArena's clearance must still be rejected.
+        auto intrusion = pieces[index];
+        intrusion.m_center = AZ::Vector3(7.9f, 7.9f, 5.0f);
+        EXPECT_FALSE(IndustrialYardLookTemplate::ValidatePiece(intrusion));
+    }
 }
