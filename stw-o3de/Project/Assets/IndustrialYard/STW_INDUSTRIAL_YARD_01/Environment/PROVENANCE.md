@@ -74,6 +74,20 @@
   around the yard: every landmark now reaches every other landmark two
   ways - through the central hof, or around the outside without
   crossing it. Validated by a new Anchor::ConnectorSW envelope.
+- Material pass (added 2026-09-23): the six semantic StandardPBR sources were
+  rewritten from a 128x128 per-pixel sine approximation to 512x512 numpy
+  multi-octave value noise (fine grain + broad stains + gravity-biased grime
+  + a panel-seam grid, all driving one shared height field so basecolor/
+  roughness/normal/AO read as the same physical surface, not independently-
+  random channels). Every generated cube also now gets a real-world-scale
+  planar UV (`apply_world_scale_uv`, ~2.5 m per texture repeat) instead of
+  Blender's default per-face 0..1 UV, which previously stretched the same
+  texture across an entire 24 m floor face and pinched it on 0.3 m trim
+  pieces alike. Verified by direct pixel measurement against a real T4 Vulkan
+  capture (floor mean luma 143/255, 0% clipped - the exposure pipeline was
+  already correct; the flat look was thin material detail + UV stretch, not
+  exposure) and by a close-range EEVEE render showing real concrete panel
+  joints and normal-map bump before touching the production asset directory.
 - Quality boundary: this is authored production foundation data, not a
   blockout. It is still not the final AAA+ cinematic acceptance until O3DE
   import, Vulkan runtime capture, and T4 visual review pass.

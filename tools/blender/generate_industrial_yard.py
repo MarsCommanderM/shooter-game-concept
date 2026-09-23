@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import bpy
+import numpy as np
 from mathutils import Vector
 
 
@@ -217,6 +218,47 @@ def linear_to_srgb(value):
     return 1.055 * value ** (1.0 / 2.4) - 0.055
 
 
+def linear_to_srgb_array(array):
+    """Vectorized linear_to_srgb for a numpy array (same transfer function)."""
+    clamped = np.clip(array, 0.0, 1.0)
+    return np.where(clamped <= 0.0031308, 12.92 * clamped, 1.055 * np.power(clamped, 1.0 / 2.4) - 0.055)
+
+
+def value_noise(shape, cells, seed):
+    """Bilinearly-interpolated random grid ("value noise"): smooth, non-tiling
+    variation with no external noise library, built from a coarse random grid
+    upsampled with numpy - not gradient (Perlin) noise, but visually adequate
+    for material grain/stain variation at the octave counts used below."""
+    rng = np.random.default_rng(seed)
+    grid = rng.random((cells + 1, cells + 1))
+    out_h, out_w = shape
+    y = np.linspace(0.0, cells, out_h)
+    x = np.linspace(0.0, cells, out_w)
+    y0 = np.floor(y).astype(np.int64)
+    x0 = np.floor(x).astype(np.int64)
+    y1 = np.minimum(y0 + 1, cells)
+    x1 = np.minimum(x0 + 1, cells)
+    wy = (y - y0)[:, None]
+    wx = (x - x0)[None, :]
+    top = grid[y0][:, x0] * (1.0 - wx) + grid[y0][:, x1] * wx
+    bottom = grid[y1][:, x0] * (1.0 - wx) + grid[y1][:, x1] * wx
+    return top * (1.0 - wy) + bottom * wy
+
+
+def fbm(shape, seed, octaves=5, base_cells=3, lacunarity=2.3, gain=0.55):
+    """Fractal sum of value_noise octaves, normalized to roughly [0, 1]."""
+    total = np.zeros(shape)
+    amplitude = 1.0
+    max_amplitude = 0.0
+    cells = base_cells
+    for octave in range(octaves):
+        total += value_noise(shape, cells, seed + octave * 97) * amplitude
+        max_amplitude += amplitude
+        amplitude *= gain
+        cells = max(2, round(cells * lacunarity))
+    return total / max_amplitude
+
+
 def mat(name, color, metallic, roughness):
     value = bpy.data.materials.new(name)
     value.diffuse_color = (*color, 1)
@@ -270,12 +312,40 @@ def render_preview(output):
     bpy.ops.render.render(write_still=True)
 
 
+def apply_world_scale_uv(obj, texels_per_meter=0.4):
+    """World-aligned planar UV per face, driven directly by each vertex's real
+    local-space (post transform_apply, so metric) coordinates. Blender's default
+    cube UV always maps every face to a plain 0..1 square regardless of that
+    face's real size, so a 24 m floor and a 0.3 m wall trim piece sharing one
+    material would otherwise both show exactly one texture repeat - the floor
+    stretched to blur, the trim pinched to nothing. This makes one shared
+    material tile at a consistent real-world scale (~1/texels_per_meter metres
+    per repeat) across every object, independent of that object's own size."""
+    mesh = obj.data
+    if not mesh.uv_layers:
+        mesh.uv_layers.new(name="UVMap")
+    uv_layer = mesh.uv_layers[0].data
+    for polygon in mesh.polygons:
+        normal = polygon.normal
+        axis = max(range(3), key=lambda index: abs(normal[index]))
+        for loop_index in polygon.loop_indices:
+            vertex = mesh.vertices[mesh.loops[loop_index].vertex_index]
+            if axis == 0:
+                u, v = vertex.co.y, vertex.co.z
+            elif axis == 1:
+                u, v = vertex.co.x, vertex.co.z
+            else:
+                u, v = vertex.co.x, vertex.co.y
+            uv_layer[loop_index].uv = (u * texels_per_meter, v * texels_per_meter)
+
+
 def detail_cube(name, center, size, material, bevel=0.012):
     bpy.ops.mesh.primitive_cube_add(location=center)
     obj = bpy.context.object
     obj.name = name
     obj.scale = tuple(value * 0.5 for value in size)
     bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+    apply_world_scale_uv(obj)
     obj.data.materials.append(material)
     if bevel:
         modifier = obj.modifiers.new("ProductionEdgeBevel", "BEVEL")
@@ -546,45 +616,74 @@ def write_material_sources(output, materials):
         "water": ((0.025, 0.075, 0.10, 1.0), 0.0, 0.07),
     }
     generated_maps = {}
-    texture_size = 128
-    for name, (color, metallic, roughness) in definitions.items():
+    texture_size = 512
+    shape = (texture_size, texture_size)
+    for material_index, (name, (color, metallic, roughness)) in enumerate(definitions.items()):
         generated_maps[name] = {}
+        seed = material_index * 4001 + 17
+
+        # Fine surface grain (many octaves, small cells) and broad stains/blotches
+        # (few octaves, large cells) combine into a height field that drives every
+        # map below, so color/roughness/normal/AO all read as the SAME physical
+        # surface instead of independently-random channels.
+        fine_grain = fbm(shape, seed, octaves=6, base_cells=28, lacunarity=1.85, gain=0.55)
+        broad_stain = fbm(shape, seed + 500, octaves=3, base_cells=4, lacunarity=2.1, gain=0.6)
+        grime_field = fbm(shape, seed + 900, octaves=4, base_cells=6, lacunarity=2.0, gain=0.5)
+        height = np.clip(0.55 * fine_grain + 0.45 * broad_stain, 0.0, 1.0)
+
+        # Gravity-biased grime: stronger toward one texture edge, which - combined
+        # with apply_world_scale_uv's world-aligned wall UVs (V follows world Z) -
+        # reads as real dirt accumulation near the ground on vertical surfaces.
+        v_coord = np.linspace(0.0, 1.0, texture_size)[:, None]
+        grime = np.clip(grime_field * (0.25 + 0.75 * (1.0 - v_coord)), 0.0, 1.0)
+
+        # Panel-seam wear: a fixed low-frequency grid pattern, independent of the
+        # noise fields, simulating expansion joints / panel edges on large flat
+        # production surfaces (concrete slabs, steel cladding sheets).
+        grid_freq = 6.0
+        u_coord = np.linspace(0.0, 1.0, texture_size)[None, :]
+        seam_u = np.abs(((u_coord * grid_freq) % 1.0) - 0.5)
+        seam_v = np.abs(((v_coord * grid_freq) % 1.0) - 0.5)
+        seam_distance = np.minimum(seam_u, seam_v)
+        seam_wear = 1.0 - 0.30 * np.clip(1.0 - seam_distance / 0.05, 0.0, 1.0)
+
+        wear = np.clip((0.78 + 0.22 * height) * seam_wear - 0.30 * grime, 0.18, 1.05)
+
+        # Correlated normal detail from the height field's own gradient (a cheap
+        # Sobel), so bumps read as real surface geometry rather than independent
+        # per-channel noise that never lines up with the visible base color.
+        gradient_y, gradient_x = np.gradient(height)
+        normal_strength = 3.2
+        normal_x = np.clip(0.5 - gradient_x * normal_strength, 0.0, 1.0)
+        normal_y = np.clip(0.5 - gradient_y * normal_strength, 0.0, 1.0)
+        normal_z = np.full(shape, 0.95)
+        cavity = np.clip(
+            1.0 - (np.abs(gradient_x) + np.abs(gradient_y)) * 4.0, 0.0, 1.0)
+
         for map_name in ("basecolor", "metallic", "roughness", "normal", "ao"):
+            if map_name == "basecolor":
+                # Colors are linear (Principled BSDF inputs); the PNG is read as sRGB.
+                channels = [linear_to_srgb_array(color[channel] * wear) for channel in range(3)]
+                pixel_array = np.dstack(channels + [np.ones(shape)])
+            elif map_name == "metallic":
+                metallic_variation = 0.015 if metallic == 0.0 else metallic * 0.22
+                metal = np.clip(
+                    metallic + metallic_variation * (fine_grain - 0.5) - 0.05 * grime, 0.0, 1.0)
+                pixel_array = np.dstack([metal, metal, metal, np.ones(shape)])
+            elif map_name == "roughness":
+                rough = np.clip(
+                    roughness * (0.85 + 0.35 * (1.0 - height)) + 0.20 * grime, 0.02, 1.0)
+                pixel_array = np.dstack([rough, rough, rough, np.ones(shape)])
+            elif map_name == "normal":
+                pixel_array = np.dstack([normal_x, normal_y, normal_z, np.ones(shape)])
+            else:
+                ao = np.clip(0.75 + 0.25 * cavity - 0.15 * grime, 0.2, 1.0)
+                pixel_array = np.dstack([ao, ao, ao, np.ones(shape)])
+
             image = bpy.data.images.new(
                 f"IY_{name}_{map_name}", width=texture_size, height=texture_size, alpha=True
             )
-            pixels = []
-            for y in range(texture_size):
-                for x in range(texture_size):
-                    u = x / (texture_size - 1)
-                    v = y / (texture_size - 1)
-                    grain = 0.5 + 0.5 * math.sin((u * 37.0 + v * 19.0 + len(name)) * math.pi)
-                    broad = 0.5 + 0.5 * math.sin((u * 5.0 - v * 3.0 + len(map_name)) * math.pi)
-                    wear = 0.84 + 0.16 * (0.65 * grain + 0.35 * broad)
-                    if map_name == "basecolor":
-                        # Colors are linear (Principled BSDF inputs); the PNG is read as sRGB.
-                        value = tuple(linear_to_srgb(min(1.0, channel * wear)) for channel in color[:3]) + (1.0,)
-                    elif map_name == "metallic":
-                        metallic_variation = 0.012 if metallic == 0.0 else metallic * 0.18
-                        metal = min(
-                            1.0,
-                            max(0.0, metallic + metallic_variation * (grain - 0.5)),
-                        )
-                        value = (metal, metal, metal, 1.0)
-                    elif map_name == "roughness":
-                        rough = min(1.0, roughness * (0.88 + 0.18 * broad))
-                        value = (rough, rough, rough, 1.0)
-                    elif map_name == "normal":
-                        value = (
-                            0.5 + 0.08 * (grain - 0.5) + 0.025 * math.sin(u * math.pi * 18.0),
-                            0.5 + 0.08 * (broad - 0.5) + 0.025 * math.cos(v * math.pi * 14.0),
-                            0.92 + 0.08 * grain,
-                            1.0,
-                        )
-                    else:
-                        value = (wear, wear, wear, 1.0)
-                    pixels.extend(value)
-            image.pixels = pixels
+            image.pixels = pixel_array.astype(np.float32).ravel().tolist()
             path = texture_dir / f"STW_INDUSTRIAL_YARD_01_{name}_{map_name}.png"
             image.filepath_raw = str(path)
             image.file_format = "PNG"
@@ -667,6 +766,7 @@ def main():
         obj.name = name
         obj.scale = tuple(value * 0.5 for value in size)
         bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+        apply_world_scale_uv(obj)
         obj.data.materials.append(materials[material_name])
         bevel = obj.modifiers.new("EdgeWearBevel", "BEVEL")
         bevel.width = min(0.04, min(size) * 0.15)
