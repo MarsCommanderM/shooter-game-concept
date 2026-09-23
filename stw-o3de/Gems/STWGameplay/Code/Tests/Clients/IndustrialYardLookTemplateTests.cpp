@@ -200,4 +200,13 @@ namespace STWGameplay
         intrusion.m_center = AZ::Vector3(7.9f, 7.9f, 5.0f);
         EXPECT_FALSE(IndustrialYardLookTemplate::ValidatePiece(intrusion));
     }
+
+    TEST(IndustrialYardLookTemplateTests, ConnectorLaneBreaksAreWithinTheirConnectorEnvelope)
+    {
+        auto pieces = IndustrialYardLookTemplate::GetPieces();
+        const size_t index = FindPieceIndex(pieces, "connector_nw_lane_break");
+        ASSERT_LT(index, pieces.size());
+        EXPECT_EQ(pieces[index].m_anchor, IndustrialYardLookTemplate::Anchor::ConnectorNW);
+        EXPECT_TRUE(IndustrialYardLookTemplate::ValidatePiece(pieces[index]));
+    }
 }

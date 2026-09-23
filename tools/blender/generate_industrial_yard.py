@@ -170,6 +170,11 @@ CONNECTOR_NW_PIECES = [
     ("connector_nw_ground_b", "deck", (-10, 13, -0.05), (12, 3, 0.1), "concrete"),
     ("connector_nw_cover_a", "cover", (-16.8, 8.5, 0.75), (1.2, 1.2, 1.5), "hazard"),
     ("connector_nw_cover_b", "cover", (-10.0, 13.8, 0.75), (1.2, 1.2, 1.5), "hazard"),
+    # Lane-break chicane: the corner cover props alone don't block the full
+    # 3 m lane width, so a straight shot runs the entire 12 m of segment B.
+    # A real, mid-span, part-width pillar forces a walk-around, leaving a
+    # ~1.2 m gap on the north side (the side without connector_nw_cover_b).
+    ("connector_nw_lane_break", "cover", (-13.0, 12.4, 0.8), (0.6, 1.8, 1.6), "steel"),
 ]
 
 # NE connector: same idea, mirrored - links North Scrapyard directly to
@@ -180,6 +185,8 @@ CONNECTOR_NE_PIECES = [
     ("connector_ne_ground_b", "deck", (10, 13, -0.05), (12, 3, 0.1), "concrete"),
     ("connector_ne_cover_a", "cover", (16.8, 9.5, 0.75), (1.2, 1.2, 1.5), "hazard"),
     ("connector_ne_cover_b", "cover", (10.0, 13.8, 0.75), (1.2, 1.2, 1.5), "hazard"),
+    # Gap on the south side this time, for route variety across the network.
+    ("connector_ne_lane_break", "cover", (13.0, 13.6, 0.8), (0.6, 1.8, 1.6), "steel"),
 ]
 
 # SE connector: mirrors NE across y=0 - links the East Containerhof
@@ -190,6 +197,7 @@ CONNECTOR_SE_PIECES = [
     ("connector_se_ground_b", "deck", (10, -13, -0.05), (12, 3, 0.1), "concrete"),
     ("connector_se_cover_a", "cover", (16.8, -9.5, 0.75), (1.2, 1.2, 1.5), "hazard"),
     ("connector_se_cover_b", "cover", (10.0, -13.8, 0.75), (1.2, 1.2, 1.5), "hazard"),
+    ("connector_se_lane_break", "cover", (13.0, -13.6, 0.8), (0.6, 1.8, 1.6), "steel"),
 ]
 
 # SW connector: mirrors NW across y=0 - links the West Annex directly to
@@ -200,6 +208,7 @@ CONNECTOR_SW_PIECES = [
     ("connector_sw_ground_b", "deck", (-10, -13, -0.05), (12, 3, 0.1), "concrete"),
     ("connector_sw_cover_a", "cover", (-16.8, -8.5, 0.75), (1.2, 1.2, 1.5), "hazard"),
     ("connector_sw_cover_b", "cover", (-10.0, -13.8, 0.75), (1.2, 1.2, 1.5), "hazard"),
+    ("connector_sw_lane_break", "cover", (-13.0, -12.4, 0.8), (0.6, 1.8, 1.6), "steel"),
 ]
 
 # Central yard height variation + sightline breaks: the 24x24 hof itself only
@@ -943,9 +952,9 @@ def main():
         "groups": sorted(groups),
         "contract_valid": len(PIECES) == 18 and len(ANNEX_PIECES) == 8
             and len(SCRAPYARD_PIECES) == 6 and len(EAST_CONTAINERHOF_PIECES) == 6
-            and len(VERLADEZONE_PIECES) == 5 and len(CONNECTOR_NW_PIECES) == 4
-            and len(CONNECTOR_NE_PIECES) == 4 and len(CONNECTOR_SE_PIECES) == 4
-            and len(CONNECTOR_SW_PIECES) == 4 and len(CENTRAL_YARD_COVER_PIECES) == 8
+            and len(VERLADEZONE_PIECES) == 5 and len(CONNECTOR_NW_PIECES) == 5
+            and len(CONNECTOR_NE_PIECES) == 5 and len(CONNECTOR_SE_PIECES) == 5
+            and len(CONNECTOR_SW_PIECES) == 5 and len(CENTRAL_YARD_COVER_PIECES) == 8
             and len(groups) == 9,
         "world_bounds": world_bounds,
         "west_annex": {

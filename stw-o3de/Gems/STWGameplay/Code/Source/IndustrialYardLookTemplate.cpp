@@ -194,6 +194,8 @@ namespace STWGameplay
                 AZ::Vector3(1.2f, 1.2f, 1.5f), Anchor::ConnectorNW },
             { "connector_nw_cover_b", "cover", AZ::Vector3(-10.0f, 13.8f, 0.75f),
                 AZ::Vector3(1.2f, 1.2f, 1.5f), Anchor::ConnectorNW },
+            { "connector_nw_lane_break", "cover", AZ::Vector3(-13.0f, 12.4f, 0.8f),
+                AZ::Vector3(0.6f, 1.8f, 1.6f), Anchor::ConnectorNW },
             // NE connector: mirrors the NW connector - links the North
             // Scrapyard directly to the East Containerhof.
             { "connector_ne_ground_a", "deck", AZ::Vector3(16.0f, 9.5f, -0.05f),
@@ -204,6 +206,8 @@ namespace STWGameplay
                 AZ::Vector3(1.2f, 1.2f, 1.5f), Anchor::ConnectorNE },
             { "connector_ne_cover_b", "cover", AZ::Vector3(10.0f, 13.8f, 0.75f),
                 AZ::Vector3(1.2f, 1.2f, 1.5f), Anchor::ConnectorNE },
+            { "connector_ne_lane_break", "cover", AZ::Vector3(13.0f, 13.6f, 0.8f),
+                AZ::Vector3(0.6f, 1.8f, 1.6f), Anchor::ConnectorNE },
             // SE connector: mirrors the NE connector across y=0 - links the
             // East Containerhof directly to the South Verladezone.
             { "connector_se_ground_a", "deck", AZ::Vector3(16.0f, -9.5f, -0.05f),
@@ -214,6 +218,8 @@ namespace STWGameplay
                 AZ::Vector3(1.2f, 1.2f, 1.5f), Anchor::ConnectorSE },
             { "connector_se_cover_b", "cover", AZ::Vector3(10.0f, -13.8f, 0.75f),
                 AZ::Vector3(1.2f, 1.2f, 1.5f), Anchor::ConnectorSE },
+            { "connector_se_lane_break", "cover", AZ::Vector3(13.0f, -13.6f, 0.8f),
+                AZ::Vector3(0.6f, 1.8f, 1.6f), Anchor::ConnectorSE },
             // SW connector: mirrors the NW connector across y=0 - links the
             // West Annex directly to the South Verladezone, closing the
             // full loop of connectors around the yard.
@@ -225,6 +231,8 @@ namespace STWGameplay
                 AZ::Vector3(1.2f, 1.2f, 1.5f), Anchor::ConnectorSW },
             { "connector_sw_cover_b", "cover", AZ::Vector3(-10.0f, -13.8f, 0.75f),
                 AZ::Vector3(1.2f, 1.2f, 1.5f), Anchor::ConnectorSW },
+            { "connector_sw_lane_break", "cover", AZ::Vector3(-13.0f, -12.4f, 0.8f),
+                AZ::Vector3(0.6f, 1.8f, 1.6f), Anchor::ConnectorSW },
             // Central hof height variation + sightline breaks: mirrors
             // tools/blender/generate_industrial_yard.py's
             // CENTRAL_YARD_COVER_PIECES.

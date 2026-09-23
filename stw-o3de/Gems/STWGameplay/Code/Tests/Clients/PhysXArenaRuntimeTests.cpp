@@ -88,18 +88,22 @@ namespace STWGameplay
             { "STW Connector NW Ground B", AZ::Vector3(-10.0f, 13.0f, -0.05f), AZ::Vector3(12.0f, 3.0f, 0.1f), false },
             { "STW Connector NW Cover A", AZ::Vector3(-16.8f, 8.5f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f), false },
             { "STW Connector NW Cover B", AZ::Vector3(-10.0f, 13.8f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f), false },
+            { "STW Connector NW Lane Break", AZ::Vector3(-13.0f, 12.4f, 0.8f), AZ::Vector3(0.6f, 1.8f, 1.6f), false },
             { "STW Connector NE Ground A", AZ::Vector3(16.0f, 9.5f, -0.05f), AZ::Vector3(3.0f, 7.0f, 0.1f), false },
             { "STW Connector NE Ground B", AZ::Vector3(10.0f, 13.0f, -0.05f), AZ::Vector3(12.0f, 3.0f, 0.1f), false },
             { "STW Connector NE Cover A", AZ::Vector3(16.8f, 9.5f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f), false },
             { "STW Connector NE Cover B", AZ::Vector3(10.0f, 13.8f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f), false },
+            { "STW Connector NE Lane Break", AZ::Vector3(13.0f, 13.6f, 0.8f), AZ::Vector3(0.6f, 1.8f, 1.6f), false },
             { "STW Connector SE Ground A", AZ::Vector3(16.0f, -9.5f, -0.05f), AZ::Vector3(3.0f, 7.0f, 0.1f), false },
             { "STW Connector SE Ground B", AZ::Vector3(10.0f, -13.0f, -0.05f), AZ::Vector3(12.0f, 3.0f, 0.1f), false },
             { "STW Connector SE Cover A", AZ::Vector3(16.8f, -9.5f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f), false },
             { "STW Connector SE Cover B", AZ::Vector3(10.0f, -13.8f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f), false },
+            { "STW Connector SE Lane Break", AZ::Vector3(13.0f, -13.6f, 0.8f), AZ::Vector3(0.6f, 1.8f, 1.6f), false },
             { "STW Connector SW Ground A", AZ::Vector3(-16.0f, -8.5f, -0.05f), AZ::Vector3(3.0f, 9.0f, 0.1f), false },
             { "STW Connector SW Ground B", AZ::Vector3(-10.0f, -13.0f, -0.05f), AZ::Vector3(12.0f, 3.0f, 0.1f), false },
             { "STW Connector SW Cover A", AZ::Vector3(-16.8f, -8.5f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f), false },
             { "STW Connector SW Cover B", AZ::Vector3(-10.0f, -13.8f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f), false },
+            { "STW Connector SW Lane Break", AZ::Vector3(-13.0f, -12.4f, 0.8f), AZ::Vector3(0.6f, 1.8f, 1.6f), false },
             { "STW Central Cover NE Low", AZ::Vector3(7.0f, 7.0f, 0.6f), AZ::Vector3(1.6f, 1.6f, 1.2f), false },
             { "STW Central Cover NE High", AZ::Vector3(7.9f, 7.9f, 0.9f), AZ::Vector3(1.4f, 1.4f, 1.8f), false },
             { "STW Central Cover NW Low", AZ::Vector3(-7.0f, 7.0f, 0.6f), AZ::Vector3(1.6f, 1.6f, 1.2f), false },
@@ -322,6 +326,45 @@ namespace STWGameplay
             // staggered pair, not one box hidden inside the other).
             const float planarOffset = (high->m_center - low->m_center).GetLengthSq();
             EXPECT_GT(planarOffset, 0.5f) << pair[1];
+        }
+    }
+
+    TEST(PhysXArenaRuntimeTests, ConnectorLaneBreaksFormARealChicaneNotADeadEnd)
+    {
+        // A lane-break pillar that fully overlaps the existing corner cover
+        // piece in X would combine with it to block the whole 3 m lane width
+        // (this broke once already, caught before the gate: see
+        // tools/blender/generate_industrial_yard.py's CONNECTOR_*_PIECES
+        // comments). Each pillar must sit at a DIFFERENT x-slice than its
+        // connector's Cover B, and each of those two slices must still leave
+        // a real, walkable gap somewhere in the 3 m lane width.
+        const auto& colliders = PhysXArenaRuntime::GetStaticColliderDescriptions();
+        const char* pairs[4][2] = {
+            { "STW Connector NW Cover B", "STW Connector NW Lane Break" },
+            { "STW Connector NE Cover B", "STW Connector NE Lane Break" },
+            { "STW Connector SE Cover B", "STW Connector SE Lane Break" },
+            { "STW Connector SW Cover B", "STW Connector SW Lane Break" },
+        };
+        constexpr float LaneWidthMeters = 3.0f;
+        constexpr float MinimumWalkableGapMeters = 0.8f;
+        for (const auto& pair : pairs)
+        {
+            const auto* coverB = FindCollider(colliders, pair[0]);
+            const auto* laneBreak = FindCollider(colliders, pair[1]);
+            ASSERT_NE(coverB, nullptr) << pair[0];
+            ASSERT_NE(laneBreak, nullptr) << pair[1];
+
+            const float coverBMinX = coverB->m_center.GetX() - coverB->m_dimensions.GetX() * 0.5f;
+            const float coverBMaxX = coverB->m_center.GetX() + coverB->m_dimensions.GetX() * 0.5f;
+            const float laneBreakMinX = laneBreak->m_center.GetX() - laneBreak->m_dimensions.GetX() * 0.5f;
+            const float laneBreakMaxX = laneBreak->m_center.GetX() + laneBreak->m_dimensions.GetX() * 0.5f;
+            const bool xOverlaps = laneBreakMinX < coverBMaxX && laneBreakMaxX > coverBMinX;
+            EXPECT_FALSE(xOverlaps) << pair[1];
+
+            const float coverBGap = LaneWidthMeters - coverB->m_dimensions.GetY();
+            const float laneBreakGap = LaneWidthMeters - laneBreak->m_dimensions.GetY();
+            EXPECT_GT(coverBGap, MinimumWalkableGapMeters) << pair[0];
+            EXPECT_GT(laneBreakGap, MinimumWalkableGapMeters) << pair[1];
         }
     }
 }

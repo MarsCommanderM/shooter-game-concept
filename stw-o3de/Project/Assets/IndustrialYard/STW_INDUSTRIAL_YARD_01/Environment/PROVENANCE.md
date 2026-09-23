@@ -8,7 +8,7 @@
   `9ba871ff2ecd36526b77432745980b7e6664ecd0c7ca11c48849073dcfe06da3`.
 - Coordinate convention: source Z-up; FBX export forward `-Y`, up `Z`.
 - License status: original project work; no third-party asset license attached.
-- Validation: `STW_INDUSTRIAL_YARD_01.report.json` records all 72 post-import
+- Validation: `STW_INDUSTRIAL_YARD_01.report.json` records all 76 post-import
   target AABBs and nine group identities.
 - Production foundation: repeated facade ribs, service bands, fasteners,
   truss/gallery details, beacon hardware, flush hazard treatment, and six
@@ -103,6 +103,19 @@
   landmarks around it. Real collision, not decoration - validated by a new
   Anchor::CentralYardCover envelope bounded by the hof's own floor
   footprint.
+- Connector lane-break chicanes (added 2026-09-23): each of the four corner
+  connectors only had two corner-accent cover props, which never actually
+  blocked the full 3 m lane width - a straight shot ran the entire 12 m of
+  each connector's long segment. One mid-span, part-width pillar per
+  connector, deliberately placed at a different point along the lane than
+  the existing corner cover, forces a real weave: a walkable gap opens on
+  one side near the corner cover and on the other side near the new pillar,
+  so a player can't walk the lane in a straight line. Reuses the existing
+  Anchor::ConnectorNW/NE/SE/SW envelopes (no new anchor needed). A first
+  attempt placed the new pillar at the same x-position as the existing
+  corner cover, which combined to block the whole lane with no gap at all -
+  caught by direct geometric computation before touching any O3DE code, not
+  by trial and error.
 - Quality boundary: this is authored production foundation data, not a
   blockout. It is still not the final AAA+ cinematic acceptance until O3DE
   import, Vulkan runtime capture, and T4 visual review pass.

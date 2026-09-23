@@ -4,7 +4,7 @@
     "description": "Outdoor L-shaped walkway linking the West Annex directly to the North Scrapyard, bypassing the central hof - the first genuine crossing route beyond the hub-and-spoke cardinal landmarks, per the route-network-first map design guide. Flat, no ramp."
   },
   "contract_valid": true,
-  "detail_object_count": 331,
+  "detail_object_count": 335,
   "east_containerhof": {
     "description": "Third landmark: stacked shipping-container cover with one elevated platform reached by a ramp - no walls, no crane, a deliberately different silhouette from the first two landmarks. Built as a real greybox pass (simple boxes, no high-detail dressing) per the route-network-first map design guide.",
     "doorway_y_span": [
@@ -101,7 +101,7 @@
       }
     ]
   },
-  "piece_count": 72,
+  "piece_count": 76,
   "quality_status": "source-generated; O3DE import and T4 visual review pending",
   "quality_tier": "high_end_procedural_foundation",
   "south_verladezone": {
@@ -428,6 +428,19 @@
         0.1
       ]
     },
+    "connector_ne_lane_break": {
+      "center": [
+        13.0,
+        13.6,
+        0.8
+      ],
+      "group": "cover",
+      "size": [
+        0.6,
+        1.8,
+        1.6
+      ]
+    },
     "connector_nw_cover_a": {
       "center": [
         -16.8,
@@ -478,6 +491,19 @@
         12,
         3,
         0.1
+      ]
+    },
+    "connector_nw_lane_break": {
+      "center": [
+        -13.0,
+        12.4,
+        0.8
+      ],
+      "group": "cover",
+      "size": [
+        0.6,
+        1.8,
+        1.6
       ]
     },
     "connector_se_cover_a": {
@@ -532,6 +558,19 @@
         0.1
       ]
     },
+    "connector_se_lane_break": {
+      "center": [
+        13.0,
+        -13.6,
+        0.8
+      ],
+      "group": "cover",
+      "size": [
+        0.6,
+        1.8,
+        1.6
+      ]
+    },
     "connector_sw_cover_a": {
       "center": [
         -16.8,
@@ -582,6 +621,19 @@
         12,
         3,
         0.1
+      ]
+    },
+    "connector_sw_lane_break": {
+      "center": [
+        -13.0,
+        -12.4,
+        0.8
+      ],
+      "group": "cover",
+      "size": [
+        0.6,
+        1.8,
+        1.6
       ]
     },
     "container_low_a": {

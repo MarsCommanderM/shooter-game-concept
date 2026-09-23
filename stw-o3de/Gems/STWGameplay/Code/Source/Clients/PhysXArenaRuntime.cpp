@@ -131,6 +131,9 @@ namespace STWGameplay
                 { "STW Connector NW Ground B", AZ::Vector3(-10.0f, 13.0f, -0.05f), AZ::Vector3(12.0f, 3.0f, 0.1f) },
                 { "STW Connector NW Cover A", AZ::Vector3(-16.8f, 8.5f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f) },
                 { "STW Connector NW Cover B", AZ::Vector3(-10.0f, 13.8f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f) },
+                // Lane-break chicane: at a different x-slice than Cover B,
+                // leaving a real ~1.2 m gap on the north side of the lane.
+                { "STW Connector NW Lane Break", AZ::Vector3(-13.0f, 12.4f, 0.8f), AZ::Vector3(0.6f, 1.8f, 1.6f) },
                 // NE connector: outdoor L-shaped walkway linking the North
                 // Scrapyard directly to the East Containerhof, bypassing
                 // the central hof. Flat, axis-aligned, no ramp.
@@ -138,6 +141,8 @@ namespace STWGameplay
                 { "STW Connector NE Ground B", AZ::Vector3(10.0f, 13.0f, -0.05f), AZ::Vector3(12.0f, 3.0f, 0.1f) },
                 { "STW Connector NE Cover A", AZ::Vector3(16.8f, 9.5f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f) },
                 { "STW Connector NE Cover B", AZ::Vector3(10.0f, 13.8f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f) },
+                // Gap on the south side this time, for route variety.
+                { "STW Connector NE Lane Break", AZ::Vector3(13.0f, 13.6f, 0.8f), AZ::Vector3(0.6f, 1.8f, 1.6f) },
                 // SE connector: outdoor L-shaped walkway linking the East
                 // Containerhof directly to the South Verladezone, bypassing
                 // the central hof. Flat, axis-aligned, no ramp.
@@ -145,6 +150,7 @@ namespace STWGameplay
                 { "STW Connector SE Ground B", AZ::Vector3(10.0f, -13.0f, -0.05f), AZ::Vector3(12.0f, 3.0f, 0.1f) },
                 { "STW Connector SE Cover A", AZ::Vector3(16.8f, -9.5f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f) },
                 { "STW Connector SE Cover B", AZ::Vector3(10.0f, -13.8f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f) },
+                { "STW Connector SE Lane Break", AZ::Vector3(13.0f, -13.6f, 0.8f), AZ::Vector3(0.6f, 1.8f, 1.6f) },
                 // SW connector: outdoor L-shaped walkway linking the West
                 // Annex directly to the South Verladezone, bypassing the
                 // central hof. Closes the full loop of connectors around
@@ -153,6 +159,7 @@ namespace STWGameplay
                 { "STW Connector SW Ground B", AZ::Vector3(-10.0f, -13.0f, -0.05f), AZ::Vector3(12.0f, 3.0f, 0.1f) },
                 { "STW Connector SW Cover A", AZ::Vector3(-16.8f, -8.5f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f) },
                 { "STW Connector SW Cover B", AZ::Vector3(-10.0f, -13.8f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f) },
+                { "STW Connector SW Lane Break", AZ::Vector3(-13.0f, -12.4f, 0.8f), AZ::Vector3(0.6f, 1.8f, 1.6f) },
                 // Central hof height variation + sightline breaks: four
                 // two-tier crate clusters, one per quadrant, breaking the
                 // open diagonals between adjacent cardinal doorways and
