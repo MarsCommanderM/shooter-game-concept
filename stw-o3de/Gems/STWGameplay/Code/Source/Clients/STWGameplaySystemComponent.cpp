@@ -4342,6 +4342,13 @@ namespace STWGameplay
 
         const bool firstPersonArmsProfileActive =
             m_model.GetActiveEquipmentProfileId() == EquipmentProfileId::STW_RIFLE_02;
+        if (firstPersonArmsProfileActive != m_firstPersonArmsProfileWasActive)
+        {
+            AZ_Printf(
+                "STWGameplay", "STW_DIAG_WEAPON_PROFILE_TRANSITION active_profile=%d rifle02_active=%d\n",
+                static_cast<int>(m_model.GetActiveEquipmentProfileId()), firstPersonArmsProfileActive ? 1 : 0);
+            m_firstPersonArmsProfileWasActive = firstPersonArmsProfileActive;
+        }
         if (firstPersonArmsProfileActive)
         {
             m_firstPersonArms.SetVisible(true);

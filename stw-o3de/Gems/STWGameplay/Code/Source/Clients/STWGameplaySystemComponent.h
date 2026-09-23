@@ -241,6 +241,7 @@ namespace STWGameplay
         // Skinned arms/gloves/integrated-rifle presentation for STW_RIFLE_02 only (the profile
         // the STW_FP_01 asset was authored for); other profiles keep the static viewmodel mesh.
         STWFirstPersonArmsPresentation m_firstPersonArms;
+        bool m_firstPersonArmsProfileWasActive = false;
         CombatFeedbackPresentation m_combatFeedback;
         AudioFeedbackPresentation m_audioFeedback;
         EncounterModel m_encounter;
