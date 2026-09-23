@@ -144,4 +144,17 @@ namespace STWGameplay
         intrusion.m_center = AZ::Vector3(0.0f, 0.0f, -0.05f);
         EXPECT_FALSE(IndustrialYardLookTemplate::ValidatePiece(intrusion));
     }
+
+    TEST(IndustrialYardLookTemplateTests, ConnectorNELinksScrapyardToContainerhofWithoutTouchingCentralFloor)
+    {
+        auto pieces = IndustrialYardLookTemplate::GetPieces();
+        const size_t index = FindPieceIndex(pieces, "connector_ne_ground_b");
+        ASSERT_LT(index, pieces.size());
+        EXPECT_EQ(pieces[index].m_anchor, IndustrialYardLookTemplate::Anchor::ConnectorNE);
+        EXPECT_TRUE(IndustrialYardLookTemplate::ValidatePiece(pieces[index]));
+
+        auto intrusion = pieces[index];
+        intrusion.m_center = AZ::Vector3(0.0f, 0.0f, -0.05f);
+        EXPECT_FALSE(IndustrialYardLookTemplate::ValidatePiece(intrusion));
+    }
 }

@@ -4,7 +4,7 @@
     "description": "Outdoor L-shaped walkway linking the West Annex directly to the North Scrapyard, bypassing the central hof - the first genuine crossing route beyond the hub-and-spoke cardinal landmarks, per the route-network-first map design guide. Flat, no ramp."
   },
   "contract_valid": true,
-  "detail_object_count": 197,
+  "detail_object_count": 201,
   "east_containerhof": {
     "description": "Third landmark: stacked shipping-container cover with one elevated platform reached by a ramp - no walls, no crane, a deliberately different silhouette from the first two landmarks. Built as a real greybox pass (simple boxes, no high-detail dressing) per the route-network-first map design guide.",
     "doorway_y_span": [
@@ -101,7 +101,7 @@
       }
     ]
   },
-  "piece_count": 52,
+  "piece_count": 56,
   "quality_status": "source-generated; O3DE import and T4 visual review pending",
   "quality_tier": "high_end_procedural_foundation",
   "south_verladezone": {
@@ -270,6 +270,58 @@
         6,
         2.75,
         0.15
+      ]
+    },
+    "connector_ne_cover_a": {
+      "center": [
+        16.8,
+        9.5,
+        0.75
+      ],
+      "group": "cover",
+      "size": [
+        1.2,
+        1.2,
+        1.5
+      ]
+    },
+    "connector_ne_cover_b": {
+      "center": [
+        10.0,
+        13.8,
+        0.75
+      ],
+      "group": "cover",
+      "size": [
+        1.2,
+        1.2,
+        1.5
+      ]
+    },
+    "connector_ne_ground_a": {
+      "center": [
+        16,
+        9.5,
+        -0.05
+      ],
+      "group": "deck",
+      "size": [
+        3,
+        7,
+        0.1
+      ]
+    },
+    "connector_ne_ground_b": {
+      "center": [
+        10,
+        13,
+        -0.05
+      ],
+      "group": "deck",
+      "size": [
+        12,
+        3,
+        0.1
       ]
     },
     "connector_nw_cover_a": {

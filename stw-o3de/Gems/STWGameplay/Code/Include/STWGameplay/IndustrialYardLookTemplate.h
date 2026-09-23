@@ -44,7 +44,10 @@ namespace STWGameplay
             //! previously-empty exterior corner (x<-12, y>12) linking the
             //! West Annex directly to the North Scrapyard, bypassing the
             //! central hof - a real crossing route, not another landmark.
-            ConnectorNW
+            ConnectorNW,
+            //! The NE connector envelope: mirrors ConnectorNW - links the
+            //! North Scrapyard directly to the East Containerhof.
+            ConnectorNE
         };
 
         struct Piece
@@ -64,7 +67,7 @@ namespace STWGameplay
             float m_metallic;
         };
 
-        static constexpr size_t PieceCount = 52;
+        static constexpr size_t PieceCount = 56;
         static constexpr size_t MaterialCount = 4;
 
         static AZStd::array<Piece, PieceCount> GetPieces();

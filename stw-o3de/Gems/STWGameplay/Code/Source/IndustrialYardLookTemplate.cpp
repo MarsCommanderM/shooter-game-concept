@@ -193,7 +193,17 @@ namespace STWGameplay
             { "connector_nw_cover_a", "cover", AZ::Vector3(-16.8f, 8.5f, 0.75f),
                 AZ::Vector3(1.2f, 1.2f, 1.5f), Anchor::ConnectorNW },
             { "connector_nw_cover_b", "cover", AZ::Vector3(-10.0f, 13.8f, 0.75f),
-                AZ::Vector3(1.2f, 1.2f, 1.5f), Anchor::ConnectorNW }
+                AZ::Vector3(1.2f, 1.2f, 1.5f), Anchor::ConnectorNW },
+            // NE connector: mirrors the NW connector - links the North
+            // Scrapyard directly to the East Containerhof.
+            { "connector_ne_ground_a", "deck", AZ::Vector3(16.0f, 9.5f, -0.05f),
+                AZ::Vector3(3.0f, 7.0f, 0.1f), Anchor::ConnectorNE },
+            { "connector_ne_ground_b", "deck", AZ::Vector3(10.0f, 13.0f, -0.05f),
+                AZ::Vector3(12.0f, 3.0f, 0.1f), Anchor::ConnectorNE },
+            { "connector_ne_cover_a", "cover", AZ::Vector3(16.8f, 9.5f, 0.75f),
+                AZ::Vector3(1.2f, 1.2f, 1.5f), Anchor::ConnectorNE },
+            { "connector_ne_cover_b", "cover", AZ::Vector3(10.0f, 13.8f, 0.75f),
+                AZ::Vector3(1.2f, 1.2f, 1.5f), Anchor::ConnectorNE }
         }};
     }
 
@@ -302,6 +312,14 @@ namespace STWGameplay
             // corner outside both the west and north wall lines.
             return piece.m_center.GetX() - piece.m_size.GetX() * 0.5f >= -17.75f - BoundsTolerance
                 && piece.m_center.GetX() + piece.m_size.GetX() * 0.5f <= -3.75f + BoundsTolerance
+                && piece.m_center.GetY() - piece.m_size.GetY() * 0.5f >= 3.75f - BoundsTolerance
+                && piece.m_center.GetY() + piece.m_size.GetY() * 0.5f <= 14.75f + BoundsTolerance
+                && piece.m_center.GetZ() - piece.m_size.GetZ() * 0.5f >= -0.15f - BoundsTolerance
+                && piece.m_center.GetZ() + piece.m_size.GetZ() * 0.5f <= 1.75f + BoundsTolerance;
+        case Anchor::ConnectorNE:
+            // Mirrors ConnectorNW's envelope across x=0.
+            return piece.m_center.GetX() - piece.m_size.GetX() * 0.5f >= 3.75f - BoundsTolerance
+                && piece.m_center.GetX() + piece.m_size.GetX() * 0.5f <= 17.75f + BoundsTolerance
                 && piece.m_center.GetY() - piece.m_size.GetY() * 0.5f >= 3.75f - BoundsTolerance
                 && piece.m_center.GetY() + piece.m_size.GetY() * 0.5f <= 14.75f + BoundsTolerance
                 && piece.m_center.GetZ() - piece.m_size.GetZ() * 0.5f >= -0.15f - BoundsTolerance

@@ -171,6 +171,16 @@ CONNECTOR_NW_PIECES = [
     ("connector_nw_cover_b", "cover", (-10.0, 13.8, 0.75), (1.2, 1.2, 1.5), "hazard"),
 ]
 
+# NE connector: same idea, mirrored - links North Scrapyard directly to
+# East Containerhof through the previously-empty NE exterior corner
+# (x>12, y>12), bypassing the central hof.
+CONNECTOR_NE_PIECES = [
+    ("connector_ne_ground_a", "deck", (16, 9.5, -0.05), (3, 7, 0.1), "concrete"),
+    ("connector_ne_ground_b", "deck", (10, 13, -0.05), (12, 3, 0.1), "concrete"),
+    ("connector_ne_cover_a", "cover", (16.8, 9.5, 0.75), (1.2, 1.2, 1.5), "hazard"),
+    ("connector_ne_cover_b", "cover", (10.0, 13.8, 0.75), (1.2, 1.2, 1.5), "hazard"),
+]
+
 
 def args():
     values = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
@@ -474,6 +484,15 @@ def add_connector_nw(groups, materials, world_bounds):
         world_bounds[name] = {"center": list(center), "size": list(size), "group": group}
 
 
+def add_connector_ne(groups, materials, world_bounds):
+    """Outdoor walkway linking the North Scrapyard directly to the East
+    Containerhof, bypassing the central hof."""
+    for name, group, center, size, material_name in CONNECTOR_NE_PIECES:
+        obj = detail_cube(name, center, size, materials[material_name])
+        groups.setdefault(group, []).append(obj)
+        world_bounds[name] = {"center": list(center), "size": list(size), "group": group}
+
+
 def write_material_sources(output, materials):
     material_dir = output / "Materials"
     texture_dir = output / "Textures"
@@ -636,6 +655,7 @@ def main():
     add_east_containerhof(groups, materials, world_bounds)
     add_south_verladezone(groups, materials, world_bounds)
     add_connector_nw(groups, materials, world_bounds)
+    add_connector_ne(groups, materials, world_bounds)
 
     write_material_sources(options.output, materials)
 
@@ -664,7 +684,7 @@ def main():
         "contract_valid": len(PIECES) == 18 and len(ANNEX_PIECES) == 8
             and len(SCRAPYARD_PIECES) == 6 and len(EAST_CONTAINERHOF_PIECES) == 6
             and len(VERLADEZONE_PIECES) == 5 and len(CONNECTOR_NW_PIECES) == 4
-            and len(groups) == 9,
+            and len(CONNECTOR_NE_PIECES) == 4 and len(groups) == 9,
         "world_bounds": world_bounds,
         "west_annex": {
             "description": "First enterable multi-storey building: doorway "
