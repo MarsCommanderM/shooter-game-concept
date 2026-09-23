@@ -1,0 +1,13 @@
+{
+    "values": [
+        {
+            "$type": "MotionGroup",
+            "name": "STW_FP_01_ads",
+            "selectedRootBone": "RootNode.STW_FP_01_Rig.root",
+            "id": "{3D7A9C12-4E6B-4A8D-B1F3-7C2E9A5D6B33}",
+            "rules": {
+                "rules": []
+            }
+        }
+    ]
+}

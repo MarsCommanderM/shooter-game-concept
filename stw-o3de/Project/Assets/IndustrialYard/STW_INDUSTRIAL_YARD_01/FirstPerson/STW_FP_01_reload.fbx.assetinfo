@@ -1,0 +1,13 @@
+{
+    "values": [
+        {
+            "$type": "MotionGroup",
+            "name": "STW_FP_01_reload",
+            "selectedRootBone": "RootNode.STW_FP_01_Rig.root",
+            "id": "{8B2F4D65-1A9C-4E7B-9D3A-5F6C8E1B2A55}",
+            "rules": {
+                "rules": []
+            }
+        }
+    ]
+}

@@ -1,0 +1,106 @@
+{
+    "values": [
+        {
+            "$type": "ActorGroup",
+            "name": "STW_FP_01",
+            "id": "{2A8E1F14-2B7C-4D3A-9E52-6C1D8F0A7B11}",
+            "rules": {
+                "rules": []
+            }
+        },
+        {
+            "$type": "{07B356B7-3635-40B5-878A-FAC4EFD5AD86} MeshGroup",
+            "name": "STW_FP_01_Mesh",
+            "NodeSelectionList": {
+                "selectedNodes": [
+                    "RootNode.FP_Cuff_L",
+                    "RootNode.FP_Cuff_R",
+                    "RootNode.FP_Forearm_L",
+                    "RootNode.FP_Forearm_R",
+                    "RootNode.FP_GloveCuffSeam_L",
+                    "RootNode.FP_GloveCuffSeam_R",
+                    "RootNode.FP_GloveFingerChannel_L_0",
+                    "RootNode.FP_GloveFingerChannel_L_1",
+                    "RootNode.FP_GloveFingerChannel_R_0",
+                    "RootNode.FP_GloveFingerChannel_R_1",
+                    "RootNode.FP_Glove_L",
+                    "RootNode.FP_Glove_R",
+                    "RootNode.FP_KnucklePlate_L_0",
+                    "RootNode.FP_KnucklePlate_L_1",
+                    "RootNode.FP_KnucklePlate_L_2",
+                    "RootNode.FP_KnucklePlate_R_0",
+                    "RootNode.FP_KnucklePlate_R_1",
+                    "RootNode.FP_KnucklePlate_R_2",
+                    "RootNode.FP_UpperArm_L",
+                    "RootNode.FP_UpperArm_R",
+                    "RootNode.Rifle_Barrel",
+                    "RootNode.Rifle_BoltCarrier",
+                    "RootNode.Rifle_ChargingHandle",
+                    "RootNode.Rifle_Grip",
+                    "RootNode.Rifle_Handguard",
+                    "RootNode.Rifle_MLOKVent_L_00",
+                    "RootNode.Rifle_MLOKVent_L_01",
+                    "RootNode.Rifle_MLOKVent_L_02",
+                    "RootNode.Rifle_MLOKVent_L_03",
+                    "RootNode.Rifle_MLOKVent_R_00",
+                    "RootNode.Rifle_MLOKVent_R_01",
+                    "RootNode.Rifle_MLOKVent_R_02",
+                    "RootNode.Rifle_MLOKVent_R_03",
+                    "RootNode.Rifle_Magazine",
+                    "RootNode.Rifle_MagazineRib_00",
+                    "RootNode.Rifle_MagazineRib_01",
+                    "RootNode.Rifle_MagazineRib_02",
+                    "RootNode.Rifle_Muzzle",
+                    "RootNode.Rifle_MuzzlePort_L",
+                    "RootNode.Rifle_MuzzlePort_R",
+                    "RootNode.Rifle_MuzzleRing_A",
+                    "RootNode.Rifle_MuzzleRing_B",
+                    "RootNode.Rifle_Optic",
+                    "RootNode.Rifle_OpticDial",
+                    "RootNode.Rifle_OpticGlass",
+                    "RootNode.Rifle_OpticMount",
+                    "RootNode.Rifle_OpticRing_Front",
+                    "RootNode.Rifle_OpticRing_Rear",
+                    "RootNode.Rifle_Receiver",
+                    "RootNode.Rifle_ReceiverPin_L_0",
+                    "RootNode.Rifle_ReceiverPin_L_1",
+                    "RootNode.Rifle_ReceiverPin_R_0",
+                    "RootNode.Rifle_ReceiverPin_R_1",
+                    "RootNode.Rifle_Stock",
+                    "RootNode.Rifle_StockButtPad",
+                    "RootNode.Rifle_StockCheekPad",
+                    "RootNode.Rifle_TopRail_00",
+                    "RootNode.Rifle_TopRail_01",
+                    "RootNode.Rifle_TopRail_02",
+                    "RootNode.Rifle_TopRail_03",
+                    "RootNode.Rifle_TopRail_04",
+                    "RootNode.Rifle_TopRail_05",
+                    "RootNode.Rifle_TopRail_06",
+                    "RootNode.Rifle_Trigger",
+                    "RootNode.Rifle_TriggerGuard"
+                ],
+                "unselectedNodes": []
+            },
+            "id": "{9C3D2E88-5A61-4F9C-8B2D-1E7A4C6F9D22}",
+            "rules": {
+                "rules": [
+                    {
+                        "$type": "SkinRule"
+                    },
+                    {
+                        "$type": "MaterialRule"
+                    }
+                ]
+            }
+        },
+        {
+            "$type": "MotionGroup",
+            "name": "STW_FP_01_idle",
+            "selectedRootBone": "RootNode.STW_FP_01_Rig.root",
+            "id": "{6F4B8A21-9D3E-4C5F-A7B1-2D8E6F1C3A44}",
+            "rules": {
+                "rules": []
+            }
+        }
+    ]
+}
