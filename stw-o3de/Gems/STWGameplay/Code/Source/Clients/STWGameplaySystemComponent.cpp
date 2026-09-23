@@ -3144,6 +3144,8 @@ namespace STWGameplay
         passed = passed && m_mainMenuPresentation.GetActiveScreen() == MainMenuScreen::Main;
 
         m_mainMenuPresentation.TestClick("QuitButton");
+        m_mainMenuPresentation.ShowScreen(MainMenuScreen::Main);
+        m_mainMenuPresentation.LogDiagnostics();
 
         passed = passed && m_mainMenuPresentation.GetButtonCount() == 12
             && m_mainMenuPresentation.WasEveryButtonClickTested();

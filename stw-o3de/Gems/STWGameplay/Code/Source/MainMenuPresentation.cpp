@@ -10,6 +10,7 @@
 #include <LyShine/Bus/UiCanvasBus.h>
 #include <LyShine/Bus/UiElementBus.h>
 #include <LyShine/Bus/UiTransform2dBus.h>
+#include <LyShine/Bus/UiTransformBus.h>
 #include <LyShine/Bus/UiImageBus.h>
 #include <LyShine/Bus/UiTextBus.h>
 #include <LyShine/Bus/UiButtonBus.h>
@@ -365,6 +366,39 @@ namespace STWGameplay
             }
         }
         return true;
+    }
+
+    void MainMenuPresentation::LogDiagnostics() const
+    {
+        AZ::Vector2 canvasSize(0.0f, 0.0f);
+        UiCanvasBus::EventResult(canvasSize, m_canvasId, &UiCanvasBus::Events::GetCanvasSize);
+        AZ::Vector2 authoredCanvasSize(0.0f, 0.0f);
+        UiCanvasBus::EventResult(authoredCanvasSize, m_canvasId, &UiCanvasBus::Events::GetAuthoredCanvasSize);
+
+        bool mainScreenEnabled = false;
+        UiElementBus::EventResult(mainScreenEnabled, m_mainScreenRoot, &UiElementBus::Events::IsEnabled);
+
+        AZ::Entity* quitButton = nullptr;
+        UiCanvasBus::EventResult(quitButton, m_canvasId, &UiCanvasBus::Events::FindElementByName, AZStd::string("QuitButton"));
+        UiTransformInterface::Rect quitRect{ 0.0f, 0.0f, 0.0f, 0.0f };
+        bool quitFound = quitButton != nullptr;
+        bool quitEnabled = false;
+        if (quitButton != nullptr)
+        {
+            UiTransformBus::Event(quitButton->GetId(), &UiTransformBus::Events::GetCanvasSpaceRectNoScaleRotate, quitRect);
+            UiElementBus::EventResult(quitEnabled, quitButton->GetId(), &UiElementBus::Events::IsEnabled);
+        }
+
+        AZ_Printf(
+            "STWGameplay",
+            "MAIN_MENU_DIAGNOSTIC canvas_size=(%.1f,%.1f) authored_canvas_size=(%.1f,%.1f) "
+            "main_screen_enabled=%d quit_button_found=%d quit_button_enabled=%d "
+            "quit_button_rect=(l=%.1f,r=%.1f,t=%.1f,b=%.1f)\n",
+            static_cast<double>(canvasSize.GetX()), static_cast<double>(canvasSize.GetY()),
+            static_cast<double>(authoredCanvasSize.GetX()), static_cast<double>(authoredCanvasSize.GetY()),
+            mainScreenEnabled ? 1 : 0, quitFound ? 1 : 0, quitEnabled ? 1 : 0,
+            static_cast<double>(quitRect.left), static_cast<double>(quitRect.right),
+            static_cast<double>(quitRect.top), static_cast<double>(quitRect.bottom));
     }
 
     void MainMenuPresentation::TestClick(const char* buttonName)

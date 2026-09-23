@@ -59,6 +59,11 @@ namespace STWGameplay
         size_t GetButtonCount() const { return m_buttonCount; }
         bool WasEveryButtonClickTested() const;
         void TestClick(const char* buttonName);
+        //! Diagnostic only: prints the canvas's real logical size and one
+        //! button's actual computed on-screen rect via AZ_Printf, so a
+        //! visual-vs-acceptance discrepancy can be root-caused from gate
+        //! log evidence instead of guessed at.
+        void LogDiagnostics() const;
 
     private:
         AZ::EntityId BuildScreenRoot(const char* name);
