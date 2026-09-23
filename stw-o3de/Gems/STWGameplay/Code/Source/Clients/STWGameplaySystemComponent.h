@@ -22,6 +22,7 @@
 #include <STWGameplay/ArenaPresentation.h>
 #include <STWGameplay/EnvironmentPresentation.h>
 #include <STWGameplay/STWSkeletalCharacterPresentation.h>
+#include <STWGameplay/STWFirstPersonArmsPresentation.h>
 #include <STWGameplay/ViewmodelPresentation.h>
 #include "PhysXArenaRuntime.h"
 #include "PhysXPlayerRuntime.h"
@@ -98,7 +99,7 @@ namespace STWGameplay
         bool OnInputChannelEventFiltered(const AzFramework::InputChannel& inputChannel) override;
         void SampleGamepadLook(float deltaTime);
         void UpdateCamera();
-        void DrawPresentation();
+        void DrawPresentation(float deltaTime);
         void RecordPerformance(float deltaTime);
         void UpdateAutomatedAcceptance(float deltaTime);
         void UpdateAdsAcceptanceMarkers();
@@ -231,6 +232,9 @@ namespace STWGameplay
         // carries the gate's acceptance state). Presentation only; index 0 of this array stays unused.
         AZStd::array<STWSkeletalCharacterPresentation, EnemyCollectionModel::MaxEnemyCount> m_enemyCharacterPresentations;
         ViewmodelPresentation m_viewmodel;
+        // Skinned arms/gloves/integrated-rifle presentation for STW_RIFLE_02 only (the profile
+        // the STW_FP_01 asset was authored for); other profiles keep the static viewmodel mesh.
+        STWFirstPersonArmsPresentation m_firstPersonArms;
         CombatFeedbackPresentation m_combatFeedback;
         AudioFeedbackPresentation m_audioFeedback;
         EncounterModel m_encounter;

@@ -1373,7 +1373,7 @@ namespace STWGameplay
         m_input.m_reload = false;
         UpdateCamera();
         UpdateBodycamAcceptance();
-        DrawPresentation();
+        DrawPresentation(deltaTime);
         UpdateWeaponSwitchAcceptance();
         UpdateLoadoutAcceptance();
         UpdateEnemyCombatAcceptance();
@@ -4254,7 +4254,7 @@ namespace STWGameplay
         m_skeletalCharacterAcceptanceReported = true;
     }
 
-    void STWGameplaySystemComponent::DrawPresentation()
+    void STWGameplaySystemComponent::DrawPresentation(float deltaTime)
     {
         using Bus = AzFramework::DebugDisplayRequestBus;
         const AZ::s32 displayId = static_cast<AZ::s32>(AzFramework::g_defaultSceneEntityDebugDisplayId);
@@ -4273,7 +4273,8 @@ namespace STWGameplay
         }
 
         // Camera-relative native viewmodel. Exactly one pre-acquired STW Atom mesh is visible at
-        // a time; arms and hands do not exist yet, and the muzzle cue remains procedural.
+        // a time. STW_RIFLE_02 additionally shows real skinned arms/gloves (STW_FP_01); the
+        // muzzle cue remains procedural for every profile.
         // Recoil/sway/reload pose come from the presentation
         // model, which consumes authoritative events only; fire, damage and reload authority
         // remain in PlayerSliceModel.
@@ -4301,6 +4302,29 @@ namespace STWGameplay
         // procedural DrawSolidOBB body is gone; if the mesh fails to initialize the runtime
         // reports it instead of silently drawing a placeholder.
         UpdateViewmodelMeshTransform(weaponCenter, right, presentedAim, presentedUp);
+
+        const bool firstPersonArmsProfileActive =
+            m_model.GetActiveEquipmentProfileId() == EquipmentProfileId::STW_RIFLE_02;
+        if (firstPersonArmsProfileActive)
+        {
+            m_firstPersonArms.SetVisible(true);
+            m_firstPersonArms.Update(
+                deltaTime, weaponCenter, right, presentedAim, presentedUp, m_viewmodel.GetState(),
+                m_viewmodel.GetAdsBlend());
+            // The skinned rig already includes the rifle body; once it is genuinely rendering,
+            // stop double-drawing the static procedural rifle mesh underneath it.
+            if (m_firstPersonArms.IsSkinnedMeshVisible() && m_meshFeatureProcessor != nullptr
+                && m_viewmodelMeshHandles[static_cast<size_t>(EquipmentProfileId::STW_RIFLE_02)].IsValid())
+            {
+                m_meshFeatureProcessor->SetVisible(
+                    m_viewmodelMeshHandles[static_cast<size_t>(EquipmentProfileId::STW_RIFLE_02)], false);
+            }
+        }
+        else
+        {
+            m_firstPersonArms.SetVisible(false);
+        }
+
         if (m_viewmodel.IsMuzzleFlashActive())
         {
             Bus::Event(displayId, &AzFramework::DebugDisplayRequests::SetColor, AZ::Color(1.0f, 0.72f, 0.12f, 1.0f));

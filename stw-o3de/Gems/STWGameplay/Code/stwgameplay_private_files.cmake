@@ -18,6 +18,7 @@ set(FILES
     Source/SpawnCheckpointModel.cpp
     Source/BodycamCameraPresentation.cpp
     Source/STWSkeletalCharacterPresentation.cpp
+    Source/STWFirstPersonArmsPresentation.cpp
     Source/ViewmodelPresentation.cpp
     Source/IndustrialYardLookTemplate.cpp
     Source/IndustrialYardArenaVariant.cpp
