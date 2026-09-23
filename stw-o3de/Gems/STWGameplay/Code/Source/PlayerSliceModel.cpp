@@ -68,6 +68,7 @@ namespace STWGameplay
         m_player.m_mantleRequested = false;
         m_presentation.m_fireCueRemaining = AZStd::max(0.0f, m_presentation.m_fireCueRemaining - deltaTime);
         m_presentation.m_hitCueRemaining = AZStd::max(0.0f, m_presentation.m_hitCueRemaining - deltaTime);
+        m_invulnerabilityRemaining = AZStd::max(0.0f, m_invulnerabilityRemaining - deltaTime);
         if (!m_weapons.Update(deltaTime))
         {
             return false;
@@ -310,7 +311,7 @@ namespace STWGameplay
 
     bool PlayerSliceModel::ApplyDamage(float damage)
     {
-        if (!m_player.m_alive || !IsFinite(damage) || damage <= 0.0f)
+        if (!m_player.m_alive || !IsFinite(damage) || damage <= 0.0f || m_invulnerabilityRemaining > 0.0f)
         {
             return false;
         }
@@ -338,6 +339,7 @@ namespace STWGameplay
         m_requestedEquipmentSlotWasHeld = -1;
         m_movement.Reset();
         m_presentation = {};
+        m_invulnerabilityRemaining = RespawnInvulnerabilityDuration;
     }
 
     AZ::Vector3 PlayerSliceModel::GetEyePosition() const

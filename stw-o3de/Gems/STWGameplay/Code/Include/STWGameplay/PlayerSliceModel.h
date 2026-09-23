@@ -68,6 +68,12 @@ namespace STWGameplay
         static constexpr float LookSensitivity = 0.0025f;
         static constexpr float FireInterval = 0.075f; // STW_SMG_01 base cadence
         static constexpr float ReloadDuration = 1.75f;
+        // Grace window after any respawn (checkpoint or interactive) during which the player
+        // cannot take damage. Without this, respawning back into an already-engaged enemy's
+        // attack range re-kills the player before they get a single frame of real control -
+        // proven live: 264 consecutive death/respawn cycles observed in one interactive session,
+        // ~3.5s apart, before this fix.
+        static constexpr float RespawnInvulnerabilityDuration = 1.5f;
         static constexpr float WeaponRange = 60.0f;
         static constexpr float WeaponDamage = 16.0f;
         static constexpr size_t EquipmentSlotCount = WeaponModel::EquipmentSlotCount;
@@ -165,6 +171,7 @@ namespace STWGameplay
         bool m_weaponSwitchWasHeld = false;
         int m_requestedEquipmentSlotWasHeld = -1;
         float m_jumpImpulseThisTick = 0.0f;
+        float m_invulnerabilityRemaining = 0.0f;
         PlayerMovementModel m_movement;
     };
 }
