@@ -29,7 +29,7 @@ namespace STWGameplay
             AZ::Quaternion m_rotation = AZ::Quaternion::CreateIdentity();
         };
 
-        static constexpr size_t StaticColliderCount = 42;
+        static constexpr size_t StaticColliderCount = 46;
 
         ~PhysXArenaRuntime();
 

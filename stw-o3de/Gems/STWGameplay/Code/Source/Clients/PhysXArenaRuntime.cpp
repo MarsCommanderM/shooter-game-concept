@@ -123,7 +123,14 @@ namespace STWGameplay
                 { "STW Loading Crates", AZ::Vector3(0.0f, -13.0f, 0.75f), AZ::Vector3(2.2f, 1.6f, 1.5f) },
                 { "STW Dock Ramp", (DockRampStart + DockRampEnd) * 0.5f,
                     AZ::Vector3(DockRampDirection.GetLength(), 2.5f, 0.2f),
-                    AZ::Quaternion::CreateShortestArc(AZ::Vector3::CreateAxisX(), DockRampDirection.GetNormalized()) }
+                    AZ::Quaternion::CreateShortestArc(AZ::Vector3::CreateAxisX(), DockRampDirection.GetNormalized()) },
+                // NW connector: outdoor L-shaped walkway linking the West
+                // Annex directly to the North Scrapyard, bypassing the
+                // central hof. Flat, axis-aligned, no ramp.
+                { "STW Connector NW Ground A", AZ::Vector3(-16.0f, 8.5f, -0.05f), AZ::Vector3(3.0f, 9.0f, 0.1f) },
+                { "STW Connector NW Ground B", AZ::Vector3(-10.0f, 13.0f, -0.05f), AZ::Vector3(12.0f, 3.0f, 0.1f) },
+                { "STW Connector NW Cover A", AZ::Vector3(-16.8f, 8.5f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f) },
+                { "STW Connector NW Cover B", AZ::Vector3(-10.0f, 13.8f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f) }
             }};
 
         void DeactivateArenaEntity(AZStd::unique_ptr<AZ::Entity>& entity)

@@ -128,4 +128,20 @@ namespace STWGameplay
         intrusion.m_center = AZ::Vector3(0.0f, -8.0f, -0.05f);
         EXPECT_FALSE(IndustrialYardLookTemplate::ValidatePiece(intrusion));
     }
+
+    TEST(IndustrialYardLookTemplateTests, ConnectorNWLinksAnnexToScrapyardWithoutTouchingCentralFloor)
+    {
+        auto pieces = IndustrialYardLookTemplate::GetPieces();
+        const size_t index = FindPieceIndex(pieces, "connector_nw_ground_b");
+        ASSERT_LT(index, pieces.size());
+        EXPECT_EQ(pieces[index].m_anchor, IndustrialYardLookTemplate::Anchor::ConnectorNW);
+        EXPECT_TRUE(IndustrialYardLookTemplate::ValidatePiece(pieces[index]));
+
+        // A piece that reaches into the central 24x24 arena floor must
+        // still be rejected - ConnectorNW is a bounded exterior-corner
+        // envelope, not an "anything goes" anchor.
+        auto intrusion = pieces[index];
+        intrusion.m_center = AZ::Vector3(0.0f, 0.0f, -0.05f);
+        EXPECT_FALSE(IndustrialYardLookTemplate::ValidatePiece(intrusion));
+    }
 }

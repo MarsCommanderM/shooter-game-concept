@@ -8,7 +8,7 @@
   `9ba871ff2ecd36526b77432745980b7e6664ecd0c7ca11c48849073dcfe06da3`.
 - Coordinate convention: source Z-up; FBX export forward `-Y`, up `Z`.
 - License status: original project work; no third-party asset license attached.
-- Validation: `STW_INDUSTRIAL_YARD_01.report.json` records all 48 post-import
+- Validation: `STW_INDUSTRIAL_YARD_01.report.json` records all 52 post-import
   target AABBs and nine group identities.
 - Production foundation: repeated facade ribs, service bands, fasteners,
   truss/gallery details, beacon hardware, flush hazard treatment, and six
@@ -55,6 +55,12 @@
   instead of a hub with isolated dead-end arms, per the route-network-first
   map design guide shared this session. Same bucketing/physics pattern as
   the other three; validated by a new Anchor::SouthVerladezone envelope.
+- NW connector (added 2026-09-23): the first genuine crossing route beyond
+  the four cardinal hub-and-spoke landmarks - an outdoor L-shaped walkway
+  linking the West Annex directly to the North Scrapyard, bypassing the
+  central hof entirely, in the exterior corner (x<-12, y>12) that had no
+  floor at all before this. Flat, no ramp, two sightline-break cover
+  pieces. Validated by a new Anchor::ConnectorNW envelope.
 - Quality boundary: this is authored production foundation data, not a
   blockout. It is still not the final AAA+ cinematic acceptance until O3DE
   import, Vulkan runtime capture, and T4 visual review pass.

@@ -180,7 +180,20 @@ namespace STWGameplay
             // Real (not hand-estimated) AABB of the rotated ramp mesh, read
             // back from Blender's evaluated bound_box at generation time.
             { "dock_ramp", "struct", AZ::Vector3(0.0f, -18.75f, 0.625f),
-                AZ::Vector3(2.5f, 2.584f, 1.332f), Anchor::SouthVerladezone }
+                AZ::Vector3(2.5f, 2.584f, 1.332f), Anchor::SouthVerladezone },
+            // NW connector: outdoor L-shaped walkway linking the West Annex
+            // directly to the North Scrapyard, bypassing the central hof -
+            // the first genuine crossing route beyond the four cardinal
+            // landmarks. Mirrors tools/blender/generate_industrial_yard.py's
+            // CONNECTOR_NW_PIECES. Flat, no ramp.
+            { "connector_nw_ground_a", "deck", AZ::Vector3(-16.0f, 8.5f, -0.05f),
+                AZ::Vector3(3.0f, 9.0f, 0.1f), Anchor::ConnectorNW },
+            { "connector_nw_ground_b", "deck", AZ::Vector3(-10.0f, 13.0f, -0.05f),
+                AZ::Vector3(12.0f, 3.0f, 0.1f), Anchor::ConnectorNW },
+            { "connector_nw_cover_a", "cover", AZ::Vector3(-16.8f, 8.5f, 0.75f),
+                AZ::Vector3(1.2f, 1.2f, 1.5f), Anchor::ConnectorNW },
+            { "connector_nw_cover_b", "cover", AZ::Vector3(-10.0f, 13.8f, 0.75f),
+                AZ::Vector3(1.2f, 1.2f, 1.5f), Anchor::ConnectorNW }
         }};
     }
 
@@ -283,6 +296,16 @@ namespace STWGameplay
                 && piece.m_center.GetY() + piece.m_size.GetY() * 0.5f <= -11.80f + BoundsTolerance
                 && piece.m_center.GetZ() - piece.m_size.GetZ() * 0.5f >= -0.15f - BoundsTolerance
                 && piece.m_center.GetZ() + piece.m_size.GetZ() * 0.5f <= 2.35f + BoundsTolerance;
+        case Anchor::ConnectorNW:
+            // Envelope of the L-shaped walkway itself (both deck segments
+            // plus the two sightline-break cover pieces), in the exterior
+            // corner outside both the west and north wall lines.
+            return piece.m_center.GetX() - piece.m_size.GetX() * 0.5f >= -17.75f - BoundsTolerance
+                && piece.m_center.GetX() + piece.m_size.GetX() * 0.5f <= -3.75f + BoundsTolerance
+                && piece.m_center.GetY() - piece.m_size.GetY() * 0.5f >= 3.75f - BoundsTolerance
+                && piece.m_center.GetY() + piece.m_size.GetY() * 0.5f <= 14.75f + BoundsTolerance
+                && piece.m_center.GetZ() - piece.m_size.GetZ() * 0.5f >= -0.15f - BoundsTolerance
+                && piece.m_center.GetZ() + piece.m_size.GetZ() * 0.5f <= 1.75f + BoundsTolerance;
         }
         return false;
     }

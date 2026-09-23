@@ -84,6 +84,10 @@ namespace STWGameplay
             { "STW Truck Trailer B", AZ::Vector3(2.6f, -15.0f, 1.1f), AZ::Vector3(1.8f, 4.5f, 2.2f), false },
             { "STW Loading Crates", AZ::Vector3(0.0f, -13.0f, 0.75f), AZ::Vector3(2.2f, 1.6f, 1.5f), false },
             { "STW Dock Ramp", AZ::Vector3(0.0f, -18.75f, 0.625f), AZ::Vector3(2.7518f, 2.5f, 0.2f), true },
+            { "STW Connector NW Ground A", AZ::Vector3(-16.0f, 8.5f, -0.05f), AZ::Vector3(3.0f, 9.0f, 0.1f), false },
+            { "STW Connector NW Ground B", AZ::Vector3(-10.0f, 13.0f, -0.05f), AZ::Vector3(12.0f, 3.0f, 0.1f), false },
+            { "STW Connector NW Cover A", AZ::Vector3(-16.8f, 8.5f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f), false },
+            { "STW Connector NW Cover B", AZ::Vector3(-10.0f, 13.8f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f), false },
         };
         ASSERT_EQ(AZ_ARRAY_SIZE(expectations), PhysXArenaRuntime::StaticColliderCount);
 
@@ -181,5 +185,28 @@ namespace STWGameplay
         const AZ::Vector3 climbDirection = ramp->m_rotation.TransformVector(AZ::Vector3::CreateAxisX());
         EXPECT_LT(climbDirection.GetY(), 0.0f);
         EXPECT_GT(climbDirection.GetZ(), 0.0f);
+    }
+
+    TEST(PhysXArenaRuntimeTests, ConnectorNWDeckSegmentsJoinWithoutAGap)
+    {
+        const auto& colliders = PhysXArenaRuntime::GetStaticColliderDescriptions();
+        const auto* segmentA = FindCollider(colliders, "STW Connector NW Ground A");
+        const auto* segmentB = FindCollider(colliders, "STW Connector NW Ground B");
+        ASSERT_NE(segmentA, nullptr);
+        ASSERT_NE(segmentB, nullptr);
+        // The L-shaped walkway must not have a fall-through gap at its
+        // corner: segment A's x-range and segment B's y-range must overlap
+        // at their shared corner, not just touch or miss.
+        const float segmentAMinX = segmentA->m_center.GetX() - segmentA->m_dimensions.GetX() * 0.5f;
+        const float segmentAMaxX = segmentA->m_center.GetX() + segmentA->m_dimensions.GetX() * 0.5f;
+        const float segmentBMinX = segmentB->m_center.GetX() - segmentB->m_dimensions.GetX() * 0.5f;
+        EXPECT_GT(segmentAMaxX, segmentBMinX);
+        EXPECT_LT(segmentAMinX, segmentBMinX);
+
+        const float segmentAMaxY = segmentA->m_center.GetY() + segmentA->m_dimensions.GetY() * 0.5f;
+        const float segmentBMinY = segmentB->m_center.GetY() - segmentB->m_dimensions.GetY() * 0.5f;
+        const float segmentBMaxY = segmentB->m_center.GetY() + segmentB->m_dimensions.GetY() * 0.5f;
+        EXPECT_GT(segmentAMaxY, segmentBMinY);
+        EXPECT_LT(segmentAMaxY, segmentBMaxY);
     }
 }

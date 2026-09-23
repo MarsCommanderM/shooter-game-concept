@@ -158,6 +158,19 @@ DOCK_RAMP = {
     "material": "concrete",
 }
 
+# NW connector: an outdoor L-shaped walkway linking the West Annex to the
+# North Scrapyard directly, bypassing the central hof - the first of the
+# route-network-first design guide's crossing routes, not just another
+# landmark. Flat (no elevation change, no ramp needed). The NW exterior
+# corner (x<-12, y>12) has no floor at all today, so this is real new
+# walkable space, not decoration.
+CONNECTOR_NW_PIECES = [
+    ("connector_nw_ground_a", "deck", (-16, 8.5, -0.05), (3, 9, 0.1), "concrete"),
+    ("connector_nw_ground_b", "deck", (-10, 13, -0.05), (12, 3, 0.1), "concrete"),
+    ("connector_nw_cover_a", "cover", (-16.8, 8.5, 0.75), (1.2, 1.2, 1.5), "hazard"),
+    ("connector_nw_cover_b", "cover", (-10.0, 13.8, 0.75), (1.2, 1.2, 1.5), "hazard"),
+]
+
 
 def args():
     values = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
@@ -451,6 +464,16 @@ def add_south_verladezone(groups, materials, world_bounds):
     world_bounds[ramp["name"]] = {"center": list(ramp_center), "size": list(ramp_size), "group": ramp["group"]}
 
 
+def add_connector_nw(groups, materials, world_bounds):
+    """Outdoor walkway linking the West Annex directly to the North
+    Scrapyard, bypassing the central hof - a real crossing route, not a
+    third dead-end arm off the hub."""
+    for name, group, center, size, material_name in CONNECTOR_NW_PIECES:
+        obj = detail_cube(name, center, size, materials[material_name])
+        groups.setdefault(group, []).append(obj)
+        world_bounds[name] = {"center": list(center), "size": list(size), "group": group}
+
+
 def write_material_sources(output, materials):
     material_dir = output / "Materials"
     texture_dir = output / "Textures"
@@ -612,6 +635,7 @@ def main():
     add_north_scrapyard(groups, materials, world_bounds)
     add_east_containerhof(groups, materials, world_bounds)
     add_south_verladezone(groups, materials, world_bounds)
+    add_connector_nw(groups, materials, world_bounds)
 
     write_material_sources(options.output, materials)
 
@@ -639,7 +663,8 @@ def main():
         "groups": sorted(groups),
         "contract_valid": len(PIECES) == 18 and len(ANNEX_PIECES) == 8
             and len(SCRAPYARD_PIECES) == 6 and len(EAST_CONTAINERHOF_PIECES) == 6
-            and len(VERLADEZONE_PIECES) == 5 and len(groups) == 9,
+            and len(VERLADEZONE_PIECES) == 5 and len(CONNECTOR_NW_PIECES) == 4
+            and len(groups) == 9,
         "world_bounds": world_bounds,
         "west_annex": {
             "description": "First enterable multi-storey building: doorway "
@@ -680,6 +705,13 @@ def main():
             "doorway_x_span": [-1.5, 1.5],
             "platform_height": 1.2,
             "ramp": DOCK_RAMP,
+        },
+        "connector_nw": {
+            "description": "Outdoor L-shaped walkway linking the West Annex "
+                "directly to the North Scrapyard, bypassing the central hof "
+                "- the first genuine crossing route beyond the hub-and-spoke "
+                "cardinal landmarks, per the route-network-first map design "
+                "guide. Flat, no ramp.",
         },
         "materials": sorted(value.name for value in materials.values()),
         "material_sources": sorted(
