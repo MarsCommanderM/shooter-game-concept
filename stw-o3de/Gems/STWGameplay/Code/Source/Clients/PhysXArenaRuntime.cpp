@@ -137,7 +137,14 @@ namespace STWGameplay
                 { "STW Connector NE Ground A", AZ::Vector3(16.0f, 9.5f, -0.05f), AZ::Vector3(3.0f, 7.0f, 0.1f) },
                 { "STW Connector NE Ground B", AZ::Vector3(10.0f, 13.0f, -0.05f), AZ::Vector3(12.0f, 3.0f, 0.1f) },
                 { "STW Connector NE Cover A", AZ::Vector3(16.8f, 9.5f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f) },
-                { "STW Connector NE Cover B", AZ::Vector3(10.0f, 13.8f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f) }
+                { "STW Connector NE Cover B", AZ::Vector3(10.0f, 13.8f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f) },
+                // SE connector: outdoor L-shaped walkway linking the East
+                // Containerhof directly to the South Verladezone, bypassing
+                // the central hof. Flat, axis-aligned, no ramp.
+                { "STW Connector SE Ground A", AZ::Vector3(16.0f, -9.5f, -0.05f), AZ::Vector3(3.0f, 7.0f, 0.1f) },
+                { "STW Connector SE Ground B", AZ::Vector3(10.0f, -13.0f, -0.05f), AZ::Vector3(12.0f, 3.0f, 0.1f) },
+                { "STW Connector SE Cover A", AZ::Vector3(16.8f, -9.5f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f) },
+                { "STW Connector SE Cover B", AZ::Vector3(10.0f, -13.8f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f) }
             }};
 
         void DeactivateArenaEntity(AZStd::unique_ptr<AZ::Entity>& entity)

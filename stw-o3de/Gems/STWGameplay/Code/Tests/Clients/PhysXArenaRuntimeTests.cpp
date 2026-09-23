@@ -92,6 +92,10 @@ namespace STWGameplay
             { "STW Connector NE Ground B", AZ::Vector3(10.0f, 13.0f, -0.05f), AZ::Vector3(12.0f, 3.0f, 0.1f), false },
             { "STW Connector NE Cover A", AZ::Vector3(16.8f, 9.5f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f), false },
             { "STW Connector NE Cover B", AZ::Vector3(10.0f, 13.8f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f), false },
+            { "STW Connector SE Ground A", AZ::Vector3(16.0f, -9.5f, -0.05f), AZ::Vector3(3.0f, 7.0f, 0.1f), false },
+            { "STW Connector SE Ground B", AZ::Vector3(10.0f, -13.0f, -0.05f), AZ::Vector3(12.0f, 3.0f, 0.1f), false },
+            { "STW Connector SE Cover A", AZ::Vector3(16.8f, -9.5f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f), false },
+            { "STW Connector SE Cover B", AZ::Vector3(10.0f, -13.8f, 0.75f), AZ::Vector3(1.2f, 1.2f, 1.5f), false },
         };
         ASSERT_EQ(AZ_ARRAY_SIZE(expectations), PhysXArenaRuntime::StaticColliderCount);
 
@@ -234,5 +238,27 @@ namespace STWGameplay
         const float segmentBMaxY = segmentB->m_center.GetY() + segmentB->m_dimensions.GetY() * 0.5f;
         EXPECT_GT(segmentAMaxY, segmentBMinY);
         EXPECT_LT(segmentAMaxY, segmentBMaxY);
+    }
+
+    TEST(PhysXArenaRuntimeTests, ConnectorSEDeckSegmentsJoinWithoutAGap)
+    {
+        const auto& colliders = PhysXArenaRuntime::GetStaticColliderDescriptions();
+        const auto* segmentA = FindCollider(colliders, "STW Connector SE Ground A");
+        const auto* segmentB = FindCollider(colliders, "STW Connector SE Ground B");
+        ASSERT_NE(segmentA, nullptr);
+        ASSERT_NE(segmentB, nullptr);
+        const float segmentAMinX = segmentA->m_center.GetX() - segmentA->m_dimensions.GetX() * 0.5f;
+        const float segmentAMaxX = segmentA->m_center.GetX() + segmentA->m_dimensions.GetX() * 0.5f;
+        const float segmentBMaxX = segmentB->m_center.GetX() + segmentB->m_dimensions.GetX() * 0.5f;
+        EXPECT_LT(segmentAMinX, segmentBMaxX);
+        EXPECT_GT(segmentAMaxX, segmentBMaxX);
+
+        // Mirror of the NE check across y=0: segment A's y-range (the more
+        // negative side) must overlap segment B's min-y edge.
+        const float segmentAMinY = segmentA->m_center.GetY() - segmentA->m_dimensions.GetY() * 0.5f;
+        const float segmentBMinY = segmentB->m_center.GetY() - segmentB->m_dimensions.GetY() * 0.5f;
+        const float segmentBMaxY = segmentB->m_center.GetY() + segmentB->m_dimensions.GetY() * 0.5f;
+        EXPECT_LT(segmentAMinY, segmentBMaxY);
+        EXPECT_GT(segmentAMinY, segmentBMinY);
     }
 }

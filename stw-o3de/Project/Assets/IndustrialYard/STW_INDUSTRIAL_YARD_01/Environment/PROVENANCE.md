@@ -8,7 +8,7 @@
   `9ba871ff2ecd36526b77432745980b7e6664ecd0c7ca11c48849073dcfe06da3`.
 - Coordinate convention: source Z-up; FBX export forward `-Y`, up `Z`.
 - License status: original project work; no third-party asset license attached.
-- Validation: `STW_INDUSTRIAL_YARD_01.report.json` records all 56 post-import
+- Validation: `STW_INDUSTRIAL_YARD_01.report.json` records all 60 post-import
   target AABBs and nine group identities.
 - Production foundation: repeated facade ribs, service bands, fasteners,
   truss/gallery details, beacon hardware, flush hazard treatment, and six
@@ -64,6 +64,10 @@
 - NE connector (added 2026-09-23): mirrors the NW connector - links the
   North Scrapyard directly to the East Containerhof through the exterior
   corner (x>12, y>12). Validated by a new Anchor::ConnectorNE envelope.
+- SE connector (added 2026-09-23): mirrors the NE connector across y=0 -
+  links the East Containerhof directly to the South Verladezone through
+  the exterior corner (x>12, y<-12). Validated by a new
+  Anchor::ConnectorSE envelope.
 - Quality boundary: this is authored production foundation data, not a
   blockout. It is still not the final AAA+ cinematic acceptance until O3DE
   import, Vulkan runtime capture, and T4 visual review pass.
