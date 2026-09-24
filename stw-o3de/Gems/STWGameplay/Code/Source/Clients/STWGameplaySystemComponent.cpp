@@ -4317,7 +4317,8 @@ namespace STWGameplay
             return;
         }
 
-        const bool objectCountPassed = m_model.GetDestructibles().GetObjectCount() == 2;
+        const bool objectCountPassed =
+            m_model.GetDestructibles().GetObjectCount() == DestructibleObjectModel::MaxObjectCount;
 
         // Real round-trip proof: destroy object 0 for real via the same
         // DestructibleObjectModel::ApplyDamage() a real shot uses, let
