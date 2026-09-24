@@ -396,6 +396,7 @@ namespace STWGameplay
         static constexpr float GamepadLookDeadZone = 0.15f;
         static constexpr float GamepadLookSensitivity = 3.5f; // radians/sec at full deflection; needs real-pad tuning
         AZStd::string m_nativeCapturePath;
+        bool m_diagnosticCameraLookAtDestructibles = false;
         float m_nativeCaptureDelay = 0.0f;
         bool m_nativeCaptureAttempted = false;
         // Single-capture mode only: simulation time spent waiting for the arena visual

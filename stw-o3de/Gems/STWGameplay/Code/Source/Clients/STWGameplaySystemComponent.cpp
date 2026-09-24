@@ -199,6 +199,14 @@ namespace STWGameplay
         {
             m_nativeCapturePath = capturePath;
         }
+        // One-off diagnostic: unset by default (including by the standard task.sh gate),
+        // so the familiar spawn-facing capture used throughout this session for visual
+        // regression checks is unaffected. When set, overrides the camera transform just
+        // before the native capture fires (not the player model's yaw/pitch, so no other
+        // acceptance marker reading player state is affected) to look at the destructible
+        // cover objects specifically - for verifying DESTRUCTIBLE_OBJECTS geometry visually
+        // from an angle the fixed spawn view doesn't clearly show.
+        m_diagnosticCameraLookAtDestructibles = std::getenv("STW_DIAGNOSTIC_LOOK_AT_DESTRUCTIBLES") != nullptr;
         // Opt-in evidence-recording mode: unset by production and by the standard task.sh
         // gate, so their single-shot capture behavior is unchanged. When set, requests a
         // sequence of numbered frames instead of one, for assembling a real gameplay clip.
@@ -1440,6 +1448,25 @@ namespace STWGameplay
             {
                 m_nativeCaptureDelay = sequenceMode ? 0.0f : m_nativeCaptureDelay;
                 m_nativeCaptureAttempted = true;
+                if (m_diagnosticCameraLookAtDestructibles)
+                {
+                    // Frames both "STW Left Cover"/"STW Right Cover" (world
+                    // center (0,0,1.25), see ConfigureDestructibleObjects())
+                    // from an elevated angle the standard spawn-facing
+                    // capture doesn't show. UpdateCamera() unconditionally
+                    // recomputes the camera transform from player state
+                    // every subsequent tick, so this needs no manual
+                    // restore - it only affects this one capture.
+                    AZ::EntityId cameraId;
+                    Camera::CameraSystemRequestBus::BroadcastResult(
+                        cameraId, &Camera::CameraSystemRequests::GetActiveCamera);
+                    if (cameraId.IsValid())
+                    {
+                        const AZ::Transform diagnosticTransform = AZ::Transform::CreateLookAt(
+                            AZ::Vector3(0.0f, -6.0f, 3.0f), AZ::Vector3(0.0f, 0.0f, 1.25f));
+                        AZ::TransformBus::Event(cameraId, &AZ::TransformInterface::SetWorldTM, diagnosticTransform);
+                    }
+                }
                 bool canCapture = false;
                 AZ::Render::FrameCaptureRequestBus::BroadcastResult(
                     canCapture, &AZ::Render::FrameCaptureRequestBus::Events::CanCapture);
