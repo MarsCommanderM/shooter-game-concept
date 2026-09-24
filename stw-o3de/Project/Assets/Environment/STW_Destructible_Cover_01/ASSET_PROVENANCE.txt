@@ -1,0 +1,29 @@
+STW ASSET PROVENANCE
+====================
+
+Asset name:      STW_Destructible_Cover_01
+Asset kind:      static world presentation mesh (destructible cover object)
+Origin:          original fictional STW game art
+
+Generation
+----------
+Hand-authored directly as plain-text Wavefront OBJ (a simple box, 8 vertices,
+6 quad faces with per-face outward normals verified by right-hand-rule cross
+product before writing). No mtllib/usemtl: the runtime binds a real, existing
+Atom StandardPBR material (the Industrial Yard's own steel material,
+assets/industrialyard/stw_industrial_yard_01/environment/materials/stw_industrial_yard_01_steel.azmaterial)
+through the mesh feature processor's material slot, mirroring the convention
+already used by the STW weapon presentation assets.
+
+Local pivot: centered at the object's own origin, half-extents (0.75, 1.0,
+1.25) m - matches the full dimensions (1.5, 2.0, 2.5) m already used for the
+"STW Left Cover"/"STW Right Cover" PhysX static colliders in
+Source/Clients/PhysXArenaRuntime.cpp, so the same box gets a real mesh
+instead of only ever having a collider. World position/orientation are set
+at runtime from the same collider description
+(PhysXArenaRuntime::GetStaticColliderDescriptions()), not duplicated here.
+
+Source files
+------------
+STW_Destructible_Cover_01.obj - the mesh source, processed by AssetProcessor
+into STW_Destructible_Cover_01.obj.azmodel.

@@ -8,7 +8,10 @@
 #include <AzFramework/Input/Channels/InputChannelId.h>
 #include <AzFramework/Input/Devices/Keyboard/InputDeviceKeyboard.h>
 #include <Atom/Feature/Mesh/MeshFeatureProcessorInterface.h>
+#include <Atom/RPI.Public/Material/Material.h>
+#include <Atom/RPI.Reflect/Material/MaterialAsset.h>
 #include <STWGameplay/PlayerSimulationTypes.h>
+#include <STWGameplay/DestructibleObjectModel.h>
 #include <STWGameplay/FixedSimulationClock.h>
 #include <STWGameplay/CharacterPhysicalState.h>
 #include <STWGameplay/PlayerCommandHistory.h>
@@ -179,6 +182,28 @@ namespace STWGameplay
         //! so UpdateMainMenuAcceptance() can call it directly for proof.
         void UpdateEndGameFlow();
         void UpdateHudAcceptance();
+        //! Links DestructibleObjectModel's fixed small object set to the
+        //! real world AABBs already defined for "STW Left Cover"/"STW Right
+        //! Cover" in PhysXArenaRuntime::GetStaticColliderDescriptions() - no
+        //! duplicated/hand-copied coordinates. Called once real static
+        //! collision exists (right after m_physicsArena.Initialize()
+        //! succeeds in TryStartPhysics()).
+        void ConfigureDestructibleObjects();
+        //! Loads the real mesh+material once (AssetProcessor-compiled from
+        //! Project/Assets/Environment/STW_Destructible_Cover_01/ and the
+        //! Industrial Yard's own real steel material) and acquires one real
+        //! Atom mesh instance per configured object - same
+        //! AcquireMesh/MeshHandleDescriptor pattern already proven for the
+        //! viewmodel/enemy meshes.
+        void TryStartDestructibleObjects();
+        //! Every tick: reflects DestructibleObjectModel's real m_active
+        //! state into the matching PhysX collider (RigidBodyRequestBus::
+        //! DisablePhysics, via PhysXArenaRuntime::FindColliderEntityByName)
+        //! and the matching Atom mesh's visibility
+        //! (MeshFeatureProcessorInterface::SetVisible) - edge-triggered, not
+        //! reapplied every tick once already reflected.
+        void UpdateDestructibleObjects();
+        void UpdateDestructibleAcceptance();
         void EvaluateEndGameState();
         //! Extracted from UpdateInteractivePlayerRespawn() so both the timed
         //! real-play respawn and the End-Game screen's "WEITER" button (an
@@ -242,6 +267,15 @@ namespace STWGameplay
         AZ::Render::MeshFeatureProcessorInterface::MeshHandle m_impactFeedbackMeshHandle;
         AZStd::string m_enemyMeshAssetPath;
         bool m_enemyMeshReported = false;
+        ViewmodelMeshStartup m_destructibleObjectsStartup = ViewmodelMeshStartup::Waiting;
+        AZ::Data::Asset<AZ::RPI::MaterialAsset> m_destructibleMaterialAsset;
+        AZ::Data::Instance<AZ::RPI::Material> m_destructibleMaterial;
+        AZStd::array<AZ::Render::MeshFeatureProcessorInterface::MeshHandle, DestructibleObjectModel::MaxObjectCount>
+            m_destructibleMeshHandles;
+        // Edge-trigger: only DisablePhysics()/SetVisible(false) once per
+        // object, not every tick after it's already destroyed.
+        AZStd::array<bool, DestructibleObjectModel::MaxObjectCount> m_destructibleReflectedInactive{};
+        bool m_destructibleObjectsReported = false;
         ViewmodelMeshStartup m_arenaMeshStartup = ViewmodelMeshStartup::Waiting;
         bool m_arenaMeshReported = false;
         bool m_arenaAcceptanceReported = false;

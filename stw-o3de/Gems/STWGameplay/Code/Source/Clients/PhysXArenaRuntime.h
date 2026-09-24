@@ -43,6 +43,14 @@ namespace STWGameplay
         static const AZStd::array<StaticColliderDescription, StaticColliderCount>&
         GetStaticColliderDescriptions();
 
+        //! Finds the real, active collider entity created for a given
+        //! StaticColliderDescription::m_name (e.g. "STW Left Cover"), or
+        //! nullptr if no such entity was created. Used to reflect
+        //! DestructibleObjectModel's m_active into the real
+        //! PhysX::StaticRigidBodyComponent via SimulatedBodyComponentRequestsBus
+        //! (DisablePhysics/EnablePhysics) once an object is destroyed.
+        AZ::Entity* FindColliderEntityByName(const char* name) const;
+
     private:
         bool CreateStaticBox(const StaticColliderDescription& description);
 

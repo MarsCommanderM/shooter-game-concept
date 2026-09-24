@@ -61,6 +61,8 @@ namespace STWGameplay
         m_presentation.m_shotFired = false;
         m_presentation.m_hit = false;
         m_presentation.m_hitEnemyId = InvalidEnemyId;
+        m_presentation.m_hitDestructible = false;
+        m_presentation.m_hitDestructibleIndex = DestructibleObjectModel::MaxObjectCount;
         m_presentation.m_equipmentUsed = false;
         m_presentation.m_equipmentChanged = false;
         m_presentation.m_activeEquipmentProfile = profileBeforeInput;
@@ -280,7 +282,25 @@ namespace STWGameplay
                 hitDistance = projectedDistance;
             }
         }
-        if (hitEnemyId != InvalidEnemyId && GetEnemies().ApplyDamage(hitEnemyId, use.m_damage))
+        // Destructible cover objects resolve against the same shot: whichever
+        // is genuinely closer along the ray wins, same as real weapon fire
+        // would - not "prefer enemies" or "prefer cover" by fiat. Passing the
+        // enemy hit distance (or full weapon range if no enemy was hit) as
+        // the search's own maxRange means a returned index is only ever the
+        // strictly-closer case.
+        float destructibleDistance = 0.0f;
+        const size_t destructibleIndex =
+            m_destructibles.RayHitsObject(GetEyePosition(), GetAimDirection(), hitDistance, destructibleDistance);
+
+        if (destructibleIndex < DestructibleObjectModel::MaxObjectCount)
+        {
+            m_destructibles.ApplyDamage(destructibleIndex, use.m_damage);
+            m_presentation.m_hit = true;
+            m_presentation.m_hitDestructible = true;
+            m_presentation.m_hitDestructibleIndex = destructibleIndex;
+            m_presentation.m_hitCueRemaining = 0.12f;
+        }
+        else if (hitEnemyId != InvalidEnemyId && GetEnemies().ApplyDamage(hitEnemyId, use.m_damage))
         {
             m_presentation.m_hit = true;
             m_presentation.m_hitEnemyId = hitEnemyId;

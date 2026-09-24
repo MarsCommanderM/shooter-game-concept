@@ -273,4 +273,20 @@ namespace STWGameplay
         m_staticColliderEntities.push_back(AZStd::move(entity));
         return true;
     }
+
+    AZ::Entity* PhysXArenaRuntime::FindColliderEntityByName(const char* name) const
+    {
+        if (name == nullptr)
+        {
+            return nullptr;
+        }
+        for (const AZStd::unique_ptr<AZ::Entity>& entity : m_staticColliderEntities)
+        {
+            if (entity && entity->GetName() == name)
+            {
+                return entity.get();
+            }
+        }
+        return nullptr;
+    }
 }

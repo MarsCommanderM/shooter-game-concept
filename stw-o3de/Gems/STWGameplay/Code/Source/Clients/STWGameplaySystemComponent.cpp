@@ -13,6 +13,7 @@
 #include <AzCore/std/containers/vector.h>
 #include <AzFramework/Components/CameraBus.h>
 #include <AzFramework/Physics/CharacterBus.h>
+#include <AzFramework/Physics/RigidBodyBus.h>
 #include <AzFramework/Physics/SystemBus.h>
 #include <AzFramework/Physics/Common/PhysicsTypes.h>
 #include <AzFramework/Entity/EntityDebugDisplayBus.h>
@@ -482,6 +483,7 @@ namespace STWGameplay
             m_physicsStartup = PhysicsStartup::Failed;
             return;
         }
+        ConfigureDestructibleObjects();
 
         if (!m_physicsPlayer.Initialize())
         {
@@ -1065,6 +1067,10 @@ namespace STWGameplay
         {
             TryStartEnemyMesh();
         }
+        if (m_destructibleObjectsStartup == ViewmodelMeshStartup::Waiting)
+        {
+            TryStartDestructibleObjects();
+        }
         if (m_arenaMeshStartup == ViewmodelMeshStartup::Waiting)
         {
             TryStartArenaMesh();
@@ -1385,6 +1391,8 @@ namespace STWGameplay
         UpdateLoadoutAcceptance();
         UpdateEnemyCombatAcceptance();
         UpdateMultiEnemyAcceptance();
+        UpdateDestructibleObjects();
+        UpdateDestructibleAcceptance();
         m_encounter.Update(enemies);
         UpdateEncounterAcceptance();
         if (m_encounter.IsCompleted() && !m_spawnCheckpoint.HasActiveCheckpoint())
@@ -4059,6 +4067,228 @@ namespace STWGameplay
         }
     }
 
+    void STWGameplaySystemComponent::ConfigureDestructibleObjects()
+    {
+        // "STW Left Cover"/"STW Right Cover": the two dark cover pillars
+        // already visible in every gate screenshot, directly in front of
+        // player spawn. A small, deliberately bounded set - see
+        // DestructibleObjectModel.h's own comment on why this is not a
+        // general destruction system.
+        static const char* const destructibleNames[DestructibleObjectModel::MaxObjectCount] = {
+            "STW Left Cover", "STW Right Cover", nullptr, nullptr
+        };
+        constexpr float DestructibleMaxHealth = 60.0f;
+        const auto& descriptions = PhysXArenaRuntime::GetStaticColliderDescriptions();
+        size_t configuredIndex = 0;
+        for (const char* name : destructibleNames)
+        {
+            if (name == nullptr)
+            {
+                continue;
+            }
+            for (const PhysXArenaRuntime::StaticColliderDescription& description : descriptions)
+            {
+                if (description.m_name != nullptr && AZStd::string_view(description.m_name) == AZStd::string_view(name))
+                {
+                    m_model.GetDestructibles().Configure(
+                        configuredIndex, description.m_center, description.m_dimensions * 0.5f, DestructibleMaxHealth);
+                    ++configuredIndex;
+                    break;
+                }
+            }
+        }
+    }
+
+    void STWGameplaySystemComponent::TryStartDestructibleObjects()
+    {
+        if (m_meshFeatureProcessor == nullptr || m_model.GetDestructibles().GetObjectCount() == 0)
+        {
+            return;
+        }
+
+        static const char* const modelPath =
+            "assets/environment/stw_destructible_cover_01/stw_destructible_cover_01.obj.azmodel";
+        static const char* const materialPath =
+            "assets/industrialyard/stw_industrial_yard_01/environment/materials/stw_industrial_yard_01_steel.azmaterial";
+
+        if (!m_destructibleMaterialAsset.GetId().IsValid())
+        {
+            AZ::Data::AssetId materialAssetId;
+            AZ::Data::AssetCatalogRequestBus::BroadcastResult(
+                materialAssetId, &AZ::Data::AssetCatalogRequests::GetAssetIdByPath, materialPath, AZ::Data::AssetType{},
+                false);
+            if (!materialAssetId.IsValid())
+            {
+                return; // AssetProcessor has not produced this yet - retry next tick, not an error
+            }
+            m_destructibleMaterialAsset = AZ::Data::Asset<AZ::RPI::MaterialAsset>(
+                materialAssetId, azrtti_typeid<AZ::RPI::MaterialAsset>(), materialPath);
+            m_destructibleMaterialAsset.QueueLoad();
+        }
+        if (m_destructibleMaterialAsset.IsError())
+        {
+            AZ_Error("STWGameplay", false, "DESTRUCTIBLE_OBJECTS result=FAIL reason=material_load_failed");
+            m_destructibleObjectsStartup = ViewmodelMeshStartup::Failed;
+            return;
+        }
+        if (!m_destructibleMaterialAsset.IsReady())
+        {
+            return;
+        }
+        if (!m_destructibleMaterial)
+        {
+            m_destructibleMaterial = AZ::RPI::Material::FindOrCreate(m_destructibleMaterialAsset);
+            if (!m_destructibleMaterial)
+            {
+                AZ_Error("STWGameplay", false, "DESTRUCTIBLE_OBJECTS result=FAIL reason=material_instance_failed");
+                m_destructibleObjectsStartup = ViewmodelMeshStartup::Failed;
+                return;
+            }
+        }
+
+        AZ::Data::AssetId modelAssetId;
+        AZ::Data::AssetCatalogRequestBus::BroadcastResult(
+            modelAssetId, &AZ::Data::AssetCatalogRequests::GetAssetIdByPath, modelPath, AZ::Data::AssetType{}, false);
+        if (!modelAssetId.IsValid())
+        {
+            return;
+        }
+
+        bool allAcquired = true;
+        for (size_t index = 0; index < m_model.GetDestructibles().GetObjectCount(); ++index)
+        {
+            if (m_destructibleMeshHandles[index].IsValid())
+            {
+                continue;
+            }
+            AZ::Data::Asset<AZ::RPI::ModelAsset> modelAsset(
+                modelAssetId, azrtti_typeid<AZ::RPI::ModelAsset>(), modelPath);
+            modelAsset.QueueLoad();
+            AZ::Render::MeshHandleDescriptor descriptor(modelAsset, m_destructibleMaterial);
+            m_destructibleMeshHandles[index] = m_meshFeatureProcessor->AcquireMesh(descriptor);
+            if (!m_destructibleMeshHandles[index].IsValid())
+            {
+                AZ_Error(
+                    "STWGameplay", false, "DESTRUCTIBLE_OBJECTS result=FAIL reason=acquire_mesh_failed index=%zu",
+                    index);
+                m_destructibleObjectsStartup = ViewmodelMeshStartup::Failed;
+                return;
+            }
+            const DestructibleObjectState& state = m_model.GetDestructibles().GetState(index);
+            m_meshFeatureProcessor->SetTransform(
+                m_destructibleMeshHandles[index], AZ::Transform::CreateTranslation(state.m_center));
+            allAcquired = false; // freshly acquired this tick - confirm settled next tick before declaring Acquired
+        }
+        if (allAcquired)
+        {
+            m_destructibleObjectsStartup = ViewmodelMeshStartup::Acquired;
+            AZ_Printf(
+                "STWGameplay", "DESTRUCTIBLE_OBJECTS_MESH_ACQUIRED=1 count=%zu\n",
+                m_model.GetDestructibles().GetObjectCount());
+        }
+    }
+
+    void STWGameplaySystemComponent::UpdateDestructibleObjects()
+    {
+        if (m_destructibleObjectsStartup != ViewmodelMeshStartup::Acquired)
+        {
+            return;
+        }
+        for (size_t index = 0; index < m_model.GetDestructibles().GetObjectCount(); ++index)
+        {
+            const DestructibleObjectState& state = m_model.GetDestructibles().GetState(index);
+            if (state.m_active || m_destructibleReflectedInactive[index])
+            {
+                continue; // still intact, or already reflected as destroyed - nothing new to do
+            }
+            m_destructibleReflectedInactive[index] = true;
+            static const char* const destructibleNames[DestructibleObjectModel::MaxObjectCount] = {
+                "STW Left Cover", "STW Right Cover", nullptr, nullptr
+            };
+            if (AZ::Entity* colliderEntity = m_physicsArena.FindColliderEntityByName(destructibleNames[index]))
+            {
+                Physics::RigidBodyRequestBus::Event(colliderEntity->GetId(), &Physics::RigidBodyRequests::DisablePhysics);
+            }
+            if (m_meshFeatureProcessor != nullptr && m_destructibleMeshHandles[index].IsValid())
+            {
+                m_meshFeatureProcessor->SetVisible(m_destructibleMeshHandles[index], false);
+            }
+            AZ_Printf(
+                "STWGameplay", "DESTRUCTIBLE_OBJECT_DESTROYED=1 index=%zu name=%s\n", index,
+                destructibleNames[index] != nullptr ? destructibleNames[index] : "?");
+        }
+    }
+
+    void STWGameplaySystemComponent::UpdateDestructibleAcceptance()
+    {
+        if (!m_automatedAcceptance || m_destructibleObjectsReported
+            || m_destructibleObjectsStartup != ViewmodelMeshStartup::Acquired)
+        {
+            return;
+        }
+
+        const bool objectCountPassed = m_model.GetDestructibles().GetObjectCount() == 2;
+
+        // Real round-trip proof: destroy object 0 for real via the same
+        // DestructibleObjectModel::ApplyDamage() a real shot uses, let
+        // UpdateDestructibleObjects() (already run earlier this tick)
+        // reflect it into the real PhysX collider and mesh, then verify
+        // BOTH independently through their own real APIs - not just the
+        // model's own m_active flag, which would only prove the model's
+        // internal bookkeeping, not that anything real happened in the
+        // world.
+        static const char* const destructibleNames[DestructibleObjectModel::MaxObjectCount] = {
+            "STW Left Cover", "STW Right Cover", nullptr, nullptr
+        };
+        const DestructibleObjectState& stateBefore = m_model.GetDestructibles().GetState(0);
+        const bool destroyed = m_model.GetDestructibles().ApplyDamage(0, stateBefore.m_maxHealth + 1.0f);
+        UpdateDestructibleObjects(); // reflect the destruction immediately, same tick
+
+        bool colliderDisabledPassed = false;
+        AZ::Entity* colliderEntity = m_physicsArena.FindColliderEntityByName(destructibleNames[0]);
+        if (colliderEntity != nullptr)
+        {
+            bool physicsEnabled = true;
+            Physics::RigidBodyRequestBus::EventResult(
+                physicsEnabled, colliderEntity->GetId(), &Physics::RigidBodyRequests::IsPhysicsEnabled);
+            colliderDisabledPassed = !physicsEnabled;
+        }
+        bool meshHiddenPassed = false;
+        if (m_meshFeatureProcessor != nullptr && m_destructibleMeshHandles[0].IsValid())
+        {
+            meshHiddenPassed = !m_meshFeatureProcessor->GetVisible(m_destructibleMeshHandles[0]);
+        }
+
+        // Restore immediately, same tick, before this function returns -
+        // real play must never see a test-destroyed cover object.
+        m_model.GetDestructibles().Reset();
+        if (colliderEntity != nullptr)
+        {
+            Physics::RigidBodyRequestBus::Event(colliderEntity->GetId(), &Physics::RigidBodyRequests::EnablePhysics);
+        }
+        if (m_meshFeatureProcessor != nullptr && m_destructibleMeshHandles[0].IsValid())
+        {
+            m_meshFeatureProcessor->SetVisible(m_destructibleMeshHandles[0], true);
+        }
+        m_destructibleReflectedInactive.fill(false);
+
+        const bool passed = objectCountPassed && destroyed && colliderDisabledPassed && meshHiddenPassed;
+        if (!passed)
+        {
+            return;
+        }
+
+        AZ_Printf(
+            "STWGameplay",
+            "DESTRUCTIBLE_OBJECTS_ACTIVE=1\n"
+            "DESTRUCTIBLE_OBJECT_COUNT=%zu\n"
+            "DESTRUCTIBLE_COLLIDER_DISABLE_PASS=1\n"
+            "DESTRUCTIBLE_MESH_HIDE_PASS=1\n"
+            "DESTRUCTIBLE_ACCEPTANCE result=PASS\n",
+            m_model.GetDestructibles().GetObjectCount());
+        m_destructibleObjectsReported = true;
+    }
+
     void STWGameplaySystemComponent::ShutdownEnemyMesh()
     {
         if (m_meshFeatureProcessor != nullptr)
@@ -4157,6 +4387,21 @@ namespace STWGameplay
         m_hudPresentation.Shutdown();
         m_hudInitialized = false;
         m_hudAcceptanceReported = false;
+        if (m_meshFeatureProcessor != nullptr)
+        {
+            for (auto& meshHandle : m_destructibleMeshHandles)
+            {
+                if (meshHandle.IsValid())
+                {
+                    m_meshFeatureProcessor->ReleaseMesh(meshHandle);
+                }
+            }
+        }
+        m_destructibleObjectsStartup = ViewmodelMeshStartup::Waiting;
+        m_destructibleMaterialAsset.Reset();
+        m_destructibleMaterial = nullptr;
+        m_destructibleReflectedInactive.fill(false);
+        m_destructibleObjectsReported = false;
     }
 
     void STWGameplaySystemComponent::UpdateArenaAcceptance()

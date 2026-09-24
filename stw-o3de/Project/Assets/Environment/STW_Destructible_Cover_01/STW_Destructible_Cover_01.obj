@@ -1,0 +1,35 @@
+# STW_Destructible_Cover_01 - simple box presentation asset for real destructible
+# cover objects (see STWGameplay/DestructibleObjectModel.h). Locally centered at
+# the origin with half-extents (0.75, 1.0, 1.25) m, matching the full dimensions
+# (1.5, 2.0, 2.5) already used for the "STW Left Cover"/"STW Right Cover" static
+# colliders in PhysXArenaRuntime.cpp - the same box, given a real mesh instead of
+# only ever having a collider.
+# Axis convention: +X right, +Y depth, +Z up (matches PhysXArenaRuntime's world axes).
+# No mtllib / usemtl is emitted: the runtime binds a real Atom StandardPBR material
+# (the Industrial Yard's own steel material) through the mesh feature processor's
+# default custom material slot.
+o STW_Destructible_Cover_01
+v -0.750000 -1.000000 -1.250000
+v 0.750000 -1.000000 -1.250000
+v 0.750000 1.000000 -1.250000
+v -0.750000 1.000000 -1.250000
+v -0.750000 -1.000000 1.250000
+v 0.750000 -1.000000 1.250000
+v 0.750000 1.000000 1.250000
+v -0.750000 1.000000 1.250000
+vt 0.000000 0.000000
+vt 1.000000 0.000000
+vt 1.000000 1.000000
+vt 0.000000 1.000000
+vn 0.000000 0.000000 -1.000000
+vn 0.000000 0.000000 1.000000
+vn 0.000000 -1.000000 0.000000
+vn 0.000000 1.000000 0.000000
+vn -1.000000 0.000000 0.000000
+vn 1.000000 0.000000 0.000000
+f 1/1/1 4/2/1 3/3/1 2/4/1
+f 5/1/2 6/2/2 7/3/2 8/4/2
+f 1/1/3 2/2/3 6/3/3 5/4/3
+f 3/1/4 4/2/4 8/3/4 7/4/4
+f 4/1/5 1/2/5 5/3/5 8/4/5
+f 2/1/6 3/2/6 7/3/6 6/4/6

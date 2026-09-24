@@ -4,6 +4,7 @@
 #include <AzCore/Math/Vector3.h>
 #include <AzCore/std/optional.h>
 #include <STWGameplay/ArenaLayout.h>
+#include <STWGameplay/DestructibleObjectModel.h>
 #include <STWGameplay/EnemyCollectionModel.h>
 #include <STWGameplay/PlayerMovementModel.h>
 #include <STWGameplay/PlayerCommand.h>
@@ -46,6 +47,8 @@ namespace STWGameplay
         bool m_equipmentUsed = false;
         bool m_equipmentChanged = false;
         EnemyId m_hitEnemyId = InvalidEnemyId;
+        bool m_hitDestructible = false;
+        size_t m_hitDestructibleIndex = DestructibleObjectModel::MaxObjectCount;
         EquipmentProfileId m_activeEquipmentProfile = EquipmentProfileId::STW_SMG_01;
         float m_fireCueRemaining = 0.0f;
         float m_hitCueRemaining = 0.0f;
@@ -138,6 +141,8 @@ namespace STWGameplay
         EnemyCombatModel& GetEnemy() { return *m_enemyCollection->GetEnemy(PrimaryEnemyId); }
         const EnemyCollectionModel& GetEnemies() const { return *m_enemyCollection; }
         EnemyCollectionModel& GetEnemies() { return *m_enemyCollection; }
+        const DestructibleObjectModel& GetDestructibles() const { return m_destructibles; }
+        DestructibleObjectModel& GetDestructibles() { return m_destructibles; }
         const PresentationState& GetPresentation() const { return m_presentation; }
         const PlayerMovementState& GetMovementState() const { return m_movement.GetMovementState(); }
         AZ::Vector3 GetEyePosition() const;
@@ -165,6 +170,13 @@ namespace STWGameplay
         AZStd::optional<EnemyCollectionModel> m_ownedEnemyCollection;
         EnemyCollectionModel* m_enemyCollection = nullptr;
         PresentationState m_presentation;
+        // Deliberately owned directly, not shared via a constructor-injected
+        // pointer like m_enemyCollection: destructible objects are scene
+        // dressing, not per-network-player authority state, and the
+        // network-player-sharing PlayerSliceModel(EnemyCollectionModel&)
+        // constructor has no real call site in this codebase today (only
+        // its own definition - confirmed by grep before adding this).
+        DestructibleObjectModel m_destructibles;
         bool m_jumpWasHeld = false;
         bool m_crouchWasHeld = false;
         bool m_mantleWasHeld = false;

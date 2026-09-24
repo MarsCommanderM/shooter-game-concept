@@ -26,4 +26,5 @@ set(FILES
     Include/STWGameplay/IndustrialYardLookTemplate.h
     Include/STWGameplay/IndustrialYardArenaVariant.h
     Include/STWGameplay/MainMenuPresentation.h
-    Include/STWGameplay/HudPresentation.h)
+    Include/STWGameplay/HudPresentation.h
+    Include/STWGameplay/DestructibleObjectModel.h)
