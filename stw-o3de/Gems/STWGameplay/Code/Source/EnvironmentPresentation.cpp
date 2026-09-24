@@ -359,7 +359,7 @@ namespace STWGameplay
         if (AZ::Render::HDRColorGradingSettingsInterface* grading = settings->GetOrCreateHDRColorGradingSettingsInterface())
         {
             grading->SetEnabled(true);
-            grading->SetColorGradingContrast(GetColorGradingContrast());
+            grading->SetColorGradingContrast(m_colorGradingContrastOverride);
             grading->SetColorGradingPostSaturation(GetColorGradingPostSaturation());
             grading->OnConfigChanged();
         }
@@ -369,6 +369,30 @@ namespace STWGameplay
         settings->OnConfigChanged();
         m_postProcessFeatureProcessor->OnPostProcessSettingsChanged();
         m_postProcessApplied = true;
+    }
+
+    void EnvironmentPresentation::SetColorGradingContrastOverride(float value)
+    {
+        m_colorGradingContrastOverride = value;
+        if (m_postProcessFeatureProcessor == nullptr || !m_postSettingsEntityId.IsValid())
+        {
+            // ApplyPostProcess() will pick up m_colorGradingContrastOverride
+            // whenever it does run - this is not a lost write.
+            return;
+        }
+        AZ::Render::PostProcessSettingsInterface* settings =
+            m_postProcessFeatureProcessor->GetOrCreateSettingsInterface(m_postSettingsEntityId);
+        if (settings == nullptr)
+        {
+            return;
+        }
+        if (AZ::Render::HDRColorGradingSettingsInterface* grading = settings->GetOrCreateHDRColorGradingSettingsInterface())
+        {
+            grading->SetColorGradingContrast(m_colorGradingContrastOverride);
+            grading->OnConfigChanged();
+        }
+        settings->OnConfigChanged();
+        m_postProcessFeatureProcessor->OnPostProcessSettingsChanged();
     }
 
     void EnvironmentPresentation::ApplyLensOptic()

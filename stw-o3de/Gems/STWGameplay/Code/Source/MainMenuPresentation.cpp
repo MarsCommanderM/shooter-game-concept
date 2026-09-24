@@ -89,6 +89,7 @@ namespace STWGameplay
         m_clickedButtonNames.clear();
         m_sliderCallbacks.clear();
         m_controlsRebindHandler = nullptr;
+        m_contrastChangeHandler = nullptr;
     }
 
     AZ::EntityId MainMenuPresentation::BuildScreenRoot(const char* name)
@@ -341,6 +342,11 @@ namespace STWGameplay
         m_controlsRebindHandler = handler;
     }
 
+    void MainMenuPresentation::SetContrastChangeHandler(AZStd::function<void(float)> handler)
+    {
+        m_contrastChangeHandler = handler;
+    }
+
     void MainMenuPresentation::SetControlLabel(const char* buttonName, const char* text)
     {
         AZ::Entity* labelEntity = nullptr;
@@ -493,9 +499,30 @@ namespace STWGameplay
                 top, RowHeight);
         }
 
+        // Real, working contrast control: wired to EnvironmentPresentation's
+        // actual HDRColorGradingSettingsInterface (SetColorGradingContrast),
+        // the same post-process pipeline already driving the rest of the
+        // scene's look - not a separate/fake preview. Range/default derived
+        // from the real ACES contrast formula in HDRColorGradingCommon.azsl
+        // (contrastAdjustment = amount*0.01+1.0) and EnvironmentPresentation's
+        // own existing baseline (GetColorGradingContrast()==0.10), not
+        // guessed. Broader video settings (resolution/fullscreen/VSync) are
+        // not implemented - see MainMenuPresentation.h and the
+        // stw-main-menu memory note for what remains.
         CreateLabel(
-            m_settingsScreenRoot, "VideoSectionLabel", "KONTRAST / VIDEO",
-            MenuRect{ 0.20f, 0.77f, 0.50f, 0.81f, 0.0f, 0.0f, 0.0f, 0.0f }, 20.0f, true);
+            m_settingsScreenRoot, "VideoSectionLabel", "KONTRAST",
+            MenuRect{ 0.20f, 0.765f, 0.50f, 0.805f, 0.0f, 0.0f, 0.0f, 0.0f }, 20.0f, true);
+        CreateSlider(
+            m_settingsScreenRoot, "ContrastSlider",
+            MenuRect{ 0.52f, 0.77f, 0.80f, 0.80f, 0.0f, 0.0f, 0.0f, 0.0f },
+            -50.0f, 50.0f, 0.10f,
+            [this](float value)
+            {
+                if (m_contrastChangeHandler)
+                {
+                    m_contrastChangeHandler(value);
+                }
+            });
 
         CreateButton(
             m_settingsScreenRoot, "SettingsBackButton", "ZURUECK",

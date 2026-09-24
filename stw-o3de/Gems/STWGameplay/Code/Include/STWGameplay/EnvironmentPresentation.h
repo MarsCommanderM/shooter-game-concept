@@ -74,6 +74,13 @@ namespace STWGameplay
         static float GetBloomThreshold();
         static float GetColorGradingContrast();
         static float GetColorGradingPostSaturation();
+        //! Live-adjustable contrast, defaulted to GetColorGradingContrast()
+        //! so nothing changes until a caller (the Kontrast slider) actually
+        //! moves it. Re-applies to the real HDRColorGradingSettingsInterface
+        //! immediately if the post-process feature processor is already up;
+        //! otherwise ApplyPostProcess() picks up the stored value once it runs.
+        void SetColorGradingContrastOverride(float value);
+        float GetColorGradingContrastOverride() const { return m_colorGradingContrastOverride; }
         //! A plausible manual exposure trim (EV) layered under the preset's own control.
         static float GetExposureCompensationTrim();
         //! EV trim applied to the image-based light (HDRI ambient) after the preset, so the sky
@@ -127,5 +134,6 @@ namespace STWGameplay
         bool m_accentRigApplied = false;
         bool m_shaderBallHidden = false;
         bool m_readyReported = false;
+        float m_colorGradingContrastOverride = GetColorGradingContrast();
     };
 }

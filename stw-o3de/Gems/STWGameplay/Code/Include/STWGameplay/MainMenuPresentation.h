@@ -79,6 +79,10 @@ namespace STWGameplay
         //! set before or after Initialize() - each rebind button reads this
         //! member at click time, not at build time.
         void SetControlsRebindHandler(AZStd::function<void(const char*)> handler);
+        //! Registers the callback invoked when the Kontrast slider moves,
+        //! same reason and same "may be set before or after Initialize()"
+        //! rule as SetControlsRebindHandler().
+        void SetContrastChangeHandler(AZStd::function<void(float)> handler);
         //! Updates a button's displayed label text in place - used both to
         //! sync the initial key names after Initialize() and to reflect a
         //! real rebind the caller just captured.
@@ -142,5 +146,6 @@ namespace STWGameplay
         //! Same TestClick()-style test-only invocation path, for sliders.
         AZStd::vector<AZStd::pair<AZStd::string, AZStd::function<void(float)>>> m_sliderCallbacks;
         AZStd::function<void(const char*)> m_controlsRebindHandler;
+        AZStd::function<void(float)> m_contrastChangeHandler;
     };
 }

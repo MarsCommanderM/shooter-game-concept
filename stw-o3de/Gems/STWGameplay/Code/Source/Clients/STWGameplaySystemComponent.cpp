@@ -3272,6 +3272,22 @@ namespace STWGameplay
         m_inputBindings.m_jump = AzFramework::InputDeviceKeyboard::Key::EditSpace;
         SyncControlLabels();
 
+        // Real round-trip proof for the contrast slider, same shape as the
+        // sound slider check above: drive it to a real, non-default value
+        // and independently read back EnvironmentPresentation's own
+        // GetColorGradingContrastOverride() - the value the live
+        // HDRColorGradingSettingsInterface actually received - not just the
+        // UI's own copy of the number.
+        const float defaultContrast = m_environmentPresentation.GetColorGradingContrastOverride();
+        m_mainMenuPresentation.TestSliderChange("ContrastSlider", 25.0f);
+        const float uiContrastValue = m_mainMenuPresentation.GetSliderValue("ContrastSlider");
+        const float engineContrastValue = m_environmentPresentation.GetColorGradingContrastOverride();
+        const bool contrastRoundTripPassed =
+            std::fabs(uiContrastValue - 25.0f) < 0.01f && std::fabs(engineContrastValue - 25.0f) < 0.01f;
+        passed = passed && contrastRoundTripPassed;
+        // Restore the pre-test contrast before handing off to real play.
+        m_mainMenuPresentation.TestSliderChange("ContrastSlider", defaultContrast);
+
         m_mainMenuPresentation.TestClick("SettingsBackButton");
         passed = passed && m_mainMenuPresentation.GetActiveScreen() == MainMenuScreen::Main;
 
@@ -3308,6 +3324,7 @@ namespace STWGameplay
             "MAIN_MENU_ALL_BUTTONS_CLICK_TESTED=1\n"
             "MAIN_MENU_SOUND_SLIDER_ROUNDTRIP_PASS=1\n"
             "MAIN_MENU_KEY_REBIND_ROUNDTRIP_PASS=1\n"
+            "MAIN_MENU_CONTRAST_ROUNDTRIP_PASS=1\n"
             "MAIN_MENU_ACCEPTANCE result=PASS\n",
             m_mainMenuPresentation.GetButtonCount());
         m_mainMenuAcceptanceReported = true;
@@ -3840,6 +3857,8 @@ namespace STWGameplay
                 m_mainMenuPresentation.SetControlsRebindHandler(
                     [this](const char* actionId) { StartRebind(actionId); });
                 SyncControlLabels();
+                m_mainMenuPresentation.SetContrastChangeHandler(
+                    [this](float value) { m_environmentPresentation.SetColorGradingContrastOverride(value); });
             }
         }
         if (m_arenaPresentation.IsReady())
