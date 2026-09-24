@@ -58,8 +58,24 @@ namespace STWGameplay
         void Shutdown();
         bool IsReady() const { return m_canvasId.IsValid(); }
 
+        //! Shows the given screen AND makes the whole canvas visible again
+        //! (see SetCanvasEnabled()) - calling ShowScreen always means
+        //! "the player should see the menu now", the one exception being
+        //! the explicit SPIELEN action, which is the only thing that hides
+        //! the canvas again.
         void ShowScreen(MainMenuScreen screen);
         MainMenuScreen GetActiveScreen() const { return m_activeScreen; }
+        //! Hides or shows the ENTIRE canvas (every screen at once), via the
+        //! real UiCanvasBus::SetEnabled - not per-element visibility, the
+        //! same mechanism LyShine itself uses to take a whole canvas out of
+        //! rendering/input. Exposed so the caller (STWGameplaySystemComponent)
+        //! can hide the menu the instant SPIELEN is clicked, matching the
+        //! standard "menu blocks the game until Play is pressed" convention
+        //! the original request assumed and this system did not previously
+        //! implement - the menu canvas stayed permanently enabled and never
+        //! actually gated real play.
+        void SetCanvasEnabled(bool enabled);
+        bool IsCanvasEnabled() const;
         //! Forces LyShine to recompute element rects immediately rather than
         //! waiting for its own lazy/automatic pass - see Initialize()'s
         //! comment for why this is not optional.
@@ -90,6 +106,14 @@ namespace STWGameplay
         //! same reason and same "may be set before or after Initialize()"
         //! rule as SetControlsRebindHandler().
         void SetContrastChangeHandler(AZStd::function<void(float)> handler);
+        //! Registers the callback invoked when the real SPIELEN (Play)
+        //! button on the Main screen is clicked - same "may be set before
+        //! or after Initialize()" rule as the other handler setters. This
+        //! is the one real entry point from menu into actual play; the
+        //! caller (STWGameplaySystemComponent) is the one that actually
+        //! knows what "start playing" means for real game state (unblocking
+        //! input, showing the HUD), this class only reports the click.
+        void SetPlayHandler(AZStd::function<void()> handler);
         //! Updates a button's displayed label text in place - used both to
         //! sync the initial key names after Initialize() and to reflect a
         //! real rebind the caller just captured.
@@ -169,5 +193,6 @@ namespace STWGameplay
         AZStd::function<void(const char*)> m_controlsRebindHandler;
         AZStd::function<void(float)> m_contrastChangeHandler;
         AZStd::function<void()> m_endGameContinueHandler;
+        AZStd::function<void()> m_playHandler;
     };
 }

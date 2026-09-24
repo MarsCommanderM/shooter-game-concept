@@ -288,6 +288,16 @@ namespace STWGameplay
         bool m_hudInitialized = false;
         bool m_hudAcceptanceReported = false;
 
+        // True from boot until the player clicks SPIELEN on the main menu -
+        // real play was never actually gated by the menu before this (the
+        // menu canvas stayed enabled and gameplay simulation ran underneath
+        // it regardless), so a fresh player had no real "start" moment. Only
+        // enforced outside automated acceptance (see OnInputChannelEventFiltered) -
+        // the scripted acceptance battery drives gameplay through its own
+        // stimulus functions, never through this real input path, so it is
+        // unaffected either way.
+        bool m_menuBlockingPlay = true;
+
         // True while the Niederlage/Sieg overlay is showing - suppresses
         // UpdateInteractivePlayerRespawn's timer-based auto-respawn so the
         // player doesn't silently pop back into the arena underneath the

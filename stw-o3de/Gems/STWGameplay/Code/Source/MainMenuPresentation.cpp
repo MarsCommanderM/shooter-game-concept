@@ -94,6 +94,7 @@ namespace STWGameplay
         m_controlsRebindHandler = nullptr;
         m_contrastChangeHandler = nullptr;
         m_endGameContinueHandler = nullptr;
+        m_playHandler = nullptr;
     }
 
     AZ::EntityId MainMenuPresentation::BuildScreenRoot(const char* name)
@@ -351,6 +352,11 @@ namespace STWGameplay
         m_contrastChangeHandler = handler;
     }
 
+    void MainMenuPresentation::SetPlayHandler(AZStd::function<void()> handler)
+    {
+        m_playHandler = handler;
+    }
+
     void MainMenuPresentation::SetControlLabel(const char* buttonName, const char* text)
     {
         AZ::Entity* labelEntity = nullptr;
@@ -463,6 +469,27 @@ namespace STWGameplay
         SetScreenVisible(m_multiplayerScreenRoot, screen == MainMenuScreen::Multiplayer);
         SetScreenVisible(m_campaignScreenRoot, screen == MainMenuScreen::Campaign);
         SetScreenVisible(m_endGameScreenRoot, screen == MainMenuScreen::EndGame);
+        // Showing a screen always means the player should see it - SPIELEN
+        // is the one deliberate exception that hides the canvas again.
+        SetCanvasEnabled(true);
+    }
+
+    void MainMenuPresentation::SetCanvasEnabled(bool enabled)
+    {
+        if (m_canvasId.IsValid())
+        {
+            UiCanvasBus::Event(m_canvasId, &UiCanvasBus::Events::SetEnabled, enabled);
+        }
+    }
+
+    bool MainMenuPresentation::IsCanvasEnabled() const
+    {
+        bool enabled = false;
+        if (m_canvasId.IsValid())
+        {
+            UiCanvasBus::EventResult(enabled, m_canvasId, &UiCanvasBus::Events::GetEnabled);
+        }
+        return enabled;
     }
 
     void MainMenuPresentation::BuildMainScreen()
@@ -477,16 +504,20 @@ namespace STWGameplay
             MenuRect{ 0.0f, 0.06f, 1.0f, 0.18f, 0.0f, 0.0f, 0.0f, 0.0f }, 64.0f, true);
 
         // One row of buttons, matching the classic FPS main-menu layout the
-        // user asked for: Kampagne, Multiplayer, Einstellungen, Beenden.
-        constexpr float ButtonWidth = 0.20f;
+        // user asked for: Spielen, Kampagne, Multiplayer, Einstellungen,
+        // Beenden. SPIELEN is the real entry point into actual play - see
+        // its handler's comment below for why this was missing entirely
+        // before (the menu never gated play, so there was never a reason to
+        // have a button that starts it).
+        constexpr float ButtonWidth = 0.18f;
         constexpr float Gap = 0.02f;
-        constexpr float RowStart = 0.5f - (4.0f * ButtonWidth + 3.0f * Gap) * 0.5f;
+        constexpr float RowStart = 0.5f - (5.0f * ButtonWidth + 4.0f * Gap) * 0.5f;
         constexpr float RowY = 0.74f;
         constexpr float RowHeight = 0.07f;
 
-        const char* labels[4] = { "KAMPAGNE", "MULTIPLAYER", "EINSTELLUNGEN", "BEENDEN" };
-        const char* names[4] = { "CampaignButton", "MultiplayerButton", "SettingsButton", "QuitButton" };
-        for (int index = 0; index < 4; ++index)
+        const char* labels[5] = { "SPIELEN", "KAMPAGNE", "MULTIPLAYER", "EINSTELLUNGEN", "BEENDEN" };
+        const char* names[5] = { "PlayButton", "CampaignButton", "MultiplayerButton", "SettingsButton", "QuitButton" };
+        for (int index = 0; index < 5; ++index)
         {
             const float left = RowStart + index * (ButtonWidth + Gap);
             const float right = left + ButtonWidth;
@@ -494,14 +525,29 @@ namespace STWGameplay
             switch (index)
             {
             case 0:
+                // Only invokes the handler - this class has no concept of
+                // "real gameplay state" (input, HUD, physics), same reason
+                // Kontrast/VSYNC route through handlers instead of touching
+                // their subsystems directly. STWGameplaySystemComponent is
+                // the one that actually unblocks play and shows the HUD.
                 CreateButton(m_mainScreenRoot, names[index], labels[index], buttonRect,
-                    [this]() { ShowScreen(MainMenuScreen::Campaign); });
+                    [this]()
+                    {
+                        if (m_playHandler)
+                        {
+                            m_playHandler();
+                        }
+                    });
                 break;
             case 1:
                 CreateButton(m_mainScreenRoot, names[index], labels[index], buttonRect,
-                    [this]() { ShowScreen(MainMenuScreen::Multiplayer); });
+                    [this]() { ShowScreen(MainMenuScreen::Campaign); });
                 break;
             case 2:
+                CreateButton(m_mainScreenRoot, names[index], labels[index], buttonRect,
+                    [this]() { ShowScreen(MainMenuScreen::Multiplayer); });
+                break;
+            case 3:
                 CreateButton(m_mainScreenRoot, names[index], labels[index], buttonRect,
                     [this]() { ShowScreen(MainMenuScreen::Settings); });
                 break;

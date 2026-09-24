@@ -172,6 +172,24 @@ namespace STWGameplay
         return enabled;
     }
 
+    void HudPresentation::SetVisible(bool visible)
+    {
+        if (m_canvasId.IsValid())
+        {
+            UiCanvasBus::Event(m_canvasId, &UiCanvasBus::Events::SetEnabled, visible);
+        }
+    }
+
+    bool HudPresentation::IsVisible() const
+    {
+        bool enabled = false;
+        if (m_canvasId.IsValid())
+        {
+            UiCanvasBus::EventResult(enabled, m_canvasId, &UiCanvasBus::Events::GetEnabled);
+        }
+        return enabled;
+    }
+
     AZ::EntityId HudPresentation::CreateHudLabel(
         const char* name, float anchorLeft, float anchorTop, float anchorRight, float anchorBottom, float fontSize)
     {

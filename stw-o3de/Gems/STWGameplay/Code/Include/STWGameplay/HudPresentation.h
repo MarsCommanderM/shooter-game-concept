@@ -45,6 +45,13 @@ namespace STWGameplay
         //! (PresentationState::m_hitCueRemaining > 0 or
         //! ViewmodelPresentation::IsHitFeedbackActive()).
         void SetCrosshairHitFeedback(bool active);
+        //! Hides/shows the whole HUD canvas via the real UiCanvasBus::
+        //! SetEnabled - used to keep the HUD hidden until the player has
+        //! actually pressed SPIELEN on the main menu (see
+        //! MainMenuPresentation::SetCanvasEnabled() for the same mechanism
+        //! on the menu side of this same real gate).
+        void SetVisible(bool visible);
+        bool IsVisible() const;
         //! Reads the hit-feedback marker's real enabled state back through
         //! UiElementBus, for round-trip verification.
         bool IsHitFeedbackMarkerVisible() const;

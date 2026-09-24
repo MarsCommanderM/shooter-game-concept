@@ -2897,6 +2897,18 @@ namespace STWGameplay
         {
             return true;
         }
+        // While the menu is blocking real play (before SPIELEN is clicked,
+        // or again after a death - see m_menuBlockingPlay's comment),
+        // real movement/look/fire input must not reach m_input at all -
+        // returns false (not consumed) rather than true so the event still
+        // reaches LyShine's own UI input handling and menu buttons keep
+        // working. Never gates the scripted acceptance battery, which
+        // drives gameplay through its own stimulus functions and never
+        // through this real input path.
+        if (m_menuBlockingPlay && !m_automatedAcceptance)
+        {
+            return false;
+        }
         const bool active = channel.IsActive();
         using Keyboard = AzFramework::InputDeviceKeyboard;
         using Mouse = AzFramework::InputDeviceMouse;
@@ -3366,6 +3378,28 @@ namespace STWGameplay
         m_mainMenuPresentation.ShowScreen(MainMenuScreen::Main);
         bool passed = m_mainMenuPresentation.GetActiveScreen() == MainMenuScreen::Main;
 
+        // Real round-trip proof for SPIELEN, the actual menu-blocks-play
+        // gate (see m_menuBlockingPlay's declaration comment): click it and
+        // verify all three real, independent effects it is supposed to
+        // have - not just that the callback fired. Then restore the
+        // pre-test blocked state before continuing, same "restore before
+        // handing off to real play" convention as the sliders below -
+        // ShowScreen() re-enables the canvas SetPlayHandler's click
+        // disabled, so the rest of this sequence's navigation checks are
+        // unaffected either way.
+        const bool playBlockedBefore = m_menuBlockingPlay;
+        const bool canvasEnabledBefore = m_mainMenuPresentation.IsCanvasEnabled();
+        const bool hudVisibleBefore = m_hudPresentation.IsVisible();
+        m_mainMenuPresentation.TestClick("PlayButton");
+        const bool playRoundTripPassed = playBlockedBefore && canvasEnabledBefore
+            && !m_menuBlockingPlay
+            && !m_mainMenuPresentation.IsCanvasEnabled()
+            && m_hudPresentation.IsVisible();
+        passed = passed && playRoundTripPassed;
+        m_menuBlockingPlay = true;
+        m_hudPresentation.SetVisible(hudVisibleBefore);
+        m_mainMenuPresentation.ShowScreen(MainMenuScreen::Main);
+
         m_mainMenuPresentation.TestClick("CampaignButton");
         passed = passed && m_mainMenuPresentation.GetActiveScreen() == MainMenuScreen::Campaign;
         m_mainMenuPresentation.TestClick("CampaignBackButton");
@@ -3521,7 +3555,7 @@ namespace STWGameplay
         m_mainMenuPresentation.RecomputeLayout();
         m_mainMenuPresentation.LogDiagnostics();
 
-        passed = passed && m_mainMenuPresentation.GetButtonCount() == 21
+        passed = passed && m_mainMenuPresentation.GetButtonCount() == 22
             && m_mainMenuPresentation.WasEveryButtonClickTested();
 
         if (!passed)
@@ -3532,6 +3566,7 @@ namespace STWGameplay
         AZ_Printf("STWGameplay",
             "MAIN_MENU_PRESENTATION_ACTIVE=1\n"
             "MAIN_MENU_BUTTON_COUNT=%zu\n"
+            "MAIN_MENU_PLAY_GATES_REAL_INPUT_PASS=1\n"
             "MAIN_MENU_CAMPAIGN_NAV_PASS=1\n"
             "MAIN_MENU_SETTINGS_NAV_PASS=1\n"
             "MAIN_MENU_MULTIPLAYER_NAV_PASS=1\n"
@@ -4369,6 +4404,20 @@ namespace STWGameplay
                 SyncControlLabels();
                 m_mainMenuPresentation.SetContrastChangeHandler(
                     [this](float value) { m_environmentPresentation.SetColorGradingContrastOverride(value); });
+                // The real entry point from menu into play - see
+                // m_menuBlockingPlay's declaration comment for why this
+                // previously did not exist at all. Only STWGameplaySystemComponent
+                // knows what "start playing" actually means (unblock real
+                // input, reveal the HUD) - MainMenuPresentation stays
+                // presentation-only, same reasoning as every other handler
+                // here.
+                m_mainMenuPresentation.SetPlayHandler(
+                    [this]()
+                    {
+                        m_menuBlockingPlay = false;
+                        m_mainMenuPresentation.SetCanvasEnabled(false);
+                        m_hudPresentation.SetVisible(true);
+                    });
                 m_mainMenuPresentation.SetEndGameContinueHandler(
                     [this]()
                     {
@@ -4387,6 +4436,11 @@ namespace STWGameplay
                         m_gameOverActive = false;
                         m_defeatShown = false;
                         m_victoryShown = false;
+                        // Re-blocks play behind the menu, matching the
+                        // standard "round ended -> back to menu -> deploy
+                        // again" convention - ShowScreen() below re-enables
+                        // the canvas that SetPlayHandler's click disabled.
+                        m_menuBlockingPlay = true;
                         m_mainMenuPresentation.ShowScreen(MainMenuScreen::Main);
                     });
             }
@@ -4395,6 +4449,15 @@ namespace STWGameplay
         {
             m_hudPresentation.Initialize();
             m_hudInitialized = m_hudPresentation.IsReady();
+            if (m_hudInitialized && !m_automatedAcceptance)
+            {
+                // Stays hidden until SPIELEN is clicked - the scripted
+                // acceptance battery leaves this alone entirely (it never
+                // goes through the real menu-blocks-play gate, see
+                // m_menuBlockingPlay's comment), so HUD_ACCEPTANCE's
+                // existing label/round-trip checks are unaffected.
+                m_hudPresentation.SetVisible(false);
+            }
         }
         if (m_arenaPresentation.IsReady())
         {
