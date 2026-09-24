@@ -3243,24 +3243,23 @@ namespace STWGameplay
         // AzFramework::InputChannelId (T) through the actual capture path
         // OnInputChannelEventFiltered uses, and verify both the internal
         // binding and the UI's own displayed label changed to match it.
-        const char* rebindButtons[8] = {
+        // Jump is clicked LAST and deliberately not immediately cancelled -
+        // an earlier version clicked it before the other rows, whose own
+        // StartRebind() calls silently re-armed and then cancelled the
+        // pending action, wiping Jump's armed state before it could be
+        // captured (caught from a real gate run: MAIN_MENU_ACCEPTANCE never
+        // printed because `passed` was false every tick).
+        const char* nonJumpRebindButtons[7] = {
             "RebindForwardButton", "RebindBackButton", "RebindLeftButton", "RebindRightButton",
-            "RebindJumpButton", "RebindCrouchButton", "RebindSprintButton", "RebindReloadButton"
+            "RebindCrouchButton", "RebindSprintButton", "RebindReloadButton"
         };
-        for (const char* buttonName : rebindButtons)
+        for (const char* buttonName : nonJumpRebindButtons)
         {
             m_mainMenuPresentation.TestClick(buttonName);
-            if (AZStd::string(buttonName) != "RebindJumpButton")
-            {
-                // Only Jump is carried through to a real capture below - the
-                // others just prove their button click reaches StartRebind()
-                // (WasEveryButtonClickTested() requires every button
-                // clicked), then are cancelled so real gameplay isn't left
-                // mid-rebind.
-                m_awaitingRebindKey = false;
-                m_pendingRebindAction.clear();
-            }
+            m_awaitingRebindKey = false;
+            m_pendingRebindAction.clear();
         }
+        m_mainMenuPresentation.TestClick("RebindJumpButton");
         const bool rebindArmedCorrectly = m_awaitingRebindKey && m_pendingRebindAction == "Jump";
         const bool captured = TryCaptureRebind(AzFramework::InputDeviceKeyboard::Key::AlphanumericT, true);
         const bool bindingUpdated = m_inputBindings.m_jump == AzFramework::InputDeviceKeyboard::Key::AlphanumericT;
