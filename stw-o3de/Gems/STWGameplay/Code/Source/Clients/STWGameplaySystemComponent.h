@@ -5,6 +5,8 @@
 #include <AzCore/std/containers/array.h>
 #include <AzCore/std/string/string.h>
 #include <AzFramework/Input/Events/InputChannelEventListener.h>
+#include <AzFramework/Input/Channels/InputChannelId.h>
+#include <AzFramework/Input/Devices/Keyboard/InputDeviceKeyboard.h>
 #include <Atom/Feature/Mesh/MeshFeatureProcessorInterface.h>
 #include <STWGameplay/PlayerSimulationTypes.h>
 #include <STWGameplay/FixedSimulationClock.h>
@@ -234,6 +236,35 @@ namespace STWGameplay
         MainMenuPresentation m_mainMenuPresentation;
         bool m_mainMenuInitialized = false;
         bool m_mainMenuAcceptanceReported = false;
+
+        // Real, rebindable keyboard bindings - initialized to exactly the
+        // key IDs OnInputChannelEventFiltered used to have hardcoded, so
+        // rebinding is opt-in behavior change, not a silent default change.
+        // Gamepad and the two always-on mouse actions (fire/ADS) are not
+        // exposed for rebinding in this pass.
+        struct STWInputBindings
+        {
+            AzFramework::InputChannelId m_forward{ AzFramework::InputDeviceKeyboard::Key::AlphanumericW };
+            AzFramework::InputChannelId m_back{ AzFramework::InputDeviceKeyboard::Key::AlphanumericS };
+            AzFramework::InputChannelId m_left{ AzFramework::InputDeviceKeyboard::Key::AlphanumericA };
+            AzFramework::InputChannelId m_right{ AzFramework::InputDeviceKeyboard::Key::AlphanumericD };
+            AzFramework::InputChannelId m_jump{ AzFramework::InputDeviceKeyboard::Key::EditSpace };
+            AzFramework::InputChannelId m_crouch{ AzFramework::InputDeviceKeyboard::Key::ModifierCtrlL };
+            AzFramework::InputChannelId m_sprint{ AzFramework::InputDeviceKeyboard::Key::ModifierShiftL };
+            AzFramework::InputChannelId m_reload{ AzFramework::InputDeviceKeyboard::Key::AlphanumericR };
+        };
+        STWInputBindings m_inputBindings;
+        // Set by a "REBIND" button click (via MainMenuPresentation's
+        // controls-rebind handler); the next real key/mouse-button press
+        // OnInputChannelEventFiltered sees is captured into m_inputBindings
+        // instead of being interpreted as gameplay input - see
+        // TryCaptureRebind().
+        AZStd::string m_pendingRebindAction;
+        bool m_awaitingRebindKey = false;
+        bool TryCaptureRebind(const AzFramework::InputChannelId& id, bool stateBegan);
+        void StartRebind(const char* actionId);
+        void SyncControlLabels();
+        static AZStd::string GetKeyDisplayName(const AzFramework::InputChannelId& id);
 
         PlayerSliceModel m_model;
         BodycamCameraPresentation m_bodycamCameraPresentation;

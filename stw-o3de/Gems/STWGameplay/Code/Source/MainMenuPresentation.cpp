@@ -88,6 +88,7 @@ namespace STWGameplay
         m_buttonNames.clear();
         m_clickedButtonNames.clear();
         m_sliderCallbacks.clear();
+        m_controlsRebindHandler = nullptr;
     }
 
     AZ::EntityId MainMenuPresentation::BuildScreenRoot(const char* name)
@@ -314,6 +315,58 @@ namespace STWGameplay
         return sliderId;
     }
 
+    void MainMenuPresentation::CreateControlRow(
+        AZ::EntityId parent, const char* actionId, const char* actionLabel, const char* buttonName,
+        float top, float height)
+    {
+        MenuRect nameLayout{ 0.20f, top, 0.50f, top + height, 0.0f, 0.0f, 0.0f, 0.0f };
+        AZStd::string nameLabelName = AZStd::string(buttonName) + "_ActionName";
+        CreateLabel(parent, nameLabelName.c_str(), actionLabel, nameLayout, 16.0f, false);
+
+        MenuRect keyLayout{ 0.52f, top, 0.80f, top + height, 0.0f, 0.0f, 0.0f, 0.0f };
+        AZStd::string id(actionId);
+        CreateButton(
+            parent, buttonName, "...", keyLayout,
+            [this, id]()
+            {
+                if (m_controlsRebindHandler)
+                {
+                    m_controlsRebindHandler(id.c_str());
+                }
+            });
+    }
+
+    void MainMenuPresentation::SetControlsRebindHandler(AZStd::function<void(const char*)> handler)
+    {
+        m_controlsRebindHandler = handler;
+    }
+
+    void MainMenuPresentation::SetControlLabel(const char* buttonName, const char* text)
+    {
+        AZ::Entity* labelEntity = nullptr;
+        AZStd::string labelName = AZStd::string(buttonName) + "_Label";
+        UiCanvasBus::EventResult(labelEntity, m_canvasId, &UiCanvasBus::Events::FindElementByName, labelName);
+        if (labelEntity == nullptr)
+        {
+            return;
+        }
+        UiTextBus::Event(labelEntity->GetId(), &UiTextBus::Events::SetText, AZStd::string(text));
+    }
+
+    AZStd::string MainMenuPresentation::GetControlLabel(const char* buttonName) const
+    {
+        AZ::Entity* labelEntity = nullptr;
+        AZStd::string labelName = AZStd::string(buttonName) + "_Label";
+        UiCanvasBus::EventResult(labelEntity, m_canvasId, &UiCanvasBus::Events::FindElementByName, labelName);
+        if (labelEntity == nullptr)
+        {
+            return AZStd::string();
+        }
+        AZStd::string text;
+        UiTextBus::EventResult(text, labelEntity->GetId(), &UiTextBus::Events::GetText);
+        return text;
+    }
+
     void MainMenuPresentation::SetScreenVisible(AZ::EntityId screenRoot, bool visible)
     {
         if (screenRoot.IsValid())
@@ -385,36 +438,68 @@ namespace STWGameplay
             MenuRect{ 0.15f, 0.10f, 0.85f, 0.90f, 0.0f, 0.0f, 0.0f, 0.0f }, SteelR, SteelG, SteelB, 0.90f);
         CreateLabel(
             m_settingsScreenRoot, "SettingsTitle", "EINSTELLUNGEN",
-            MenuRect{ 0.15f, 0.12f, 0.85f, 0.20f, 0.0f, 0.0f, 0.0f, 0.0f }, 36.0f, true);
+            MenuRect{ 0.15f, 0.11f, 0.85f, 0.17f, 0.0f, 0.0f, 0.0f, 0.0f }, 32.0f, true);
 
         // Real sound volume control: a working UiSliderComponent wired to
         // MiniAudio's actual global volume (MiniAudioRequestBus::
-        // SetGlobalVolume). Steuerung/Kontrast are still section labels only
-        // in this pass - their own value bindings are separate, separately-
-        // verified steps (see MainMenuPresentation.h class comment and the
-        // stw-main-menu memory note for what remains).
+        // SetGlobalVolume). Kontrast is still a section label only in this
+        // pass - see MainMenuPresentation.h class comment and the
+        // stw-main-menu memory note for what remains.
         CreateLabel(
             m_settingsScreenRoot, "SoundSectionLabel", "SOUND",
-            MenuRect{ 0.20f, 0.28f, 0.50f, 0.34f, 0.0f, 0.0f, 0.0f, 0.0f }, 22.0f, true);
+            MenuRect{ 0.20f, 0.20f, 0.50f, 0.25f, 0.0f, 0.0f, 0.0f, 0.0f }, 20.0f, true);
         CreateSlider(
             m_settingsScreenRoot, "VolumeSlider",
-            MenuRect{ 0.52f, 0.285f, 0.80f, 0.335f, 0.0f, 0.0f, 0.0f, 0.0f },
+            MenuRect{ 0.52f, 0.205f, 0.80f, 0.245f, 0.0f, 0.0f, 0.0f, 0.0f },
             0.0f, 100.0f, 100.0f,
             [](float value)
             {
                 MiniAudio::MiniAudioRequestBus::Broadcast(
                     &MiniAudio::MiniAudioRequestBus::Events::SetGlobalVolume, value / 100.0f);
             });
+
+        // Real, working key rebind: each row's button shows the currently
+        // bound key and, when clicked, tells STWGameplaySystemComponent (the
+        // only class that actually owns AzFramework::InputChannelEventListener)
+        // to capture the next real key/button press for that action. This
+        // class stays input-device-agnostic; it only renders what it is told.
         CreateLabel(
             m_settingsScreenRoot, "ControlsSectionLabel", "STEUERUNG",
-            MenuRect{ 0.20f, 0.42f, 0.50f, 0.48f, 0.0f, 0.0f, 0.0f, 0.0f }, 22.0f, true);
+            MenuRect{ 0.20f, 0.28f, 0.50f, 0.32f, 0.0f, 0.0f, 0.0f, 0.0f }, 20.0f, true);
+        constexpr float RowStart = 0.335f;
+        constexpr float RowHeight = 0.045f;
+        constexpr float RowStep = 0.053f;
+        struct ControlRowSpec
+        {
+            const char* m_actionId;
+            const char* m_label;
+            const char* m_buttonName;
+        };
+        constexpr ControlRowSpec rows[8] = {
+            { "Forward", "VORWAERTS", "RebindForwardButton" },
+            { "Back", "RUECKWAERTS", "RebindBackButton" },
+            { "Left", "LINKS", "RebindLeftButton" },
+            { "Right", "RECHTS", "RebindRightButton" },
+            { "Jump", "SPRINGEN", "RebindJumpButton" },
+            { "Crouch", "DUCKEN", "RebindCrouchButton" },
+            { "Sprint", "SPRINTEN", "RebindSprintButton" },
+            { "Reload", "NACHLADEN", "RebindReloadButton" },
+        };
+        for (int index = 0; index < 8; ++index)
+        {
+            const float top = RowStart + index * RowStep;
+            CreateControlRow(
+                m_settingsScreenRoot, rows[index].m_actionId, rows[index].m_label, rows[index].m_buttonName,
+                top, RowHeight);
+        }
+
         CreateLabel(
             m_settingsScreenRoot, "VideoSectionLabel", "KONTRAST / VIDEO",
-            MenuRect{ 0.20f, 0.56f, 0.50f, 0.62f, 0.0f, 0.0f, 0.0f, 0.0f }, 22.0f, true);
+            MenuRect{ 0.20f, 0.77f, 0.50f, 0.81f, 0.0f, 0.0f, 0.0f, 0.0f }, 20.0f, true);
 
         CreateButton(
             m_settingsScreenRoot, "SettingsBackButton", "ZURUECK",
-            MenuRect{ 0.40f, 0.80f, 0.60f, 0.87f, 0.0f, 0.0f, 0.0f, 0.0f },
+            MenuRect{ 0.40f, 0.83f, 0.60f, 0.89f, 0.0f, 0.0f, 0.0f, 0.0f },
             [this]() { ShowScreen(MainMenuScreen::Main); });
     }
 

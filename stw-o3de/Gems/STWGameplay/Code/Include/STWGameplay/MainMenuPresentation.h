@@ -73,6 +73,20 @@ namespace STWGameplay
         //! round-trip verification (e.g. "did the value the UI reports match
         //! what the subsystem it drives actually received").
         float GetSliderValue(const char* sliderName) const;
+
+        //! Registers the callback invoked when a control-rebind button is
+        //! clicked, with the actionId passed to CreateControlRow(). May be
+        //! set before or after Initialize() - each rebind button reads this
+        //! member at click time, not at build time.
+        void SetControlsRebindHandler(AZStd::function<void(const char*)> handler);
+        //! Updates a button's displayed label text in place - used both to
+        //! sync the initial key names after Initialize() and to reflect a
+        //! real rebind the caller just captured.
+        void SetControlLabel(const char* buttonName, const char* text);
+        //! Reads a rebind button's displayed key name back through
+        //! UiTextBus, for round-trip verification against what the caller
+        //! actually set with SetControlLabel().
+        AZStd::string GetControlLabel(const char* buttonName) const;
         //! Diagnostic only: prints the canvas's real logical size and one
         //! button's actual computed on-screen rect via AZ_Printf, so a
         //! visual-vs-acceptance discrepancy can be root-caused from gate
@@ -95,6 +109,15 @@ namespace STWGameplay
         //! interaction or from TestSliderChange().
         AZ::EntityId CreateSlider(AZ::EntityId parent, const char* name, const MenuRect& layout,
             float minValue, float maxValue, float initialValue, AZStd::function<void(float)> onChange);
+        //! Builds one row of the STEUERUNG (key rebind) list: an action-name
+        //! label plus a button that shows the currently-bound key and, when
+        //! clicked, invokes the rebind handler registered via
+        //! SetControlsRebindHandler() with actionId - this class owns no
+        //! input-device knowledge itself, the caller (STWGameplaySystemComponent,
+        //! which already owns AzFramework::InputChannelEventListener) does the
+        //! actual capture and reports the result back via SetControlLabel().
+        void CreateControlRow(AZ::EntityId parent, const char* actionId, const char* actionLabel,
+            const char* buttonName, float top, float height);
 
         void BuildMainScreen();
         void BuildSettingsScreen();
@@ -118,5 +141,6 @@ namespace STWGameplay
         AZStd::vector<AZStd::pair<AZStd::string, AZStd::function<void()>>> m_buttonCallbacks;
         //! Same TestClick()-style test-only invocation path, for sliders.
         AZStd::vector<AZStd::pair<AZStd::string, AZStd::function<void(float)>>> m_sliderCallbacks;
+        AZStd::function<void(const char*)> m_controlsRebindHandler;
     };
 }

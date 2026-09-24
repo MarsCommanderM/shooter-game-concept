@@ -2652,9 +2652,96 @@ namespace STWGameplay
         m_pendingLookY += lookDeltaY;
     }
 
+    AZStd::string STWGameplaySystemComponent::GetKeyDisplayName(const AzFramework::InputChannelId& id)
+    {
+        using Keyboard = AzFramework::InputDeviceKeyboard;
+        using Mouse = AzFramework::InputDeviceMouse;
+        // Small translation table for the keys this UI actually offers as
+        // rebind defaults/targets; anything else falls back to the real,
+        // always-correct-by-construction AzFramework::InputChannelId name
+        // rather than guessing a pretty label for it.
+        if (id == Keyboard::Key::AlphanumericW) { return "W"; }
+        if (id == Keyboard::Key::AlphanumericA) { return "A"; }
+        if (id == Keyboard::Key::AlphanumericS) { return "S"; }
+        if (id == Keyboard::Key::AlphanumericD) { return "D"; }
+        if (id == Keyboard::Key::AlphanumericQ) { return "Q"; }
+        if (id == Keyboard::Key::AlphanumericE) { return "E"; }
+        if (id == Keyboard::Key::AlphanumericR) { return "R"; }
+        if (id == Keyboard::Key::EditSpace) { return "LEERTASTE"; }
+        if (id == Keyboard::Key::ModifierCtrlL || id == Keyboard::Key::ModifierCtrlR) { return "STRG"; }
+        if (id == Keyboard::Key::ModifierShiftL || id == Keyboard::Key::ModifierShiftR) { return "SHIFT"; }
+        if (id == Mouse::Button::Left) { return "MAUS LINKS"; }
+        if (id == Mouse::Button::Right) { return "MAUS RECHTS"; }
+        if (id == Mouse::Button::Middle) { return "MAUS MITTE"; }
+        return id.GetName();
+    }
+
+    void STWGameplaySystemComponent::SyncControlLabels()
+    {
+        m_mainMenuPresentation.SetControlLabel("RebindForwardButton", GetKeyDisplayName(m_inputBindings.m_forward).c_str());
+        m_mainMenuPresentation.SetControlLabel("RebindBackButton", GetKeyDisplayName(m_inputBindings.m_back).c_str());
+        m_mainMenuPresentation.SetControlLabel("RebindLeftButton", GetKeyDisplayName(m_inputBindings.m_left).c_str());
+        m_mainMenuPresentation.SetControlLabel("RebindRightButton", GetKeyDisplayName(m_inputBindings.m_right).c_str());
+        m_mainMenuPresentation.SetControlLabel("RebindJumpButton", GetKeyDisplayName(m_inputBindings.m_jump).c_str());
+        m_mainMenuPresentation.SetControlLabel("RebindCrouchButton", GetKeyDisplayName(m_inputBindings.m_crouch).c_str());
+        m_mainMenuPresentation.SetControlLabel("RebindSprintButton", GetKeyDisplayName(m_inputBindings.m_sprint).c_str());
+        m_mainMenuPresentation.SetControlLabel("RebindReloadButton", GetKeyDisplayName(m_inputBindings.m_reload).c_str());
+    }
+
+    void STWGameplaySystemComponent::StartRebind(const char* actionId)
+    {
+        m_pendingRebindAction = actionId;
+        m_awaitingRebindKey = true;
+    }
+
+    bool STWGameplaySystemComponent::TryCaptureRebind(const AzFramework::InputChannelId& id, bool stateBegan)
+    {
+        if (!m_awaitingRebindKey || !stateBegan)
+        {
+            return false;
+        }
+        // Only real key/mouse-button presses are valid rebind targets - a
+        // mouse-move/axis event reaching here (it wouldn't have
+        // stateBegan==true, but be explicit rather than relying on that
+        // alone) is not something a user meant to bind. Checked against the
+        // real, always-correct-by-construction channel name rather than an
+        // assumed device-type test.
+        const AZStd::string_view name(id.GetName());
+        const bool isKeyOrButton = name.starts_with("keyboard_key") || name.starts_with("mouse_button");
+        if (!isKeyOrButton)
+        {
+            return false;
+        }
+
+        const char* buttonName = nullptr;
+        if (m_pendingRebindAction == "Forward") { buttonName = "RebindForwardButton"; m_inputBindings.m_forward = id; }
+        else if (m_pendingRebindAction == "Back") { buttonName = "RebindBackButton"; m_inputBindings.m_back = id; }
+        else if (m_pendingRebindAction == "Left") { buttonName = "RebindLeftButton"; m_inputBindings.m_left = id; }
+        else if (m_pendingRebindAction == "Right") { buttonName = "RebindRightButton"; m_inputBindings.m_right = id; }
+        else if (m_pendingRebindAction == "Jump") { buttonName = "RebindJumpButton"; m_inputBindings.m_jump = id; }
+        else if (m_pendingRebindAction == "Crouch") { buttonName = "RebindCrouchButton"; m_inputBindings.m_crouch = id; }
+        else if (m_pendingRebindAction == "Sprint") { buttonName = "RebindSprintButton"; m_inputBindings.m_sprint = id; }
+        else if (m_pendingRebindAction == "Reload") { buttonName = "RebindReloadButton"; m_inputBindings.m_reload = id; }
+        else
+        {
+            m_awaitingRebindKey = false;
+            m_pendingRebindAction.clear();
+            return true;
+        }
+
+        m_mainMenuPresentation.SetControlLabel(buttonName, GetKeyDisplayName(id).c_str());
+        m_awaitingRebindKey = false;
+        m_pendingRebindAction.clear();
+        return true;
+    }
+
     bool STWGameplaySystemComponent::OnInputChannelEventFiltered(const AzFramework::InputChannel& channel)
     {
         const auto& id = channel.GetInputChannelId();
+        if (TryCaptureRebind(id, channel.IsStateBegan()))
+        {
+            return true;
+        }
         const bool active = channel.IsActive();
         using Keyboard = AzFramework::InputDeviceKeyboard;
         using Mouse = AzFramework::InputDeviceMouse;
@@ -2679,15 +2766,15 @@ namespace STWGameplay
         else if (id == Gamepad::Button::Y) { m_input.m_switchWeapon = active; }
         else if (id == Gamepad::Button::L1) { m_input.m_sprint = active; }
         else if (id == Gamepad::Button::R1) { m_input.m_mantle = active; }
-        else if (id == Keyboard::Key::AlphanumericW) { m_input.m_forward = active ? 1.0f : (m_input.m_forward > 0.0f ? 0.0f : m_input.m_forward); }
-        else if (id == Keyboard::Key::AlphanumericS) { m_input.m_forward = active ? -1.0f : (m_input.m_forward < 0.0f ? 0.0f : m_input.m_forward); }
-        else if (id == Keyboard::Key::AlphanumericD) { m_input.m_strafe = active ? 1.0f : (m_input.m_strafe > 0.0f ? 0.0f : m_input.m_strafe); }
-        else if (id == Keyboard::Key::AlphanumericA) { m_input.m_strafe = active ? -1.0f : (m_input.m_strafe < 0.0f ? 0.0f : m_input.m_strafe); }
-        else if (id == Keyboard::Key::ModifierShiftL || id == Keyboard::Key::ModifierShiftR) { m_input.m_sprint = active; }
-        else if (id == Keyboard::Key::EditSpace) { m_input.m_jump = active; }
-        else if (id == Keyboard::Key::ModifierCtrlL) { m_input.m_crouch = active; }
+        else if (id == m_inputBindings.m_forward) { m_input.m_forward = active ? 1.0f : (m_input.m_forward > 0.0f ? 0.0f : m_input.m_forward); }
+        else if (id == m_inputBindings.m_back) { m_input.m_forward = active ? -1.0f : (m_input.m_forward < 0.0f ? 0.0f : m_input.m_forward); }
+        else if (id == m_inputBindings.m_right) { m_input.m_strafe = active ? 1.0f : (m_input.m_strafe > 0.0f ? 0.0f : m_input.m_strafe); }
+        else if (id == m_inputBindings.m_left) { m_input.m_strafe = active ? -1.0f : (m_input.m_strafe < 0.0f ? 0.0f : m_input.m_strafe); }
+        else if (id == m_inputBindings.m_sprint || id == Keyboard::Key::ModifierShiftR) { m_input.m_sprint = active; }
+        else if (id == m_inputBindings.m_jump) { m_input.m_jump = active; }
+        else if (id == m_inputBindings.m_crouch) { m_input.m_crouch = active; }
         else if (id == Keyboard::Key::AlphanumericE) { m_input.m_mantle = active; }
-        else if (id == Keyboard::Key::AlphanumericR && channel.IsStateBegan())
+        else if (id == m_inputBindings.m_reload && channel.IsStateBegan())
         {
             m_input.m_reload = true;
             m_pendingReload = true;
@@ -3150,6 +3237,42 @@ namespace STWGameplay
         // automated acceptance run must not leave the game silent.
         m_mainMenuPresentation.TestSliderChange("VolumeSlider", 100.0f);
 
+        // Real round-trip proof for key rebinding, not just "the button
+        // exists": click RebindJumpButton (invokes the same click callback a
+        // real click would - StartRebind("Jump")), then feed a real
+        // AzFramework::InputChannelId (T) through the actual capture path
+        // OnInputChannelEventFiltered uses, and verify both the internal
+        // binding and the UI's own displayed label changed to match it.
+        const char* rebindButtons[8] = {
+            "RebindForwardButton", "RebindBackButton", "RebindLeftButton", "RebindRightButton",
+            "RebindJumpButton", "RebindCrouchButton", "RebindSprintButton", "RebindReloadButton"
+        };
+        for (const char* buttonName : rebindButtons)
+        {
+            m_mainMenuPresentation.TestClick(buttonName);
+            if (AZStd::string(buttonName) != "RebindJumpButton")
+            {
+                // Only Jump is carried through to a real capture below - the
+                // others just prove their button click reaches StartRebind()
+                // (WasEveryButtonClickTested() requires every button
+                // clicked), then are cancelled so real gameplay isn't left
+                // mid-rebind.
+                m_awaitingRebindKey = false;
+                m_pendingRebindAction.clear();
+            }
+        }
+        const bool rebindArmedCorrectly = m_awaitingRebindKey && m_pendingRebindAction == "Jump";
+        const bool captured = TryCaptureRebind(AzFramework::InputDeviceKeyboard::Key::AlphanumericT, true);
+        const bool bindingUpdated = m_inputBindings.m_jump == AzFramework::InputDeviceKeyboard::Key::AlphanumericT;
+        const AZStd::string jumpLabel = m_mainMenuPresentation.GetControlLabel("RebindJumpButton");
+        const bool labelUpdated = jumpLabel == "keyboard_key_alphanumeric_T";
+        passed = passed && rebindArmedCorrectly && captured && bindingUpdated && labelUpdated
+            && !m_awaitingRebindKey;
+
+        // Restore the default binding before handing off to real play.
+        m_inputBindings.m_jump = AzFramework::InputDeviceKeyboard::Key::EditSpace;
+        SyncControlLabels();
+
         m_mainMenuPresentation.TestClick("SettingsBackButton");
         passed = passed && m_mainMenuPresentation.GetActiveScreen() == MainMenuScreen::Main;
 
@@ -3168,7 +3291,7 @@ namespace STWGameplay
         m_mainMenuPresentation.RecomputeLayout();
         m_mainMenuPresentation.LogDiagnostics();
 
-        passed = passed && m_mainMenuPresentation.GetButtonCount() == 12
+        passed = passed && m_mainMenuPresentation.GetButtonCount() == 20
             && m_mainMenuPresentation.WasEveryButtonClickTested();
 
         if (!passed)
@@ -3185,6 +3308,7 @@ namespace STWGameplay
             "MAIN_MENU_MULTIPLAYER_MODE_BUTTONS=5\n"
             "MAIN_MENU_ALL_BUTTONS_CLICK_TESTED=1\n"
             "MAIN_MENU_SOUND_SLIDER_ROUNDTRIP_PASS=1\n"
+            "MAIN_MENU_KEY_REBIND_ROUNDTRIP_PASS=1\n"
             "MAIN_MENU_ACCEPTANCE result=PASS\n",
             m_mainMenuPresentation.GetButtonCount());
         m_mainMenuAcceptanceReported = true;
@@ -3712,6 +3836,12 @@ namespace STWGameplay
         {
             m_mainMenuPresentation.Initialize();
             m_mainMenuInitialized = m_mainMenuPresentation.IsReady();
+            if (m_mainMenuInitialized)
+            {
+                m_mainMenuPresentation.SetControlsRebindHandler(
+                    [this](const char* actionId) { StartRebind(actionId); });
+                SyncControlLabels();
+            }
         }
         if (m_arenaPresentation.IsReady())
         {
@@ -3728,6 +3858,8 @@ namespace STWGameplay
         m_mainMenuPresentation.Shutdown();
         m_mainMenuInitialized = false;
         m_mainMenuAcceptanceReported = false;
+        m_pendingRebindAction.clear();
+        m_awaitingRebindKey = false;
     }
 
     void STWGameplaySystemComponent::UpdateArenaAcceptance()
