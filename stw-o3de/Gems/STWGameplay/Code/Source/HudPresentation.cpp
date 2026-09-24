@@ -70,6 +70,7 @@ namespace STWGameplay
         m_healthLabel = CreateHudLabel("HudHealthLabel", 0.012f, 0.010f, 0.28f, 0.045f, 20.0f);
         m_weaponAmmoLabel = CreateHudLabel("HudWeaponAmmoLabel", 0.012f, 0.045f, 0.29f, 0.078f, 18.0f);
         m_objectiveLabel = CreateHudLabel("HudObjectiveLabel", 0.012f, 0.078f, 0.29f, 0.110f, 15.0f);
+        BuildCrosshair();
 
         // Same reasoning as MainMenuPresentation::Initialize() - LyShine's
         // rect computation is not automatic on creation, an explicit
@@ -88,6 +89,87 @@ namespace STWGameplay
         m_healthLabel.SetInvalid();
         m_weaponAmmoLabel.SetInvalid();
         m_objectiveLabel.SetInvalid();
+        m_hitFeedbackMarker.SetInvalid();
+    }
+
+    AZ::EntityId HudPresentation::CreateCrosshairPanel(
+        const char* name, float anchorLeft, float anchorTop, float anchorRight, float anchorBottom,
+        float offsetLeft, float offsetTop, float offsetRight, float offsetBottom, float r, float g, float b, float a)
+    {
+        AZ::Entity* entity = nullptr;
+        UiCanvasBus::EventResult(entity, m_canvasId, &UiCanvasBus::Events::CreateChildElement, AZStd::string(name));
+        if (entity == nullptr)
+        {
+            return AZ::EntityId();
+        }
+        const AZ::EntityId elementId = entity->GetId();
+        entity->Deactivate();
+        entity->CreateComponent(LyShine::UiTransform2dComponentUuid);
+        entity->CreateComponent(LyShine::UiImageComponentUuid);
+        entity->Activate();
+
+        UiTransform2dBus::Event(
+            elementId, &UiTransform2dBus::Events::SetAnchors,
+            UiTransform2dInterface::Anchors(anchorLeft, anchorTop, anchorRight, anchorBottom), false, false);
+        UiTransform2dBus::Event(
+            elementId, &UiTransform2dBus::Events::SetOffsets,
+            UiTransform2dInterface::Offsets(offsetLeft, offsetTop, offsetRight, offsetBottom));
+        UiImageBus::Event(elementId, &UiImageBus::Events::SetColor, AZ::Color(r, g, b, a));
+        return elementId;
+    }
+
+    void HudPresentation::BuildCrosshair()
+    {
+        // Same normalized 0..1 screen positions the old
+        // AzFramework::DebugDisplayRequests::DrawLine2d crosshair used
+        // (four segments around canvas center), only the rendering
+        // mechanism changed. Anchors carry the long axis exactly as before;
+        // a 2px offset on the short axis gives each segment real thickness
+        // (a debug-drawn line has no LyShine equivalent with zero width).
+        CreateCrosshairPanel(
+            "HudCrosshairLeft", 0.485f, 0.5f, 0.495f, 0.5f, 0.0f, -1.0f, 0.0f, 1.0f, 0.95f, 0.95f, 0.95f, 1.0f);
+        CreateCrosshairPanel(
+            "HudCrosshairRight", 0.505f, 0.5f, 0.515f, 0.5f, 0.0f, -1.0f, 0.0f, 1.0f, 0.95f, 0.95f, 0.95f, 1.0f);
+        CreateCrosshairPanel(
+            "HudCrosshairTop", 0.5f, 0.48f, 0.5f, 0.492f, -1.0f, 0.0f, 1.0f, 0.0f, 0.95f, 0.95f, 0.95f, 1.0f);
+        CreateCrosshairPanel(
+            "HudCrosshairBottom", 0.5f, 0.508f, 0.5f, 0.52f, -1.0f, 0.0f, 1.0f, 0.0f, 0.95f, 0.95f, 0.95f, 1.0f);
+
+        // Hit-feedback marker: a small red frame around the crosshair,
+        // replacing the debug-drawn DrawWireCircle2d that used to appear on
+        // the same condition. Built disabled; SetCrosshairHitFeedback()
+        // toggles it.
+        m_hitFeedbackMarker = CreateCrosshairPanel(
+            "HudHitFeedbackMarker", 0.478f, 0.472f, 0.522f, 0.528f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.25f, 0.2f, 0.0f);
+        if (m_hitFeedbackMarker.IsValid())
+        {
+            // Frame look: full-alpha border achieved by four thin edges
+            // would need four more elements; a single translucent-red panel
+            // is the pragmatic real substitute for the wire-circle ring
+            // with no custom texture asset available.
+            UiImageBus::Event(m_hitFeedbackMarker, &UiImageBus::Events::SetColor, AZ::Color(1.0f, 0.25f, 0.2f, 0.35f));
+            UiElementBus::Event(m_hitFeedbackMarker, &UiElementBus::Events::SetIsEnabled, false);
+        }
+    }
+
+    void HudPresentation::SetCrosshairHitFeedback(bool active)
+    {
+        if (!m_hitFeedbackMarker.IsValid())
+        {
+            return;
+        }
+        UiElementBus::Event(m_hitFeedbackMarker, &UiElementBus::Events::SetIsEnabled, active);
+    }
+
+    bool HudPresentation::IsHitFeedbackMarkerVisible() const
+    {
+        if (!m_hitFeedbackMarker.IsValid())
+        {
+            return false;
+        }
+        bool enabled = false;
+        UiElementBus::EventResult(enabled, m_hitFeedbackMarker, &UiElementBus::Events::IsEnabled);
+        return enabled;
     }
 
     AZ::EntityId HudPresentation::CreateHudLabel(

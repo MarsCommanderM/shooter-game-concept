@@ -3548,9 +3548,21 @@ namespace STWGameplay
             && objectiveLabelText.find(
                    m_encounter.IsCompleted() ? "OBJECTIVE COMPLETE" : "OBJECTIVE: ELIMINATE HOSTILE") != AZStd::string::npos;
 
+        // Real round-trip proof for the crosshair hit-feedback marker: it
+        // must start hidden (DrawPresentation() only just ran with real,
+        // no-hit-feedback state), then SetCrosshairHitFeedback(true)/(false)
+        // - the exact same call DrawPresentation() makes every frame - must
+        // actually flip the real UiElementBus enabled state each way.
+        const bool hitMarkerStartedHidden = !m_hudPresentation.IsHitFeedbackMarkerVisible();
+        m_hudPresentation.SetCrosshairHitFeedback(true);
+        const bool hitMarkerShown = m_hudPresentation.IsHitFeedbackMarkerVisible();
+        m_hudPresentation.SetCrosshairHitFeedback(false);
+        const bool hitMarkerHidden = !m_hudPresentation.IsHitFeedbackMarkerVisible();
+        const bool hitFeedbackPassed = hitMarkerStartedHidden && hitMarkerShown && hitMarkerHidden;
+
         m_hudPresentation.LogDiagnostics();
 
-        if (!healthPassed || !weaponPassed || !objectivePassed)
+        if (!healthPassed || !weaponPassed || !objectivePassed || !hitFeedbackPassed)
         {
             return;
         }
@@ -3561,6 +3573,7 @@ namespace STWGameplay
             "HUD_HEALTH_TEXT_PASS=1\n"
             "HUD_WEAPON_TEXT_PASS=1\n"
             "HUD_OBJECTIVE_TEXT_PASS=1\n"
+            "HUD_CROSSHAIR_HIT_FEEDBACK_PASS=1\n"
             "HUD_ACCEPTANCE result=PASS\n");
         m_hudAcceptanceReported = true;
     }
@@ -4945,17 +4958,12 @@ namespace STWGameplay
         // STW_ENEMY_01's production body is the Atom mesh. No DebugDisplay target placeholder.
         UpdateEnemyMeshTransform();
 
-        Bus::Event(displayId, &AzFramework::DebugDisplayRequests::SetColor, AZ::Color(0.95f, 0.95f, 0.95f, 1.0f));
-        Bus::Event(displayId, &AzFramework::DebugDisplayRequests::DrawLine2d, AZ::Vector2(0.485f, 0.5f), AZ::Vector2(0.495f, 0.5f), 0.0f);
-        Bus::Event(displayId, &AzFramework::DebugDisplayRequests::DrawLine2d, AZ::Vector2(0.505f, 0.5f), AZ::Vector2(0.515f, 0.5f), 0.0f);
-        Bus::Event(displayId, &AzFramework::DebugDisplayRequests::DrawLine2d, AZ::Vector2(0.5f, 0.48f), AZ::Vector2(0.5f, 0.492f), 0.0f);
-        Bus::Event(displayId, &AzFramework::DebugDisplayRequests::DrawLine2d, AZ::Vector2(0.5f, 0.508f), AZ::Vector2(0.5f, 0.52f), 0.0f);
-
         // Real LyShine HUD (HudPresentation) replaces the equivalent
-        // Draw2dTextLabel calls that used to live here - same source data,
-        // same weapon-type branching, only the rendering mechanism changed.
-        // Crosshair/muzzle-flash/hit-feedback ring below remain debug-drawn
-        // - separate combat-feedback VFX work, not this pass's scope.
+        // Draw2dTextLabel/DrawLine2d/DrawWireCircle2d calls that used to
+        // live here - same source data and same normalized screen
+        // positions, only the rendering mechanism changed. Muzzle flash
+        // above stays debug-drawn - a world-space combat VFX, not a HUD
+        // stat, genuinely out of scope here.
         char health[32];
         const PlayerState& player = m_model.GetPlayer();
         const EquipmentProfile& equipmentProfile = m_model.GetActiveEquipmentProfile();
@@ -4985,10 +4993,7 @@ namespace STWGameplay
             m_encounter.IsCompleted() ? "OBJECTIVE COMPLETE" : "OBJECTIVE: ELIMINATE HOSTILE",
             m_encounter.GetCompletedCount());
         m_hudPresentation.Update(health, hud, objective);
-        if (presentation.m_hitCueRemaining > 0.0f || m_viewmodel.IsHitFeedbackActive())
-        {
-            Bus::Event(displayId, &AzFramework::DebugDisplayRequests::SetColor, AZ::Color(1.0f, 0.25f, 0.2f, 1.0f));
-            Bus::Event(displayId, &AzFramework::DebugDisplayRequests::DrawWireCircle2d, AZ::Vector2(0.5f, 0.5f), 0.018f, 0.0f);
-        }
+        m_hudPresentation.SetCrosshairHitFeedback(
+            presentation.m_hitCueRemaining > 0.0f || m_viewmodel.IsHitFeedbackActive());
     }
 }
