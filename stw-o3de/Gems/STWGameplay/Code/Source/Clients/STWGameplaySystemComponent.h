@@ -24,6 +24,7 @@
 #include <STWGameplay/ArenaPresentation.h>
 #include <STWGameplay/EnvironmentPresentation.h>
 #include <STWGameplay/MainMenuPresentation.h>
+#include <STWGameplay/HudPresentation.h>
 #include <STWGameplay/STWSkeletalCharacterPresentation.h>
 #include <STWGameplay/STWFirstPersonArmsPresentation.h>
 #include <STWGameplay/ViewmodelPresentation.h>
@@ -177,6 +178,7 @@ namespace STWGameplay
         //! counters. EvaluateEndGameState() holds the actual, ungated logic
         //! so UpdateMainMenuAcceptance() can call it directly for proof.
         void UpdateEndGameFlow();
+        void UpdateHudAcceptance();
         void EvaluateEndGameState();
         //! Extracted from UpdateInteractivePlayerRespawn() so both the timed
         //! real-play respawn and the End-Game screen's "WEITER" button (an
@@ -248,6 +250,9 @@ namespace STWGameplay
         MainMenuPresentation m_mainMenuPresentation;
         bool m_mainMenuInitialized = false;
         bool m_mainMenuAcceptanceReported = false;
+        HudPresentation m_hudPresentation;
+        bool m_hudInitialized = false;
+        bool m_hudAcceptanceReported = false;
 
         // True while the Niederlage/Sieg overlay is showing - suppresses
         // UpdateInteractivePlayerRespawn's timer-based auto-respawn so the

@@ -1376,6 +1376,7 @@ namespace STWGameplay
         UpdateBodycamAcceptance();
         UpdateMainMenuAcceptance();
         DrawPresentation(deltaTime);
+        UpdateHudAcceptance();
         UpdateWeaponSwitchAcceptance();
         UpdateLoadoutAcceptance();
         UpdateEnemyCombatAcceptance();
@@ -3369,6 +3370,59 @@ namespace STWGameplay
         m_mainMenuAcceptanceReported = true;
     }
 
+    void STWGameplaySystemComponent::UpdateHudAcceptance()
+    {
+        if (!m_automatedAcceptance || m_hudAcceptanceReported || !m_hudPresentation.IsReady())
+        {
+            return;
+        }
+
+        // Real round-trip proof, same shape as the main-menu round-trips:
+        // read the HUD's own displayed text back through UiTextBus
+        // (HudPresentation::GetLabelText) and check it actually reflects
+        // real PlayerState/EncounterModel values - not just that
+        // DrawPresentation() ran without crashing. Substring checks rather
+        // than exact-string duplication of the azsnprintf formatting in
+        // DrawPresentation(), so this doesn't silently drift out of sync
+        // with that formatting.
+        const PlayerState& player = m_model.GetPlayer();
+        const EquipmentProfile& equipmentProfile = m_model.GetActiveEquipmentProfile();
+
+        const AZStd::string healthLabelText = m_hudPresentation.GetLabelText("HudHealthLabel");
+        const AZStd::string weaponLabelText = m_hudPresentation.GetLabelText("HudWeaponAmmoLabel");
+        const AZStd::string objectiveLabelText = m_hudPresentation.GetLabelText("HudObjectiveLabel");
+
+        char expectedHealthNumber[16];
+        azsnprintf(expectedHealthNumber, AZ_ARRAY_SIZE(expectedHealthNumber), "%03d", static_cast<int>(player.m_health));
+        char expectedEncountersNumber[16];
+        azsnprintf(expectedEncountersNumber, AZ_ARRAY_SIZE(expectedEncountersNumber), "%d", m_encounter.GetCompletedCount());
+
+        const bool healthPassed = healthLabelText.find("HP") != AZStd::string::npos
+            && healthLabelText.find(expectedHealthNumber) != AZStd::string::npos;
+        const bool weaponPassed =
+            !weaponLabelText.empty() && weaponLabelText.find(equipmentProfile.m_displayName) != AZStd::string::npos;
+        const bool objectivePassed = objectiveLabelText.find("ENCOUNTERS:") != AZStd::string::npos
+            && objectiveLabelText.find(expectedEncountersNumber) != AZStd::string::npos
+            && objectiveLabelText.find(
+                   m_encounter.IsCompleted() ? "OBJECTIVE COMPLETE" : "OBJECTIVE: ELIMINATE HOSTILE") != AZStd::string::npos;
+
+        m_hudPresentation.LogDiagnostics();
+
+        if (!healthPassed || !weaponPassed || !objectivePassed)
+        {
+            return;
+        }
+
+        AZ_Printf(
+            "STWGameplay",
+            "HUD_PRESENTATION_ACTIVE=1\n"
+            "HUD_HEALTH_TEXT_PASS=1\n"
+            "HUD_WEAPON_TEXT_PASS=1\n"
+            "HUD_OBJECTIVE_TEXT_PASS=1\n"
+            "HUD_ACCEPTANCE result=PASS\n");
+        m_hudAcceptanceReported = true;
+    }
+
     void STWGameplaySystemComponent::TryStartViewmodelMesh()
     {
         // The render scene and its feature processors do not exist during Activate(), so this
@@ -3920,6 +3974,11 @@ namespace STWGameplay
                     });
             }
         }
+        if (!m_hudInitialized)
+        {
+            m_hudPresentation.Initialize();
+            m_hudInitialized = m_hudPresentation.IsReady();
+        }
         if (m_arenaPresentation.IsReady())
         {
             m_arenaMeshStartup = ViewmodelMeshStartup::Acquired;
@@ -3940,6 +3999,9 @@ namespace STWGameplay
         m_gameOverActive = false;
         m_defeatShown = false;
         m_victoryShown = false;
+        m_hudPresentation.Shutdown();
+        m_hudInitialized = false;
+        m_hudAcceptanceReported = false;
     }
 
     void STWGameplaySystemComponent::UpdateArenaAcceptance()
@@ -4747,36 +4809,40 @@ namespace STWGameplay
         Bus::Event(displayId, &AzFramework::DebugDisplayRequests::DrawLine2d, AZ::Vector2(0.5f, 0.48f), AZ::Vector2(0.5f, 0.492f), 0.0f);
         Bus::Event(displayId, &AzFramework::DebugDisplayRequests::DrawLine2d, AZ::Vector2(0.5f, 0.508f), AZ::Vector2(0.5f, 0.52f), 0.0f);
 
-        char hud[128];
+        // Real LyShine HUD (HudPresentation) replaces the equivalent
+        // Draw2dTextLabel calls that used to live here - same source data,
+        // same weapon-type branching, only the rendering mechanism changed.
+        // Crosshair/muzzle-flash/hit-feedback ring below remain debug-drawn
+        // - separate combat-feedback VFX work, not this pass's scope.
+        char health[32];
         const PlayerState& player = m_model.GetPlayer();
         const EquipmentProfile& equipmentProfile = m_model.GetActiveEquipmentProfile();
+        azsnprintf(
+            health, AZ_ARRAY_SIZE(health), "HP %03d / %03d", static_cast<int>(player.m_health),
+            static_cast<int>(player.m_maxHealth));
+        char hud[128];
         if (equipmentProfile.m_chargeCapacity > 0)
         {
-            azsnprintf(hud, AZ_ARRAY_SIZE(hud), "STW  HP %03d/%03d   %s charges %02d   %s",
-                static_cast<int>(player.m_health), static_cast<int>(player.m_maxHealth),
+            azsnprintf(hud, AZ_ARRAY_SIZE(hud), "%s   charges %02d   %s",
                 equipmentProfile.m_displayName, weapon.m_charges,
                 player.m_alive ? "READY" : "DEAD");
         }
         else if (equipmentProfile.m_magazineCapacity > 0)
         {
-            azsnprintf(hud, AZ_ARRAY_SIZE(hud), "STW  HP %03d/%03d   %s %02d / %03d   %s",
-                static_cast<int>(player.m_health), static_cast<int>(player.m_maxHealth),
+            azsnprintf(hud, AZ_ARRAY_SIZE(hud), "%s   %02d / %03d   %s",
                 equipmentProfile.m_displayName, weapon.m_magazine, weapon.m_reserve,
                 player.m_alive ? (weapon.m_reloading ? "RELOADING" : "READY") : "DEAD");
         }
         else
         {
-            azsnprintf(hud, AZ_ARRAY_SIZE(hud), "STW  HP %03d/%03d   %s READY   %s",
-            static_cast<int>(player.m_health), static_cast<int>(player.m_maxHealth),
+            azsnprintf(hud, AZ_ARRAY_SIZE(hud), "%s   READY   %s",
             equipmentProfile.m_displayName, player.m_alive ? "READY" : "DEAD");
         }
-        Bus::Event(displayId, &AzFramework::DebugDisplayRequests::Draw2dTextLabel, 24.0f, 36.0f, 1.4f, hud, false);
         char objective[96];
         azsnprintf(objective, AZ_ARRAY_SIZE(objective), "%s   ENCOUNTERS: %d",
             m_encounter.IsCompleted() ? "OBJECTIVE COMPLETE" : "OBJECTIVE: ELIMINATE HOSTILE",
             m_encounter.GetCompletedCount());
-        Bus::Event(displayId, &AzFramework::DebugDisplayRequests::Draw2dTextLabel,
-            24.0f, 64.0f, 1.1f, objective, false);
+        m_hudPresentation.Update(health, hud, objective);
         if (presentation.m_hitCueRemaining > 0.0f || m_viewmodel.IsHitFeedbackActive())
         {
             Bus::Event(displayId, &AzFramework::DebugDisplayRequests::SetColor, AZ::Color(1.0f, 0.25f, 0.2f, 1.0f));
