@@ -294,6 +294,18 @@ namespace STWGameplay
         void StartRebind(const char* actionId);
         void SyncControlLabels();
         static AZStd::string GetKeyDisplayName(const AzFramework::InputChannelId& id);
+        //! Persists m_inputBindings to @user@/stw_input_bindings.cfg (one
+        //! real AzFramework::InputChannelId name per line, fixed order) so a
+        //! rebind survives past this session - called after every
+        //! successful rebind in TryCaptureRebind(). A missing file is not
+        //! an error (first run, or bindings were never changed).
+        void SaveInputBindings() const;
+        //! Loads m_inputBindings back from the same file, called once from
+        //! Activate() before the input listener connects. A missing or
+        //! malformed file (wrong line count) leaves the compiled-in
+        //! defaults untouched rather than guessing which lines are still
+        //! trustworthy.
+        void LoadInputBindings();
 
         PlayerSliceModel m_model;
         BodycamCameraPresentation m_bodycamCameraPresentation;

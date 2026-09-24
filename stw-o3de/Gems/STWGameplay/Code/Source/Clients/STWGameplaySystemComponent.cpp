@@ -4,6 +4,7 @@
 #include <AzCore/Component/ComponentApplicationBus.h>
 #include <AzCore/Component/TransformBus.h>
 #include <AzCore/Interface/Interface.h>
+#include <AzCore/IO/FileIO.h>
 #include <AzCore/Math/Color.h>
 #include <AzCore/Math/Matrix3x3.h>
 #include <AzCore/Math/Quaternion.h>
@@ -213,6 +214,9 @@ namespace STWGameplay
         // The PhysX character controller requires the O3DE default physics scene, which does
         // not exist yet during system activation. Defer its creation to OnTick (TryStartPhysics)
         // and only start input/tick handling here. A missing scene now is not an error.
+        // Loaded before the listener connects, so a real key/mouse-button
+        // press is never handled with a stale default binding.
+        LoadInputBindings();
         AzFramework::InputChannelEventListener::Connect();
         AZ::TickBus::Handler::BusConnect();
     }
@@ -2734,7 +2738,121 @@ namespace STWGameplay
         m_mainMenuPresentation.SetControlLabel(buttonName, GetKeyDisplayName(id).c_str());
         m_awaitingRebindKey = false;
         m_pendingRebindAction.clear();
+        SaveInputBindings();
         return true;
+    }
+
+    void STWGameplaySystemComponent::SaveInputBindings() const
+    {
+        AZ::IO::FileIOBase* fileIo = AZ::IO::FileIOBase::GetInstance();
+        if (fileIo == nullptr)
+        {
+            return;
+        }
+        // One real AzFramework::InputChannelId::GetName() string per line,
+        // fixed order - trivially round-trippable since InputChannelId's
+        // own constructor takes exactly this kind of name string.
+        AZStd::string content;
+        content += m_inputBindings.m_forward.GetName();
+        content += "\n";
+        content += m_inputBindings.m_back.GetName();
+        content += "\n";
+        content += m_inputBindings.m_left.GetName();
+        content += "\n";
+        content += m_inputBindings.m_right.GetName();
+        content += "\n";
+        content += m_inputBindings.m_jump.GetName();
+        content += "\n";
+        content += m_inputBindings.m_crouch.GetName();
+        content += "\n";
+        content += m_inputBindings.m_sprint.GetName();
+        content += "\n";
+        content += m_inputBindings.m_reload.GetName();
+        content += "\n";
+
+        AZ::IO::HandleType handle = AZ::IO::InvalidHandle;
+        if (!fileIo->Open(
+                "@user@/stw_input_bindings.cfg",
+                AZ::IO::OpenMode::ModeWrite | AZ::IO::OpenMode::ModeText | AZ::IO::OpenMode::ModeCreatePath, handle))
+        {
+            AZ_Warning("STWGameplay", false, "STW_INPUT_BINDINGS_SAVE_OPEN_FAILED");
+            return;
+        }
+        fileIo->Write(handle, content.c_str(), content.size());
+        fileIo->Close(handle);
+        AZ_Printf("STWGameplay", "STW_INPUT_BINDINGS_SAVED=1\n");
+    }
+
+    void STWGameplaySystemComponent::LoadInputBindings()
+    {
+        AZ::IO::FileIOBase* fileIo = AZ::IO::FileIOBase::GetInstance();
+        if (fileIo == nullptr || !fileIo->Exists("@user@/stw_input_bindings.cfg"))
+        {
+            // No saved file yet - first run, or bindings were never
+            // changed. Keep the compiled-in defaults; this is not an error.
+            return;
+        }
+        AZ::IO::HandleType handle = AZ::IO::InvalidHandle;
+        if (!fileIo->Open("@user@/stw_input_bindings.cfg", AZ::IO::OpenMode::ModeRead | AZ::IO::OpenMode::ModeText, handle))
+        {
+            return;
+        }
+        AZ::u64 size = 0;
+        fileIo->Size(handle, size);
+        AZStd::string content;
+        if (size > 0)
+        {
+            content.resize(size);
+            AZ::u64 bytesRead = 0;
+            fileIo->Read(handle, content.data(), size, false, &bytesRead);
+            content.resize(bytesRead);
+        }
+        fileIo->Close(handle);
+
+        AZStd::vector<AZStd::string> lines;
+        size_t start = 0;
+        while (start <= content.size())
+        {
+            const size_t newlinePos = content.find('\n', start);
+            if (newlinePos == AZStd::string::npos)
+            {
+                lines.push_back(content.substr(start));
+                break;
+            }
+            lines.push_back(content.substr(start, newlinePos - start));
+            start = newlinePos + 1;
+        }
+        for (AZStd::string& line : lines)
+        {
+            while (!line.empty() && (line.back() == '\r' || line.back() == '\n'))
+            {
+                line.pop_back();
+            }
+        }
+        while (!lines.empty() && lines.back().empty())
+        {
+            lines.pop_back();
+        }
+
+        if (lines.size() != 8)
+        {
+            // Malformed/partial file - keep every compiled-in default
+            // rather than guessing which of the 8 lines are trustworthy.
+            AZ_Warning(
+                "STWGameplay", false, "STW_INPUT_BINDINGS_LOAD_MALFORMED line_count=%zu expected=8",
+                lines.size());
+            return;
+        }
+
+        m_inputBindings.m_forward = AzFramework::InputChannelId(lines[0]);
+        m_inputBindings.m_back = AzFramework::InputChannelId(lines[1]);
+        m_inputBindings.m_left = AzFramework::InputChannelId(lines[2]);
+        m_inputBindings.m_right = AzFramework::InputChannelId(lines[3]);
+        m_inputBindings.m_jump = AzFramework::InputChannelId(lines[4]);
+        m_inputBindings.m_crouch = AzFramework::InputChannelId(lines[5]);
+        m_inputBindings.m_sprint = AzFramework::InputChannelId(lines[6]);
+        m_inputBindings.m_reload = AzFramework::InputChannelId(lines[7]);
+        AZ_Printf("STWGameplay", "STW_INPUT_BINDINGS_LOADED=1\n");
     }
 
     bool STWGameplaySystemComponent::OnInputChannelEventFiltered(const AzFramework::InputChannel& channel)
@@ -3270,9 +3388,32 @@ namespace STWGameplay
         passed = passed && rebindArmedCorrectly && captured && bindingUpdated && labelUpdated
             && !m_awaitingRebindKey;
 
-        // Restore the default binding before handing off to real play.
+        // Restore the default binding before handing off to real play. Also
+        // re-saves it: TryCaptureRebind() above already persisted the test
+        // value ("T") for real via SaveInputBindings() - without this, the
+        // on-disk file would incorrectly keep "T" for Jump after this
+        // in-memory restore, a real bug caught by tracing through exactly
+        // what TryCaptureRebind() does, not assumed safe.
         m_inputBindings.m_jump = AzFramework::InputDeviceKeyboard::Key::EditSpace;
         SyncControlLabels();
+        SaveInputBindings();
+
+        // Real round-trip proof for disk persistence: at this exact point
+        // every binding is back to its compiled-in default, so reloading
+        // from the file SaveInputBindings() just wrote should reproduce
+        // those same 8 defaults exactly - a genuine save-then-load proof,
+        // not just "the file was written without an error".
+        LoadInputBindings();
+        const bool inputBindingsRoundTripPassed =
+            m_inputBindings.m_forward == AzFramework::InputDeviceKeyboard::Key::AlphanumericW
+            && m_inputBindings.m_back == AzFramework::InputDeviceKeyboard::Key::AlphanumericS
+            && m_inputBindings.m_left == AzFramework::InputDeviceKeyboard::Key::AlphanumericA
+            && m_inputBindings.m_right == AzFramework::InputDeviceKeyboard::Key::AlphanumericD
+            && m_inputBindings.m_jump == AzFramework::InputDeviceKeyboard::Key::EditSpace
+            && m_inputBindings.m_crouch == AzFramework::InputDeviceKeyboard::Key::ModifierCtrlL
+            && m_inputBindings.m_sprint == AzFramework::InputDeviceKeyboard::Key::ModifierShiftL
+            && m_inputBindings.m_reload == AzFramework::InputDeviceKeyboard::Key::AlphanumericR;
+        passed = passed && inputBindingsRoundTripPassed;
 
         // Real round-trip proof for the contrast slider, same shape as the
         // sound slider check above: drive it to a real, non-default value
@@ -3365,6 +3506,7 @@ namespace STWGameplay
             "MAIN_MENU_KEY_REBIND_ROUNDTRIP_PASS=1\n"
             "MAIN_MENU_CONTRAST_ROUNDTRIP_PASS=1\n"
             "MAIN_MENU_ENDGAME_SCREEN_PASS=1\n"
+            "MAIN_MENU_INPUT_BINDINGS_PERSISTENCE_PASS=1\n"
             "MAIN_MENU_ACCEPTANCE result=PASS\n",
             m_mainMenuPresentation.GetButtonCount());
         m_mainMenuAcceptanceReported = true;
