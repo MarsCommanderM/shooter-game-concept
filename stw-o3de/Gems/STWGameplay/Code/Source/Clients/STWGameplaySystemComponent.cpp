@@ -4163,7 +4163,8 @@ namespace STWGameplay
         // set - see DestructibleObjectModel.h's own comment on why this is
         // not a general destruction system.
         static const char* const destructibleNames[DestructibleObjectModel::MaxObjectCount] = {
-            "STW Destructible Crate A", "STW Destructible Crate B", nullptr, nullptr
+            "STW Destructible Crate A", "STW Destructible Crate B", "STW Destructible Crate C",
+            "STW Destructible Crate D"
         };
         constexpr float DestructibleMaxHealth = 60.0f;
         const auto& descriptions = PhysXArenaRuntime::GetStaticColliderDescriptions();
@@ -4291,7 +4292,8 @@ namespace STWGameplay
             }
             m_destructibleReflectedInactive[index] = true;
             static const char* const destructibleNames[DestructibleObjectModel::MaxObjectCount] = {
-                "STW Destructible Crate A", "STW Destructible Crate B", nullptr, nullptr
+                "STW Destructible Crate A", "STW Destructible Crate B", "STW Destructible Crate C",
+                "STW Destructible Crate D"
             };
             if (AZ::Entity* colliderEntity = m_physicsArena.FindColliderEntityByName(destructibleNames[index]))
             {
@@ -4326,7 +4328,8 @@ namespace STWGameplay
         // internal bookkeeping, not that anything real happened in the
         // world.
         static const char* const destructibleNames[DestructibleObjectModel::MaxObjectCount] = {
-            "STW Destructible Crate A", "STW Destructible Crate B", nullptr, nullptr
+            "STW Destructible Crate A", "STW Destructible Crate B", "STW Destructible Crate C",
+            "STW Destructible Crate D"
         };
         const DestructibleObjectState& stateBefore = m_model.GetDestructibles().GetState(0);
         const bool destroyed = m_model.GetDestructibles().ApplyDamage(0, stateBefore.m_maxHealth + 1.0f);

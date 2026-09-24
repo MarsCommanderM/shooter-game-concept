@@ -185,7 +185,27 @@ namespace STWGameplay
                 // is actually visible. Open floor space in the central hof,
                 // clear of every existing piece (checked before placing).
                 { "STW Destructible Crate A", AZ::Vector3(-4.5f, 4.5f, 1.25f), AZ::Vector3(1.5f, 2.0f, 2.5f) },
-                { "STW Destructible Crate B", AZ::Vector3(4.5f, 4.5f, 1.25f), AZ::Vector3(1.5f, 2.0f, 2.5f) }
+                { "STW Destructible Crate B", AZ::Vector3(4.5f, 4.5f, 1.25f), AZ::Vector3(1.5f, 2.0f, 2.5f) },
+                // Crate C/D: the remaining 2 of DestructibleObjectModel's 4
+                // slots. A same-shape mirror onto the south hof at
+                // (+-4.5, -4.5) was tried once already and reverted - real,
+                // reproduced regression (CROUCH_ACCEPTANCE base_preserved=0,
+                // cascading LOADOUT/ENEMY_PRESENTANCE failures), root-caused
+                // to the scripted acceptance battery's own player path
+                // actually passing through (+4.5,-4.5), never checked
+                // beforehand. This time, checked first, from real evidence:
+                // STW_DIAGNOSTIC_LOG_PLAYER_PATH captured the real per-tick
+                // player XY trajectory for this exact scripted sequence
+                // (stays within x=[0,6.03], y=[-11,-0.07] the whole run -
+                // never negative x at all), cross-referenced against every
+                // solid piece in both this file and
+                // tools/blender/generate_industrial_yard.py's PIECES/
+                // CENTRAL_YARD_COVER_PIECES/etc (the same two-source check
+                // the original crate A/B placement used) before picking
+                // these two specific spots - not reusing a guessed mirror
+                // position again.
+                { "STW Destructible Crate C", AZ::Vector3(-5.5f, -3.0f, 1.25f), AZ::Vector3(1.5f, 2.0f, 2.5f) },
+                { "STW Destructible Crate D", AZ::Vector3(-3.5f, -7.5f, 1.25f), AZ::Vector3(1.5f, 2.0f, 2.5f) }
             }};
 
         void DeactivateArenaEntity(AZStd::unique_ptr<AZ::Entity>& entity)

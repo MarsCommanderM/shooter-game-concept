@@ -114,6 +114,8 @@ namespace STWGameplay
             { "STW Central Cover SW High", AZ::Vector3(-7.9f, -8.9f, 0.9f), AZ::Vector3(1.4f, 1.4f, 1.8f), false },
             { "STW Destructible Crate A", AZ::Vector3(-4.5f, 4.5f, 1.25f), AZ::Vector3(1.5f, 2.0f, 2.5f), false },
             { "STW Destructible Crate B", AZ::Vector3(4.5f, 4.5f, 1.25f), AZ::Vector3(1.5f, 2.0f, 2.5f), false },
+            { "STW Destructible Crate C", AZ::Vector3(-5.5f, -3.0f, 1.25f), AZ::Vector3(1.5f, 2.0f, 2.5f), false },
+            { "STW Destructible Crate D", AZ::Vector3(-3.5f, -7.5f, 1.25f), AZ::Vector3(1.5f, 2.0f, 2.5f), false },
         };
         ASSERT_EQ(AZ_ARRAY_SIZE(expectations), PhysXArenaRuntime::StaticColliderCount);
 
