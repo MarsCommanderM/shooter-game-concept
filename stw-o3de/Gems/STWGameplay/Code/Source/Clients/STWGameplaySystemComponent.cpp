@@ -4972,6 +4972,25 @@ namespace STWGameplay
         m_model.SetPlayerPosition(respawnPosition);
         m_physicsPlayer.ResetPosition(respawnPosition);
         m_interactiveRespawnDelay = 0.0f;
+
+        // Real interactive play surfaced an instant-redeath loop the scripted acceptance
+        // battery never exercises: whichever enemy killed the player is left standing
+        // wherever the kill happened, which in practice is right next to the fixed
+        // respawn point - the player reappears face to face with an already-adjacent,
+        // already-alerted enemy and the 1.5s respawn invulnerability (PlayerSliceModel::
+        // RespawnInvulnerabilityDuration) just delays the same death instead of
+        // preventing it. Mirrors the exact reset used by the multi-enemy re-arm path
+        // above (EnemyCollectionModel::ResetRequiredEnemies() + per-enemy
+        // PhysXEnemyRuntime::ResetPosition()) so a respawn gives the player a real,
+        // clear-of-enemies restart rather than just a damage-immune one.
+        EnemyCollectionModel& enemies = m_model.GetEnemies();
+        enemies.ResetRequiredEnemies();
+        for (size_t index = 0; index < EnemyCollectionModel::RequiredEnemyCount; ++index)
+        {
+            const EnemyInstance& instance = enemies.GetInstanceByIndex(index);
+            m_enemyPhysicsRuntimes[index].ResetPosition(instance.m_combat.GetState().m_position);
+        }
+
         AZ_Printf(
             "STWGameplay", "STW_DIAG_INTERACTIVE_RESPAWN position=(%.2f,%.2f,%.2f) death_events_before=%d\n",
             respawnPosition.GetX(), respawnPosition.GetY(), respawnPosition.GetZ(), deathEventsBeforeReset);
