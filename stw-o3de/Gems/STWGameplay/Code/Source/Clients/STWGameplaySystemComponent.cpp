@@ -207,6 +207,7 @@ namespace STWGameplay
         // cover objects specifically - for verifying DESTRUCTIBLE_OBJECTS geometry visually
         // from an angle the fixed spawn view doesn't clearly show.
         m_diagnosticCameraLookAtDestructibles = std::getenv("STW_DIAGNOSTIC_LOOK_AT_DESTRUCTIBLES") != nullptr;
+        m_diagnosticLogPlayerPath = std::getenv("STW_DIAGNOSTIC_LOG_PLAYER_PATH") != nullptr;
         // Opt-in evidence-recording mode: unset by production and by the standard task.sh
         // gate, so their single-shot capture behavior is unchanged. When set, requests a
         // sequence of numbered frames instead of one, for assembling a real gameplay clip.
@@ -1093,6 +1094,13 @@ namespace STWGameplay
 
         SampleGamepadLook(deltaTime);
         UpdateAutomatedAcceptance(deltaTime);
+        if (m_diagnosticLogPlayerPath && m_automatedAcceptance)
+        {
+            const AZ::Vector3& position = m_model.GetPlayer().m_position;
+            AZ_Printf(
+                "STWGameplay", "STW_DIAG_ACCEPTANCE_PLAYER_PATH time=%.3f x=%.3f y=%.3f z=%.3f\n", m_acceptanceTime,
+                position.GetX(), position.GetY(), position.GetZ());
+        }
         const FixedSimulationFrameResult simulation = RunFixedGameplaySteps(deltaTime);
         RunAdditionalNetworkPlayerSteps(simulation.m_fixedStepCount);
         // Entirely gated behind m_matchRuleset.IsActive() - false for every

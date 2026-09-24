@@ -434,6 +434,14 @@ namespace STWGameplay
         static constexpr float GamepadLookSensitivity = 3.5f; // radians/sec at full deflection; needs real-pad tuning
         AZStd::string m_nativeCapturePath;
         bool m_diagnosticCameraLookAtDestructibles = false;
+        //! One-off diagnostic, unset by default (including by the standard
+        //! task.sh gate): when set, prints the real scripted acceptance
+        //! player XY trajectory once per tick during m_automatedAcceptance,
+        //! so a new destructible-object placement can be checked against
+        //! where the acceptance battery's own movement/combat actually goes
+        //! before picking a position - see stw_destructible_objects memory
+        //! for why the Crate C/D attempt was reverted without this check.
+        bool m_diagnosticLogPlayerPath = false;
         float m_nativeCaptureDelay = 0.0f;
         bool m_nativeCaptureAttempted = false;
         // Single-capture mode only: simulation time spent waiting for the arena visual
