@@ -4096,13 +4096,18 @@ namespace STWGameplay
 
     void STWGameplaySystemComponent::ConfigureDestructibleObjects()
     {
-        // "STW Left Cover"/"STW Right Cover": the two dark cover pillars
-        // already visible in every gate screenshot, directly in front of
-        // player spawn. A small, deliberately bounded set - see
-        // DestructibleObjectModel.h's own comment on why this is not a
-        // general destruction system.
+        // "STW Destructible Crate A/B": two NEW colliders in the central hof
+        // open floor (not "STW Left/Right Cover" - those names are already
+        // permanent, baked visual geometry in generate_industrial_yard.py's
+        // "cover" group with the identical center/dimensions, confirmed by
+        // direct comparison; destroying an instance there would only hide a
+        // duplicate runtime mesh while the old baked geometry kept
+        // rendering, with no visible effect - a real gap caught from a
+        // diagnostic screenshot, not guessed). A small, deliberately bounded
+        // set - see DestructibleObjectModel.h's own comment on why this is
+        // not a general destruction system.
         static const char* const destructibleNames[DestructibleObjectModel::MaxObjectCount] = {
-            "STW Left Cover", "STW Right Cover", nullptr, nullptr
+            "STW Destructible Crate A", "STW Destructible Crate B", nullptr, nullptr
         };
         constexpr float DestructibleMaxHealth = 60.0f;
         const auto& descriptions = PhysXArenaRuntime::GetStaticColliderDescriptions();
@@ -4230,7 +4235,7 @@ namespace STWGameplay
             }
             m_destructibleReflectedInactive[index] = true;
             static const char* const destructibleNames[DestructibleObjectModel::MaxObjectCount] = {
-                "STW Left Cover", "STW Right Cover", nullptr, nullptr
+                "STW Destructible Crate A", "STW Destructible Crate B", nullptr, nullptr
             };
             if (AZ::Entity* colliderEntity = m_physicsArena.FindColliderEntityByName(destructibleNames[index]))
             {
@@ -4265,7 +4270,7 @@ namespace STWGameplay
         // internal bookkeeping, not that anything real happened in the
         // world.
         static const char* const destructibleNames[DestructibleObjectModel::MaxObjectCount] = {
-            "STW Left Cover", "STW Right Cover", nullptr, nullptr
+            "STW Destructible Crate A", "STW Destructible Crate B", nullptr, nullptr
         };
         const DestructibleObjectState& stateBefore = m_model.GetDestructibles().GetState(0);
         const bool destroyed = m_model.GetDestructibles().ApplyDamage(0, stateBefore.m_maxHealth + 1.0f);

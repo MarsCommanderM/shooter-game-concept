@@ -171,7 +171,21 @@ namespace STWGameplay
                 { "STW Central Cover SE Low", AZ::Vector3(7.0f, -8.0f, 0.6f), AZ::Vector3(1.6f, 1.6f, 1.2f) },
                 { "STW Central Cover SE High", AZ::Vector3(7.9f, -8.9f, 0.9f), AZ::Vector3(1.4f, 1.4f, 1.8f) },
                 { "STW Central Cover SW Low", AZ::Vector3(-7.0f, -8.0f, 0.6f), AZ::Vector3(1.6f, 1.6f, 1.2f) },
-                { "STW Central Cover SW High", AZ::Vector3(-7.9f, -8.9f, 0.9f), AZ::Vector3(1.4f, 1.4f, 1.8f) }
+                { "STW Central Cover SW High", AZ::Vector3(-7.9f, -8.9f, 0.9f), AZ::Vector3(1.4f, 1.4f, 1.8f) },
+                // Real destructible cover crates (see DestructibleObjectModel)
+                // - deliberately NEW positions, not reusing "STW Left/Right
+                // Cover": those two names are already permanent, baked visual
+                // geometry in tools/blender/generate_industrial_yard.py's
+                // "cover" group (left_cover_cladding/right_cover_cladding,
+                // same center/dimensions - confirmed by direct comparison,
+                // not assumed), so a runtime-destroyed instance there would
+                // hide only the new duplicate mesh while the old baked
+                // geometry kept rendering, with no visible effect. These two
+                // crates have no baked-visual counterpart, so destroying them
+                // is actually visible. Open floor space in the central hof,
+                // clear of every existing piece (checked before placing).
+                { "STW Destructible Crate A", AZ::Vector3(-4.5f, 4.5f, 1.25f), AZ::Vector3(1.5f, 2.0f, 2.5f) },
+                { "STW Destructible Crate B", AZ::Vector3(4.5f, 4.5f, 1.25f), AZ::Vector3(1.5f, 2.0f, 2.5f) }
             }};
 
         void DeactivateArenaEntity(AZStd::unique_ptr<AZ::Entity>& entity)
