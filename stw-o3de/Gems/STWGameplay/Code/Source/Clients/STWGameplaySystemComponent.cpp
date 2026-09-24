@@ -1450,8 +1450,8 @@ namespace STWGameplay
                 m_nativeCaptureAttempted = true;
                 if (m_diagnosticCameraLookAtDestructibles)
                 {
-                    // Frames both "STW Left Cover"/"STW Right Cover" (world
-                    // center (0,0,1.25), see ConfigureDestructibleObjects())
+                    // Frames both "STW Destructible Crate A/B" (world
+                    // midpoint (0,4.5,1.25), see ConfigureDestructibleObjects())
                     // from an elevated angle the standard spawn-facing
                     // capture doesn't show. UpdateCamera() unconditionally
                     // recomputes the camera transform from player state
@@ -1463,7 +1463,7 @@ namespace STWGameplay
                     if (cameraId.IsValid())
                     {
                         const AZ::Transform diagnosticTransform = AZ::Transform::CreateLookAt(
-                            AZ::Vector3(0.0f, -6.0f, 3.0f), AZ::Vector3(0.0f, 0.0f, 1.25f));
+                            AZ::Vector3(0.0f, -2.0f, 3.0f), AZ::Vector3(0.0f, 4.5f, 1.25f));
                         AZ::TransformBus::Event(cameraId, &AZ::TransformInterface::SetWorldTM, diagnosticTransform);
                     }
                 }
