@@ -16,6 +16,7 @@ set(FILES
     Source/WeaponModel.cpp
     Source/PlayerSliceModel.cpp
     Source/DestructibleObjectModel.cpp
+    Source/MatchRulesetModel.cpp
     Source/SpawnCheckpointModel.cpp
     Source/BodycamCameraPresentation.cpp
     Source/STWSkeletalCharacterPresentation.cpp

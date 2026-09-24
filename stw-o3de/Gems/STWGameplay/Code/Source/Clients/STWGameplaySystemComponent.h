@@ -21,6 +21,7 @@
 #include <STWGameplay/CombatFeedbackPresentation.h>
 #include <STWGameplay/EncounterModel.h>
 #include <STWGameplay/EnemyPresentation.h>
+#include <STWGameplay/MatchRulesetModel.h>
 #include <STWGameplay/SpawnCheckpointModel.h>
 #include <STWGameplay/BodycamCameraPresentation.h>
 #include <STWGameplay/AudioFeedbackPresentation.h>
@@ -225,6 +226,30 @@ namespace STWGameplay
         // UpdateEnemyAiAcceptance(): that path only runs when m_automatedAcceptance is true,
         // this one only when it is false.
         void UpdateInteractivePlayerRespawn(float deltaTime);
+        //! Starts a real Team Deathmatch match: assigns every currently-
+        //! bound authority to a team (round robin, deterministic), resets
+        //! m_matchRuleset's score, and reuses the same real "unblock input,
+        //! show the HUD" path as the menu's own SPIELEN button - clicking
+        //! TEAM DEATHMATCH is a real entry into play, not just navigation.
+        void StartTeamDeathmatchMatch();
+        //! Per-tick PvP post-processing, entirely gated behind
+        //! m_matchRuleset.IsActive() (false for the whole existing scripted
+        //! acceptance battery, which never starts a match) - refreshes
+        //! MatchRulesetModel's player-state snapshot, applies any PvP hit
+        //! each bound authority's TryFire() reported this tick to the
+        //! actual target authority's real PlayerSliceModel, registers a
+        //! kill and checks the win condition on an alive->dead transition,
+        //! and drives each non-primary bound authority's own respawn timer
+        //! (the existing UpdateInteractivePlayerRespawn()/RespawnPlayer()
+        //! pair only ever handled the primary/composition-root m_model).
+        void UpdateMatchRuleset(float deltaTime);
+        //! Same reset sequence as RespawnPlayer(), parameterized on one
+        //! bound authority instead of the hardcoded primary m_model/
+        //! m_physicsPlayer/m_commandHistory - the shared enemy-collection
+        //! reset is still included even though Team Deathmatch has no
+        //! active AI enemies, matching RespawnPlayer()'s own existing
+        //! behavior exactly rather than special-casing PvP.
+        void RespawnNetworkPlayer(STWNetworkPlayerAuthority& authority, size_t authorityIndex);
 
         // The PhysX character controller cannot be created during Activate() because the
         // default physics scene does not exist yet; creation is deferred to OnTick.
@@ -370,6 +395,8 @@ namespace STWGameplay
         PhysXArenaRuntime m_physicsArena;
         PhysXPlayerRuntime m_physicsPlayer;
         AZStd::array<STWNetworkPlayerAuthority, MaxNetworkPlayerCount> m_networkPlayerAuthorities;
+        MatchRulesetModel m_matchRuleset;
+        AZStd::array<float, MaxNetworkPlayerCount> m_networkPlayerRespawnDelay{};
         STWMultiplayerRuntime m_multiplayer;
         AZStd::array<PhysXEnemyRuntime, EnemyCollectionModel::MaxEnemyCount> m_enemyPhysicsRuntimes;
         AZStd::array<PresentationInterpolation, EnemyCollectionModel::MaxEnemyCount>

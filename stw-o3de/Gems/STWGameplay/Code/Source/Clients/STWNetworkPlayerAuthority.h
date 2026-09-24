@@ -47,6 +47,11 @@ namespace STWGameplay
         void MarkCommandApplied(PlayerCommandSequence sequence);
 
         const PlayerCommandHistory& GetCommandHistory() const { return m_commandHistory; }
+        //! Mirrors the composition root's own "clear command history on
+        //! respawn" step (previously only reachable for the primary player,
+        //! since m_commandHistory had no public mutator) - avoids replaying
+        //! stale pre-respawn commands against the just-reset position.
+        void ClearCommandHistory() { m_commandHistory.Clear(); }
         size_t GetCommandHistorySize() const { return m_commandHistory.Size(); }
         PlayerCommandSequence GetLastAppliedCommandSequence() const { return m_lastAppliedSequence; }
         PlayerCommandSequence GetLastReceivedCommandSequence() const { return m_lastReceivedSequence; }

@@ -1,11 +1,13 @@
 #pragma once
 
 #include <cstddef>
+#include <AzCore/Component/EntityId.h>
 #include <AzCore/Math/Vector3.h>
 #include <AzCore/std/optional.h>
 #include <STWGameplay/ArenaLayout.h>
 #include <STWGameplay/DestructibleObjectModel.h>
 #include <STWGameplay/EnemyCollectionModel.h>
+#include <STWGameplay/MatchRulesetModel.h>
 #include <STWGameplay/PlayerMovementModel.h>
 #include <STWGameplay/PlayerCommand.h>
 #include <STWGameplay/WeaponModel.h>
@@ -97,6 +99,23 @@ namespace STWGameplay
         bool ApplyDamage(float damage);
         void ResetPlayer();
 
+        //! Identifies this model to MatchRulesetModel for team lookup and
+        //! self/teammate exclusion during PvP fire resolution - set once by
+        //! the caller (STWGameplaySystemComponent) at bind time, mirroring
+        //! how STWNetworkPlayerAuthority::Bind* already associates an
+        //! EntityId with a model at that same point.
+        void SetNetworkEntityId(AZ::EntityId entityId) { m_networkEntityId = entityId; }
+        AZ::EntityId GetNetworkEntityId() const { return m_networkEntityId; }
+        //! Non-owning; null means "no active match ruleset", in which case
+        //! TryFire() behaves exactly as before PvP existed (enemies and
+        //! destructibles only) - the default for every existing caller.
+        void SetMatchRuleset(MatchRulesetModel* ruleset) { m_matchRuleset = ruleset; }
+        //! Reads and clears (edge-triggered, once) the PvP target this
+        //! model's last TryFire() reported hitting, if any - the caller
+        //! applies the actual cross-model damage, since this model has no
+        //! access to any other player's PlayerSliceModel instance.
+        AZ::EntityId ConsumeLastPvpHitTarget(float& outDamage);
+
         const PlayerState& GetPlayer() const { return m_player; }
         const WeaponState& GetWeapon() const { return m_weapons.GetWeapon(); }
         const WeaponState& GetWeapon(WeaponId weaponId) const { return m_weapons.GetWeapon(weaponId); }
@@ -177,6 +196,10 @@ namespace STWGameplay
         // constructor has no real call site in this codebase today (only
         // its own definition - confirmed by grep before adding this).
         DestructibleObjectModel m_destructibles;
+        AZ::EntityId m_networkEntityId;
+        MatchRulesetModel* m_matchRuleset = nullptr;
+        AZ::EntityId m_lastPvpHitTarget;
+        float m_lastPvpHitDamage = 0.0f;
         bool m_jumpWasHeld = false;
         bool m_crouchWasHeld = false;
         bool m_mantleWasHeld = false;

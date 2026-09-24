@@ -114,6 +114,12 @@ namespace STWGameplay
         //! knows what "start playing" means for real game state (unblocking
         //! input, showing the HUD), this class only reports the click.
         void SetPlayHandler(AZStd::function<void()> handler);
+        //! Registers the callback invoked when the TEAM DEATHMATCH mode
+        //! button is clicked - same "this class has no concept of real
+        //! gameplay state" reasoning as SetPlayHandler, since starting a
+        //! real match means team assignment, HUD, and unblocking input,
+        //! none of which this class knows about.
+        void SetTeamDeathmatchHandler(AZStd::function<void()> handler);
         //! Updates a button's displayed label text in place - used both to
         //! sync the initial key names after Initialize() and to reflect a
         //! real rebind the caller just captured.
@@ -139,6 +145,12 @@ namespace STWGameplay
         //! visual-vs-acceptance discrepancy can be root-caused from gate
         //! log evidence instead of guessed at.
         void LogDiagnostics() const;
+        //! True only if every button created so far successfully resolved
+        //! the real metallic sprite via UiImageBus::SetSpritePathnameIfExists
+        //! - false (not a crash) if the asset path/AssetProcessor product
+        //! didn't resolve, so a path-convention mistake is a detectable
+        //! acceptance failure instead of a silently-still-flat-color button.
+        bool WasButtonSpriteAppliedToEveryButton() const { return m_lastButtonSpriteApplied; }
 
     private:
         AZ::EntityId BuildScreenRoot(const char* name);
@@ -188,11 +200,13 @@ namespace STWGameplay
         //! simulation (unverified signature) - this only depends on code
         //! this class itself owns.
         AZStd::vector<AZStd::pair<AZStd::string, AZStd::function<void()>>> m_buttonCallbacks;
+        bool m_lastButtonSpriteApplied = true;
         //! Same TestClick()-style test-only invocation path, for sliders.
         AZStd::vector<AZStd::pair<AZStd::string, AZStd::function<void(float)>>> m_sliderCallbacks;
         AZStd::function<void(const char*)> m_controlsRebindHandler;
         AZStd::function<void(float)> m_contrastChangeHandler;
         AZStd::function<void()> m_endGameContinueHandler;
         AZStd::function<void()> m_playHandler;
+        AZStd::function<void()> m_teamDeathmatchHandler;
     };
 }

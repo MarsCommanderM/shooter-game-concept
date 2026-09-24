@@ -306,7 +306,35 @@ namespace STWGameplay
             m_presentation.m_hitEnemyId = hitEnemyId;
             m_presentation.m_hitCueRemaining = 0.12f;
         }
+        else if (m_matchRuleset != nullptr && m_matchRuleset->IsActive())
+        {
+            // PvP resolution only when no enemy/destructible was already the
+            // closer hit above (the same "whichever is genuinely closer
+            // wins" rule the enemy-vs-destructible check already applies) -
+            // ResolvePvpHit itself is only ever given other TEAMMATE-
+            // excluded, alive players by MatchRulesetModel, so no
+            // additional self/friendly-fire check is needed here.
+            float pvpDistance = 0.0f;
+            const AZ::EntityId pvpTarget = m_matchRuleset->ResolvePvpHit(
+                m_networkEntityId, GetEyePosition(), GetAimDirection(), hitDistance, pvpDistance);
+            if (pvpTarget.IsValid())
+            {
+                m_lastPvpHitTarget = pvpTarget;
+                m_lastPvpHitDamage = use.m_damage;
+                m_presentation.m_hit = true;
+                m_presentation.m_hitCueRemaining = 0.12f;
+            }
+        }
         return true;
+    }
+
+    AZ::EntityId PlayerSliceModel::ConsumeLastPvpHitTarget(float& outDamage)
+    {
+        const AZ::EntityId target = m_lastPvpHitTarget;
+        outDamage = m_lastPvpHitDamage;
+        m_lastPvpHitTarget = AZ::EntityId();
+        m_lastPvpHitDamage = 0.0f;
+        return target;
     }
 
     bool PlayerSliceModel::StartReload()

@@ -95,6 +95,8 @@ namespace STWGameplay
         m_contrastChangeHandler = nullptr;
         m_endGameContinueHandler = nullptr;
         m_playHandler = nullptr;
+        m_teamDeathmatchHandler = nullptr;
+        m_lastButtonSpriteApplied = true;
     }
 
     AZ::EntityId MainMenuPresentation::BuildScreenRoot(const char* name)
@@ -210,9 +212,36 @@ namespace STWGameplay
         UiTransform2dBus::Event(
             elementId, &UiTransform2dBus::Events::SetOffsets,
             UiTransform2dInterface::Offsets(layout.m_offsetLeft, layout.m_offsetTop, layout.m_offsetRight, layout.m_offsetBottom));
-        // Metallic steel panel, matching the yard's own steel material tone -
-        // a real button texture/sprite is a later, separate art pass.
+        // Metallic steel panel: SetColor still supplies the steel hue, and a
+        // real brushed-metal/bevel sprite (STW_Menu_Metallic_UIL, generated
+        // by tools/assets/create_stw_menu_metallic.py) supplies the metallic
+        // shape on top - delivering the "metallischer Look" from the
+        // original menu request. The path is prefixed with "assets/" (not
+        // just "UI/...") because this project's own Project/Assets scan
+        // folder - unlike a Gem's Assets folder, which drops the "Assets"
+        // segment - registers its products with that segment kept: verified
+        // directly against a real AssetProcessorBatch run, whose product
+        // for this exact file landed at
+        // Cache/linux/assets/ui/stw_menu_metallic_uil/stw_menu_metallic_uil.sprite,
+        // and cross-checked against every other Project/Assets/* category
+        // already in this project (environment/characters/enemies/weapons/
+        // industrialyard/network all show the same "assets/" prefix) - a
+        // real, project-specific path-resolution mismatch is why the first
+        // attempt at this asset could never be found by LyShine's own
+        // CheckIfFileExists at runtime, not a broken engine feature.
+        // SetSpritePathnameIfExists (not SetSpritePathname) so a
+        // path-resolution miss is a detectable false, not a silent one -
+        // m_lastButtonSpriteApplied records it for acceptance verification.
         UiImageBus::Event(elementId, &UiImageBus::Events::SetColor, AZ::Color(SteelLightR, SteelLightG, SteelLightB, 0.92f));
+        bool spriteApplied = false;
+        UiImageBus::EventResult(
+            spriteApplied, elementId, &UiImageBus::Events::SetSpritePathnameIfExists,
+            AZStd::string("assets/UI/STW_Menu_Metallic_UIL/STW_Menu_Metallic_UIL.sprite"));
+        if (spriteApplied)
+        {
+            UiImageBus::Event(elementId, &UiImageBus::Events::SetImageType, UiImageInterface::ImageType::Sliced);
+        }
+        m_lastButtonSpriteApplied = m_lastButtonSpriteApplied && spriteApplied;
 
         AZStd::string buttonName(name);
         UiButtonBus::Event(
@@ -355,6 +384,11 @@ namespace STWGameplay
     void MainMenuPresentation::SetPlayHandler(AZStd::function<void()> handler)
     {
         m_playHandler = handler;
+    }
+
+    void MainMenuPresentation::SetTeamDeathmatchHandler(AZStd::function<void()> handler)
+    {
+        m_teamDeathmatchHandler = handler;
     }
 
     void MainMenuPresentation::SetControlLabel(const char* buttonName, const char* text)
@@ -661,9 +695,12 @@ namespace STWGameplay
             MenuRect{ 0.0f, 0.06f, 1.0f, 0.16f, 0.0f, 0.0f, 0.0f, 0.0f }, 48.0f, true);
 
         // The five modes the user named: Team Deathmatch, Domination,
-        // Headquarters, Defense, Sabotage. Button shell + navigation only in
-        // this pass - each mode's actual ruleset (score limits, objective
-        // logic, win conditions) is separate, much larger gameplay work.
+        // Headquarters, Defense, Sabotage. Team Deathmatch has a real
+        // ruleset (MatchRulesetModel) behind it as of this pass - the other
+        // four each need their own new objective system (capture points, a
+        // destructible HQ target, a plant/defuse timer) that does not exist
+        // anywhere in this codebase, and none of that is stubbed here:
+        // their buttons remain navigation-only, same as before.
         const char* names[5] = {
             "ModeTeamDeathmatch", "ModeDomination", "ModeHeadquarters", "ModeDefense", "ModeSabotage"
         };
@@ -675,7 +712,18 @@ namespace STWGameplay
         {
             const float top = RowY + index * RowGap;
             MenuRect buttonRect{ 0.30f, top, 0.70f, top + RowHeight, 0.0f, 0.0f, 0.0f, 0.0f };
-            CreateButton(m_multiplayerScreenRoot, names[index], labels[index], buttonRect, AZStd::function<void()>());
+            AZStd::function<void()> onClick;
+            if (index == 0)
+            {
+                onClick = [this]()
+                {
+                    if (m_teamDeathmatchHandler)
+                    {
+                        m_teamDeathmatchHandler();
+                    }
+                };
+            }
+            CreateButton(m_multiplayerScreenRoot, names[index], labels[index], buttonRect, onClick);
         }
 
         CreateButton(

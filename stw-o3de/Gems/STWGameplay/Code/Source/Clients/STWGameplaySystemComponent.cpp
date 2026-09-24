@@ -308,6 +308,13 @@ namespace STWGameplay
         {
             return false;
         }
+        // Every bound authority's model gets its own real EntityId and a
+        // shared pointer to the same MatchRulesetModel, regardless of
+        // whether any match is currently active - SetMatchRuleset is
+        // non-owning and MatchRulesetModel::IsActive() gates all real PvP
+        // behavior, so this is inert until StartTeamDeathmatchMatch() runs.
+        freeAuthority->GetModel().SetNetworkEntityId(entityId);
+        freeAuthority->GetModel().SetMatchRuleset(&m_matchRuleset);
         if (m_physicsStartup == PhysicsStartup::Ready && !freeAuthority->InitializePhysics())
         {
             freeAuthority->Unbind();
@@ -1088,6 +1095,10 @@ namespace STWGameplay
         UpdateAutomatedAcceptance(deltaTime);
         const FixedSimulationFrameResult simulation = RunFixedGameplaySteps(deltaTime);
         RunAdditionalNetworkPlayerSteps(simulation.m_fixedStepCount);
+        // Entirely gated behind m_matchRuleset.IsActive() - false for every
+        // existing scripted acceptance scenario, which never starts a
+        // match, so this is a no-op there.
+        UpdateMatchRuleset(deltaTime);
         const PlayerCommand& command = simulation.m_lastCommand;
         const bool gameplayUpdated = simulation.m_gameplayUpdated;
         const EnemyCollectionModel& enemies = m_model.GetEnemies();
@@ -3556,7 +3567,8 @@ namespace STWGameplay
         m_mainMenuPresentation.LogDiagnostics();
 
         passed = passed && m_mainMenuPresentation.GetButtonCount() == 22
-            && m_mainMenuPresentation.WasEveryButtonClickTested();
+            && m_mainMenuPresentation.WasEveryButtonClickTested()
+            && m_mainMenuPresentation.WasButtonSpriteAppliedToEveryButton();
 
         if (!passed)
         {
@@ -3577,6 +3589,7 @@ namespace STWGameplay
             "MAIN_MENU_CONTRAST_ROUNDTRIP_PASS=1\n"
             "MAIN_MENU_ENDGAME_SCREEN_PASS=1\n"
             "MAIN_MENU_INPUT_BINDINGS_PERSISTENCE_PASS=1\n"
+            "MAIN_MENU_BUTTON_SPRITE_APPLIED_PASS=1\n"
             "MAIN_MENU_ACCEPTANCE result=PASS\n",
             m_mainMenuPresentation.GetButtonCount());
         m_mainMenuAcceptanceReported = true;
@@ -4418,6 +4431,7 @@ namespace STWGameplay
                         m_mainMenuPresentation.SetCanvasEnabled(false);
                         m_hudPresentation.SetVisible(true);
                     });
+                m_mainMenuPresentation.SetTeamDeathmatchHandler([this]() { StartTeamDeathmatchMatch(); });
                 m_mainMenuPresentation.SetEndGameContinueHandler(
                     [this]()
                     {
@@ -5086,6 +5100,153 @@ namespace STWGameplay
         }
 
         RespawnPlayer();
+    }
+
+    void STWGameplaySystemComponent::StartTeamDeathmatchMatch()
+    {
+        m_matchRuleset.EndMatch();
+        for (STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
+        {
+            if (authority.IsBound() && !authority.IsRemote())
+            {
+                m_matchRuleset.AssignTeam(authority.GetEntityId());
+            }
+        }
+        m_matchRuleset.StartTeamDeathmatch();
+        for (float& delay : m_networkPlayerRespawnDelay)
+        {
+            delay = 0.0f;
+        }
+        // Same real "unblock input, show HUD" effect as the SPIELEN button's
+        // own handler (see its declaration comment) - Team Deathmatch is a
+        // second real entry point into play, not just menu navigation.
+        m_menuBlockingPlay = false;
+        m_mainMenuPresentation.SetCanvasEnabled(false);
+        m_hudPresentation.SetVisible(true);
+    }
+
+    void STWGameplaySystemComponent::UpdateMatchRuleset(float deltaTime)
+    {
+        if (!m_matchRuleset.IsActive())
+        {
+            return;
+        }
+
+        // Refresh the PvP hit-test snapshot from every bound, locally-
+        // simulated authority (never a remote-tracking-only one, which has
+        // no local model to read a real position from).
+        AZStd::vector<PvpPlayerState> states;
+        for (STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
+        {
+            if (!authority.IsBound() || authority.IsRemote())
+            {
+                continue;
+            }
+            PvpPlayerState state;
+            state.m_entityId = authority.GetEntityId();
+            state.m_position = authority.GetModel().GetPlayer().m_position;
+            state.m_team = m_matchRuleset.GetTeam(state.m_entityId);
+            state.m_alive = authority.GetModel().GetPlayer().m_alive;
+            states.push_back(state);
+        }
+        m_matchRuleset.SetPlayerStates(states);
+
+        // Apply any PvP hit each authority's TryFire() reported THIS tick to
+        // the real target authority's own model, score a kill on the real
+        // alive->dead transition (not just "damage was applied", which can
+        // also happen to an already-dying or already-invulnerable target),
+        // and check the win condition.
+        for (STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
+        {
+            if (!authority.IsBound() || authority.IsRemote())
+            {
+                continue;
+            }
+            float damage = 0.0f;
+            const AZ::EntityId hitTarget = authority.GetModel().ConsumeLastPvpHitTarget(damage);
+            if (!hitTarget.IsValid())
+            {
+                continue;
+            }
+            STWNetworkPlayerAuthority* targetAuthority = FindNetworkPlayer(hitTarget);
+            if (targetAuthority == nullptr)
+            {
+                continue;
+            }
+            const bool aliveBefore = targetAuthority->GetModel().GetPlayer().m_alive;
+            if (aliveBefore && targetAuthority->GetModel().ApplyDamage(damage)
+                && !targetAuthority->GetModel().GetPlayer().m_alive)
+            {
+                const TeamId scoringTeam = m_matchRuleset.GetTeam(authority.GetEntityId());
+                TeamId winningTeam = scoringTeam;
+                if (m_matchRuleset.RegisterKill(scoringTeam, winningTeam))
+                {
+                    const bool teamAWon = winningTeam == TeamId::A;
+                    m_mainMenuPresentation.SetEndGameContent(
+                        "SIEG",
+                        teamAWon ? "Team A gewinnt das Team Deathmatch." : "Team B gewinnt das Team Deathmatch.");
+                    m_mainMenuPresentation.ShowScreen(MainMenuScreen::EndGame);
+                    m_mainMenuPresentation.SetCanvasEnabled(true);
+                    m_menuBlockingPlay = true;
+                    m_matchRuleset.EndMatch();
+                    return;
+                }
+            }
+        }
+
+        // Respawn any non-primary bound authority that died and has waited
+        // out the same real-play respawn delay the primary already uses via
+        // UpdateInteractivePlayerRespawn()/RespawnPlayer() - that pair only
+        // ever handled the primary/composition-root m_model, never an
+        // additional authority.
+        for (size_t index = 0; index < m_networkPlayerAuthorities.size(); ++index)
+        {
+            STWNetworkPlayerAuthority& authority = m_networkPlayerAuthorities[index];
+            if (!authority.IsBound() || authority.IsRemote() || authority.UsesCompositionRootRuntime())
+            {
+                continue;
+            }
+            if (authority.GetModel().GetPlayer().m_alive)
+            {
+                m_networkPlayerRespawnDelay[index] = 0.0f;
+                continue;
+            }
+            m_networkPlayerRespawnDelay[index] += deltaTime;
+            if (m_networkPlayerRespawnDelay[index] >= InteractiveRespawnDelaySeconds)
+            {
+                RespawnNetworkPlayer(authority, index);
+            }
+        }
+    }
+
+    void STWGameplaySystemComponent::RespawnNetworkPlayer(STWNetworkPlayerAuthority& authority, size_t authorityIndex)
+    {
+        PlayerSliceModel& model = authority.GetModel();
+        const int deathEventsBeforeReset = model.GetPlayer().m_deathEvents;
+        model.ResetPlayer();
+        authority.ClearCommandHistory();
+        const AZ::Vector3 respawnPosition = m_spawnCheckpoint.ResolveRespawnPosition();
+        model.SetPlayerPosition(respawnPosition);
+        authority.GetPhysics().ResetPosition(respawnPosition);
+        m_networkPlayerRespawnDelay[authorityIndex] = 0.0f;
+
+        // Same shared-enemy reset RespawnPlayer() always applies, kept
+        // unconditional rather than special-cased for Team Deathmatch (which
+        // has no active AI enemies to reset in practice) - one real
+        // reset sequence, not two subtly different ones.
+        EnemyCollectionModel& enemies = model.GetEnemies();
+        enemies.ResetRequiredEnemies();
+        for (size_t index = 0; index < EnemyCollectionModel::RequiredEnemyCount; ++index)
+        {
+            const EnemyInstance& instance = enemies.GetInstanceByIndex(index);
+            m_enemyPhysicsRuntimes[index].ResetPosition(instance.m_combat.GetState().m_position);
+        }
+
+        AZ_Printf(
+            "STWGameplay",
+            "STW_DIAG_NETWORK_RESPAWN authority_index=%zu position=(%.2f,%.2f,%.2f) death_events_before=%d\n",
+            authorityIndex, respawnPosition.GetX(), respawnPosition.GetY(), respawnPosition.GetZ(),
+            deathEventsBeforeReset);
     }
 
     void STWGameplaySystemComponent::EvaluateEndGameState()
