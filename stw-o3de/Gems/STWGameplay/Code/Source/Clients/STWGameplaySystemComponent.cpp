@@ -33,6 +33,7 @@
 #include <STWGameplay/ArenaLayout.h>
 #include <STWGameplay/BodycamCameraPresentation.h>
 #include <Network/STWPlayerNetworkComponent.h>
+#include <MiniAudio/MiniAudioBus.h>
 
 #include <cstdlib>
 #include <algorithm>
@@ -3130,6 +3131,25 @@ namespace STWGameplay
 
         m_mainMenuPresentation.TestClick("SettingsButton");
         passed = passed && m_mainMenuPresentation.GetActiveScreen() == MainMenuScreen::Settings;
+
+        // Real round-trip proof for the sound slider, not just "the UI
+        // number changed": drive it to 42% and verify MiniAudio's actual
+        // global volume (MiniAudioRequestBus::GetGlobalVolume) reflects it
+        // exactly - the subsystem the slider is supposed to control, read
+        // back independently of the UI's own copy of the number.
+        m_mainMenuPresentation.TestSliderChange("VolumeSlider", 42.0f);
+        const float uiVolumeValue = m_mainMenuPresentation.GetSliderValue("VolumeSlider");
+        float miniAudioVolume = -1.0f;
+        MiniAudio::MiniAudioRequestBus::BroadcastResult(
+            miniAudioVolume, &MiniAudio::MiniAudioRequestBus::Events::GetGlobalVolume);
+        const bool volumeRoundTripPassed =
+            std::fabs(uiVolumeValue - 42.0f) < 0.01f && std::fabs(miniAudioVolume - 0.42f) < 0.001f;
+        passed = passed && volumeRoundTripPassed;
+
+        // Restore full volume before handing control back to real play - the
+        // automated acceptance run must not leave the game silent.
+        m_mainMenuPresentation.TestSliderChange("VolumeSlider", 100.0f);
+
         m_mainMenuPresentation.TestClick("SettingsBackButton");
         passed = passed && m_mainMenuPresentation.GetActiveScreen() == MainMenuScreen::Main;
 
@@ -3164,6 +3184,7 @@ namespace STWGameplay
             "MAIN_MENU_MULTIPLAYER_NAV_PASS=1\n"
             "MAIN_MENU_MULTIPLAYER_MODE_BUTTONS=5\n"
             "MAIN_MENU_ALL_BUTTONS_CLICK_TESTED=1\n"
+            "MAIN_MENU_SOUND_SLIDER_ROUNDTRIP_PASS=1\n"
             "MAIN_MENU_ACCEPTANCE result=PASS\n",
             m_mainMenuPresentation.GetButtonCount());
         m_mainMenuAcceptanceReported = true;

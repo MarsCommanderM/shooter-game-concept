@@ -14,6 +14,9 @@
 #include <LyShine/Bus/UiImageBus.h>
 #include <LyShine/Bus/UiTextBus.h>
 #include <LyShine/Bus/UiButtonBus.h>
+#include <LyShine/Bus/UiSliderBus.h>
+
+#include <MiniAudio/MiniAudioBus.h>
 
 namespace STWGameplay
 {
@@ -84,6 +87,7 @@ namespace STWGameplay
         m_buttonCount = 0;
         m_buttonNames.clear();
         m_clickedButtonNames.clear();
+        m_sliderCallbacks.clear();
     }
 
     AZ::EntityId MainMenuPresentation::BuildScreenRoot(const char* name)
@@ -225,6 +229,91 @@ namespace STWGameplay
         return elementId;
     }
 
+    AZ::EntityId MainMenuPresentation::CreateSlider(
+        AZ::EntityId parent, const char* name, const MenuRect& layout,
+        float minValue, float maxValue, float initialValue, AZStd::function<void(float)> onChange)
+    {
+        AZ::Entity* entity = nullptr;
+        UiElementBus::EventResult(entity, parent, &UiElementBus::Events::CreateChildElement, AZStd::string(name));
+        if (entity == nullptr)
+        {
+            return AZ::EntityId();
+        }
+        const AZ::EntityId sliderId = entity->GetId();
+        entity->Deactivate();
+        entity->CreateComponent(LyShine::UiTransform2dComponentUuid);
+        entity->CreateComponent(LyShine::UiImageComponentUuid);
+        entity->CreateComponent(LyShine::UiSliderComponentUuid);
+        entity->Activate();
+
+        UiTransform2dBus::Event(
+            sliderId, &UiTransform2dBus::Events::SetAnchors,
+            UiTransform2dInterface::Anchors(layout.m_anchorLeft, layout.m_anchorTop, layout.m_anchorRight, layout.m_anchorBottom),
+            false, false);
+        UiTransform2dBus::Event(
+            sliderId, &UiTransform2dBus::Events::SetOffsets,
+            UiTransform2dInterface::Offsets(layout.m_offsetLeft, layout.m_offsetTop, layout.m_offsetRight, layout.m_offsetBottom));
+        UiImageBus::Event(sliderId, &UiImageBus::Events::SetColor, AZ::Color(SteelR, SteelG, SteelB, 0.95f));
+
+        // Fill: left-anchored, its right anchor is driven by
+        // UiSliderComponent::SetValue() itself (see UiSliderComponent.cpp,
+        // SetValue() overwrites anchors.m_left/m_right using the fraction of
+        // value between min/max) - the {0,0,0,1} rect here is only the
+        // starting shape before the first SetValue() call below.
+        AZStd::string fillName = AZStd::string(name) + "_Fill";
+        const AZ::EntityId fillId = CreatePanel(
+            sliderId, fillName.c_str(), MenuRect{ 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f },
+            HazardR, HazardG, HazardB, 0.95f);
+
+        // Manipulator/handle: a small fixed-size square whose anchor point
+        // (not offsets) is moved to the value fraction by SetValue(), same
+        // mechanism as the fill.
+        AZStd::string handleName = AZStd::string(name) + "_Handle";
+        const AZ::EntityId handleId = CreatePanel(
+            sliderId, handleName.c_str(), MenuRect{ 0.0f, 0.0f, 0.0f, 1.0f, -8.0f, -4.0f, 8.0f, 4.0f },
+            0.92f, 0.94f, 0.96f, 1.0f);
+
+        // The slider's own rect defines the range of movement - no separate
+        // track child needed, UiSliderBus only reads the track entity's
+        // transform to compute drag distance/position.
+        UiSliderBus::Event(sliderId, &UiSliderBus::Events::SetTrackEntity, sliderId);
+        UiSliderBus::Event(sliderId, &UiSliderBus::Events::SetFillEntity, fillId);
+        UiSliderBus::Event(sliderId, &UiSliderBus::Events::SetManipulatorEntity, handleId);
+        UiSliderBus::Event(sliderId, &UiSliderBus::Events::SetMinValue, minValue);
+        UiSliderBus::Event(sliderId, &UiSliderBus::Events::SetMaxValue, maxValue);
+        UiSliderBus::Event(sliderId, &UiSliderBus::Events::SetValue, initialValue);
+
+        AZStd::string sliderName(name);
+        UiSliderBus::Event(
+            sliderId, &UiSliderBus::Events::SetValueChangedCallback,
+            [onChange](AZ::EntityId, float value)
+            {
+                if (onChange)
+                {
+                    onChange(value);
+                }
+            });
+
+        m_sliderCallbacks.push_back({ sliderName, onChange });
+
+        // SetValue() above does not invoke the callback (verified against
+        // UiSliderComponent::SetValue() - it only updates fill/manipulator
+        // visuals; callbacks only fire from DoChangedActions()/
+        // DoChangingActions(), which real drag interaction reaches but a
+        // manual SetValue() does not). Call it once explicitly here so the
+        // driven subsystem (e.g. MiniAudio) is synced to the slider's actual
+        // starting value instead of relying on the two defaults happening to
+        // already match.
+        float actualInitialValue = 0.0f;
+        UiSliderBus::EventResult(actualInitialValue, sliderId, &UiSliderBus::Events::GetValue);
+        if (onChange)
+        {
+            onChange(actualInitialValue);
+        }
+
+        return sliderId;
+    }
+
     void MainMenuPresentation::SetScreenVisible(AZ::EntityId screenRoot, bool visible)
     {
         if (screenRoot.IsValid())
@@ -298,13 +387,24 @@ namespace STWGameplay
             m_settingsScreenRoot, "SettingsTitle", "EINSTELLUNGEN",
             MenuRect{ 0.15f, 0.12f, 0.85f, 0.20f, 0.0f, 0.0f, 0.0f, 0.0f }, 36.0f, true);
 
-        // Section labels only in this pass - real sound/control value
-        // binding (MiniAudio master volume, AzFramework::InputChannelId
-        // rebind) is verified O3DE-API-feasible but is its own separate,
-        // separately-verified step, not stubbed or faked here.
+        // Real sound volume control: a working UiSliderComponent wired to
+        // MiniAudio's actual global volume (MiniAudioRequestBus::
+        // SetGlobalVolume). Steuerung/Kontrast are still section labels only
+        // in this pass - their own value bindings are separate, separately-
+        // verified steps (see MainMenuPresentation.h class comment and the
+        // stw-main-menu memory note for what remains).
         CreateLabel(
             m_settingsScreenRoot, "SoundSectionLabel", "SOUND",
             MenuRect{ 0.20f, 0.28f, 0.50f, 0.34f, 0.0f, 0.0f, 0.0f, 0.0f }, 22.0f, true);
+        CreateSlider(
+            m_settingsScreenRoot, "VolumeSlider",
+            MenuRect{ 0.52f, 0.285f, 0.80f, 0.335f, 0.0f, 0.0f, 0.0f, 0.0f },
+            0.0f, 100.0f, 100.0f,
+            [](float value)
+            {
+                MiniAudio::MiniAudioRequestBus::Broadcast(
+                    &MiniAudio::MiniAudioRequestBus::Events::SetGlobalVolume, value / 100.0f);
+            });
         CreateLabel(
             m_settingsScreenRoot, "ControlsSectionLabel", "STEUERUNG",
             MenuRect{ 0.20f, 0.42f, 0.50f, 0.48f, 0.0f, 0.0f, 0.0f, 0.0f }, 22.0f, true);
@@ -429,6 +529,53 @@ namespace STWGameplay
             quitFound ? 1 : 0, quitEnabled ? 1 : 0,
             static_cast<double>(quitRect.left), static_cast<double>(quitRect.right),
             static_cast<double>(quitRect.top), static_cast<double>(quitRect.bottom));
+    }
+
+    void MainMenuPresentation::TestSliderChange(const char* sliderName, float value)
+    {
+        AZ::Entity* sliderEntity = nullptr;
+        UiCanvasBus::EventResult(
+            sliderEntity, m_canvasId, &UiCanvasBus::Events::FindElementByName, AZStd::string(sliderName));
+        if (sliderEntity == nullptr)
+        {
+            return;
+        }
+        const AZ::EntityId sliderId = sliderEntity->GetId();
+
+        // Real UiSliderBus::SetValue() - updates the fill/handle visuals for
+        // real, exactly as a drag would, then reads back the clamped/
+        // stepped value UiSliderBus itself computed (not the raw input)
+        // before invoking the callback, mirroring what UiSliderComponent's
+        // own DoChangedActions() does after a real drag release.
+        UiSliderBus::Event(sliderId, &UiSliderBus::Events::SetValue, value);
+        float actualValue = 0.0f;
+        UiSliderBus::EventResult(actualValue, sliderId, &UiSliderBus::Events::GetValue);
+
+        for (const auto& entry : m_sliderCallbacks)
+        {
+            if (entry.first == sliderName)
+            {
+                if (entry.second)
+                {
+                    entry.second(actualValue);
+                }
+                return;
+            }
+        }
+    }
+
+    float MainMenuPresentation::GetSliderValue(const char* sliderName) const
+    {
+        AZ::Entity* sliderEntity = nullptr;
+        UiCanvasBus::EventResult(
+            sliderEntity, m_canvasId, &UiCanvasBus::Events::FindElementByName, AZStd::string(sliderName));
+        if (sliderEntity == nullptr)
+        {
+            return 0.0f;
+        }
+        float value = 0.0f;
+        UiSliderBus::EventResult(value, sliderEntity->GetId(), &UiSliderBus::Events::GetValue);
+        return value;
     }
 
     void MainMenuPresentation::TestClick(const char* buttonName)

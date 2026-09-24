@@ -63,6 +63,16 @@ namespace STWGameplay
         size_t GetButtonCount() const { return m_buttonCount; }
         bool WasEveryButtonClickTested() const;
         void TestClick(const char* buttonName);
+        //! Drives a slider's real UiSliderBus::SetValue (so the fill/handle
+        //! visuals update for real, exactly like a drag would), then invokes
+        //! the callback CreateSlider registered with the clamped value
+        //! UiSliderBus itself reports back via GetValue() - not a value the
+        //! caller made up.
+        void TestSliderChange(const char* sliderName, float value);
+        //! Reads a slider's real current value back through UiSliderBus, for
+        //! round-trip verification (e.g. "did the value the UI reports match
+        //! what the subsystem it drives actually received").
+        float GetSliderValue(const char* sliderName) const;
         //! Diagnostic only: prints the canvas's real logical size and one
         //! button's actual computed on-screen rect via AZ_Printf, so a
         //! visual-vs-acceptance discrepancy can be root-caused from gate
@@ -77,6 +87,14 @@ namespace STWGameplay
             const MenuRect& layout, float fontSize, bool bold);
         AZ::EntityId CreateButton(AZ::EntityId parent, const char* name, const char* label,
             const MenuRect& layout, AZStd::function<void()> onClick);
+        //! Builds a real, working LyShine slider (UiSliderComponentUuid) with
+        //! its own Track/Fill/Manipulator child elements wired via
+        //! UiSliderBus::SetTrackEntity/SetFillEntity/SetManipulatorEntity -
+        //! not a decorative bar. onChange is invoked with the real, clamped
+        //! GetValue() whenever the value changes, from real user drag
+        //! interaction or from TestSliderChange().
+        AZ::EntityId CreateSlider(AZ::EntityId parent, const char* name, const MenuRect& layout,
+            float minValue, float maxValue, float initialValue, AZStd::function<void(float)> onChange);
 
         void BuildMainScreen();
         void BuildSettingsScreen();
@@ -98,5 +116,7 @@ namespace STWGameplay
         //! simulation (unverified signature) - this only depends on code
         //! this class itself owns.
         AZStd::vector<AZStd::pair<AZStd::string, AZStd::function<void()>>> m_buttonCallbacks;
+        //! Same TestClick()-style test-only invocation path, for sliders.
+        AZStd::vector<AZStd::pair<AZStd::string, AZStd::function<void(float)>>> m_sliderCallbacks;
     };
 }
