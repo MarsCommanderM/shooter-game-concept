@@ -13,7 +13,14 @@ namespace STWGameplay
         Main,
         Campaign,
         Settings,
-        Multiplayer
+        Multiplayer,
+        //! Shared Niederlage/Sieg overlay - one screen, not two, since the
+        //! only real difference between defeat and victory content is text
+        //! (title/message), set via SetEndGameContent(). A single "WEITER"
+        //! button always dismisses back to Main; the caller
+        //! (STWGameplaySystemComponent) decides what "continue" means for
+        //! whichever real game state is actually active at click time.
+        EndGame
     };
 
     //! Normalized parent-relative anchor rectangle (0..1) plus a pixel offset
@@ -91,6 +98,18 @@ namespace STWGameplay
         //! UiTextBus, for round-trip verification against what the caller
         //! actually set with SetControlLabel().
         AZStd::string GetControlLabel(const char* buttonName) const;
+        //! Sets the End-Game overlay's title/message text (e.g. "NIEDERLAGE"
+        //! / "Du bist gefallen." or "SIEG" / "Encounter abgeschlossen.") and
+        //! switches to that screen. Content-only; ShowScreen() itself still
+        //! decides what is enabled/visible.
+        void SetEndGameContent(const char* title, const char* message);
+        //! Registers the callback invoked by the End-Game screen's single
+        //! "WEITER" button. May be set before or after Initialize(), same
+        //! rule as the other handler setters.
+        void SetEndGameContinueHandler(AZStd::function<void()> handler);
+        //! Reads the End-Game screen's title back through UiTextBus, for
+        //! round-trip verification against what SetEndGameContent() set.
+        AZStd::string GetEndGameTitle() const;
         //! Diagnostic only: prints the canvas's real logical size and one
         //! button's actual computed on-screen rect via AZ_Printf, so a
         //! visual-vs-acceptance discrepancy can be root-caused from gate
@@ -127,6 +146,7 @@ namespace STWGameplay
         void BuildSettingsScreen();
         void BuildMultiplayerScreen();
         void BuildCampaignScreen();
+        void BuildEndGameScreen();
         void SetScreenVisible(AZ::EntityId screenRoot, bool visible);
 
         AZ::EntityId m_canvasId;
@@ -134,6 +154,7 @@ namespace STWGameplay
         AZ::EntityId m_settingsScreenRoot;
         AZ::EntityId m_multiplayerScreenRoot;
         AZ::EntityId m_campaignScreenRoot;
+        AZ::EntityId m_endGameScreenRoot;
         MainMenuScreen m_activeScreen = MainMenuScreen::Main;
         size_t m_buttonCount = 0;
         AZStd::vector<AZStd::string> m_buttonNames;
@@ -147,5 +168,6 @@ namespace STWGameplay
         AZStd::vector<AZStd::pair<AZStd::string, AZStd::function<void(float)>>> m_sliderCallbacks;
         AZStd::function<void(const char*)> m_controlsRebindHandler;
         AZStd::function<void(float)> m_contrastChangeHandler;
+        AZStd::function<void()> m_endGameContinueHandler;
     };
 }

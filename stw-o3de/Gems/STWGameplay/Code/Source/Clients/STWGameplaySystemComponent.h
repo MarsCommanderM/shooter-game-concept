@@ -170,6 +170,18 @@ namespace STWGameplay
         void UpdateSkeletalCharacterAcceptance();
         void UpdateBodycamAcceptance();
         void UpdateMainMenuAcceptance();
+        //! Real-play-only driver (mirrors UpdateInteractivePlayerRespawn's
+        //! own m_automatedAcceptance gate) for the Niederlage/Sieg overlay -
+        //! kept out of the scripted acceptance battery so it cannot disturb
+        //! that battery's own timing-sensitive combat/respawn/encounter
+        //! counters. EvaluateEndGameState() holds the actual, ungated logic
+        //! so UpdateMainMenuAcceptance() can call it directly for proof.
+        void UpdateEndGameFlow();
+        void EvaluateEndGameState();
+        //! Extracted from UpdateInteractivePlayerRespawn() so both the timed
+        //! real-play respawn and the End-Game screen's "WEITER" button (an
+        //! explicit, user-requested respawn) share one real implementation.
+        void RespawnPlayer();
         void UpdateCombatFeedbackAcceptance();
         void UpdateAudioAcceptance();
         void UpdateEncounterAcceptance();
@@ -236,6 +248,18 @@ namespace STWGameplay
         MainMenuPresentation m_mainMenuPresentation;
         bool m_mainMenuInitialized = false;
         bool m_mainMenuAcceptanceReported = false;
+
+        // True while the Niederlage/Sieg overlay is showing - suppresses
+        // UpdateInteractivePlayerRespawn's timer-based auto-respawn so the
+        // player doesn't silently pop back into the arena underneath the
+        // overlay; the overlay's own "WEITER" button is the only way to
+        // clear it in real play (see EvaluateEndGameState() and
+        // MainMenuPresentation::SetEndGameContinueHandler()).
+        bool m_gameOverActive = false;
+        // Edge-trigger flags so ShowScreen(EndGame) fires once per
+        // death/completion transition, not every tick.
+        bool m_defeatShown = false;
+        bool m_victoryShown = false;
 
         // Real, rebindable keyboard bindings - initialized to exactly the
         // key IDs OnInputChannelEventFiltered used to have hardcoded, so

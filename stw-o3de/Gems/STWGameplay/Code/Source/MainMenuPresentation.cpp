@@ -55,11 +55,13 @@ namespace STWGameplay
         m_settingsScreenRoot = BuildScreenRoot("SettingsScreen");
         m_multiplayerScreenRoot = BuildScreenRoot("MultiplayerScreen");
         m_campaignScreenRoot = BuildScreenRoot("CampaignScreen");
+        m_endGameScreenRoot = BuildScreenRoot("EndGameScreen");
 
         BuildMainScreen();
         BuildSettingsScreen();
         BuildMultiplayerScreen();
         BuildCampaignScreen();
+        BuildEndGameScreen();
 
         ShowScreen(MainMenuScreen::Main);
 
@@ -83,6 +85,7 @@ namespace STWGameplay
         m_settingsScreenRoot.SetInvalid();
         m_multiplayerScreenRoot.SetInvalid();
         m_campaignScreenRoot.SetInvalid();
+        m_endGameScreenRoot.SetInvalid();
         m_activeScreen = MainMenuScreen::Main;
         m_buttonCount = 0;
         m_buttonNames.clear();
@@ -90,6 +93,7 @@ namespace STWGameplay
         m_sliderCallbacks.clear();
         m_controlsRebindHandler = nullptr;
         m_contrastChangeHandler = nullptr;
+        m_endGameContinueHandler = nullptr;
     }
 
     AZ::EntityId MainMenuPresentation::BuildScreenRoot(const char* name)
@@ -373,6 +377,76 @@ namespace STWGameplay
         return text;
     }
 
+    void MainMenuPresentation::SetEndGameContent(const char* title, const char* message)
+    {
+        AZ::Entity* titleEntity = nullptr;
+        UiCanvasBus::EventResult(titleEntity, m_canvasId, &UiCanvasBus::Events::FindElementByName, AZStd::string("EndGameTitle"));
+        if (titleEntity != nullptr)
+        {
+            UiTextBus::Event(titleEntity->GetId(), &UiTextBus::Events::SetText, AZStd::string(title));
+        }
+        AZ::Entity* messageEntity = nullptr;
+        UiCanvasBus::EventResult(messageEntity, m_canvasId, &UiCanvasBus::Events::FindElementByName, AZStd::string("EndGameMessage"));
+        if (messageEntity != nullptr)
+        {
+            UiTextBus::Event(messageEntity->GetId(), &UiTextBus::Events::SetText, AZStd::string(message));
+        }
+    }
+
+    void MainMenuPresentation::SetEndGameContinueHandler(AZStd::function<void()> handler)
+    {
+        m_endGameContinueHandler = handler;
+    }
+
+    AZStd::string MainMenuPresentation::GetEndGameTitle() const
+    {
+        AZ::Entity* titleEntity = nullptr;
+        UiCanvasBus::EventResult(titleEntity, m_canvasId, &UiCanvasBus::Events::FindElementByName, AZStd::string("EndGameTitle"));
+        if (titleEntity == nullptr)
+        {
+            return AZStd::string();
+        }
+        AZStd::string text;
+        UiTextBus::EventResult(text, titleEntity->GetId(), &UiTextBus::Events::GetText);
+        return text;
+    }
+
+    void MainMenuPresentation::BuildEndGameScreen()
+    {
+        CreatePanel(
+            m_endGameScreenRoot, "EndGameBackdrop",
+            MenuRect{ 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f }, SteelR, SteelG, SteelB, 0.72f);
+        // Title/message start as placeholders - STWGameplaySystemComponent
+        // calls SetEndGameContent() with the real "NIEDERLAGE"/"SIEG" copy
+        // right before ShowScreen(EndGame), so nothing here is ever shown
+        // as-is in real play.
+        CreateLabel(
+            m_endGameScreenRoot, "EndGameTitle", "...",
+            MenuRect{ 0.0f, 0.34f, 1.0f, 0.46f, 0.0f, 0.0f, 0.0f, 0.0f }, 56.0f, true);
+        CreateLabel(
+            m_endGameScreenRoot, "EndGameMessage", "...",
+            MenuRect{ 0.20f, 0.48f, 0.80f, 0.56f, 0.0f, 0.0f, 0.0f, 0.0f }, 20.0f, false);
+        // Single button by design: this codebase has one persistent arena,
+        // not separate levels/matches to "leave" to a different main-menu
+        // space yet (Missions-/Levelstruktur is separate, not-yet-started
+        // work) - a second "Hauptmenue" button would be behaviourally
+        // identical to this one today, or worse, risk leaving the player
+        // permanently un-respawned if it didn't reuse the same continue
+        // path. STWGameplaySystemComponent's continue handler inspects real
+        // game state (player alive? encounter completed?) at click time and
+        // does the right thing for whichever one is actually active.
+        CreateButton(
+            m_endGameScreenRoot, "EndGameContinueButton", "WEITER",
+            MenuRect{ 0.40f, 0.62f, 0.60f, 0.70f, 0.0f, 0.0f, 0.0f, 0.0f },
+            [this]()
+            {
+                if (m_endGameContinueHandler)
+                {
+                    m_endGameContinueHandler();
+                }
+            });
+    }
+
     void MainMenuPresentation::SetScreenVisible(AZ::EntityId screenRoot, bool visible)
     {
         if (screenRoot.IsValid())
@@ -388,6 +462,7 @@ namespace STWGameplay
         SetScreenVisible(m_settingsScreenRoot, screen == MainMenuScreen::Settings);
         SetScreenVisible(m_multiplayerScreenRoot, screen == MainMenuScreen::Multiplayer);
         SetScreenVisible(m_campaignScreenRoot, screen == MainMenuScreen::Campaign);
+        SetScreenVisible(m_endGameScreenRoot, screen == MainMenuScreen::EndGame);
     }
 
     void MainMenuPresentation::BuildMainScreen()
