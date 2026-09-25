@@ -73,6 +73,27 @@ echo "DURATION_SECONDS=${DURATION}"
 [[ -s "${PROJECT}/Cache/linux/assets/network/stw_player/stw_player.network.spawnable" ]]
 [[ -x "$(command -v Xvfb)" ]]
 
+# STWGameplay ships as two separate Gem module targets: STWGameplay
+# (Clients - what task.sh's own build step rebuilds, since STW.GameLauncher
+# and STWGameplay.Tests both depend on it) and STWGameplay.Server (Servers -
+# what STW.HeadlessServerLauncher actually loads at runtime). Nothing in
+# task.sh's build step touches the Server target, so this gate can silently
+# run a dedicated server against a stale libSTWGameplay.Server.so while
+# every other binary is current - this happened for real: it cost the
+# session that built this gate ten build/run cycles chasing "hooks that
+# never fire" before a frozen Server library, not an engine mystery, turned
+# out to be the cause. Rebuild both targets every run - the Clients one too,
+# so this script does not silently depend on task.sh having been run first -
+# so that gap can't reopen silently; fail closed if either can't be built
+# rather than fall back to whatever happens to be on disk.
+cmake_command="$(sed -n 's/^CMAKE_COMMAND:INTERNAL=//p' "${BUILD}/CMakeCache.txt" 2>/dev/null | head -1)"
+[[ -n "${cmake_command}" ]]
+[[ -x "${cmake_command}" ]]
+"${cmake_command}" --build "${BUILD}" --config profile --target STWGameplay -j 2
+"${cmake_command}" --build "${BUILD}" --config profile --target STWGameplay.Server -j 2
+[[ -s "${BIN}/libSTWGameplay.so" ]]
+[[ -s "${BIN}/libSTWGameplay.Server.so" ]]
+
 server_log_fingerprint=""
 if [[ -f "${SERVER_LOG}" ]]; then
     server_log_before="$(wc -l < "${SERVER_LOG}")"
