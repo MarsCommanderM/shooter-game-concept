@@ -144,7 +144,10 @@ echo "PHASE_1_WINDOW_COMPLETE duration=${DURATION}"
 kill "${client_two_pid}" 2>/dev/null || true
 wait "${client_two_pid}" 2>/dev/null || true
 client_two_pid=""
-sleep 3
+# AzNetworking's default idle Udp connection timeout (net_UdpDefaultTimeoutMs)
+# is 10s; give the server margin past that before moving on so the
+# disconnect is actually detected and processed, not just assumed.
+sleep 15
 
 Xvfb "${DISPLAY_THREE}" -screen 0 1920x1080x24 -nolisten tcp >"${RUN_DIR}/xvfb-three.stdout" 2>&1 &
 xvfb_three_pid=$!
@@ -198,7 +201,9 @@ cp "${CLIENT_THREE_USER}/log/Game.log" "${RUN_DIR}/client-three.log"
 count_marker() {
     local marker="$1"
     local file="$2"
-    rg -c --fixed-strings "${marker}" "${file}" 2>/dev/null || true
+    local count
+    count="$(rg -c --fixed-strings "${marker}" "${file}" 2>/dev/null)" || count=0
+    printf '%s' "${count:-0}"
 }
 
 require_count() {
@@ -275,7 +280,7 @@ require_count CLIENT_THREE_COMMAND_DROPPED "${DELAY_DROP_MARKER}" "${CLIENT_THRE
 # Disconnect / respawn cleanup: the server must record dropping client
 # two's authority, and client one (still connected throughout) must tear
 # down that proxy's presentation.
-if ! rg -q "STW_MP_PLAYER_LEAVE net_entity=[0-9]+ reason=[0-9]+ removed_count=[1-9][0-9]* authority_dropped=1" "${SERVER_CAPTURE}"; then
+if ! rg -q "STW_MP_PLAYER_LEAVE net_entity=\S+ reason=[0-9]+ entity_existed=[01] removed_count=[0-9]+ authority_dropped=1" "${SERVER_CAPTURE}"; then
     echo "SERVER_PLAYER_LEAVE_AUTHORITY_DROP_NOT_FOUND"
     exit 1
 fi

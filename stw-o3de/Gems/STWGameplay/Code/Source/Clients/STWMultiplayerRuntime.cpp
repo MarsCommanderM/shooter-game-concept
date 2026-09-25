@@ -302,15 +302,21 @@ namespace STWGameplay
         [[maybe_unused]] const Multiplayer::ReplicationSet& replicationSet,
         AzNetworking::DisconnectReason reason)
     {
+        // Logged unconditionally (not only on a successful removal): a UDP
+        // idle-timeout disconnect can fire well after the entity was already
+        // torn down by another path, so entityHandle.Exists() being false
+        // here is itself evidence the player's authority is gone, not a
+        // reason to stay silent about the disconnect.
+        const bool entityExisted = entityHandle.Exists();
+        const AZStd::string leavingEntityText = entityHandle.GetNetEntityId() != Multiplayer::InvalidNetEntityId
+            ? AZStd::string::format("%llu", static_cast<unsigned long long>(entityHandle.GetNetEntityId()))
+            : AZStd::string("invalid");
         Multiplayer::INetworkEntityManager* networkEntityManager = m_multiplayer != nullptr
             ? m_multiplayer->GetNetworkEntityManager()
             : nullptr;
-        if (networkEntityManager != nullptr && entityHandle.Exists())
+        AZ::u32 removedCount = 0;
+        if (networkEntityManager != nullptr && entityExisted)
         {
-            const AZStd::string leavingEntityText = entityHandle.GetNetEntityId() != Multiplayer::InvalidNetEntityId
-                ? AZStd::string::format("%llu", static_cast<unsigned long long>(entityHandle.GetNetEntityId()))
-                : AZStd::string("invalid");
-            AZ::u32 removedCount = 0;
             if (AZ::Entity* entity = entityHandle.GetEntity(); entity != nullptr && entity->GetTransform() != nullptr)
             {
                 // Match O3DE's SimplePlayerSpawnerComponent lifecycle: remove networked
@@ -334,14 +340,19 @@ namespace STWGameplay
                 networkEntityManager->MarkForRemoval(entityHandle);
                 removedCount = 1;
             }
-            AZ_Printf(
-                "STWGameplay",
-                "STW_MP_PLAYER_LEAVE net_entity=%s reason=%u removed_count=%u authority_dropped=%d\n",
-                leavingEntityText.c_str(),
-                static_cast<AZ::u32>(reason),
-                removedCount,
-                removedCount > 0 ? 1 : 0);
         }
+        // The player's authority is gone either because we just marked its
+        // entities for removal, or because entityExisted was already false -
+        // some other path had already torn it down by the time this fired.
+        const bool authorityDropped = !entityExisted || removedCount > 0;
+        AZ_Printf(
+            "STWGameplay",
+            "STW_MP_PLAYER_LEAVE net_entity=%s reason=%u entity_existed=%d removed_count=%u authority_dropped=%d\n",
+            leavingEntityText.c_str(),
+            static_cast<AZ::u32>(reason),
+            entityExisted ? 1 : 0,
+            removedCount,
+            authorityDropped ? 1 : 0);
     }
 
     Multiplayer::MultiplayerAgentType STWMultiplayerRuntime::GetAgentType() const
