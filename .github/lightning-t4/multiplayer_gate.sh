@@ -323,21 +323,35 @@ echo "NO_GHOST_REPLAY_CONFIRMED entity=${STOPPED_ENTITY} client=ONE"
 # window already checked above by the per-client loop).
 require_count CLIENT_ONE_STILL_AUTONOMOUS "role=Autonomous authority=0 autonomous=1" "${CLIENT_ONE_CAPTURE}" 1
 
-# MatchRoster must actually free client two's slot rather than leaking it:
-# require the removal marker (slot 1, since client one takes slot 0 and
-# client two slot 1 by admission order), and require client three's own
-# STW_MP_MATCHMAKING line to show that same slot reused - not a fresh
-# slot 2 - with the roster's live count back down to 2, not 3.
-if ! rg -q "STW_MP_ROSTER_SLOT_FREED slot=1 user=[0-9]+ roster=2 capacity=[0-9]+ roster_removed=1" "${SERVER_CAPTURE}"; then
+# MatchRoster must actually free the disconnected client's slot rather than
+# leaking it. Which of client one/two ends up in slot 0 vs slot 1 depends on
+# which connection the server happens to accept first - not guaranteed
+# deterministic - so this does not assume slot 1: it reads back whichever
+# slot the FREED marker actually reports, and at that moment (client one and
+# two are the only two ever admitted, one just left) the live count must be
+# 1, not 2. Client three's own STW_MP_MATCHMAKING line must then show that
+# exact slot - and the team that slot index implies - reused, with the
+# roster's live count back at 2, not a fresh 3rd slot.
+FREED_LINE="$(rg "STW_MP_ROSTER_SLOT_FREED slot=[0-9]+ user=[0-9]+ roster=1 capacity=[0-9]+ roster_removed=1" "${SERVER_CAPTURE}" | tail -n1)"
+if [[ -z "${FREED_LINE}" ]]; then
     echo "ROSTER_SLOT_NOT_FREED"
     exit 1
 fi
-echo "MARKER_FOUND_ROSTER_SLOT_FREED=1 FILE=${SERVER_CAPTURE}"
-if ! rg -q "STW_MP_MATCHMAKING accepted=1 agent_id=[0-9]+ slot=1 team=B roster=2 capacity=[0-9]+" "${SERVER_CAPTURE}"; then
-    echo "ROSTER_SLOT_NOT_REUSED_BY_RECONNECT"
+echo "MARKER_FOUND_ROSTER_SLOT_FREED=1 FILE=${SERVER_CAPTURE} LINE=${FREED_LINE}"
+FREED_SLOT="$(printf '%s' "${FREED_LINE}" | sed -n 's/.*STW_MP_ROSTER_SLOT_FREED slot=\([0-9]\+\).*/\1/p')"
+if [[ -z "${FREED_SLOT}" ]]; then
+    echo "ROSTER_FREED_SLOT_NOT_PARSED"
     exit 1
 fi
-echo "MARKER_FOUND_ROSTER_SLOT_REUSED=1 FILE=${SERVER_CAPTURE}"
+FREED_TEAM="A"
+if (( FREED_SLOT % 2 == 1 )); then
+    FREED_TEAM="B"
+fi
+if ! rg -q "STW_MP_MATCHMAKING accepted=1 agent_id=[0-9]+ slot=${FREED_SLOT} team=${FREED_TEAM} roster=2 capacity=[0-9]+" "${SERVER_CAPTURE}"; then
+    echo "ROSTER_SLOT_NOT_REUSED_BY_RECONNECT slot=${FREED_SLOT} team=${FREED_TEAM}"
+    exit 1
+fi
+echo "MARKER_FOUND_ROSTER_SLOT_REUSED=1 FILE=${SERVER_CAPTURE} slot=${FREED_SLOT} team=${FREED_TEAM}"
 
 echo "RESULT=PASS"
 echo "EVIDENCE_DIR=${RUN_DIR}"
