@@ -1115,6 +1115,13 @@ namespace STWGameplay
                 "STWGameplay", "STW_DIAG_ACCEPTANCE_PLAYER_PATH time=%.3f x=%.3f y=%.3f z=%.3f\n", m_acceptanceTime,
                 position.GetX(), position.GetY(), position.GetZ());
         }
+#if AZ_TRAIT_SERVER
+        m_model.SetApplyLocalEnemyDamage(true);
+#else
+        // The dedicated server owns player health. A connected autonomous client
+        // still predicts movement, but local enemy hits must not fight the snapshot.
+        m_model.SetApplyLocalEnemyDamage(FindCompositionRootNetworkPlayer() == nullptr);
+#endif
         const FixedSimulationFrameResult simulation = RunFixedGameplaySteps(deltaTime);
         RunAdditionalNetworkPlayerSteps(simulation.m_fixedStepCount);
         // Entirely gated behind m_matchRuleset.IsActive() - false for every

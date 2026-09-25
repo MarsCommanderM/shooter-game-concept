@@ -248,4 +248,18 @@ namespace STWGameplay
             PlayerReconciliationPolicy::Evaluate(destination, authoritative).m_decision,
             ReconciliationDecision::NoCorrection);
     }
+
+    TEST(PlayerPredictionTests, FirstMismatchNamesPositionBeforeLaterFields)
+    {
+        const AuthoritativePlayerSnapshot predicted = MakeSnapshot();
+        AuthoritativePlayerSnapshot authoritative = predicted;
+        authoritative.m_position.SetX(predicted.m_position.GetX() + 0.10f);
+        authoritative.m_grounded = !predicted.m_grounded;
+        EXPECT_STREQ(PlayerReconciliationPolicy::FirstMismatch(predicted, authoritative), "position");
+
+        authoritative = predicted;
+        authoritative.m_grounded = !predicted.m_grounded;
+        EXPECT_STREQ(PlayerReconciliationPolicy::FirstMismatch(predicted, authoritative), "grounded");
+        EXPECT_STREQ(PlayerReconciliationPolicy::FirstMismatch(predicted, predicted), "none");
+    }
 }

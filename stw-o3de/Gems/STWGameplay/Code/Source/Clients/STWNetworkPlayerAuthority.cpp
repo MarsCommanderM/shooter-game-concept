@@ -2,6 +2,8 @@
 
 #include <AzCore/Debug/Trace.h>
 
+#include <STWGameplay/FixedSimulationClock.h>
+
 namespace STWGameplay
 {
     STWNetworkPlayerAuthority::~STWNetworkPlayerAuthority()
@@ -235,20 +237,52 @@ namespace STWGameplay
                 && m_model != nullptr
                 && m_model->ApplyAuthoritativeCorrection(authoritativeSnapshot))
             {
+                const AuthoritativePlayerSnapshot predictedBefore = m_authoritativeSnapshot;
                 PlayerReconciliationPolicy::CopyComparedFields(
                     m_authoritativeSnapshot, authoritativeSnapshot);
                 if (m_physics != nullptr)
                 {
                     m_physics->ResetPosition(authoritativeSnapshot.m_position);
                 }
+                size_t replayed = 0;
+                for (size_t index = 0; index < m_commandHistory.Size(); ++index)
+                {
+                    PlayerCommand command;
+                    if (!m_commandHistory.TryGetAt(index, command))
+                    {
+                        break;
+                    }
+                    if (m_model->UpdateNetworkPlayer(FixedSimulationClock::FixedDeltaTime, command))
+                    {
+                        ++replayed;
+                    }
+                }
+                const PlayerState& replayedPlayer = m_model->GetPlayer();
+                m_authoritativeSnapshot.m_position = replayedPlayer.m_position;
+                m_authoritativeSnapshot.m_yaw = replayedPlayer.m_yaw;
+                m_authoritativeSnapshot.m_pitch = replayedPlayer.m_pitch;
+                m_authoritativeSnapshot.m_health = replayedPlayer.m_health;
+                m_authoritativeSnapshot.m_alive = replayedPlayer.m_alive;
+                m_authoritativeSnapshot.m_grounded = replayedPlayer.m_grounded;
+                if (m_physics != nullptr)
+                {
+                    m_physics->ResetPosition(replayedPlayer.m_position);
+                }
                 const AZStd::string entityText = m_entityId.ToString();
                 AZ_Printf(
                     "STWGameplay",
-                    "STW_MP_RECONCILIATION_CORRECTION applied=1 replayed=0 entity=%s position=(%.2f,%.2f,%.2f)\n",
+                    "STW_MP_RECONCILIATION_CORRECTION applied=1 replayed=%zu entity=%s field=%s predicted=(%.3f,%.3f,%.3f) pred_health=%.3f auth=(%.3f,%.3f,%.3f) auth_health=%.3f\n",
+                    replayed,
                     entityText.c_str(),
+                    PlayerReconciliationPolicy::FirstMismatch(predictedBefore, authoritativeSnapshot),
+                    static_cast<float>(predictedBefore.m_position.GetX()),
+                    static_cast<float>(predictedBefore.m_position.GetY()),
+                    static_cast<float>(predictedBefore.m_position.GetZ()),
+                    predictedBefore.m_health,
                     static_cast<float>(authoritativeSnapshot.m_position.GetX()),
                     static_cast<float>(authoritativeSnapshot.m_position.GetY()),
-                    static_cast<float>(authoritativeSnapshot.m_position.GetZ()));
+                    static_cast<float>(authoritativeSnapshot.m_position.GetZ()),
+                    authoritativeSnapshot.m_health);
             }
             if (m_isRemote)
             {

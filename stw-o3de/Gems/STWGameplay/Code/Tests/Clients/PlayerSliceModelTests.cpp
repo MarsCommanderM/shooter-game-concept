@@ -1,5 +1,6 @@
 #include <AzTest/AzTest.h>
 #include <AzCore/Math/MathUtils.h>
+#include <STWGameplay/FixedSimulationClock.h>
 #include <STWGameplay/PlayerSliceModel.h>
 #include <STWGameplay/PlayerSimulationTypes.h>
 #include <cmath>
@@ -1103,5 +1104,27 @@ namespace STWGameplay
         EXPECT_FALSE(model.ApplyAuthoritativeCorrection(snapshot));
         EXPECT_TRUE(model.GetPlayer().m_position.IsClose(positionBefore));
         EXPECT_EQ(model.GetWeapon().m_magazine, magazineBefore);
+    }
+
+    TEST(PlayerSliceModelTests, LocalEnemyDamageIsSkippedWhenServerOwnsHealth)
+    {
+        PlayerSliceModel damaging;
+        damaging.SetTargetPosition(damaging.GetPlayer().m_position);
+        const float healthBefore = damaging.GetPlayer().m_health;
+        for (int step = 0; step < 3; ++step)
+        {
+            ASSERT_TRUE(damaging.Update(FixedSimulationClock::FixedDeltaTime, {}));
+        }
+        EXPECT_LT(damaging.GetPlayer().m_health, healthBefore);
+
+        PlayerSliceModel predicted;
+        predicted.SetApplyLocalEnemyDamage(false);
+        predicted.SetTargetPosition(predicted.GetPlayer().m_position);
+        const float predictedBefore = predicted.GetPlayer().m_health;
+        for (int step = 0; step < 3; ++step)
+        {
+            ASSERT_TRUE(predicted.Update(FixedSimulationClock::FixedDeltaTime, {}));
+        }
+        EXPECT_FLOAT_EQ(predicted.GetPlayer().m_health, predictedBefore);
     }
 }

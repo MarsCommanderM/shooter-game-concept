@@ -84,6 +84,101 @@ namespace STWGameplay
             return {};
         }
 
+        //! First field in Evaluate order that requires correction. "none" when the
+        //! snapshots already agree or the comparison itself is invalid.
+        static const char* FirstMismatch(
+            const AuthoritativePlayerSnapshot& predicted,
+            const AuthoritativePlayerSnapshot& authoritative)
+        {
+            if (!predicted.m_physicalStateSynchronized || !authoritative.m_physicalStateSynchronized
+                || !IsComparisonStateFinite(predicted) || !IsComparisonStateFinite(authoritative))
+            {
+                return "invalid";
+            }
+            if ((predicted.m_position - authoritative.m_position).GetLengthSq()
+                    > PositionEpsilon * PositionEpsilon)
+            {
+                return "position";
+            }
+            if (!IsClose(predicted.m_yaw, authoritative.m_yaw, YawEpsilon))
+            {
+                return "yaw";
+            }
+            if (!IsClose(predicted.m_pitch, authoritative.m_pitch, PitchEpsilon))
+            {
+                return "pitch";
+            }
+            if (!IsClose(predicted.m_health, authoritative.m_health, HealthEpsilon))
+            {
+                return "health";
+            }
+            if (predicted.m_grounded != authoritative.m_grounded)
+            {
+                return "grounded";
+            }
+            if (predicted.m_alive != authoritative.m_alive)
+            {
+                return "alive";
+            }
+            if (predicted.m_crouchDesired != authoritative.m_crouchDesired)
+            {
+                return "crouch";
+            }
+            if (predicted.m_slideActive != authoritative.m_slideActive)
+            {
+                return "slide";
+            }
+            if (predicted.m_mantleRequested != authoritative.m_mantleRequested)
+            {
+                return "mantleRequested";
+            }
+            if (predicted.m_mantleActive != authoritative.m_mantleActive)
+            {
+                return "mantle";
+            }
+            if (predicted.m_activeEquipmentSlot != authoritative.m_activeEquipmentSlot)
+            {
+                return "equipmentSlot";
+            }
+            if (predicted.m_activeEquipmentProfile != authoritative.m_activeEquipmentProfile)
+            {
+                return "equipmentProfile";
+            }
+            if (predicted.m_magazine != authoritative.m_magazine)
+            {
+                return "magazine";
+            }
+            if (predicted.m_reserve != authoritative.m_reserve)
+            {
+                return "reserve";
+            }
+            if (predicted.m_charges != authoritative.m_charges)
+            {
+                return "charges";
+            }
+            if (!IsClose(predicted.m_cooldownRemaining, authoritative.m_cooldownRemaining, TimerEpsilon))
+            {
+                return "cooldown";
+            }
+            if (!IsClose(predicted.m_reloadRemaining, authoritative.m_reloadRemaining, TimerEpsilon))
+            {
+                return "reload";
+            }
+            if (predicted.m_reloading != authoritative.m_reloading)
+            {
+                return "reloading";
+            }
+            if (predicted.m_deathEvents != authoritative.m_deathEvents)
+            {
+                return "deathEvents";
+            }
+            if (predicted.m_respawnEvents != authoritative.m_respawnEvents)
+            {
+                return "respawnEvents";
+            }
+            return "none";
+        }
+
         //! Copies the fields Evaluate compares. Sequence identities stay with the caller.
         //! This does not replay commands and does not touch presentation state.
         static void CopyComparedFields(

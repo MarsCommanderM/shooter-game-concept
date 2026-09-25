@@ -79,7 +79,7 @@ namespace STWGameplay
         if (updateEnemySimulation)
         {
             GetEnemies().Update(deltaTime, m_player.m_position, m_player.m_alive);
-            if (m_player.m_alive)
+            if (m_player.m_alive && m_applyLocalEnemyDamage)
             {
                 for (size_t index = 0; index < GetEnemies().GetEnemyCount(); ++index)
                 {

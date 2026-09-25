@@ -89,6 +89,10 @@ namespace STWGameplay
         PlayerSliceModel();
         explicit PlayerSliceModel(EnemyCollectionModel& enemyCollection);
         bool Update(float deltaTime, const PlayerInput& input);
+        //! Server-authoritative health. An autonomous client keeps predicting movement
+        //! but does not commit local enemy hits into the compared player health.
+        void SetApplyLocalEnemyDamage(bool apply) { m_applyLocalEnemyDamage = apply; }
+        bool GetApplyLocalEnemyDamage() const { return m_applyLocalEnemyDamage; }
         //! Updates one network player's state while leaving the shared enemy simulation to the
         //! composition root's single world update.
         bool UpdateNetworkPlayer(float deltaTime, const PlayerInput& input);
@@ -211,6 +215,7 @@ namespace STWGameplay
         int m_requestedEquipmentSlotWasHeld = -1;
         float m_jumpImpulseThisTick = 0.0f;
         float m_invulnerabilityRemaining = 0.0f;
+        bool m_applyLocalEnemyDamage = true;
         PlayerMovementModel m_movement;
     };
 }
