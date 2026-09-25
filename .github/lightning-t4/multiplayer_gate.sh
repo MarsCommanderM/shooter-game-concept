@@ -36,28 +36,34 @@ GATE_DELAY_STEPS="${STW_MP_GATE_DELAY_STEPS:-3}"
 # what actually forces a correction; a merely delayed-but-not-lost one just
 # arrives late; STWNetworkPlayerAuthority resyncs on its own afterward.
 #
-# Three real data points, not a converging binary search: loss_every=4
-# (25%) resynced cleanly (one correction, then stable) in every run;
-# loss_every=3 (~33%) was already in the same regime as loss_every=2 (50%) -
-# corrections queuing faster than the replay can drain them, one ever
-# completing out of hundreds queued, never catching up for the rest of the
-# window. The transition sits close under 33%, not at a comfortable
-# midpoint - so this deliberately does not chase a narrow value between
-# "always exactly one" and "never finishes" that would only be verified by
-# yet another full rebuild-and-run cycle. loss_every=4 is the one rate with
-# two independent clean runs behind it.
+# Three real data points, not a converging binary search: loss_every=3
+# (~33%) and loss_every=2 (50%) both land in the same regime - corrections
+# queuing (queued=) far faster than the replay can drain them, hundreds
+# queued, only ever one completing (displaced=), never catching up for the
+# rest of the window. loss_every=4 (25%) is different in degree, not kind:
+# at the shorter window this check was first tuned against it queued/stepped
+# only once and completed cleanly; at this window's actual 30s length it
+# also keeps re-queuing for the full window (queued= in the high hundreds)
+# - but unlike loss_every=3/2, it reliably still completes at least once.
+# The transition to "never completes" sits close under 33%, not at a
+# comfortable midpoint, so this deliberately does not chase a narrower
+# value that would only be verified by yet another full rebuild-and-run
+# cycle. loss_every=4 is the one rate proven, twice independently, to
+# still let at least one correction actually finish.
 GATE_LOSS_EVERY="${STW_MP_GATE_LOSS_EVERY:-4}"
 # STW_MP_PHYSX_REWIND completions required from the sustained-movement
 # client during the delay/loss window. Deliberately >=1, not a higher
-# number: at the one loss rate proven to let the system actually resync
-# (see above), a real run completes exactly one correction and then stays
-# resynced for the rest of the window - which is still new, real evidence
-# the reconciliation mechanism holds up under genuine sustained movement
-# and command loss, distinct from the pre-existing PHYSX_REWIND_DISPLACED
-# check elsewhere in this script, which only proves the single forced
+# number: at this window length, even loss_every=4 - the one rate proven to
+# let a correction complete at all - keeps re-queuing for the rest of the
+# window rather than fully settling, so >=1 is what has actually been
+# measured to reproduce (twice, independently), not a number chosen before
+# running it. That single completion is still new, real evidence the
+# reconciliation mechanism holds up under genuine sustained movement and
+# command loss, distinct from the pre-existing PHYSX_REWIND_DISPLACED check
+# elsewhere in this script, which only proves the single forced
 # TryFire-triggered step. Requiring more here would mean tuning toward loss
-# rates that were measured to make the system never resync at all - the
-# opposite of what "proven to hold up" should mean.
+# rates already measured to stop the system from ever completing a
+# correction at all - the opposite of what "proven to hold up" should mean.
 GATE_SUSTAINED_REWIND_MIN="${STW_MP_GATE_SUSTAINED_REWIND_MIN:-1}"
 XDG_RUNTIME_DIR="${RUN_DIR}/xdg-runtime"
 CLIENT_ONE_USER="${RUN_DIR}/client-one-user"
