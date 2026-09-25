@@ -357,13 +357,24 @@ namespace STWGameplay
             // Gate-only: a headless client under Xvfb has no real input
             // device, so without this it never moves and command
             // delay/loss (STW_MP_COMMAND_DELAY_STEPS/LOSS_EVERY) never has
-            // any prediction drift to actually reconcile. Forces continuous
-            // forward movement so STWNetworkPlayerAuthority's existing,
-            // always-on reconciliation (STW_MP_PHYSX_REWIND) has something
-            // real to correct repeatedly, proving it holds up under
-            // sustained movement and loss rather than only the single
-            // gated TryFire step. A real client never sets this env var.
+            // any prediction drift to actually reconcile. A real client
+            // never sets this env var.
+            //
+            // Constant-velocity forward is the one motion whose prediction
+            // survives a dropped/delayed command almost unchanged - the
+            // client already extrapolated "still going straight", so a
+            // missing command has little position effect. A real run
+            // proved this empirically: one correction in a 30s window even
+            // at every-other-command loss. Cycling in periodic strafe
+            // gives a lost direction-change command an actual heading
+            // effect for STWNetworkPlayerAuthority's existing, always-on
+            // reconciliation (STW_MP_PHYSX_REWIND) to have to correct,
+            // repeatedly, rather than only the single displacement the
+            // gated TryFire step already forces.
+            ++m_sustainedForwardTickCounter;
+            const uint32_t phase = (m_sustainedForwardTickCounter / 90u) % 4u;
             sampledInput.m_forward = 1.0f;
+            sampledInput.m_strafe = (phase == 1) ? 1.0f : (phase == 3 ? -1.0f : 0.0f);
         }
         return authority->CreateCommand(sampledInput, command);
     }
