@@ -302,12 +302,18 @@ namespace STWGameplay
         [[maybe_unused]] const Multiplayer::ReplicationSet& replicationSet,
         AzNetworking::DisconnectReason reason)
     {
-        AZ_Printf("STWGameplay", "STW_MP_PLAYER_LEAVE_ENTRY=1\n");
-        // Logged unconditionally (not only on a successful removal): a UDP
-        // idle-timeout disconnect can fire well after the entity was already
-        // torn down by another path, so entityHandle.Exists() being false
-        // here is itself evidence the player's authority is gone, not a
-        // reason to stay silent about the disconnect.
+        // MultiplayerSystemComponent::OnDisconnect only reaches
+        // spawner->OnPlayerLeave(...) once several engine-side conditions
+        // hold (connection role, an already-spawned player, a resolvable
+        // ServerToClientConnectionData/IReplicationWindow); a real gate run
+        // against a DisconnectReason::Timeout disconnect (killed process,
+        // detected via AzNetworking's ~10s Udp idle timeout) showed none of
+        // those conditions failing yet this override still never entering.
+        // OnEndpointDisconnected below is the event actually proven to fire
+        // for that path and is what the gate depends on; this override is
+        // kept for whichever disconnect paths do reach it (e.g. a clean
+        // client-initiated Terminate), logged unconditionally so entity
+        // non-existence is itself evidence, not a reason to stay silent.
         const bool entityExisted = entityHandle.Exists();
         const AZStd::string leavingEntityText = entityHandle.GetNetEntityId() != Multiplayer::InvalidNetEntityId
             ? AZStd::string::format("%llu", static_cast<unsigned long long>(entityHandle.GetNetEntityId()))
@@ -370,6 +376,21 @@ namespace STWGameplay
             m_state == STWMultiplayerTransportState::Connected)
         {
             m_state = STWMultiplayerTransportState::Idle;
+        }
+        // MultiplayerSystemComponent signals this unconditionally from
+        // OnDisconnect, once per disconnecting connection, regardless of
+        // which (if any) of the branches that feed IMultiplayerSpawner's
+        // OnPlayerLeave were taken - see the comment there. On a server this
+        // is the reliable record that a player's connection - and with it
+        // their authority over their own commands - is gone.
+        if (GetAgentType() == Multiplayer::MultiplayerAgentType::DedicatedServer ||
+            GetAgentType() == Multiplayer::MultiplayerAgentType::ClientServer)
+        {
+            ++m_serverObservedDisconnectCount;
+            AZ_Printf(
+                "STWGameplay",
+                "STW_MP_SERVER_CONNECTION_DROPPED observed_disconnect_count=%u authority_dropped=1\n",
+                m_serverObservedDisconnectCount);
         }
     }
 

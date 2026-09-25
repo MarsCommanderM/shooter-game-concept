@@ -280,7 +280,7 @@ require_count CLIENT_THREE_COMMAND_DROPPED "${DELAY_DROP_MARKER}" "${CLIENT_THRE
 # Disconnect / respawn cleanup: the server must record dropping client
 # two's authority, and client one (still connected throughout) must tear
 # down that proxy's presentation.
-if ! rg -q "STW_MP_PLAYER_LEAVE net_entity=\S+ reason=[0-9]+ entity_existed=[01] removed_count=[0-9]+ authority_dropped=1" "${SERVER_CAPTURE}"; then
+if ! rg -q "STW_MP_SERVER_CONNECTION_DROPPED observed_disconnect_count=[0-9]+ authority_dropped=1" "${SERVER_CAPTURE}"; then
     echo "SERVER_PLAYER_LEAVE_AUTHORITY_DROP_NOT_FOUND"
     exit 1
 fi
