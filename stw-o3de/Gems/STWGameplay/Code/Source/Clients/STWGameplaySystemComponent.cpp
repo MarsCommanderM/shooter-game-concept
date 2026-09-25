@@ -352,6 +352,30 @@ namespace STWGameplay
         sampledInput.m_lookX = m_pendingLookX;
         sampledInput.m_lookY = m_pendingLookY;
         sampledInput.m_reload = m_pendingReload;
+        if (std::getenv("STW_MP_SUSTAINED_FORWARD") != nullptr)
+        {
+            // Gate-only: a headless client under Xvfb has no real input
+            // device, so without this it never moves and command
+            // delay/loss (STW_MP_COMMAND_DELAY_STEPS/LOSS_EVERY) never has
+            // any prediction drift to actually reconcile. A real client
+            // never sets this env var.
+            //
+            // What actually drives how often STWNetworkPlayerAuthority has
+            // to correct is the loss rate, not the movement pattern:
+            // PlayerReconciliationPolicy::PositionEpsilon is 0.05m, and a
+            // single genuinely *lost* command's worth of forward motion
+            // already exceeds that, while a merely *delayed* one just
+            // arrives late and resyncs on its own once it does - so drops,
+            // not delay or direction changes, are what force a correction.
+            // Plain forward keeps that one variable isolated; see
+            // multiplayer_gate.sh's GATE_LOSS_EVERY comment for the three
+            // measured loss rates this was tuned against and why - the
+            // short version is every rate tried keeps re-queuing
+            // corrections for as long as this input keeps moving, and
+            // loss_every=4 is the one still measured to let at least one
+            // of them actually complete rather than never catching up.
+            sampledInput.m_forward = 1.0f;
+        }
         return authority->CreateCommand(sampledInput, command);
     }
 
@@ -1136,6 +1160,7 @@ namespace STWGameplay
         UpdateMatchRuleset(deltaTime);
 #if AZ_TRAIT_SERVER
         ProbeDedicatedHitValidation();
+        m_multiplayer.ReconcileRosterAgainstConnections();
 #endif
         const PlayerCommand& command = simulation.m_lastCommand;
         const bool gameplayUpdated = simulation.m_gameplayUpdated;
@@ -5323,6 +5348,45 @@ namespace STWGameplay
         }
         ApplyValidatedPvpHit(*shooter, firedTarget, firedDamage, firedRange, "tryfire");
         ApplyValidatedPvpHit(*shooter, shooter->GetEntityId(), firedDamage, firedRange, "apply");
+
+        // The client rewind step moves one body by a walk tick. The server
+        // authority has to take the same step or the next snapshot pulls the
+        // client back to the pre-step pose.
+        const char* rewindForward = std::getenv("STW_MP_REWIND_FORWARD");
+        if (rewindForward != nullptr && rewindForward[0] == '1')
+        {
+            PlayerInput forwardInput;
+            forwardInput.m_forward = 1.0f;
+            const AZ::Vector3 velocity = shooter->GetModel().GetDesiredVelocity(forwardInput);
+            const AZ::Vector3 before = shooter->GetModel().GetPlayer().m_position;
+            const bool queued = shooter->GetPhysics().QueueVelocity(velocity);
+            const bool applied = queued && shooter->GetPhysics().ApplyQueuedStep(FixedSimulationClock::FixedDeltaTime);
+            AZ::Vector3 after = before;
+            bool grounded = false;
+            const bool synced = shooter->GetPhysics().Synchronize(after, grounded);
+            if (synced)
+            {
+                shooter->GetModel().SynchronizePhysicalState(after, grounded);
+                shooter->CaptureAuthoritativeSnapshot(shooter->GetLastAppliedCommandSequence());
+                PublishNetworkPlayerSnapshot(shooter->GetEntityId(), shooter->GetAuthoritativeSnapshot());
+            }
+            const float distance = (after - before).GetLength();
+            const AZStd::string entityText = shooter->GetEntityId().ToString();
+            AZ_Printf(
+                "STWGameplay",
+                "STW_MP_SERVER_REWIND displaced=%d entity=%s from=(%.3f,%.3f,%.3f) to=(%.3f,%.3f,%.3f) distance=%.3f speed=%.3f applied=%d\n",
+                distance > 0.001f ? 1 : 0,
+                entityText.c_str(),
+                static_cast<float>(before.GetX()),
+                static_cast<float>(before.GetY()),
+                static_cast<float>(before.GetZ()),
+                static_cast<float>(after.GetX()),
+                static_cast<float>(after.GetY()),
+                static_cast<float>(after.GetZ()),
+                distance,
+                velocity.GetLength(),
+                applied ? 1 : 0);
+        }
         m_dedicatedHitProbeLogged = true;
     }
 
