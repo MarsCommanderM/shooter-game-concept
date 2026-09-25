@@ -1740,4 +1740,29 @@ fi
 echo "=================================================="
 echo "STW_ASSETPROCESSOR_COMMAND_PROOF_END"
 echo "=================================================="
+
+# The single-process launcher above stays alive (idle) all the way to this
+# point - cleanup() only runs on script EXIT - so it and its Xvfb are torn
+# down explicitly here, before the cross-process gate starts its own
+# server/three-client processes and Xvfb displays, rather than leaving two
+# unrelated verification runs' processes alive on the host at once.
+if [[ -n "${launcher_pid}" ]] && kill -0 "${launcher_pid}" 2>/dev/null; then
+  kill -TERM -- "-${launcher_pid}" 2>/dev/null || true
+  wait "${launcher_pid}" 2>/dev/null || true
+fi
+if [[ -n "${xvfb_pid}" ]] && kill -0 "${xvfb_pid}" 2>/dev/null; then
+  kill -TERM "${xvfb_pid}" 2>/dev/null || true
+  wait "${xvfb_pid}" 2>/dev/null || true
+fi
+launcher_pid=""
+xvfb_pid=""
+
+echo "=================================================="
+echo "STW_MULTIPLAYER_GATE_BEGIN"
+echo "=================================================="
+bash "$(dirname "${BASH_SOURCE[0]}")/multiplayer_gate.sh"
+echo "=================================================="
+echo "STW_MULTIPLAYER_GATE_END"
+echo "=================================================="
+
 echo "RESULT=PASS"
