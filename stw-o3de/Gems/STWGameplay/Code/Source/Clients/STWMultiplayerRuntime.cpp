@@ -300,13 +300,17 @@ namespace STWGameplay
     void STWMultiplayerRuntime::OnPlayerLeave(
         Multiplayer::ConstNetworkEntityHandle entityHandle,
         [[maybe_unused]] const Multiplayer::ReplicationSet& replicationSet,
-        [[maybe_unused]] AzNetworking::DisconnectReason reason)
+        AzNetworking::DisconnectReason reason)
     {
         Multiplayer::INetworkEntityManager* networkEntityManager = m_multiplayer != nullptr
             ? m_multiplayer->GetNetworkEntityManager()
             : nullptr;
         if (networkEntityManager != nullptr && entityHandle.Exists())
         {
+            const AZStd::string leavingEntityText = entityHandle.GetNetEntityId() != Multiplayer::InvalidNetEntityId
+                ? AZStd::string::format("%llu", static_cast<unsigned long long>(entityHandle.GetNetEntityId()))
+                : AZStd::string("invalid");
+            AZ::u32 removedCount = 0;
             if (AZ::Entity* entity = entityHandle.GetEntity(); entity != nullptr && entity->GetTransform() != nullptr)
             {
                 // Match O3DE's SimplePlayerSpawnerComponent lifecycle: remove networked
@@ -321,13 +325,22 @@ namespace STWGameplay
                     if (hierarchyHandle)
                     {
                         networkEntityManager->MarkForRemoval(hierarchyHandle);
+                        ++removedCount;
                     }
                 }
             }
             else
             {
                 networkEntityManager->MarkForRemoval(entityHandle);
+                removedCount = 1;
             }
+            AZ_Printf(
+                "STWGameplay",
+                "STW_MP_PLAYER_LEAVE net_entity=%s reason=%u removed_count=%u authority_dropped=%d\n",
+                leavingEntityText.c_str(),
+                static_cast<AZ::u32>(reason),
+                removedCount,
+                removedCount > 0 ? 1 : 0);
         }
     }
 
