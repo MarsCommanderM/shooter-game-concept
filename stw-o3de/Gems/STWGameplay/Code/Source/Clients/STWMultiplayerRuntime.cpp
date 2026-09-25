@@ -443,17 +443,27 @@ namespace STWGameplay
             }
             const uint64_t rosterKey = m_roster.UserAt(slot);
             const auto connectionId = static_cast<AzNetworking::ConnectionId>(static_cast<uint32_t>(rosterKey));
-            const bool found = connections.GetConnection(connectionId) != nullptr;
+            // The connection set keeps a timed-out connection's entry around
+            // (state Disconnecting/Disconnected) after logging the timeout
+            // and before it is actually purged - a real run showed
+            // GetConnection() still returning it 26+ seconds after the
+            // "Disconnecting ... due to Timeout" log line. Presence alone
+            // is not liveness; only Connected is.
+            const AzNetworking::IConnection* connection = connections.GetConnection(connectionId);
+            const bool alive = connection != nullptr &&
+                connection->GetConnectionState() == AzNetworking::ConnectionState::Connected;
             if (traceThisTick)
             {
                 AZ_Printf(
                     "STWGameplay",
-                    "STW_MP_ROSTER_RECONCILE_SLOT slot=%u user=%llu found=%d\n",
+                    "STW_MP_ROSTER_RECONCILE_SLOT slot=%u user=%llu found=%d state=%u alive=%d\n",
                     slot,
                     static_cast<unsigned long long>(rosterKey),
-                    found ? 1 : 0);
+                    connection != nullptr ? 1 : 0,
+                    connection != nullptr ? static_cast<uint32_t>(connection->GetConnectionState()) : 0xFFFFFFFFu,
+                    alive ? 1 : 0);
             }
-            if (found)
+            if (alive)
             {
                 continue;
             }
