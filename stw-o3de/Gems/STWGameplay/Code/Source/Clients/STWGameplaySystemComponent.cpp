@@ -1136,6 +1136,7 @@ namespace STWGameplay
         UpdateMatchRuleset(deltaTime);
 #if AZ_TRAIT_SERVER
         ProbeDedicatedHitValidation();
+        m_multiplayer.ReconcileRosterAgainstConnections();
 #endif
         const PlayerCommand& command = simulation.m_lastCommand;
         const bool gameplayUpdated = simulation.m_gameplayUpdated;

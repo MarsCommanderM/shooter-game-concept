@@ -2,7 +2,6 @@
 
 #include <cstdint>
 
-#include <AzCore/Component/TickBus.h>
 #include <AzCore/std/string/string.h>
 #include <Multiplayer/IMultiplayerSpawner.h>
 #include <Multiplayer/IMultiplayer.h>
@@ -30,7 +29,6 @@ namespace STWGameplay
     //! simulation, replication, or presentation state.
     class STWMultiplayerRuntime final
         : public Multiplayer::IMultiplayerSpawner
-        , public AZ::TickBus::Handler
     {
     public:
         STWMultiplayerRuntime();
@@ -52,8 +50,19 @@ namespace STWGameplay
             const Multiplayer::ReplicationSet& replicationSet,
             AzNetworking::DisconnectReason reason) override;
 
-        // AZ::TickBus::Handler
-        void OnTick(float deltaTime, AZ::ScriptTimePoint time) override;
+        //! Neither OnPlayerLeave nor the endpoint-disconnected event is
+        //! reliably invoked for every disconnect reason in this engine
+        //! build (see the comments on both), and a dedicated
+        //! AZ::TickBus::Handler on this class was proven - via an
+        //! unconditional entry trace, five build/run cycles - to never be
+        //! entered either, despite connecting on the same code path as the
+        //! (working) spawner registration. Called instead from
+        //! STWGameplaySystemComponent::OnTick, a real AZ::Component whose
+        //! tick is independently confirmed to run every frame on the
+        //! dedicated server (ProbeDedicatedHitValidation), against the
+        //! owning STWMultiplayerRuntime's m_multiplayer member directly -
+        //! no bus, no interface lookup, no hook that might not fire.
+        void ReconcileRosterAgainstConnections();
 
     private:
         void OnNetworkInitialized(AzNetworking::INetworkInterface* networkInterface);
@@ -61,12 +70,6 @@ namespace STWGameplay
         void OnServerAcceptanceReceived();
         void PersistMatchRecord();
         uint32_t MatchCapacity() const;
-        //! Neither OnPlayerLeave nor the endpoint-disconnected event is
-        //! reliably invoked for every disconnect reason in this engine
-        //! build (see the comments on both) - polled here every tick
-        //! instead, against the network interface's own connection set,
-        //! which does not depend on either of those hooks firing.
-        void ReconcileRosterAgainstConnections();
 
         Multiplayer::IMultiplayer* m_multiplayer = nullptr;
         AzNetworking::INetworkInterface* m_networkInterface = nullptr;
@@ -80,7 +83,6 @@ namespace STWGameplay
         bool m_dedicatedHardenedLogged = false;
         uint32_t m_serverObservedDisconnectCount = 0;
         uint32_t m_reconcileDiagnosticTickCounter = 0;
-        uint32_t m_onTickDiagnosticCounter = 0;
         MatchRoster m_roster;
     };
 } // namespace STWGameplay

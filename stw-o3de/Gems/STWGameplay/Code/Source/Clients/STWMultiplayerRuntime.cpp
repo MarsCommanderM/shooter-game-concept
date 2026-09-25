@@ -61,7 +61,6 @@ namespace STWGameplay
         m_multiplayer->AddEndpointDisconnectedHandler(m_endpointDisconnectedHandler);
         m_multiplayer->AddServerAcceptanceReceivedHandler(m_serverAcceptanceReceivedHandler);
         m_handlersConnected = true;
-        AZ::TickBus::Handler::BusConnect();
         m_state = STWMultiplayerTransportState::Idle;
         return true;
     }
@@ -144,7 +143,6 @@ namespace STWGameplay
             m_networkInitHandler.Disconnect();
             m_endpointDisconnectedHandler.Disconnect();
             m_serverAcceptanceReceivedHandler.Disconnect();
-            AZ::TickBus::Handler::BusDisconnect();
         }
 
         if (m_playerSpawnerRegistered)
@@ -412,31 +410,6 @@ namespace STWGameplay
         {
             m_state = STWMultiplayerTransportState::Connected;
         }
-    }
-
-    void STWMultiplayerRuntime::OnTick([[maybe_unused]] float deltaTime, [[maybe_unused]] AZ::ScriptTimePoint time)
-    {
-        ++m_onTickDiagnosticCounter;
-        if ((m_onTickDiagnosticCounter % 100u) == 1u)
-        {
-            AZ_Printf(
-                "STWGameplay",
-                "STW_MP_RUNTIME_ONTICK_ENTRY=1 count=%u multiplayer_set=%d agent_type=%u\n",
-                m_onTickDiagnosticCounter,
-                m_multiplayer != nullptr ? 1 : 0,
-                m_multiplayer != nullptr ? static_cast<uint32_t>(m_multiplayer->GetAgentType()) : 0xFFFFFFFFu);
-        }
-        if (m_multiplayer == nullptr)
-        {
-            return;
-        }
-        const Multiplayer::MultiplayerAgentType agentType = m_multiplayer->GetAgentType();
-        if (agentType != Multiplayer::MultiplayerAgentType::DedicatedServer &&
-            agentType != Multiplayer::MultiplayerAgentType::ClientServer)
-        {
-            return;
-        }
-        ReconcileRosterAgainstConnections();
     }
 
     void STWMultiplayerRuntime::ReconcileRosterAgainstConnections()
