@@ -1,5 +1,12 @@
 # SAVE THE WORLD (STW)
 
+> ## PRODUCTION QUALITY BAR: REALISTIC CINEMATIC. NOT BLOCKOUT. NOT A PROTOTYPE.
+>
+> Over 100 prototypes of this game already exist. This repository is the
+> production line, not another one. Blockout-tier, placeholder-tier, or
+> "tech demo"-tier quality is never the target, never final, and never
+> shipped — anywhere in this repository, on any branch, in any session.
+
 This repository contains the native STW game and historical prototypes.
 
 STW is a high-end native 3D multiplayer FPS with a hyper-realistic cinematic
