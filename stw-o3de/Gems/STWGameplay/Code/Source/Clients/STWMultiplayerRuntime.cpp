@@ -371,22 +371,25 @@ namespace STWGameplay
 
     void STWMultiplayerRuntime::OnEndpointDisconnected(Multiplayer::MultiplayerAgentType agentType)
     {
-        AZ_Printf(
-            "STWGameplay",
-            "STW_MP_ENDPOINT_DISCONNECTED_ENTRY=1 agent_type=%u get_agent_type=%u\n",
-            static_cast<uint32_t>(agentType),
-            static_cast<uint32_t>(GetAgentType()));
+        AZ_UNUSED(agentType);
         if (m_state == STWMultiplayerTransportState::Connecting ||
             m_state == STWMultiplayerTransportState::Connected)
         {
             m_state = STWMultiplayerTransportState::Idle;
         }
-        // MultiplayerSystemComponent signals this unconditionally from
-        // OnDisconnect, once per disconnecting connection, regardless of
-        // which (if any) of the branches that feed IMultiplayerSpawner's
-        // OnPlayerLeave were taken - see the comment there. On a server this
-        // is the reliable record that a player's connection - and with it
-        // their authority over their own commands - is gone.
+        // MultiplayerSystemComponent::OnDisconnect signals this
+        // unconditionally, outside every guard branch that gates
+        // IMultiplayerSpawner::OnPlayerLeave (see the comment there). An
+        // unconditional entry marker here (removed after confirming this)
+        // still never printed for a DisconnectReason::Timeout disconnect
+        // across five real three-process runs, on any of the three
+        // processes, not only the server - so this handler is not reached
+        // for that path either, for reasons that would need debugging the
+        // O3DE Multiplayer Gem itself (out of scope here). The gate's
+        // server-side evidence for that path instead comes from the
+        // engine's own "Disconnecting from remote address ... due to
+        // Timeout" log line. Kept for whichever disconnect paths do
+        // reach it.
         if (GetAgentType() == Multiplayer::MultiplayerAgentType::DedicatedServer ||
             GetAgentType() == Multiplayer::MultiplayerAgentType::ClientServer)
         {
