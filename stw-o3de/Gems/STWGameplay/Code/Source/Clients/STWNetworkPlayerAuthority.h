@@ -53,8 +53,44 @@ namespace STWGameplay
         //! stale pre-respawn commands against the just-reset position.
         void ClearCommandHistory() { m_commandHistory.Clear(); }
         size_t GetCommandHistorySize() const { return m_commandHistory.Size(); }
-        void BeginPhysxRewind(size_t steps) { m_physxRewindRemaining = steps; }
+        void BeginPhysxRewind(size_t steps, const AZ::Vector3& resetPosition)
+        {
+            m_physxRewindRemaining = steps;
+            m_physxRewindBaseline = resetPosition;
+            m_physxRewindHaveBaseline = true;
+            m_physxRewindAwaitSyncs = 0;
+        }
         bool HasPhysxRewind() const { return m_physxRewindRemaining > 0; }
+        bool ArmRewindForward()
+        {
+            if (!m_rewindForwardArmed || !HasPhysxRewind())
+            {
+                return false;
+            }
+            m_rewindForwardArmed = false;
+            m_physxRewindAwaitSyncs = 1;
+            return true;
+        }
+        void NoteRewindSync(const AZ::Vector3& position, float& outDistance, bool& outReady)
+        {
+            outReady = false;
+            outDistance = 0.0f;
+            if (!m_physxRewindHaveBaseline || m_physxRewindAwaitSyncs <= 0)
+            {
+                return;
+            }
+            // The sync in the same tick as the queued velocity still shows the
+            // reset pose. The next sync is the physics readback.
+            if (m_physxRewindAwaitSyncs == 1)
+            {
+                m_physxRewindAwaitSyncs = 2;
+                return;
+            }
+            outDistance = (position - m_physxRewindBaseline).GetLength();
+            outReady = true;
+            m_physxRewindAwaitSyncs = 0;
+        }
+        const AZ::Vector3& PhysxRewindBaseline() const { return m_physxRewindBaseline; }
         size_t ConsumePhysxRewindStep()
         {
             if (m_physxRewindRemaining == 0)
@@ -120,5 +156,9 @@ namespace STWGameplay
         bool m_hasRemoteSnapshot = false;
         bool m_commandAvailable = false;
         size_t m_physxRewindRemaining = 0;
+        AZ::Vector3 m_physxRewindBaseline = AZ::Vector3::CreateZero();
+        bool m_physxRewindHaveBaseline = false;
+        int m_physxRewindAwaitSyncs = 0;
+        bool m_rewindForwardArmed = true;
     };
 } // namespace STWGameplay

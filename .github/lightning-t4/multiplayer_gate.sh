@@ -62,8 +62,10 @@ echo "DURATION_SECONDS=${DURATION}"
 [[ -s "${PROJECT}/Cache/linux/assets/network/stw_player/stw_player.network.spawnable" ]]
 [[ -x "$(command -v Xvfb)" ]]
 
+server_log_fingerprint=""
 if [[ -f "${SERVER_LOG}" ]]; then
     server_log_before="$(wc -l < "${SERVER_LOG}")"
+    server_log_fingerprint="$(head -n 1 "${SERVER_LOG}" || true)"
 fi
 
 export LD_LIBRARY_PATH="${BIN}"
@@ -124,10 +126,12 @@ kill -0 "${client_two_pid}" 2>/dev/null
 
 if [[ -f "${SERVER_LOG}" ]]; then
     server_log_after="$(wc -l < "${SERVER_LOG}")"
-    # O3DE's dedicated logger may truncate/recreate Server.log on startup. If
-    # that happened, the current file is already this run's complete evidence;
-    # otherwise capture only the appended section from the preflight baseline.
-    if (( server_log_after <= server_log_before )); then
+    server_log_fingerprint_after="$(head -n 1 "${SERVER_LOG}" || true)"
+    # A dedicated server often truncates Server.log on startup and then writes
+    # a new file that can grow past the old line count. The first line changes
+    # when that happens. Tailing from the old count then drops the new head,
+    # including joins. A changed first line means this file is the whole run.
+    if [[ "${server_log_fingerprint_after}" != "${server_log_fingerprint}" ]] || (( server_log_after <= server_log_before )); then
         cp "${SERVER_LOG}" "${RUN_DIR}/server.log"
     else
         tail -n +"$((server_log_before + 1))" "${SERVER_LOG}" >"${RUN_DIR}/server.log"
@@ -182,5 +186,13 @@ for client_label_and_file in \
     fi
 done
 
+require_count SERVER_HIT_TRYFIRE "STW_MP_HIT_VALIDATION result=accept reason=accept source=tryfire" "${SERVER_CAPTURE}" 1
+require_count SERVER_HIT_DELTA "STW_MP_HIT_DAMAGE_DELTA=16.00 source=tryfire" "${SERVER_CAPTURE}" 1
+require_count SERVER_HIT_SELF "STW_MP_HIT_VALIDATION result=reject reason=self source=apply" "${SERVER_CAPTURE}" 1
+require_count SERVER_HIT_SELF_UNCHANGED "STW_MP_HIT_REJECTED_self health_unchanged=1 source=apply" "${SERVER_CAPTURE}" 1
+if ! rg -q "STW_MP_PHYSX_REWIND displaced=1" "${CLIENT_ONE_CAPTURE}" "${CLIENT_TWO_CAPTURE}"; then
+    echo "PHYSX_REWIND_DISPLACED_NOT_FOUND"
+    exit 1
+fi
 echo "RESULT=PASS"
 echo "EVIDENCE_DIR=${RUN_DIR}"

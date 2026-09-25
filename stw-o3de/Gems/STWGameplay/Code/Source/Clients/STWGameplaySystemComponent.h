@@ -246,6 +246,12 @@ namespace STWGameplay
         //! pair only ever handled the primary/composition-root m_model).
         void UpdateMatchRuleset(float deltaTime);
         void ProbeDedicatedHitValidation();
+        void ApplyValidatedPvpHit(
+            STWNetworkPlayerAuthority& shooter,
+            AZ::EntityId targetId,
+            float damage,
+            float range,
+            const char* source);
         //! Same reset sequence as RespawnPlayer(), parameterized on one
         //! bound authority instead of the hardcoded primary m_model/
         //! m_physicsPlayer/m_commandHistory - the shared enemy-collection

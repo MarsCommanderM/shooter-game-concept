@@ -171,6 +171,7 @@ namespace STWGameplay
         const PlayerMovementState& GetMovementState() const { return m_movement.GetMovementState(); }
         AZ::Vector3 GetEyePosition() const;
         AZ::Vector3 GetAimDirection() const;
+        void SetAimAngles(float yaw, float pitch);
         //! Compatibility facade: returns the immediate requested velocity used by existing
         //! traversal callers. Runtime physics consumes GetMovementVelocity().
         AZ::Vector3 GetDesiredVelocity(const PlayerInput& input) const;

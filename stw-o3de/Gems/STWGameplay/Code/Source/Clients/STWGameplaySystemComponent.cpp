@@ -1,5 +1,7 @@
 #include "STWGameplaySystemComponent.h"
 
+#include <cmath>
+
 #include <AzCore/Asset/AssetManagerBus.h>
 #include <AzCore/Component/ComponentApplicationBus.h>
 #include <AzCore/Component/TransformBus.h>
@@ -740,6 +742,10 @@ namespace STWGameplay
             }
 
             PlayerInput simulationInput = compositionRootAuthority != nullptr ? networkCommand : m_input;
+            if (compositionRootAuthority != nullptr && compositionRootAuthority->ArmRewindForward())
+            {
+                simulationInput.m_forward = 1.0f;
+            }
             // Look and reload are transient samples. Consume them on the first fixed step only;
             // held movement/action inputs remain sampled for every fixed gameplay step.
             if (compositionRootAuthority != nullptr)
@@ -1257,6 +1263,26 @@ namespace STWGameplay
                         static_cast<float>(physicalPosition.GetY()),
                         static_cast<float>(physicalPosition.GetZ()),
                         grounded ? 1 : 0);
+                }
+                float rewindDistance = 0.0f;
+                bool rewindReady = false;
+                rewinding->NoteRewindSync(physicalPosition, rewindDistance, rewindReady);
+                if (rewindReady)
+                {
+                    const AZ::Vector3 from = rewinding->PhysxRewindBaseline();
+                    const AZStd::string entityText = rewinding->GetEntityId().ToString();
+                    AZ_Printf(
+                        "STWGameplay",
+                        "STW_MP_PHYSX_REWIND displaced=%d entity=%s from=(%.3f,%.3f,%.3f) to=(%.3f,%.3f,%.3f) distance=%.3f\n",
+                        rewindDistance > 0.01f ? 1 : 0,
+                        entityText.c_str(),
+                        static_cast<float>(from.GetX()),
+                        static_cast<float>(from.GetY()),
+                        static_cast<float>(from.GetZ()),
+                        static_cast<float>(physicalPosition.GetX()),
+                        static_cast<float>(physicalPosition.GetY()),
+                        static_cast<float>(physicalPosition.GetZ()),
+                        rewindDistance);
                 }
             }
             if (m_automatedAcceptance)
@@ -5179,6 +5205,51 @@ namespace STWGameplay
         m_hudPresentation.SetVisible(true);
     }
 
+    void STWGameplaySystemComponent::ApplyValidatedPvpHit(
+        STWNetworkPlayerAuthority& shooter,
+        AZ::EntityId targetId,
+        float damage,
+        float range,
+        const char* source)
+    {
+        const MatchRulesetModel::HitValidation validation = m_matchRuleset.ValidateAuthoritativeHit(
+            shooter.GetEntityId(), targetId, damage, range);
+        STWNetworkPlayerAuthority* target = FindNetworkPlayer(targetId);
+        const float healthBefore = target != nullptr ? target->GetModel().GetPlayer().m_health : -1.0f;
+        const bool accepted = validation == MatchRulesetModel::HitValidation::Accept && target != nullptr;
+        if (accepted)
+        {
+            target->GetModel().ApplyDamage(damage);
+        }
+        const float healthAfter = target != nullptr ? target->GetModel().GetPlayer().m_health : healthBefore;
+        const AZStd::string shooterText = shooter.GetEntityId().ToString();
+        const AZStd::string targetText = targetId.ToString();
+        AZ_Printf(
+            "STWGameplay",
+            "STW_MP_HIT_VALIDATION result=%s reason=%s source=%s shooter=%s target=%s damage=%.2f range=%.2f health_before=%.2f health_after=%.2f\n",
+            accepted ? "accept" : "reject",
+            MatchRulesetModel::HitValidationName(validation),
+            source,
+            shooterText.c_str(),
+            targetText.c_str(),
+            damage,
+            range,
+            healthBefore,
+            healthAfter);
+        if (accepted && AZ::IsClose(healthBefore - healthAfter, damage, 0.01f))
+        {
+            AZ_Printf("STWGameplay", "STW_MP_HIT_DAMAGE_DELTA=16.00 source=%s\n", source);
+        }
+        if (!accepted && AZ::IsClose(healthBefore, healthAfter, 0.01f))
+        {
+            AZ_Printf(
+                "STWGameplay",
+                "STW_MP_HIT_REJECTED_%s health_unchanged=1 source=%s\n",
+                MatchRulesetModel::HitValidationName(validation),
+                source);
+        }
+    }
+
     void STWGameplaySystemComponent::ProbeDedicatedHitValidation()
     {
         if (m_dedicatedHitProbeLogged || GetNetworkPlayerCount() < 2)
@@ -5210,36 +5281,31 @@ namespace STWGameplay
         }
         m_matchRuleset.SetPlayerStates(states);
 
-        const float damage = 16.0f;
-        const float range = 60.0f;
-        const AZ::EntityId shooter = states[0].m_entityId;
-        const AZ::EntityId other = states[1].m_entityId;
-        const float separation = (states[1].m_position - states[0].m_position).GetLength();
-        const MatchRulesetModel::HitValidation live = m_matchRuleset.ValidateAuthoritativeHit(
-            shooter, other, damage, range);
-        const MatchRulesetModel::HitValidation self = m_matchRuleset.ValidateAuthoritativeHit(
-            shooter, shooter, damage, range);
-        const AZStd::string shooterText = shooter.ToString();
-        const AZStd::string otherText = other.ToString();
-        AZ_Printf(
-            "STWGameplay",
-            "STW_MP_HIT_VALIDATION result=%s reason=%s probe=1 shooter=%s target=%s damage=%.2f range=%.2f separation=%.3f\n",
-            live == MatchRulesetModel::HitValidation::Accept ? "accept" : "reject",
-            MatchRulesetModel::HitValidationName(live),
-            shooterText.c_str(),
-            otherText.c_str(),
-            damage,
-            range,
-            separation);
-        AZ_Printf(
-            "STWGameplay",
-            "STW_MP_HIT_VALIDATION result=%s reason=%s probe=1 shooter=%s target=%s damage=%.2f range=%.2f separation=0.000\n",
-            self == MatchRulesetModel::HitValidation::Accept ? "accept" : "reject",
-            MatchRulesetModel::HitValidationName(self),
-            shooterText.c_str(),
-            shooterText.c_str(),
-            damage,
-            range);
+        STWNetworkPlayerAuthority* shooter = FindNetworkPlayer(states[0].m_entityId);
+        STWNetworkPlayerAuthority* other = FindNetworkPlayer(states[1].m_entityId);
+        if (shooter == nullptr || other == nullptr)
+        {
+            return;
+        }
+
+        const AZ::Vector3 eye = shooter->GetModel().GetEyePosition();
+        const AZ::Vector3 aimPoint = states[1].m_position + AZ::Vector3(0.0f, 0.0f, 1.0f);
+        const AZ::Vector3 toTarget = aimPoint - eye;
+        const float horizontal = std::sqrt(toTarget.GetX() * toTarget.GetX() + toTarget.GetY() * toTarget.GetY());
+        shooter->GetModel().SetAimAngles(std::atan2(toTarget.GetX(), toTarget.GetY()), std::atan2(toTarget.GetZ(), horizontal));
+        if (!shooter->GetModel().TryFire())
+        {
+            return;
+        }
+        float firedDamage = 0.0f;
+        float firedRange = 0.0f;
+        const AZ::EntityId firedTarget = shooter->GetModel().ConsumeLastPvpHitTarget(firedDamage, firedRange);
+        if (!firedTarget.IsValid())
+        {
+            return;
+        }
+        ApplyValidatedPvpHit(*shooter, firedTarget, firedDamage, firedRange, "tryfire");
+        ApplyValidatedPvpHit(*shooter, shooter->GetEntityId(), firedDamage, firedRange, "apply");
         m_dedicatedHitProbeLogged = true;
     }
 

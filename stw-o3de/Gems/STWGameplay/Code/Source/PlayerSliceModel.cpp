@@ -399,6 +399,16 @@ namespace STWGameplay
         return m_player.m_position + AZ::Vector3(0.0f, 0.0f, EyeHeight);
     }
 
+    void PlayerSliceModel::SetAimAngles(float yaw, float pitch)
+    {
+        if (!std::isfinite(yaw) || !std::isfinite(pitch))
+        {
+            return;
+        }
+        m_player.m_yaw = yaw;
+        m_player.m_pitch = pitch;
+    }
+
     AZ::Vector3 PlayerSliceModel::GetAimDirection() const
     {
         const float cosPitch = std::cos(m_player.m_pitch);

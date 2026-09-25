@@ -240,7 +240,7 @@ namespace STWGameplay
                     m_authoritativeSnapshot, authoritativeSnapshot);
                 const bool physxReset = m_physics != nullptr
                     && m_physics->ResetPosition(authoritativeSnapshot.m_position);
-                BeginPhysxRewind(m_commandHistory.Size());
+                BeginPhysxRewind(m_commandHistory.Size(), authoritativeSnapshot.m_position);
                 const AZStd::string entityText = m_entityId.ToString();
                 AZ_Printf(
                     "STWGameplay",
