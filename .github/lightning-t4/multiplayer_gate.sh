@@ -31,6 +31,11 @@ DURATION="${STW_MP_DURATION:-30}"
 DELAY_DURATION="${STW_MP_DELAY_DURATION:-20}"
 GATE_DELAY_STEPS="${STW_MP_GATE_DELAY_STEPS:-3}"
 GATE_LOSS_EVERY="${STW_MP_GATE_LOSS_EVERY:-4}"
+# Minimum STW_MP_PHYSX_REWIND corrections required from the sustained-
+# movement client during the delay/loss window - proof the reconciliation
+# mechanism keeps working repeatedly under continuous movement and loss,
+# not just the one displacement the single gated TryFire step already forces.
+GATE_SUSTAINED_REWIND_MIN="${STW_MP_GATE_SUSTAINED_REWIND_MIN:-3}"
 XDG_RUNTIME_DIR="${RUN_DIR}/xdg-runtime"
 CLIENT_ONE_USER="${RUN_DIR}/client-one-user"
 CLIENT_TWO_USER="${RUN_DIR}/client-two-user"
@@ -174,14 +179,18 @@ Xvfb "${DISPLAY_THREE}" -screen 0 1920x1080x24 -nolisten tcp >"${RUN_DIR}/xvfb-t
 xvfb_three_pid=$!
 sleep 2
 
-# STW_MP_COMMAND_DELAY_STEPS / STW_MP_COMMAND_LOSS_EVERY are set only on
-# this one launched process, not exported into the script's own
-# environment. Client one and the server above never see them, so a normal
-# play session (and client one throughout this whole run) stays
-# immediate-send by construction.
+# STW_MP_COMMAND_DELAY_STEPS / STW_MP_COMMAND_LOSS_EVERY / STW_MP_SUSTAINED_FORWARD
+# are set only on this one launched process, not exported into the script's
+# own environment. Client one and the server above never see them, so a
+# normal play session (and client one throughout this whole run) stays
+# immediate-send, real-input-only, by construction. STW_MP_SUSTAINED_FORWARD
+# makes this headless client actually walk continuously, so the delay/loss
+# above has real prediction drift to reconcile against, repeatedly, instead
+# of standing still with nothing to correct.
 DISPLAY="${DISPLAY_THREE}" \
 STW_MP_COMMAND_DELAY_STEPS="${GATE_DELAY_STEPS}" \
 STW_MP_COMMAND_LOSS_EVERY="${GATE_LOSS_EVERY}" \
+STW_MP_SUSTAINED_FORWARD=1 \
     "${BIN}/STW.GameLauncher" \
     --project-path="${PROJECT}" \
     --engine-path="${ENGINE}" \
@@ -297,6 +306,16 @@ DELAY_RELEASE_MARKER="STW_MP_COMMAND_TRANSPORT sent=1 dropped=0 delay_steps=${GA
 DELAY_DROP_MARKER="STW_MP_COMMAND_TRANSPORT sent=0 dropped=1 delay_steps=${GATE_DELAY_STEPS} loss_every=${GATE_LOSS_EVERY}"
 require_count CLIENT_THREE_COMMAND_HELD_RELEASED "${DELAY_RELEASE_MARKER}" "${CLIENT_THREE_CAPTURE}" 1
 require_count CLIENT_THREE_COMMAND_DROPPED "${DELAY_DROP_MARKER}" "${CLIENT_THREE_CAPTURE}" 1
+
+# Rewind/hit validation against remote interpolation, proven under sustained
+# movement and loss rather than only a single gated step: client three walks
+# continuously (STW_MP_SUSTAINED_FORWARD) through the whole delay/loss
+# window, so its own prediction repeatedly drifts from the server's
+# authoritative snapshot and STWNetworkPlayerAuthority's existing,
+# always-on reconciliation (unrelated to STW_MP_REWIND_FORWARD) has to
+# correct it more than once - not a new mechanism, just the first real
+# exercise of the existing one under sustained conditions.
+require_count CLIENT_THREE_SUSTAINED_PHYSX_REWIND "STW_MP_PHYSX_REWIND" "${CLIENT_THREE_CAPTURE}" "${GATE_SUSTAINED_REWIND_MIN}"
 
 # Disconnect / respawn cleanup: the server must record dropping client
 # two's authority, and client one (still connected throughout) must tear

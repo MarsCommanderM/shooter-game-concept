@@ -352,6 +352,19 @@ namespace STWGameplay
         sampledInput.m_lookX = m_pendingLookX;
         sampledInput.m_lookY = m_pendingLookY;
         sampledInput.m_reload = m_pendingReload;
+        if (std::getenv("STW_MP_SUSTAINED_FORWARD") != nullptr)
+        {
+            // Gate-only: a headless client under Xvfb has no real input
+            // device, so without this it never moves and command
+            // delay/loss (STW_MP_COMMAND_DELAY_STEPS/LOSS_EVERY) never has
+            // any prediction drift to actually reconcile. Forces continuous
+            // forward movement so STWNetworkPlayerAuthority's existing,
+            // always-on reconciliation (STW_MP_PHYSX_REWIND) has something
+            // real to correct repeatedly, proving it holds up under
+            // sustained movement and loss rather than only the single
+            // gated TryFire step. A real client never sets this env var.
+            sampledInput.m_forward = 1.0f;
+        }
         return authority->CreateCommand(sampledInput, command);
     }
 
