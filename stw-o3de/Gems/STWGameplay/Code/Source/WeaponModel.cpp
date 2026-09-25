@@ -242,6 +242,37 @@ namespace STWGameplay
         return true;
     }
 
+    bool WeaponModel::RestoreAuthoritativeReadback(
+        EquipmentSlot slot,
+        EquipmentProfileId profile,
+        int magazine,
+        int reserve,
+        int charges,
+        float cooldownRemaining,
+        float reloadRemaining,
+        bool reloading)
+    {
+        if (!IsSlotCompatible(slot, profile) || GetLoadoutProfile(slot) != profile)
+        {
+            return false;
+        }
+        if (magazine < 0 || reserve < 0 || charges < 0
+            || !std::isfinite(cooldownRemaining) || !std::isfinite(reloadRemaining))
+        {
+            return false;
+        }
+
+        EquipmentState& state = m_equipment[static_cast<size_t>(profile)];
+        state.m_magazine = magazine;
+        state.m_reserve = reserve;
+        state.m_charges = charges;
+        state.m_cooldownRemaining = cooldownRemaining;
+        state.m_reloadRemaining = reloadRemaining;
+        state.m_reloading = reloading;
+        m_activeEquipmentSlot = slot;
+        return true;
+    }
+
     void WeaponModel::ResetLoadout()
     {
         m_equipment = {};

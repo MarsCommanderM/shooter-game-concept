@@ -10,6 +10,7 @@
 #include <STWGameplay/MatchRulesetModel.h>
 #include <STWGameplay/PlayerMovementModel.h>
 #include <STWGameplay/PlayerCommand.h>
+#include <STWGameplay/PlayerSimulationTypes.h>
 #include <STWGameplay/WeaponModel.h>
 
 namespace STWGameplay
@@ -178,6 +179,9 @@ namespace STWGameplay
         void SetTargetPosition(const AZ::Vector3& position) { m_enemyCollection->SynchronizePhysicalPosition(PrimaryEnemyId, position); }
         void SetPlayerPosition(const AZ::Vector3& position);
         void SynchronizePhysicalState(const AZ::Vector3& position, bool grounded);
+        //! Writes the fields PlayerReconciliationPolicy compares. Does not replay
+        //! commands. Rejects a non-finite or incompatible snapshot without writing.
+        bool ApplyAuthoritativeCorrection(const AuthoritativePlayerSnapshot& snapshot);
 
     private:
         bool UpdateInternal(float deltaTime, const PlayerInput& input, bool updateEnemySimulation);

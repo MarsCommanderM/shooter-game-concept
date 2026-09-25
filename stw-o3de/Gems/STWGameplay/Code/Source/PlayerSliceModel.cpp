@@ -1,8 +1,9 @@
 #include <STWGameplay/PlayerSliceModel.h>
 
+#include <cmath>
+
 #include <AzCore/Math/MathUtils.h>
 #include <AzCore/std/algorithm.h>
-#include <cmath>
 
 namespace STWGameplay
 {
@@ -467,6 +468,45 @@ namespace STWGameplay
             m_player.m_position = position;
             m_player.m_grounded = grounded;
         }
+    }
+
+    bool PlayerSliceModel::ApplyAuthoritativeCorrection(const AuthoritativePlayerSnapshot& snapshot)
+    {
+        if (!snapshot.m_position.IsFinite()
+            || !std::isfinite(snapshot.m_yaw)
+            || !std::isfinite(snapshot.m_pitch)
+            || !std::isfinite(snapshot.m_health)
+            || !std::isfinite(snapshot.m_cooldownRemaining)
+            || !std::isfinite(snapshot.m_reloadRemaining))
+        {
+            return false;
+        }
+        if (!m_weapons.RestoreAuthoritativeReadback(
+                snapshot.m_activeEquipmentSlot,
+                snapshot.m_activeEquipmentProfile,
+                snapshot.m_magazine,
+                snapshot.m_reserve,
+                snapshot.m_charges,
+                snapshot.m_cooldownRemaining,
+                snapshot.m_reloadRemaining,
+                snapshot.m_reloading))
+        {
+            return false;
+        }
+
+        m_player.m_position = snapshot.m_position;
+        m_player.m_grounded = snapshot.m_grounded;
+        m_player.m_yaw = snapshot.m_yaw;
+        m_player.m_pitch = snapshot.m_pitch;
+        m_player.m_health = snapshot.m_health;
+        m_player.m_alive = snapshot.m_alive;
+        m_player.m_crouchDesired = snapshot.m_crouchDesired;
+        m_player.m_slideActive = snapshot.m_slideActive;
+        m_player.m_mantleRequested = snapshot.m_mantleRequested;
+        m_player.m_mantleActive = snapshot.m_mantleActive;
+        m_player.m_deathEvents = snapshot.m_deathEvents;
+        m_player.m_respawnEvents = snapshot.m_respawnEvents;
+        return true;
     }
 
     bool PlayerSliceModel::RayHitsEnemy(const EnemyState& target, const AZ::Vector3& origin,

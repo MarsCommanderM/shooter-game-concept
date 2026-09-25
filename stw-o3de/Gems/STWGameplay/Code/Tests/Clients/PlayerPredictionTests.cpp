@@ -226,4 +226,26 @@ namespace STWGameplay
             predicted, authoritative, 2u, std::numeric_limits<AZ::u32>::max());
         EXPECT_EQ(evaluation.m_snapshotStatus, ReconciliationSnapshotStatus::Accepted);
     }
+
+    TEST(PlayerPredictionTests, CopyComparedFieldsWritesGameplayAndKeepsSequence)
+    {
+        AuthoritativePlayerSnapshot destination = MakeSnapshot();
+        destination.m_snapshotSequence = 4u;
+        destination.m_acknowledgedCommandSequence = 9u;
+        AuthoritativePlayerSnapshot authoritative = MakeSnapshot();
+        authoritative.m_snapshotSequence = 80u;
+        authoritative.m_acknowledgedCommandSequence = 3u;
+        authoritative.m_position.SetX(destination.m_position.GetX() + 0.10f);
+        authoritative.m_magazine = destination.m_magazine - 1;
+
+        PlayerReconciliationPolicy::CopyComparedFields(destination, authoritative);
+
+        EXPECT_EQ(destination.m_snapshotSequence, 4u);
+        EXPECT_EQ(destination.m_acknowledgedCommandSequence, 9u);
+        EXPECT_FLOAT_EQ(destination.m_position.GetX(), authoritative.m_position.GetX());
+        EXPECT_EQ(destination.m_magazine, authoritative.m_magazine);
+        EXPECT_EQ(
+            PlayerReconciliationPolicy::Evaluate(destination, authoritative).m_decision,
+            ReconciliationDecision::NoCorrection);
+    }
 }

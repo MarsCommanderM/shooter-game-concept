@@ -80,7 +80,8 @@ namespace STWGameplay
         const PlayerCommandHistory& GetPlayerCommandHistory() const;
 
         //! Evaluates an externally supplied authoritative snapshot and prunes only commands
-        //! explicitly acknowledged by it. This boundary never applies correction or replay.
+        //! explicitly acknowledged by it. An owning authority applies compared-field
+        //! correction and does not replay commands. A remote proxy never writes gameplay.
         ReconciliationEvaluation ProcessAuthoritativeSnapshot(
             const AuthoritativePlayerSnapshot& authoritativeSnapshot);
 
@@ -94,7 +95,8 @@ namespace STWGameplay
         bool CreateNetworkCommand(AZ::EntityId entityId, PlayerCommand& command);
         bool SubmitNetworkCommand(AZ::EntityId entityId, const PlayerCommand& command);
         //! Routes one replicated snapshot from the currently bound network entity to the
-        //! existing pure reconciliation policy. It never applies correction or replay.
+        //! reconciliation policy. Owning authorities may apply compared-field correction.
+        //! Remote proxies and this call never replay commands.
         bool ReceiveNetworkSnapshot(AZ::EntityId entityId, const AuthoritativePlayerSnapshot& snapshot);
         bool BindRemoteNetworkPlayer(AZ::EntityId entityId);
         const AuthoritativePlayerSnapshot* GetRemoteNetworkSnapshot(AZ::EntityId entityId) const;

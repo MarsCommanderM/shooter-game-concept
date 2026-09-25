@@ -84,6 +84,34 @@ namespace STWGameplay
             return {};
         }
 
+        //! Copies the fields Evaluate compares. Sequence identities stay with the caller.
+        //! This does not replay commands and does not touch presentation state.
+        static void CopyComparedFields(
+            AuthoritativePlayerSnapshot& destination,
+            const AuthoritativePlayerSnapshot& authoritative)
+        {
+            destination.m_position = authoritative.m_position;
+            destination.m_grounded = authoritative.m_grounded;
+            destination.m_yaw = authoritative.m_yaw;
+            destination.m_pitch = authoritative.m_pitch;
+            destination.m_health = authoritative.m_health;
+            destination.m_alive = authoritative.m_alive;
+            destination.m_crouchDesired = authoritative.m_crouchDesired;
+            destination.m_slideActive = authoritative.m_slideActive;
+            destination.m_mantleRequested = authoritative.m_mantleRequested;
+            destination.m_mantleActive = authoritative.m_mantleActive;
+            destination.m_activeEquipmentSlot = authoritative.m_activeEquipmentSlot;
+            destination.m_activeEquipmentProfile = authoritative.m_activeEquipmentProfile;
+            destination.m_magazine = authoritative.m_magazine;
+            destination.m_reserve = authoritative.m_reserve;
+            destination.m_charges = authoritative.m_charges;
+            destination.m_cooldownRemaining = authoritative.m_cooldownRemaining;
+            destination.m_reloadRemaining = authoritative.m_reloadRemaining;
+            destination.m_reloading = authoritative.m_reloading;
+            destination.m_deathEvents = authoritative.m_deathEvents;
+            destination.m_respawnEvents = authoritative.m_respawnEvents;
+        }
+
         //! Classifies one externally supplied snapshot without applying correction or replay.
         //! A snapshot sequence is accepted only once, and an acknowledgement may not advance
         //! beyond the locally generated command sequence. Physical timing remains whatever the

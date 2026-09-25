@@ -886,6 +886,20 @@ namespace STWGameplay
                 evaluation.m_discardedCommandCount = m_commandHistory.DiscardThrough(
                     authoritativeSnapshot.m_acknowledgedCommandSequence);
             }
+            if (evaluation.m_comparison.m_comparisonValid
+                && evaluation.m_comparison.m_decision == ReconciliationDecision::CorrectionRequired
+                && m_model.ApplyAuthoritativeCorrection(authoritativeSnapshot))
+            {
+                PlayerReconciliationPolicy::CopyComparedFields(
+                    m_authoritativeSnapshot, authoritativeSnapshot);
+                m_physicsPlayer.ResetPosition(authoritativeSnapshot.m_position);
+                AZ_Printf(
+                    "STWGameplay",
+                    "STW_MP_RECONCILIATION_CORRECTION applied=1 replayed=0 entity=composition-root position=(%.2f,%.2f,%.2f)\n",
+                    static_cast<float>(authoritativeSnapshot.m_position.GetX()),
+                    static_cast<float>(authoritativeSnapshot.m_position.GetY()),
+                    static_cast<float>(authoritativeSnapshot.m_position.GetZ()));
+            }
         }
 
         m_lastReconciliationEvaluation = evaluation;

@@ -114,6 +114,17 @@ namespace STWGameplay
         bool RequestWeaponSwitch(bool playerAlive);
         bool RequestEquipmentSwitch(EquipmentSlot slot, bool playerAlive);
         bool SetLoadoutProfile(EquipmentSlot slot, EquipmentProfileId profileId);
+        //! Writes the active slot's compared readback. Rejects an incompatible
+        //! slot/profile pair or a non-finite timer and leaves the model unchanged.
+        bool RestoreAuthoritativeReadback(
+            EquipmentSlot slot,
+            EquipmentProfileId profile,
+            int magazine,
+            int reserve,
+            int charges,
+            float cooldownRemaining,
+            float reloadRemaining,
+            bool reloading);
         void ResetLoadout();
 
         const EquipmentState& GetWeapon() const { return GetEquipment(m_activeEquipmentSlot); }

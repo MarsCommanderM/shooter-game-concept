@@ -1,6 +1,7 @@
 #include <AzTest/AzTest.h>
 #include <AzCore/Math/MathUtils.h>
 #include <STWGameplay/PlayerSliceModel.h>
+#include <STWGameplay/PlayerSimulationTypes.h>
 #include <cmath>
 
 AZ_UNIT_TEST_HOOK(DEFAULT_UNIT_TEST_ENV);
@@ -1054,5 +1055,53 @@ namespace STWGameplay
         EXPECT_TRUE(PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Lethal,
             EquipmentProfileId::STW_LETHAL_FRAG_01));
         EXPECT_TRUE(PlayerSliceModel::IsSlotCompatible(EquipmentSlot::Melee, EquipmentProfileId::STW_MELEE_01));
+    }
+
+    TEST(PlayerSliceModelTests, AuthoritativeCorrectionWritesComparedStateWithoutReplay)
+    {
+        PlayerSliceModel model;
+        const int magazineBefore = model.GetWeapon().m_magazine;
+        AuthoritativePlayerSnapshot snapshot;
+        snapshot.m_position = AZ::Vector3(4.0f, 5.0f, 1.0f);
+        snapshot.m_grounded = true;
+        snapshot.m_yaw = 0.4f;
+        snapshot.m_pitch = -0.2f;
+        snapshot.m_health = 40.0f;
+        snapshot.m_alive = true;
+        snapshot.m_activeEquipmentSlot = EquipmentSlot::Primary;
+        snapshot.m_activeEquipmentProfile = EquipmentProfileId::STW_SMG_01;
+        snapshot.m_magazine = magazineBefore - 1;
+        snapshot.m_reserve = model.GetWeapon().m_reserve;
+        snapshot.m_charges = model.GetWeapon().m_charges;
+        snapshot.m_cooldownRemaining = 0.0f;
+        snapshot.m_reloadRemaining = 0.0f;
+        snapshot.m_reloading = false;
+        snapshot.m_deathEvents = 2;
+        snapshot.m_respawnEvents = 1;
+
+        ASSERT_TRUE(model.ApplyAuthoritativeCorrection(snapshot));
+        EXPECT_TRUE(model.GetPlayer().m_position.IsClose(snapshot.m_position));
+        EXPECT_FLOAT_EQ(model.GetPlayer().m_health, 40.0f);
+        EXPECT_EQ(model.GetPlayer().m_deathEvents, 2);
+        EXPECT_EQ(model.GetPlayer().m_respawnEvents, 1);
+        EXPECT_EQ(model.GetWeapon().m_magazine, magazineBefore - 1);
+        EXPECT_EQ(model.GetActiveEquipmentSlot(), EquipmentSlot::Primary);
+    }
+
+    TEST(PlayerSliceModelTests, AuthoritativeCorrectionRejectsIncompatibleLoadoutUnchanged)
+    {
+        PlayerSliceModel model;
+        const AZ::Vector3 positionBefore = model.GetPlayer().m_position;
+        const int magazineBefore = model.GetWeapon().m_magazine;
+        AuthoritativePlayerSnapshot snapshot;
+        snapshot.m_position = AZ::Vector3(9.0f, 9.0f, 9.0f);
+        snapshot.m_activeEquipmentSlot = EquipmentSlot::Primary;
+        snapshot.m_activeEquipmentProfile = EquipmentProfileId::STW_SIDEARM_01;
+        snapshot.m_magazine = 1;
+        snapshot.m_reserve = 1;
+
+        EXPECT_FALSE(model.ApplyAuthoritativeCorrection(snapshot));
+        EXPECT_TRUE(model.GetPlayer().m_position.IsClose(positionBefore));
+        EXPECT_EQ(model.GetWeapon().m_magazine, magazineBefore);
     }
 }
