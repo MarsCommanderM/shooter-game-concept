@@ -28,14 +28,20 @@ DURATION="${STW_MP_DURATION:-30}"
 # Second observation window: one client reconnects into the freed roster
 # slot with command delay/loss enabled only for that one process, proving
 # the gated transport bookkeeping and the disconnect/respawn cleanup path.
-DELAY_DURATION="${STW_MP_DELAY_DURATION:-20}"
+DELAY_DURATION="${STW_MP_DELAY_DURATION:-30}"
 GATE_DELAY_STEPS="${STW_MP_GATE_DELAY_STEPS:-3}"
-GATE_LOSS_EVERY="${STW_MP_GATE_LOSS_EVERY:-4}"
+# A walking (not teleporting) player's own dead-reckoned prediction tracks
+# the authoritative position closely even while commands are being held or
+# occasionally dropped, so drift big enough to need a real
+# STWNetworkPlayerAuthority correction is infrequent at a mild loss rate - a
+# real 20s run at loss_every=4 produced exactly one. Every-other-command
+# loss over a longer window is what actually produces more than one.
+GATE_LOSS_EVERY="${STW_MP_GATE_LOSS_EVERY:-2}"
 # Minimum STW_MP_PHYSX_REWIND corrections required from the sustained-
 # movement client during the delay/loss window - proof the reconciliation
 # mechanism keeps working repeatedly under continuous movement and loss,
 # not just the one displacement the single gated TryFire step already forces.
-GATE_SUSTAINED_REWIND_MIN="${STW_MP_GATE_SUSTAINED_REWIND_MIN:-3}"
+GATE_SUSTAINED_REWIND_MIN="${STW_MP_GATE_SUSTAINED_REWIND_MIN:-2}"
 XDG_RUNTIME_DIR="${RUN_DIR}/xdg-runtime"
 CLIENT_ONE_USER="${RUN_DIR}/client-one-user"
 CLIENT_TWO_USER="${RUN_DIR}/client-two-user"
@@ -315,7 +321,14 @@ require_count CLIENT_THREE_COMMAND_DROPPED "${DELAY_DROP_MARKER}" "${CLIENT_THRE
 # always-on reconciliation (unrelated to STW_MP_REWIND_FORWARD) has to
 # correct it more than once - not a new mechanism, just the first real
 # exercise of the existing one under sustained conditions.
-require_count CLIENT_THREE_SUSTAINED_PHYSX_REWIND "STW_MP_PHYSX_REWIND" "${CLIENT_THREE_CAPTURE}" "${GATE_SUSTAINED_REWIND_MIN}"
+#
+# One correction logs three lines (queued=, stepped=, displaced=) from three
+# different call sites in the same rewind lifecycle, not three separate
+# corrections - counting bare "STW_MP_PHYSX_REWIND" would pass on a single
+# correction alone. "queued=" is the one that fires exactly once per
+# BeginPhysxRewind call, i.e. once per distinct correction decision, so it -
+# not the bare marker - is what actually counts distinct events.
+require_count CLIENT_THREE_SUSTAINED_PHYSX_REWIND "STW_MP_PHYSX_REWIND queued=" "${CLIENT_THREE_CAPTURE}" "${GATE_SUSTAINED_REWIND_MIN}"
 
 # Disconnect / respawn cleanup: the server must record dropping client
 # two's authority, and client one (still connected throughout) must tear
