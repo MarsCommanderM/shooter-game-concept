@@ -71,6 +71,7 @@ fi
 export LD_LIBRARY_PATH="${BIN}"
 export ALSA_CONFIG_PATH=/dev/null
 export XDG_RUNTIME_DIR
+export STW_MP_REWIND_FORWARD="${STW_MP_REWIND_FORWARD:-1}"
 
 "${BIN}/STW.HeadlessServerLauncher" \
     --project-path="${PROJECT}" \

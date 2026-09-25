@@ -1221,7 +1221,8 @@ namespace STWGameplay
             AZ::Vector3 stepVelocity = desiredPlayerVelocity;
             STWNetworkPlayerAuthority* rewindingRoot = FindCompositionRootNetworkPlayer();
             const bool rewindStep = rewindingRoot != nullptr && rewindingRoot->ConsumeRewindPhysicsStep();
-            if (rewindStep && stepVelocity.GetLengthSq() < 0.01f)
+            const char* rewindForward = std::getenv("STW_MP_REWIND_FORWARD");
+            if (rewindStep && rewindForward != nullptr && rewindForward[0] == '1' && stepVelocity.GetLengthSq() < 0.01f)
             {
                 PlayerInput forward;
                 forward.m_forward = 1.0f;
