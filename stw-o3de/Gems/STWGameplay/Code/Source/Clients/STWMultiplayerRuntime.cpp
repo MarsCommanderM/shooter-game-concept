@@ -302,6 +302,7 @@ namespace STWGameplay
         [[maybe_unused]] const Multiplayer::ReplicationSet& replicationSet,
         AzNetworking::DisconnectReason reason)
     {
+        AZ_Printf("STWGameplay", "STW_MP_PLAYER_LEAVE_ENTRY=1\n");
         // Logged unconditionally (not only on a successful removal): a UDP
         // idle-timeout disconnect can fire well after the entity was already
         // torn down by another path, so entityHandle.Exists() being false
