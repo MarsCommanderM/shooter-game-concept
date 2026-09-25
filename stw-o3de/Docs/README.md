@@ -1,5 +1,13 @@
 # Project Visual Forge
 
+> ## QUALITÄTSZIEL: REALISTIC CINEMATIC. KEIN BLOCKOUT. KEIN PROTOTYP.
+>
+> STW ist ein hyperrealistischer, cinematischer AAA-3D-Multiplayer-FPS. Es
+> existieren bereits über 100 Prototypen dieses Spiels — dies hier ist
+> keiner mehr. Blockout-, Platzhalter- oder Tech-Demo-Qualität wird niemals
+> als Endergebnis vorgeschlagen, beschrieben, freigegeben oder ausgeliefert
+> — in keinem Ordner, auf keinem Branch, in keiner Sitzung.
+
 Reproduzierbare Visual Production Pipeline für STW. Maßgeblich bleibt die
 [Produktvision](../../docs/STW_PRODUCT_VISION.md). Der AAA-Anspruch ist ein
 Qualitätsziel; eine Freigabe benötigt überprüfbare Bild- und Laufzeitnachweise.
