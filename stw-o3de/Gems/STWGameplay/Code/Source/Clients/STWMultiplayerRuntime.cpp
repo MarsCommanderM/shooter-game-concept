@@ -371,7 +371,11 @@ namespace STWGameplay
 
     void STWMultiplayerRuntime::OnEndpointDisconnected(Multiplayer::MultiplayerAgentType agentType)
     {
-        AZ_UNUSED(agentType);
+        AZ_Printf(
+            "STWGameplay",
+            "STW_MP_ENDPOINT_DISCONNECTED_ENTRY=1 agent_type=%u get_agent_type=%u\n",
+            static_cast<uint32_t>(agentType),
+            static_cast<uint32_t>(GetAgentType()));
         if (m_state == STWMultiplayerTransportState::Connecting ||
             m_state == STWMultiplayerTransportState::Connected)
         {
