@@ -2,10 +2,16 @@
 
 #include <cstdint>
 
+#include <AzCore/Component/TickBus.h>
 #include <AzCore/std/string/string.h>
 #include <Multiplayer/IMultiplayerSpawner.h>
 #include <Multiplayer/IMultiplayer.h>
 #include <STWGameplay/MatchSession.h>
+
+namespace AzNetworking
+{
+    class INetworkInterface;
+}
 
 namespace STWGameplay
 {
@@ -24,6 +30,7 @@ namespace STWGameplay
     //! simulation, replication, or presentation state.
     class STWMultiplayerRuntime final
         : public Multiplayer::IMultiplayerSpawner
+        , public AZ::TickBus::Handler
     {
     public:
         STWMultiplayerRuntime();
@@ -45,14 +52,24 @@ namespace STWGameplay
             const Multiplayer::ReplicationSet& replicationSet,
             AzNetworking::DisconnectReason reason) override;
 
+        // AZ::TickBus::Handler
+        void OnTick(float deltaTime, AZ::ScriptTimePoint time) override;
+
     private:
         void OnNetworkInitialized(AzNetworking::INetworkInterface* networkInterface);
         void OnEndpointDisconnected(Multiplayer::MultiplayerAgentType agentType);
         void OnServerAcceptanceReceived();
         void PersistMatchRecord();
         uint32_t MatchCapacity() const;
+        //! Neither OnPlayerLeave nor the endpoint-disconnected event is
+        //! reliably invoked for every disconnect reason in this engine
+        //! build (see the comments on both) - polled here every tick
+        //! instead, against the network interface's own connection set,
+        //! which does not depend on either of those hooks firing.
+        void ReconcileRosterAgainstConnections();
 
         Multiplayer::IMultiplayer* m_multiplayer = nullptr;
+        AzNetworking::INetworkInterface* m_networkInterface = nullptr;
         Multiplayer::NetworkInitEvent::Handler m_networkInitHandler;
         Multiplayer::EndpointDisconnectedEvent::Handler m_endpointDisconnectedHandler;
         Multiplayer::ServerAcceptanceReceivedEvent::Handler m_serverAcceptanceReceivedHandler;

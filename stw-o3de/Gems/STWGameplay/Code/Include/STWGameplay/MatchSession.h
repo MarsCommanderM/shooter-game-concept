@@ -71,6 +71,12 @@ namespace STWGameplay
     //! Fixed roster for one dedicated match. Admission is deterministic:
     //! the first accepted user is slot 0 on team A, the next is slot 1 on
     //! team B, and a repeated user id returns the slot it already owns.
+    //!
+    //! Team is derived from slot index (even = A, odd = B), so a departed
+    //! player's slot is tombstoned in place rather than compacted: shifting
+    //! later entries down to fill the gap would silently reassign every
+    //! shifted player's team mid-match. TryAdmit reuses the lowest freed
+    //! slot (and therefore that slot's team) before growing the roster.
     class MatchRoster
     {
     public:
@@ -81,50 +87,98 @@ namespace STWGameplay
         {
         }
 
+        static MatchTeam TeamForSlot(uint32_t slot)
+        {
+            return (slot % 2u) == 0u ? MatchTeam::A : MatchTeam::B;
+        }
+
         uint32_t Capacity() const { return m_capacity; }
-        uint32_t Count() const { return m_count; }
+        //! Currently-occupied slot count, not the high-water mark of slots
+        //! ever used - a freed slot is not counted until it is reused.
+        uint32_t Count() const { return m_liveCount; }
+        //! One past the highest slot index ever assigned; freed slots below
+        //! this are tombstones, not gaps in a compacted list.
+        uint32_t Extent() const { return m_extent; }
+        bool IsOccupied(uint32_t slot) const { return slot < m_extent && m_occupied[slot]; }
 
         bool TryAdmit(uint64_t rosterKey, uint32_t& outSlot, MatchTeam& outTeam)
         {
-            for (uint32_t index = 0; index < m_count; ++index)
+            for (uint32_t index = 0; index < m_extent; ++index)
             {
-                if (m_userIds[index] == rosterKey)
+                if (m_occupied[index] && m_userIds[index] == rosterKey)
                 {
                     outSlot = index;
-                    outTeam = (index % 2u) == 0u ? MatchTeam::A : MatchTeam::B;
+                    outTeam = TeamForSlot(index);
                     return true;
                 }
             }
-            if (m_count >= m_capacity)
+            for (uint32_t index = 0; index < m_extent; ++index)
+            {
+                if (!m_occupied[index])
+                {
+                    m_userIds[index] = rosterKey;
+                    m_occupied[index] = true;
+                    ++m_liveCount;
+                    outSlot = index;
+                    outTeam = TeamForSlot(index);
+                    return true;
+                }
+            }
+            if (m_extent >= m_capacity)
             {
                 return false;
             }
-            outSlot = m_count;
-            outTeam = (m_count % 2u) == 0u ? MatchTeam::A : MatchTeam::B;
-            m_userIds[m_count++] = rosterKey;
+            outSlot = m_extent;
+            outTeam = TeamForSlot(m_extent);
+            m_userIds[m_extent] = rosterKey;
+            m_occupied[m_extent] = true;
+            ++m_extent;
+            ++m_liveCount;
             return true;
+        }
+
+        //! Frees rosterKey's slot without touching any other slot's index,
+        //! occupant, or team. Returns false (no change) if rosterKey is not
+        //! a currently-occupied member.
+        bool TryRemove(uint64_t rosterKey, uint32_t& outSlot)
+        {
+            for (uint32_t index = 0; index < m_extent; ++index)
+            {
+                if (m_occupied[index] && m_userIds[index] == rosterKey)
+                {
+                    m_occupied[index] = false;
+                    --m_liveCount;
+                    outSlot = index;
+                    return true;
+                }
+            }
+            return false;
         }
 
         uint64_t UserAt(uint32_t slot) const
         {
-            return slot < m_count ? m_userIds[slot] : 0;
+            return (slot < m_extent && m_occupied[slot]) ? m_userIds[slot] : 0;
         }
 
         std::string Serialize() const
         {
-            std::string text = "version=1\ncapacity=";
+            std::string text = "version=2\ncapacity=";
             text += std::to_string(m_capacity);
+            text += "\nextent=";
+            text += std::to_string(m_extent);
             text += "\nplayers=";
-            text += std::to_string(m_count);
+            text += std::to_string(m_liveCount);
             text += "\n";
-            for (uint32_t index = 0; index < m_count; ++index)
+            for (uint32_t index = 0; index < m_extent; ++index)
             {
-                text += "user=";
-                text += std::to_string(m_userIds[index]);
-                text += " slot=";
+                text += "slot=";
                 text += std::to_string(index);
+                text += " user=";
+                text += std::to_string(m_occupied[index] ? m_userIds[index] : 0);
                 text += " team=";
-                text += ((index % 2u) == 0u) ? "A\n" : "B\n";
+                text += (TeamForSlot(index) == MatchTeam::A) ? "A" : "B";
+                text += " occupied=";
+                text += m_occupied[index] ? "1\n" : "0\n";
             }
             return text;
         }
@@ -132,39 +186,73 @@ namespace STWGameplay
         static bool Deserialize(const std::string& text, MatchRoster& outRoster)
         {
             uint32_t capacity = 0;
+            uint32_t extent = 0;
             uint32_t players = 0;
-            if (!ReadU32(text, "capacity=", capacity) || !ReadU32(text, "players=", players))
+            if (!ReadU32(text, "capacity=", capacity) || !ReadU32(text, "extent=", extent) ||
+                !ReadU32(text, "players=", players))
             {
                 return false;
             }
-            if (capacity == 0 || capacity > MaxCapacity || players > capacity)
+            if (capacity == 0 || capacity > MaxCapacity || extent > capacity || players > extent)
             {
                 return false;
             }
             MatchRoster loaded(capacity);
             size_t search = 0;
-            for (uint32_t index = 0; index < players; ++index)
+            uint32_t liveSeen = 0;
+            for (uint32_t index = 0; index < extent; ++index)
             {
-                const size_t userPos = text.find("user=", search);
+                const size_t slotPos = text.find("slot=", search);
+                if (slotPos == std::string::npos)
+                {
+                    return false;
+                }
+                size_t valuePos = slotPos + 5;
+                char* end = nullptr;
+                const unsigned long slotValue = std::strtoul(text.c_str() + valuePos, &end, 10);
+                if (end == text.c_str() + valuePos || slotValue != index)
+                {
+                    return false;
+                }
+
+                const size_t userPos = text.find("user=", static_cast<size_t>(end - text.c_str()));
                 if (userPos == std::string::npos)
                 {
                     return false;
                 }
-                const size_t valuePos = userPos + 5;
-                char* end = nullptr;
+                valuePos = userPos + 5;
                 const unsigned long long userId = std::strtoull(text.c_str() + valuePos, &end, 10);
                 if (end == text.c_str() + valuePos)
                 {
                     return false;
                 }
-                uint32_t slot = 0;
-                MatchTeam team = MatchTeam::A;
-                if (!loaded.TryAdmit(static_cast<uint64_t>(userId), slot, team) || slot != index)
+
+                const size_t occupiedPos = text.find("occupied=", static_cast<size_t>(end - text.c_str()));
+                if (occupiedPos == std::string::npos)
                 {
                     return false;
                 }
+                valuePos = occupiedPos + 9;
+                const unsigned long occupiedValue = std::strtoul(text.c_str() + valuePos, &end, 10);
+                if (end == text.c_str() + valuePos)
+                {
+                    return false;
+                }
+
+                loaded.m_userIds[index] = static_cast<uint64_t>(userId);
+                loaded.m_occupied[index] = occupiedValue != 0;
+                if (loaded.m_occupied[index])
+                {
+                    ++liveSeen;
+                }
                 search = static_cast<size_t>(end - text.c_str());
             }
+            if (liveSeen != players)
+            {
+                return false;
+            }
+            loaded.m_extent = extent;
+            loaded.m_liveCount = liveSeen;
             outRoster = loaded;
             return true;
         }
@@ -188,7 +276,9 @@ namespace STWGameplay
         }
 
         uint32_t m_capacity = MaxCapacity;
-        uint32_t m_count = 0;
+        uint32_t m_extent = 0;
+        uint32_t m_liveCount = 0;
         uint64_t m_userIds[MaxCapacity] = {};
+        bool m_occupied[MaxCapacity] = {};
     };
 }

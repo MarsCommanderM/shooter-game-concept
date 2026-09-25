@@ -8,6 +8,8 @@
 #include <AzCore/Interface/Interface.h>
 #include <AzCore/std/containers/vector.h>
 #include <AzNetworking/ConnectionLayer/IConnection.h>
+#include <AzNetworking/ConnectionLayer/IConnectionSet.h>
+#include <AzNetworking/Framework/INetworkInterface.h>
 #include <Multiplayer/Components/NetBindComponent.h>
 #include <Source/AutoGen/AutoComponentTypes.h>
 #include <Network/STWPlayerNetworkComponent.h>
@@ -59,6 +61,7 @@ namespace STWGameplay
         m_multiplayer->AddEndpointDisconnectedHandler(m_endpointDisconnectedHandler);
         m_multiplayer->AddServerAcceptanceReceivedHandler(m_serverAcceptanceReceivedHandler);
         m_handlersConnected = true;
+        AZ::TickBus::Handler::BusConnect();
         m_state = STWMultiplayerTransportState::Idle;
         return true;
     }
@@ -141,6 +144,7 @@ namespace STWGameplay
             m_networkInitHandler.Disconnect();
             m_endpointDisconnectedHandler.Disconnect();
             m_serverAcceptanceReceivedHandler.Disconnect();
+            AZ::TickBus::Handler::BusDisconnect();
         }
 
         if (m_playerSpawnerRegistered)
@@ -149,6 +153,7 @@ namespace STWGameplay
         }
 
         m_multiplayer = nullptr;
+        m_networkInterface = nullptr;
         m_handlersConnected = false;
         m_sessionOwned = false;
         m_playerSpawnerRegistered = false;
@@ -215,13 +220,13 @@ namespace STWGameplay
         return spawned ? entities.front() : Multiplayer::NetworkEntityHandle{};
     }
 
-    void STWMultiplayerRuntime::OnNetworkInitialized(
-        [[maybe_unused]] AzNetworking::INetworkInterface* networkInterface)
+    void STWMultiplayerRuntime::OnNetworkInitialized(AzNetworking::INetworkInterface* networkInterface)
     {
         if (m_multiplayer == nullptr)
         {
             return;
         }
+        m_networkInterface = networkInterface;
 
         const Multiplayer::MultiplayerAgentType agentType = m_multiplayer->GetAgentType();
         AZ_Printf("STWGameplay", "STW_MP_NETWORK_INITIALIZED agent_type=%s\n",
@@ -406,6 +411,55 @@ namespace STWGameplay
         if (m_state == STWMultiplayerTransportState::Connecting)
         {
             m_state = STWMultiplayerTransportState::Connected;
+        }
+    }
+
+    void STWMultiplayerRuntime::OnTick([[maybe_unused]] float deltaTime, [[maybe_unused]] AZ::ScriptTimePoint time)
+    {
+        if (m_multiplayer == nullptr)
+        {
+            return;
+        }
+        const Multiplayer::MultiplayerAgentType agentType = m_multiplayer->GetAgentType();
+        if (agentType != Multiplayer::MultiplayerAgentType::DedicatedServer &&
+            agentType != Multiplayer::MultiplayerAgentType::ClientServer)
+        {
+            return;
+        }
+        ReconcileRosterAgainstConnections();
+    }
+
+    void STWMultiplayerRuntime::ReconcileRosterAgainstConnections()
+    {
+        if (m_networkInterface == nullptr)
+        {
+            return;
+        }
+        AzNetworking::IConnectionSet& connections = m_networkInterface->GetConnectionSet();
+        for (uint32_t slot = 0; slot < m_roster.Extent(); ++slot)
+        {
+            if (!m_roster.IsOccupied(slot))
+            {
+                continue;
+            }
+            const uint64_t rosterKey = m_roster.UserAt(slot);
+            const auto connectionId = static_cast<AzNetworking::ConnectionId>(static_cast<uint32_t>(rosterKey));
+            if (connections.GetConnection(connectionId) != nullptr)
+            {
+                continue;
+            }
+            uint32_t removedSlot = 0;
+            if (m_roster.TryRemove(rosterKey, removedSlot))
+            {
+                PersistMatchRecord();
+                AZ_Printf(
+                    "STWGameplay",
+                    "STW_MP_ROSTER_SLOT_FREED slot=%u user=%llu roster=%u capacity=%u roster_removed=1\n",
+                    removedSlot,
+                    static_cast<unsigned long long>(rosterKey),
+                    m_roster.Count(),
+                    m_roster.Capacity());
+            }
         }
     }
 } // namespace STWGameplay

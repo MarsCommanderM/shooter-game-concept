@@ -323,5 +323,21 @@ echo "NO_GHOST_REPLAY_CONFIRMED entity=${STOPPED_ENTITY} client=ONE"
 # window already checked above by the per-client loop).
 require_count CLIENT_ONE_STILL_AUTONOMOUS "role=Autonomous authority=0 autonomous=1" "${CLIENT_ONE_CAPTURE}" 1
 
+# MatchRoster must actually free client two's slot rather than leaking it:
+# require the removal marker (slot 1, since client one takes slot 0 and
+# client two slot 1 by admission order), and require client three's own
+# STW_MP_MATCHMAKING line to show that same slot reused - not a fresh
+# slot 2 - with the roster's live count back down to 2, not 3.
+if ! rg -q "STW_MP_ROSTER_SLOT_FREED slot=1 user=[0-9]+ roster=2 capacity=[0-9]+ roster_removed=1" "${SERVER_CAPTURE}"; then
+    echo "ROSTER_SLOT_NOT_FREED"
+    exit 1
+fi
+echo "MARKER_FOUND_ROSTER_SLOT_FREED=1 FILE=${SERVER_CAPTURE}"
+if ! rg -q "STW_MP_MATCHMAKING accepted=1 agent_id=[0-9]+ slot=1 team=B roster=2 capacity=[0-9]+" "${SERVER_CAPTURE}"; then
+    echo "ROSTER_SLOT_NOT_REUSED_BY_RECONNECT"
+    exit 1
+fi
+echo "MARKER_FOUND_ROSTER_SLOT_REUSED=1 FILE=${SERVER_CAPTURE}"
+
 echo "RESULT=PASS"
 echo "EVIDENCE_DIR=${RUN_DIR}"
