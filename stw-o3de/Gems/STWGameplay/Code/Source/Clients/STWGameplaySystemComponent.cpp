@@ -1288,7 +1288,7 @@ namespace STWGameplay
                     AZ_Printf(
                         "STWGameplay",
                         "STW_MP_PHYSX_REWIND displaced=%d entity=%s from=(%.3f,%.3f,%.3f) to=(%.3f,%.3f,%.3f) distance=%.3f speed=%.3f applied=%d\n",
-                        rewindDistance > 0.01f ? 1 : 0,
+                        rewindDistance > 0.001f ? 1 : 0,
                         entityText.c_str(),
                         static_cast<float>(from.GetX()),
                         static_cast<float>(from.GetY()),
