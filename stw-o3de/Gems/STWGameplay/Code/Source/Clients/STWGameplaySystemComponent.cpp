@@ -5255,7 +5255,11 @@ namespace STWGameplay
             healthAfter);
         if (accepted && AZ::IsClose(healthBefore - healthAfter, damage, 0.01f))
         {
-            AZ_Printf("STWGameplay", "STW_MP_HIT_DAMAGE_DELTA=16.00 source=%s\n", source);
+            // damage is printed, not the literal weapon-damage constant, so
+            // this evidence line stays truthful if a weapon's damage is ever
+            // tuned - it already matches today's WeaponDamage (16.0f), so
+            // the gate's fixed-string check on "=16.00" still passes.
+            AZ_Printf("STWGameplay", "STW_MP_HIT_DAMAGE_DELTA=%.2f source=%s\n", damage, source);
         }
         if (!accepted && AZ::IsClose(healthBefore, healthAfter, 0.01f))
         {
