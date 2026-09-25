@@ -25,6 +25,7 @@ namespace STWGameplay
         bool Initialize();
         void Shutdown();
         bool QueueVelocity(const AZ::Vector3& velocity);
+        bool ApplyQueuedStep(float deltaTime);
         bool CanStartMantle(const AZ::Vector3& direction, bool grounded) const;
         bool ApplyCrouchRequest(bool crouchDesired, bool grounded);
         bool ResetPosition(const AZ::Vector3& position);

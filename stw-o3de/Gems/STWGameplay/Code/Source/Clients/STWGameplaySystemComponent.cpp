@@ -1219,6 +1219,13 @@ namespace STWGameplay
         if (gameplayUpdated)
         {
             m_physicsPlayer.QueueVelocity(desiredPlayerVelocity);
+            if (STWNetworkPlayerAuthority* rewindingRoot = FindCompositionRootNetworkPlayer())
+            {
+                if (rewindingRoot->ConsumeRewindPhysicsStep())
+                {
+                    m_physicsPlayer.ApplyQueuedStep(FixedSimulationClock::FixedDeltaTime);
+                }
+            }
             for (size_t index = 0; index < enemies.GetEnemyCount(); ++index)
             {
                 const EnemyInstance& instance = enemies.GetInstanceByIndex(index);

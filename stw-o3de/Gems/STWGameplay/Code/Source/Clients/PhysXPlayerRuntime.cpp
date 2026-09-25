@@ -1,5 +1,7 @@
 #include "PhysXPlayerRuntime.h"
 
+#include <cmath>
+
 #include <AzCore/Debug/Trace.h>
 #include <AzCore/Component/Entity.h>
 #include <AzCore/Component/TransformBus.h>
@@ -118,6 +120,23 @@ namespace STWGameplay
         }
         Physics::CharacterRequestBus::Event(
             m_playerEntity->GetId(), &Physics::CharacterRequests::AddVelocityForPhysicsTimestep, velocity);
+        return true;
+    }
+
+    bool PhysXPlayerRuntime::ApplyQueuedStep(float deltaTime)
+    {
+        if (!IsValid() || !std::isfinite(deltaTime) || deltaTime <= 0.0f)
+        {
+            return false;
+        }
+        Physics::Character* character = nullptr;
+        Physics::CharacterRequestBus::EventResult(
+            character, m_playerEntity->GetId(), &Physics::CharacterRequests::GetCharacter);
+        if (character == nullptr)
+        {
+            return false;
+        }
+        character->ApplyRequestedVelocity(deltaTime);
         return true;
     }
 

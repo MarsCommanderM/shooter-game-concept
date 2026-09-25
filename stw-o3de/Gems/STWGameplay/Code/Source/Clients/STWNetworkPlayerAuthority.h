@@ -68,8 +68,15 @@ namespace STWGameplay
                 return false;
             }
             m_rewindForwardArmed = false;
-            m_physxRewindAwaitSyncs = 1;
+            m_applyRewindPhysicsStep = true;
+            m_physxRewindAwaitSyncs = 2;
             return true;
+        }
+        bool ConsumeRewindPhysicsStep()
+        {
+            const bool apply = m_applyRewindPhysicsStep;
+            m_applyRewindPhysicsStep = false;
+            return apply;
         }
         void NoteRewindSync(const AZ::Vector3& position, float& outDistance, bool& outReady)
         {
@@ -160,5 +167,6 @@ namespace STWGameplay
         bool m_physxRewindHaveBaseline = false;
         int m_physxRewindAwaitSyncs = 0;
         bool m_rewindForwardArmed = true;
+        bool m_applyRewindPhysicsStep = false;
     };
 } // namespace STWGameplay
