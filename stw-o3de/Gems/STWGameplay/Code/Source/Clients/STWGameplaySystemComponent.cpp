@@ -1128,6 +1128,9 @@ namespace STWGameplay
         // existing scripted acceptance scenario, which never starts a
         // match, so this is a no-op there.
         UpdateMatchRuleset(deltaTime);
+#if AZ_TRAIT_SERVER
+        ProbeDedicatedHitValidation();
+#endif
         const PlayerCommand& command = simulation.m_lastCommand;
         const bool gameplayUpdated = simulation.m_gameplayUpdated;
         const EnemyCollectionModel& enemies = m_model.GetEnemies();
@@ -5174,6 +5177,70 @@ namespace STWGameplay
         m_menuBlockingPlay = false;
         m_mainMenuPresentation.SetCanvasEnabled(false);
         m_hudPresentation.SetVisible(true);
+    }
+
+    void STWGameplaySystemComponent::ProbeDedicatedHitValidation()
+    {
+        if (m_dedicatedHitProbeLogged || GetNetworkPlayerCount() < 2)
+        {
+            return;
+        }
+        if (!m_matchRuleset.IsActive())
+        {
+            StartTeamDeathmatchMatch();
+        }
+
+        AZStd::vector<PvpPlayerState> states;
+        for (STWNetworkPlayerAuthority& authority : m_networkPlayerAuthorities)
+        {
+            if (!authority.IsBound() || authority.IsRemote())
+            {
+                continue;
+            }
+            PvpPlayerState state;
+            state.m_entityId = authority.GetEntityId();
+            state.m_position = authority.GetModel().GetPlayer().m_position;
+            state.m_team = m_matchRuleset.GetTeam(state.m_entityId);
+            state.m_alive = authority.GetModel().GetPlayer().m_alive;
+            states.push_back(state);
+        }
+        if (states.size() < 2)
+        {
+            return;
+        }
+        m_matchRuleset.SetPlayerStates(states);
+
+        const float damage = 16.0f;
+        const float range = 60.0f;
+        const AZ::EntityId shooter = states[0].m_entityId;
+        const AZ::EntityId other = states[1].m_entityId;
+        const float separation = (states[1].m_position - states[0].m_position).GetLength();
+        const MatchRulesetModel::HitValidation live = m_matchRuleset.ValidateAuthoritativeHit(
+            shooter, other, damage, range);
+        const MatchRulesetModel::HitValidation self = m_matchRuleset.ValidateAuthoritativeHit(
+            shooter, shooter, damage, range);
+        const AZStd::string shooterText = shooter.ToString();
+        const AZStd::string otherText = other.ToString();
+        AZ_Printf(
+            "STWGameplay",
+            "STW_MP_HIT_VALIDATION result=%s reason=%s probe=1 shooter=%s target=%s damage=%.2f range=%.2f separation=%.3f\n",
+            live == MatchRulesetModel::HitValidation::Accept ? "accept" : "reject",
+            MatchRulesetModel::HitValidationName(live),
+            shooterText.c_str(),
+            otherText.c_str(),
+            damage,
+            range,
+            separation);
+        AZ_Printf(
+            "STWGameplay",
+            "STW_MP_HIT_VALIDATION result=%s reason=%s probe=1 shooter=%s target=%s damage=%.2f range=%.2f separation=0.000\n",
+            self == MatchRulesetModel::HitValidation::Accept ? "accept" : "reject",
+            MatchRulesetModel::HitValidationName(self),
+            shooterText.c_str(),
+            shooterText.c_str(),
+            damage,
+            range);
+        m_dedicatedHitProbeLogged = true;
     }
 
     void STWGameplaySystemComponent::UpdateMatchRuleset(float deltaTime)

@@ -245,6 +245,7 @@ namespace STWGameplay
         //! (the existing UpdateInteractivePlayerRespawn()/RespawnPlayer()
         //! pair only ever handled the primary/composition-root m_model).
         void UpdateMatchRuleset(float deltaTime);
+        void ProbeDedicatedHitValidation();
         //! Same reset sequence as RespawnPlayer(), parameterized on one
         //! bound authority instead of the hardcoded primary m_model/
         //! m_physicsPlayer/m_commandHistory - the shared enemy-collection
@@ -324,6 +325,7 @@ namespace STWGameplay
         // stimulus functions, never through this real input path, so it is
         // unaffected either way.
         bool m_menuBlockingPlay = true;
+        bool m_dedicatedHitProbeLogged = false;
 
         // True while the Niederlage/Sieg overlay is showing - suppresses
         // UpdateInteractivePlayerRespawn's timer-based auto-respawn so the
