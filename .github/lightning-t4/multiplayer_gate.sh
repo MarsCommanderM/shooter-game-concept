@@ -30,13 +30,17 @@ DURATION="${STW_MP_DURATION:-30}"
 # the gated transport bookkeeping and the disconnect/respawn cleanup path.
 DELAY_DURATION="${STW_MP_DELAY_DURATION:-30}"
 GATE_DELAY_STEPS="${STW_MP_GATE_DELAY_STEPS:-3}"
-# A walking (not teleporting) player's own dead-reckoned prediction tracks
-# the authoritative position closely even while commands are being held or
-# occasionally dropped, so drift big enough to need a real
-# STWNetworkPlayerAuthority correction is infrequent at a mild loss rate - a
-# real 20s run at loss_every=4 produced exactly one. Every-other-command
-# loss over a longer window is what actually produces more than one.
-GATE_LOSS_EVERY="${STW_MP_GATE_LOSS_EVERY:-2}"
+# PlayerReconciliationPolicy::PositionEpsilon is 0.05m - at the sustained-
+# forward client's ~3.7 m/s, a single genuinely lost tick's worth of motion
+# (~0.12m at a 30Hz command rate) already exceeds it, so a dropped command is
+# what actually forces a correction; a merely delayed-but-not-lost one just
+# arrives late; STWNetworkPlayerAuthority resyncs on its own afterward. Two
+# real data points bracket this: loss_every=4 (25%) produced exactly one
+# correction in 20s (it resyncs and stays resynced); loss_every=2 (50%)
+# never let it catch up at all (hundreds of queued corrections, only one
+# ever completed). loss_every=3 (~33%) is the deliberate midpoint between
+# those two measured extremes, not a further guess.
+GATE_LOSS_EVERY="${STW_MP_GATE_LOSS_EVERY:-3}"
 # Minimum STW_MP_PHYSX_REWIND corrections required from the sustained-
 # movement client during the delay/loss window - proof the reconciliation
 # mechanism keeps working repeatedly under continuous movement and loss,
@@ -325,10 +329,14 @@ require_count CLIENT_THREE_COMMAND_DROPPED "${DELAY_DROP_MARKER}" "${CLIENT_THRE
 # One correction logs three lines (queued=, stepped=, displaced=) from three
 # different call sites in the same rewind lifecycle, not three separate
 # corrections - counting bare "STW_MP_PHYSX_REWIND" would pass on a single
-# correction alone. "queued=" is the one that fires exactly once per
-# BeginPhysxRewind call, i.e. once per distinct correction decision, so it -
-# not the bare marker - is what actually counts distinct events.
-require_count CLIENT_THREE_SUSTAINED_PHYSX_REWIND "STW_MP_PHYSX_REWIND queued=" "${CLIENT_THREE_CAPTURE}" "${GATE_SUSTAINED_REWIND_MIN}"
+# correction alone. queued= alone is not enough either: BeginPhysxRewind has
+# no "already mid-rewind" guard, so sustained divergence that never catches
+# up re-queues on every subsequent snapshot - a real run hit queued=743 with
+# displaced=1, a correction that never actually finished, not 743 of them.
+# displaced= only fires when a queued rewind's replay fully drains
+# (remaining reaches 0), so counting it - not queued= - is what actually
+# proves multiple corrections completed, not just started.
+require_count CLIENT_THREE_SUSTAINED_PHYSX_REWIND "STW_MP_PHYSX_REWIND displaced=" "${CLIENT_THREE_CAPTURE}" "${GATE_SUSTAINED_REWIND_MIN}"
 
 # Disconnect / respawn cleanup: the server must record dropping client
 # two's authority, and client one (still connected throughout) must tear

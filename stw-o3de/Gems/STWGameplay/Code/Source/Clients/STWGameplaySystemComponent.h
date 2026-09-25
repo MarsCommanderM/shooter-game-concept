@@ -332,7 +332,6 @@ namespace STWGameplay
         // unaffected either way.
         bool m_menuBlockingPlay = true;
         bool m_dedicatedHitProbeLogged = false;
-        uint32_t m_sustainedForwardTickCounter = 0;
 
         // True while the Niederlage/Sieg overlay is showing - suppresses
         // UpdateInteractivePlayerRespawn's timer-based auto-respawn so the

@@ -360,21 +360,21 @@ namespace STWGameplay
             // any prediction drift to actually reconcile. A real client
             // never sets this env var.
             //
-            // Constant-velocity forward is the one motion whose prediction
-            // survives a dropped/delayed command almost unchanged - the
-            // client already extrapolated "still going straight", so a
-            // missing command has little position effect. A real run
-            // proved this empirically: one correction in a 30s window even
-            // at every-other-command loss. Cycling in periodic strafe
-            // gives a lost direction-change command an actual heading
-            // effect for STWNetworkPlayerAuthority's existing, always-on
-            // reconciliation (STW_MP_PHYSX_REWIND) to have to correct,
-            // repeatedly, rather than only the single displacement the
-            // gated TryFire step already forces.
-            ++m_sustainedForwardTickCounter;
-            const uint32_t phase = (m_sustainedForwardTickCounter / 90u) % 4u;
+            // What actually drives how often STWNetworkPlayerAuthority has
+            // to correct is the loss rate, not the movement pattern:
+            // PlayerReconciliationPolicy::PositionEpsilon is 0.05m, and a
+            // single genuinely *lost* command's worth of forward motion
+            // already exceeds that, while a merely *delayed* one just
+            // arrives late and resyncs on its own once it does - so drops,
+            // not delay or direction changes, are what force a correction.
+            // Plain forward keeps that one variable isolated; the gate
+            // tunes STW_MP_COMMAND_LOSS_EVERY to a rate that forces more
+            // than one correction without exceeding the server's ability
+            // to ever catch back up (measured, not guessed: 25% loss
+            // produced exactly one correction that resynced cleanly; 50%
+            // never resynced at all, hundreds of corrections queued and
+            // only one ever completed).
             sampledInput.m_forward = 1.0f;
-            sampledInput.m_strafe = (phase == 1) ? 1.0f : (phase == 3 ? -1.0f : 0.0f);
         }
         return authority->CreateCommand(sampledInput, command);
     }
