@@ -5196,8 +5196,26 @@ namespace STWGameplay
                 continue;
             }
             float damage = 0.0f;
-            const AZ::EntityId hitTarget = authority.GetModel().ConsumeLastPvpHitTarget(damage);
+            float maxRange = 0.0f;
+            const AZ::EntityId hitTarget = authority.GetModel().ConsumeLastPvpHitTarget(damage, maxRange);
             if (!hitTarget.IsValid())
+            {
+                continue;
+            }
+            const MatchRulesetModel::HitValidation validation = m_matchRuleset.ValidateAuthoritativeHit(
+                authority.GetEntityId(), hitTarget, damage, maxRange);
+            const AZStd::string shooterText = authority.GetEntityId().ToString();
+            const AZStd::string targetText = hitTarget.ToString();
+            AZ_Printf(
+                "STWGameplay",
+                "STW_MP_HIT_VALIDATION result=%s reason=%s shooter=%s target=%s damage=%.2f range=%.2f\n",
+                validation == MatchRulesetModel::HitValidation::Accept ? "accept" : "reject",
+                MatchRulesetModel::HitValidationName(validation),
+                shooterText.c_str(),
+                targetText.c_str(),
+                damage,
+                maxRange);
+            if (validation != MatchRulesetModel::HitValidation::Accept)
             {
                 continue;
             }

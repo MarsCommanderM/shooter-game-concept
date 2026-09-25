@@ -1,5 +1,7 @@
 #include <STWGameplay/MatchRulesetModel.h>
 
+#include <cmath>
+
 namespace STWGameplay
 {
     namespace
@@ -72,6 +74,75 @@ namespace STWGameplay
     void MatchRulesetModel::ClearTeamAssignments()
     {
         m_teamAssignments.clear();
+    }
+
+    const char* MatchRulesetModel::HitValidationName(HitValidation validation)
+    {
+        switch (validation)
+        {
+        case HitValidation::Accept:
+            return "accept";
+        case HitValidation::RejectNonFinite:
+            return "non_finite";
+        case HitValidation::RejectNotPresent:
+            return "not_present";
+        case HitValidation::RejectSelf:
+            return "self";
+        case HitValidation::RejectDead:
+            return "dead";
+        case HitValidation::RejectTeammate:
+            return "teammate";
+        case HitValidation::RejectRange:
+            return "range";
+        }
+        return "not_present";
+    }
+
+    MatchRulesetModel::HitValidation MatchRulesetModel::ValidateAuthoritativeHit(
+        AZ::EntityId shooterEntityId, AZ::EntityId targetEntityId, float damage, float maxRange) const
+    {
+        if (!shooterEntityId.IsValid() || !targetEntityId.IsValid()
+            || !std::isfinite(damage) || damage <= 0.0f
+            || !std::isfinite(maxRange) || maxRange <= 0.0f)
+        {
+            return HitValidation::RejectNonFinite;
+        }
+
+        const PvpPlayerState* shooter = nullptr;
+        const PvpPlayerState* target = nullptr;
+        for (const PvpPlayerState& state : m_playerStates)
+        {
+            if (state.m_entityId == shooterEntityId)
+            {
+                shooter = &state;
+            }
+            if (state.m_entityId == targetEntityId)
+            {
+                target = &state;
+            }
+        }
+        if (shooter == nullptr || target == nullptr)
+        {
+            return HitValidation::RejectNotPresent;
+        }
+        if (shooterEntityId == targetEntityId)
+        {
+            return HitValidation::RejectSelf;
+        }
+        if (!shooter->m_alive || !target->m_alive)
+        {
+            return HitValidation::RejectDead;
+        }
+        if (GetTeam(shooterEntityId) == GetTeam(targetEntityId))
+        {
+            return HitValidation::RejectTeammate;
+        }
+        const float limit = maxRange + PlayerHitRadius;
+        if ((target->m_position - shooter->m_position).GetLengthSq() > limit * limit)
+        {
+            return HitValidation::RejectRange;
+        }
+        return HitValidation::Accept;
     }
 
     AZ::EntityId MatchRulesetModel::ResolvePvpHit(

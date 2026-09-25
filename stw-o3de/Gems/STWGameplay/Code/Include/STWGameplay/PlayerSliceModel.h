@@ -119,7 +119,7 @@ namespace STWGameplay
         //! model's last TryFire() reported hitting, if any - the caller
         //! applies the actual cross-model damage, since this model has no
         //! access to any other player's PlayerSliceModel instance.
-        AZ::EntityId ConsumeLastPvpHitTarget(float& outDamage);
+        AZ::EntityId ConsumeLastPvpHitTarget(float& outDamage, float& outRange);
 
         const PlayerState& GetPlayer() const { return m_player; }
         const WeaponState& GetWeapon() const { return m_weapons.GetWeapon(); }
@@ -208,6 +208,7 @@ namespace STWGameplay
         MatchRulesetModel* m_matchRuleset = nullptr;
         AZ::EntityId m_lastPvpHitTarget;
         float m_lastPvpHitDamage = 0.0f;
+        float m_lastPvpHitRange = 0.0f;
         bool m_jumpWasHeld = false;
         bool m_crouchWasHeld = false;
         bool m_mantleWasHeld = false;

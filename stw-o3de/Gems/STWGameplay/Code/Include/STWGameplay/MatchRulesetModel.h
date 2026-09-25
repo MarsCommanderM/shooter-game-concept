@@ -74,6 +74,28 @@ namespace STWGameplay
         //! processed.
         void SetPlayerStates(const AZStd::vector<PvpPlayerState>& states) { m_playerStates = states; }
 
+        enum class HitValidation : AZ::u8
+        {
+            Accept,
+            RejectNonFinite,
+            RejectNotPresent,
+            RejectSelf,
+            RejectDead,
+            RejectTeammate,
+            RejectRange
+        };
+
+        static const char* HitValidationName(HitValidation validation);
+
+        //! Re-checks a claimed hit against the current authoritative player
+        //! states. ResolvePvpHit chooses a target; this is the gate that
+        //! must pass again before damage is applied.
+        HitValidation ValidateAuthoritativeHit(
+            AZ::EntityId shooterEntityId,
+            AZ::EntityId targetEntityId,
+            float damage,
+            float maxRange) const;
+
         //! Resolves one shot against every OTHER bound, alive player -
         //! never the shooter itself, and never a teammate (no friendly fire
         //! in Team Deathmatch - a deliberate rule for this mode, not an

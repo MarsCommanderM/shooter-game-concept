@@ -1,6 +1,8 @@
 #include <AzTest/AzTest.h>
 #include <AzCore/Math/MathUtils.h>
+#include <limits>
 #include <STWGameplay/FixedSimulationClock.h>
+#include <STWGameplay/MatchRulesetModel.h>
 #include <STWGameplay/PlayerSliceModel.h>
 #include <STWGameplay/PlayerSimulationTypes.h>
 #include <cmath>
@@ -1126,5 +1128,54 @@ namespace STWGameplay
             ASSERT_TRUE(predicted.Update(FixedSimulationClock::FixedDeltaTime, {}));
         }
         EXPECT_FLOAT_EQ(predicted.GetPlayer().m_health, predictedBefore);
+    }
+
+    TEST(PlayerSliceModelTests, AuthoritativeHitValidationRejectsBeforeDamage)
+    {
+        MatchRulesetModel rules;
+        const AZ::EntityId shooter(1);
+        const AZ::EntityId target(2);
+        rules.AssignTeam(shooter);
+        rules.AssignTeam(target);
+
+        PvpPlayerState shooterState;
+        shooterState.m_entityId = shooter;
+        shooterState.m_position = AZ::Vector3::CreateZero();
+        shooterState.m_alive = true;
+        PvpPlayerState targetState = shooterState;
+        targetState.m_entityId = target;
+        targetState.m_position = AZ::Vector3(2.0f, 0.0f, 0.0f);
+        rules.SetPlayerStates({ shooterState, targetState });
+        EXPECT_EQ(
+            rules.ValidateAuthoritativeHit(shooter, target, 16.0f, 60.0f),
+            MatchRulesetModel::HitValidation::Accept);
+
+        rules.ClearTeamAssignments();
+        rules.AssignTeam(shooter);
+        rules.SetPlayerStates({ shooterState, targetState });
+        EXPECT_EQ(
+            rules.ValidateAuthoritativeHit(shooter, target, 16.0f, 60.0f),
+            MatchRulesetModel::HitValidation::RejectTeammate);
+
+        rules.AssignTeam(target);
+        targetState.m_position = AZ::Vector3(100.0f, 0.0f, 0.0f);
+        rules.SetPlayerStates({ shooterState, targetState });
+        EXPECT_EQ(
+            rules.ValidateAuthoritativeHit(shooter, target, 16.0f, 10.0f),
+            MatchRulesetModel::HitValidation::RejectRange);
+
+        targetState.m_position = AZ::Vector3(2.0f, 0.0f, 0.0f);
+        targetState.m_alive = false;
+        rules.SetPlayerStates({ shooterState, targetState });
+        EXPECT_EQ(
+            rules.ValidateAuthoritativeHit(shooter, target, 16.0f, 60.0f),
+            MatchRulesetModel::HitValidation::RejectDead);
+
+        EXPECT_EQ(
+            rules.ValidateAuthoritativeHit(shooter, AZ::EntityId(9), 16.0f, 60.0f),
+            MatchRulesetModel::HitValidation::RejectNotPresent);
+        EXPECT_EQ(
+            rules.ValidateAuthoritativeHit(shooter, target, std::numeric_limits<float>::quiet_NaN(), 60.0f),
+            MatchRulesetModel::HitValidation::RejectNonFinite);
     }
 }

@@ -322,6 +322,7 @@ namespace STWGameplay
             {
                 m_lastPvpHitTarget = pvpTarget;
                 m_lastPvpHitDamage = use.m_damage;
+                m_lastPvpHitRange = use.m_range;
                 m_presentation.m_hit = true;
                 m_presentation.m_hitCueRemaining = 0.12f;
             }
@@ -329,12 +330,14 @@ namespace STWGameplay
         return true;
     }
 
-    AZ::EntityId PlayerSliceModel::ConsumeLastPvpHitTarget(float& outDamage)
+    AZ::EntityId PlayerSliceModel::ConsumeLastPvpHitTarget(float& outDamage, float& outRange)
     {
         const AZ::EntityId target = m_lastPvpHitTarget;
         outDamage = m_lastPvpHitDamage;
+        outRange = m_lastPvpHitRange;
         m_lastPvpHitTarget = AZ::EntityId();
         m_lastPvpHitDamage = 0.0f;
+        m_lastPvpHitRange = 0.0f;
         return target;
     }
 
