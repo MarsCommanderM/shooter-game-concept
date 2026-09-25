@@ -414,27 +414,11 @@ namespace STWGameplay
 
     void STWMultiplayerRuntime::ReconcileRosterAgainstConnections()
     {
-        ++m_reconcileDiagnosticTickCounter;
-        const bool traceThisTick = (m_reconcileDiagnosticTickCounter % 30u) == 1u;
         if (m_networkInterface == nullptr)
         {
-            if (traceThisTick)
-            {
-                AZ_Printf("STWGameplay", "STW_MP_ROSTER_RECONCILE_TRACE network_interface=null\n");
-            }
             return;
         }
         AzNetworking::IConnectionSet& connections = m_networkInterface->GetConnectionSet();
-        if (traceThisTick)
-        {
-            AZ_Printf(
-                "STWGameplay",
-                "STW_MP_ROSTER_RECONCILE_TRACE network_interface=set extent=%u live=%u connection_count=%u active_connection_count=%u\n",
-                m_roster.Extent(),
-                m_roster.Count(),
-                connections.GetConnectionCount(),
-                connections.GetActiveConnectionCount());
-        }
         for (uint32_t slot = 0; slot < m_roster.Extent(); ++slot)
         {
             if (!m_roster.IsOccupied(slot))
@@ -452,17 +436,6 @@ namespace STWGameplay
             const AzNetworking::IConnection* connection = connections.GetConnection(connectionId);
             const bool alive = connection != nullptr &&
                 connection->GetConnectionState() == AzNetworking::ConnectionState::Connected;
-            if (traceThisTick)
-            {
-                AZ_Printf(
-                    "STWGameplay",
-                    "STW_MP_ROSTER_RECONCILE_SLOT slot=%u user=%llu found=%d state=%u alive=%d\n",
-                    slot,
-                    static_cast<unsigned long long>(rosterKey),
-                    connection != nullptr ? 1 : 0,
-                    connection != nullptr ? static_cast<uint32_t>(connection->GetConnectionState()) : 0xFFFFFFFFu,
-                    alive ? 1 : 0);
-            }
             if (alive)
             {
                 continue;

@@ -367,13 +367,13 @@ namespace STWGameplay
             // already exceeds that, while a merely *delayed* one just
             // arrives late and resyncs on its own once it does - so drops,
             // not delay or direction changes, are what force a correction.
-            // Plain forward keeps that one variable isolated; the gate
-            // tunes STW_MP_COMMAND_LOSS_EVERY to a rate that forces more
-            // than one correction without exceeding the server's ability
-            // to ever catch back up (measured, not guessed: 25% loss
-            // produced exactly one correction that resynced cleanly; 50%
-            // never resynced at all, hundreds of corrections queued and
-            // only one ever completed).
+            // Plain forward keeps that one variable isolated; see
+            // multiplayer_gate.sh's GATE_LOSS_EVERY comment for the three
+            // measured loss rates this was tuned against and why - the
+            // short version is every rate tried keeps re-queuing
+            // corrections for as long as this input keeps moving, and
+            // loss_every=4 is the one still measured to let at least one
+            // of them actually complete rather than never catching up.
             sampledInput.m_forward = 1.0f;
         }
         return authority->CreateCommand(sampledInput, command);
