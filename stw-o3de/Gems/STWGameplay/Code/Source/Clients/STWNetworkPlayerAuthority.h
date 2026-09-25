@@ -78,6 +78,13 @@ namespace STWGameplay
             m_applyRewindPhysicsStep = false;
             return apply;
         }
+        void NoteRewindQueuedSpeed(float speed, bool applied)
+        {
+            m_rewindQueuedSpeed = speed;
+            m_rewindStepApplied = applied;
+        }
+        float RewindQueuedSpeed() const { return m_rewindQueuedSpeed; }
+        bool RewindStepApplied() const { return m_rewindStepApplied; }
         void NoteRewindSync(const AZ::Vector3& position, float& outDistance, bool& outReady)
         {
             outReady = false;
@@ -168,5 +175,7 @@ namespace STWGameplay
         int m_physxRewindAwaitSyncs = 0;
         bool m_rewindForwardArmed = true;
         bool m_applyRewindPhysicsStep = false;
+        bool m_rewindStepApplied = false;
+        float m_rewindQueuedSpeed = 0.0f;
     };
 } // namespace STWGameplay

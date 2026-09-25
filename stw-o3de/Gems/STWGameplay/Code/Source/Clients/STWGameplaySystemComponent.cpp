@@ -1218,13 +1218,20 @@ namespace STWGameplay
         // cleared by the engine's post-simulate callback even when its tick time is zero.
         if (gameplayUpdated)
         {
-            m_physicsPlayer.QueueVelocity(desiredPlayerVelocity);
-            if (STWNetworkPlayerAuthority* rewindingRoot = FindCompositionRootNetworkPlayer())
+            AZ::Vector3 stepVelocity = desiredPlayerVelocity;
+            STWNetworkPlayerAuthority* rewindingRoot = FindCompositionRootNetworkPlayer();
+            const bool rewindStep = rewindingRoot != nullptr && rewindingRoot->ConsumeRewindPhysicsStep();
+            if (rewindStep && stepVelocity.GetLengthSq() < 0.01f)
             {
-                if (rewindingRoot->ConsumeRewindPhysicsStep())
-                {
-                    m_physicsPlayer.ApplyQueuedStep(FixedSimulationClock::FixedDeltaTime);
-                }
+                PlayerInput forward;
+                forward.m_forward = 1.0f;
+                stepVelocity = rewindingRoot->GetModel().GetDesiredVelocity(forward);
+            }
+            m_physicsPlayer.QueueVelocity(stepVelocity);
+            if (rewindStep)
+            {
+                const bool applied = m_physicsPlayer.ApplyQueuedStep(FixedSimulationClock::FixedDeltaTime);
+                rewindingRoot->NoteRewindQueuedSpeed(stepVelocity.GetLength(), applied);
             }
             for (size_t index = 0; index < enemies.GetEnemyCount(); ++index)
             {
@@ -1280,7 +1287,7 @@ namespace STWGameplay
                     const AZStd::string entityText = rewinding->GetEntityId().ToString();
                     AZ_Printf(
                         "STWGameplay",
-                        "STW_MP_PHYSX_REWIND displaced=%d entity=%s from=(%.3f,%.3f,%.3f) to=(%.3f,%.3f,%.3f) distance=%.3f\n",
+                        "STW_MP_PHYSX_REWIND displaced=%d entity=%s from=(%.3f,%.3f,%.3f) to=(%.3f,%.3f,%.3f) distance=%.3f speed=%.3f applied=%d\n",
                         rewindDistance > 0.01f ? 1 : 0,
                         entityText.c_str(),
                         static_cast<float>(from.GetX()),
@@ -1289,7 +1296,9 @@ namespace STWGameplay
                         static_cast<float>(physicalPosition.GetX()),
                         static_cast<float>(physicalPosition.GetY()),
                         static_cast<float>(physicalPosition.GetZ()),
-                        rewindDistance);
+                        rewindDistance,
+                        rewinding->RewindQueuedSpeed(),
+                        rewinding->RewindStepApplied() ? 1 : 0);
                 }
             }
             if (m_automatedAcceptance)
