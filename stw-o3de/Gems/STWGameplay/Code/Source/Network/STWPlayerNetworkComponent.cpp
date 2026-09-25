@@ -6,6 +6,7 @@
 #include <Multiplayer/Components/NetBindComponent.h>
 
 #include <cmath>
+#include <cstdlib>
 
 namespace STWGameplay
 {
@@ -318,6 +319,19 @@ namespace STWGameplay
         UnbindGameplayAuthority();
     }
 
+    void STWPlayerNetworkComponentController::PopHeldCommand()
+    {
+        if (m_heldCount == 0)
+        {
+            return;
+        }
+        for (size_t index = 1; index < m_heldCount; ++index)
+        {
+            m_heldCommands[index - 1] = m_heldCommands[index];
+        }
+        --m_heldCount;
+    }
+
     void STWPlayerNetworkComponentController::CreateInput(
         Multiplayer::NetworkInput& input,
         [[maybe_unused]] float deltaTime)
@@ -330,12 +344,53 @@ namespace STWGameplay
         if (STWGameplaySystemComponent* gameplay = AZ::Interface<STWGameplaySystemComponent>::Get())
         {
             PlayerCommand command;
-            if (gameplay->CreateNetworkCommand(GetEntityId(), command))
+            if (!gameplay->CreateNetworkCommand(GetEntityId(), command))
             {
-                if (auto* networkInput = input.FindComponentInput<STWPlayerNetworkComponentNetworkInput>())
+                return;
+            }
+            if (m_heldCount < MaxHeldCommands)
+            {
+                m_heldCommands[m_heldCount++] = command;
+            }
+
+            const char* delayText = std::getenv("STW_MP_COMMAND_DELAY_STEPS");
+            const char* lossText = std::getenv("STW_MP_COMMAND_LOSS_EVERY");
+            const AZ::u32 delaySteps = delayText != nullptr ? static_cast<AZ::u32>(std::strtoul(delayText, nullptr, 10)) : 0u;
+            const AZ::u32 lossEvery = lossText != nullptr ? static_cast<AZ::u32>(std::strtoul(lossText, nullptr, 10)) : 0u;
+            const CommandTransportDecision decision = DecideCommandTransport(
+                static_cast<AZ::u32>(m_heldCount), delaySteps, m_heldCommands[0].m_sequence, lossEvery);
+            if (decision.m_dropped)
+            {
+                const PlayerCommandSequence droppedSequence = m_heldCommands[0].m_sequence;
+                PopHeldCommand();
+                if (!m_transportDropLogged)
                 {
-                    STWPlayerNetworkComponent::WriteCommand(*networkInput, command);
+                    AZ_Printf(
+                        "STWGameplay",
+                        "STW_MP_COMMAND_TRANSPORT sent=0 dropped=1 delay_steps=%u loss_every=%u sequence=%u\n",
+                        delaySteps, lossEvery, droppedSequence);
+                    m_transportDropLogged = true;
                 }
+                return;
+            }
+            if (!decision.m_send)
+            {
+                return;
+            }
+
+            const PlayerCommand released = m_heldCommands[0];
+            PopHeldCommand();
+            if ((delaySteps > 0u || lossEvery > 0u) && !m_transportReleaseLogged)
+            {
+                AZ_Printf(
+                    "STWGameplay",
+                    "STW_MP_COMMAND_TRANSPORT sent=1 dropped=0 delay_steps=%u loss_every=%u sequence=%u\n",
+                    delaySteps, lossEvery, released.m_sequence);
+                m_transportReleaseLogged = true;
+            }
+            if (auto* networkInput = input.FindComponentInput<STWPlayerNetworkComponentNetworkInput>())
+            {
+                STWPlayerNetworkComponent::WriteCommand(*networkInput, released);
             }
         }
     }

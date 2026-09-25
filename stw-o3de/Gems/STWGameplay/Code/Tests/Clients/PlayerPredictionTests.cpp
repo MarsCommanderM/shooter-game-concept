@@ -2,6 +2,7 @@
 
 #include <limits>
 
+#include <STWGameplay/PlayerCommand.h>
 #include <STWGameplay/PlayerPrediction.h>
 
 namespace STWGameplay
@@ -261,5 +262,28 @@ namespace STWGameplay
         authoritative.m_grounded = !predicted.m_grounded;
         EXPECT_STREQ(PlayerReconciliationPolicy::FirstMismatch(predicted, authoritative), "grounded");
         EXPECT_STREQ(PlayerReconciliationPolicy::FirstMismatch(predicted, predicted), "none");
+    }
+
+    TEST(PlayerPredictionTests, CommandTransportHoldsDelaysAndDropsExactMultiples)
+    {
+        const CommandTransportDecision immediate = DecideCommandTransport(1u, 0u, 5u, 0u);
+        EXPECT_TRUE(immediate.m_send);
+        EXPECT_FALSE(immediate.m_dropped);
+
+        const CommandTransportDecision held = DecideCommandTransport(2u, 2u, 5u, 0u);
+        EXPECT_FALSE(held.m_send);
+        EXPECT_FALSE(held.m_dropped);
+
+        const CommandTransportDecision released = DecideCommandTransport(3u, 2u, 5u, 0u);
+        EXPECT_TRUE(released.m_send);
+        EXPECT_FALSE(released.m_dropped);
+
+        const CommandTransportDecision dropped = DecideCommandTransport(1u, 0u, 4u, 4u);
+        EXPECT_FALSE(dropped.m_send);
+        EXPECT_TRUE(dropped.m_dropped);
+
+        const CommandTransportDecision kept = DecideCommandTransport(1u, 0u, 5u, 4u);
+        EXPECT_TRUE(kept.m_send);
+        EXPECT_FALSE(kept.m_dropped);
     }
 }

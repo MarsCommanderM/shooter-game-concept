@@ -77,4 +77,35 @@ namespace STWGameplay
     {
         return PlayerCommand(sampledInput, sequence);
     }
+
+    struct CommandTransportDecision
+    {
+        bool m_send = false;
+        bool m_dropped = false;
+    };
+
+    //! Delay is a count of already queued samples that must exist before the
+    //! oldest sample is released. Loss drops exact multiples of lossEvery.
+    //! delaySteps 0 and lossEvery 0 release the only queued sample immediately.
+    inline CommandTransportDecision DecideCommandTransport(
+        AZ::u32 queuedCount,
+        AZ::u32 delaySteps,
+        PlayerCommandSequence oldestSequence,
+        AZ::u32 lossEvery)
+    {
+        CommandTransportDecision decision;
+        const AZ::u32 delay = delaySteps > 8u ? 8u : delaySteps;
+        if (queuedCount <= delay)
+        {
+            return decision;
+        }
+        if (lossEvery > 0u && oldestSequence != InvalidPlayerSimulationSequence
+            && (oldestSequence % lossEvery) == 0u)
+        {
+            decision.m_dropped = true;
+            return decision;
+        }
+        decision.m_send = true;
+        return decision;
+    }
 }

@@ -79,8 +79,14 @@ namespace STWGameplay
     private:
         bool TryBindGameplayAuthority();
         void UnbindGameplayAuthority();
+        void PopHeldCommand();
 
         bool m_gameplayAuthorityBound = false;
+        static constexpr size_t MaxHeldCommands = 8;
+        PlayerCommand m_heldCommands[MaxHeldCommands]{};
+        size_t m_heldCount = 0;
+        bool m_transportReleaseLogged = false;
+        bool m_transportDropLogged = false;
     };
 
 } // namespace STWGameplay
