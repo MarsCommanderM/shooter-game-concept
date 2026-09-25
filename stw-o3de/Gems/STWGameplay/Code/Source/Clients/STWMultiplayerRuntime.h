@@ -80,6 +80,7 @@ namespace STWGameplay
         bool m_dedicatedHardenedLogged = false;
         uint32_t m_serverObservedDisconnectCount = 0;
         uint32_t m_reconcileDiagnosticTickCounter = 0;
+        uint32_t m_onTickDiagnosticCounter = 0;
         MatchRoster m_roster;
     };
 } // namespace STWGameplay

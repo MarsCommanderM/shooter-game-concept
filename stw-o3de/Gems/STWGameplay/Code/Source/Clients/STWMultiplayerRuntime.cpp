@@ -416,6 +416,16 @@ namespace STWGameplay
 
     void STWMultiplayerRuntime::OnTick([[maybe_unused]] float deltaTime, [[maybe_unused]] AZ::ScriptTimePoint time)
     {
+        ++m_onTickDiagnosticCounter;
+        if ((m_onTickDiagnosticCounter % 100u) == 1u)
+        {
+            AZ_Printf(
+                "STWGameplay",
+                "STW_MP_RUNTIME_ONTICK_ENTRY=1 count=%u multiplayer_set=%d agent_type=%u\n",
+                m_onTickDiagnosticCounter,
+                m_multiplayer != nullptr ? 1 : 0,
+                m_multiplayer != nullptr ? static_cast<uint32_t>(m_multiplayer->GetAgentType()) : 0xFFFFFFFFu);
+        }
         if (m_multiplayer == nullptr)
         {
             return;
