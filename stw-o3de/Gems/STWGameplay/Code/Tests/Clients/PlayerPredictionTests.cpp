@@ -2,6 +2,7 @@
 
 #include <limits>
 
+#include <STWGameplay/MatchSession.h>
 #include <STWGameplay/PlayerCommand.h>
 #include <STWGameplay/PlayerPrediction.h>
 
@@ -285,5 +286,52 @@ namespace STWGameplay
         const CommandTransportDecision kept = DecideCommandTransport(1u, 0u, 5u, 4u);
         EXPECT_TRUE(kept.m_send);
         EXPECT_FALSE(kept.m_dropped);
+    }
+
+    TEST(PlayerPredictionTests, MatchRosterAssignsTeamsAndRejectsAFullServer)
+    {
+        MatchRoster roster(2);
+        uint32_t slot = 99;
+        MatchTeam team = MatchTeam::B;
+        ASSERT_TRUE(roster.TryAdmit(0, slot, team));
+        EXPECT_EQ(slot, 0u);
+        EXPECT_EQ(team, MatchTeam::A);
+        ASSERT_TRUE(roster.TryAdmit(7, slot, team));
+        EXPECT_EQ(slot, 1u);
+        EXPECT_EQ(team, MatchTeam::B);
+        EXPECT_FALSE(roster.TryAdmit(8, slot, team));
+        ASSERT_TRUE(roster.TryAdmit(0, slot, team));
+        EXPECT_EQ(slot, 0u);
+
+        MatchRoster loaded;
+        ASSERT_TRUE(MatchRoster::Deserialize(roster.Serialize(), loaded));
+        EXPECT_EQ(loaded.Count(), 2u);
+        EXPECT_EQ(loaded.UserAt(0), 0u);
+        EXPECT_EQ(loaded.UserAt(1), 7u);
+        EXPECT_FALSE(MatchRoster::Deserialize("version=1\n", loaded));
+    }
+
+    TEST(PlayerPredictionTests, DedicatedHostRejectsPortZeroAndASecondHost)
+    {
+        DedicatedHostRequest request;
+        request.m_port = 0;
+        request.m_isDedicated = true;
+        request.m_capacity = 16;
+        EXPECT_EQ(ValidateDedicatedHost(request), DedicatedHostDecision::RejectPort);
+
+        request.m_port = 33450;
+        request.m_isDedicated = false;
+        EXPECT_EQ(ValidateDedicatedHost(request), DedicatedHostDecision::RejectNotDedicated);
+
+        request.m_isDedicated = true;
+        request.m_capacity = 0;
+        EXPECT_EQ(ValidateDedicatedHost(request), DedicatedHostDecision::RejectCapacity);
+
+        request.m_capacity = 16;
+        request.m_alreadyHosting = true;
+        EXPECT_EQ(ValidateDedicatedHost(request), DedicatedHostDecision::RejectAlreadyHosting);
+
+        request.m_alreadyHosting = false;
+        EXPECT_EQ(ValidateDedicatedHost(request), DedicatedHostDecision::Accept);
     }
 }

@@ -1238,6 +1238,24 @@ namespace STWGameplay
             const PlayerCommandSequence acknowledgedCommandSequence = gameplayUpdated
                 ? command.m_sequence : m_authoritativeSnapshot.m_acknowledgedCommandSequence;
             CaptureAuthoritativeSnapshot(acknowledgedCommandSequence);
+            if (STWNetworkPlayerAuthority* rewinding = FindCompositionRootNetworkPlayer())
+            {
+                if (rewinding->HasPhysxRewind() && gameplayUpdated)
+                {
+                    const size_t remaining = rewinding->ConsumePhysxRewindStep();
+                    rewinding->NotePhysxRewindPosition(physicalPosition, grounded);
+                    const AZStd::string entityText = rewinding->GetEntityId().ToString();
+                    AZ_Printf(
+                        "STWGameplay",
+                        "STW_MP_PHYSX_REWIND stepped=1 remaining=%zu entity=%s physx=(%.3f,%.3f,%.3f) grounded=%d\n",
+                        remaining,
+                        entityText.c_str(),
+                        static_cast<float>(physicalPosition.GetX()),
+                        static_cast<float>(physicalPosition.GetY()),
+                        static_cast<float>(physicalPosition.GetZ()),
+                        grounded ? 1 : 0);
+                }
+            }
             if (m_automatedAcceptance)
             {
                 m_spawnCheckpointLastPhysicalPosition = physicalPosition;

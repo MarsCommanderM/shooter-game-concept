@@ -53,6 +53,22 @@ namespace STWGameplay
         //! stale pre-respawn commands against the just-reset position.
         void ClearCommandHistory() { m_commandHistory.Clear(); }
         size_t GetCommandHistorySize() const { return m_commandHistory.Size(); }
+        void BeginPhysxRewind(size_t steps) { m_physxRewindRemaining = steps; }
+        bool HasPhysxRewind() const { return m_physxRewindRemaining > 0; }
+        size_t ConsumePhysxRewindStep()
+        {
+            if (m_physxRewindRemaining == 0)
+            {
+                return 0;
+            }
+            --m_physxRewindRemaining;
+            return m_physxRewindRemaining;
+        }
+        void NotePhysxRewindPosition(const AZ::Vector3& position, bool grounded)
+        {
+            m_authoritativeSnapshot.m_position = position;
+            m_authoritativeSnapshot.m_grounded = grounded;
+        }
         PlayerCommandSequence GetLastAppliedCommandSequence() const { return m_lastAppliedSequence; }
         PlayerCommandSequence GetLastReceivedCommandSequence() const { return m_lastReceivedSequence; }
         PlayerCommandSequence GetNextCommandSequence() const { return m_nextCommandSequence; }
@@ -103,5 +119,6 @@ namespace STWGameplay
         ReconciliationEvaluation m_lastReconciliationEvaluation;
         bool m_hasRemoteSnapshot = false;
         bool m_commandAvailable = false;
+        size_t m_physxRewindRemaining = 0;
     };
 } // namespace STWGameplay

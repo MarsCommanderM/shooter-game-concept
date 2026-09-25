@@ -5,6 +5,7 @@
 #include <AzCore/std/string/string.h>
 #include <Multiplayer/IMultiplayerSpawner.h>
 #include <Multiplayer/IMultiplayer.h>
+#include <STWGameplay/MatchSession.h>
 
 namespace STWGameplay
 {
@@ -48,6 +49,8 @@ namespace STWGameplay
         void OnNetworkInitialized(AzNetworking::INetworkInterface* networkInterface);
         void OnEndpointDisconnected(Multiplayer::MultiplayerAgentType agentType);
         void OnServerAcceptanceReceived();
+        void PersistMatchRecord();
+        uint32_t MatchCapacity() const;
 
         Multiplayer::IMultiplayer* m_multiplayer = nullptr;
         Multiplayer::NetworkInitEvent::Handler m_networkInitHandler;
@@ -57,5 +60,7 @@ namespace STWGameplay
         bool m_handlersConnected = false;
         bool m_sessionOwned = false;
         bool m_playerSpawnerRegistered = false;
+        bool m_dedicatedHardenedLogged = false;
+        MatchRoster m_roster;
     };
 } // namespace STWGameplay

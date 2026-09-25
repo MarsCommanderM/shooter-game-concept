@@ -1,6 +1,8 @@
 #include "STWMultiplayerRuntime.h"
 
 #include <AzCore/Component/Entity.h>
+#include <AzCore/IO/FileIO.h>
+#include <cstdlib>
 #include <AzCore/Component/TransformBus.h>
 #include <AzCore/Debug/Trace.h>
 #include <AzCore/Interface/Interface.h>
@@ -65,6 +67,31 @@ namespace STWGameplay
     {
         if (!Initialize())
         {
+            return false;
+        }
+
+        DedicatedHostRequest request;
+        request.m_port = port;
+        request.m_isDedicated = isDedicated;
+        request.m_capacity = m_roster.Capacity();
+        request.m_alreadyHosting = m_sessionOwned && m_state == STWMultiplayerTransportState::Hosting;
+        if (isDedicated)
+        {
+            const DedicatedHostDecision decision = ValidateDedicatedHost(request);
+            if (decision != DedicatedHostDecision::Accept)
+            {
+                AZ_Printf(
+                    "STWGameplay",
+                    "STW_MP_DEDICATED_REJECT reason=%s port=%u capacity=%u\n",
+                    DedicatedHostDecisionName(decision),
+                    static_cast<unsigned>(port),
+                    m_roster.Capacity());
+                return false;
+            }
+        }
+        else if (port == 0)
+        {
+            AZ_Printf("STWGameplay", "STW_MP_DEDICATED_REJECT reason=port port=0 capacity=%u\n", m_roster.Capacity());
             return false;
         }
 
@@ -140,6 +167,28 @@ namespace STWGameplay
         AZ_Printf("STWGameplay", "STW_MP_PLAYER_JOIN_BEGIN user_id=%llu agent_id=%llu\n",
             static_cast<unsigned long long>(userId),
             static_cast<unsigned long long>(agentDatum.m_id));
+        uint32_t slot = 0;
+        MatchTeam team = MatchTeam::A;
+        const uint64_t rosterKey = static_cast<uint64_t>(static_cast<unsigned long long>(agentDatum.m_id));
+        if (!m_roster.TryAdmit(rosterKey, slot, team))
+        {
+            AZ_Printf(
+                "STWGameplay",
+                "STW_MP_MATCHMAKING accepted=0 reason=full agent_id=%llu roster=%u capacity=%u\n",
+                static_cast<unsigned long long>(agentDatum.m_id),
+                m_roster.Count(),
+                m_roster.Capacity());
+            return {};
+        }
+        AZ_Printf(
+            "STWGameplay",
+            "STW_MP_MATCHMAKING accepted=1 agent_id=%llu slot=%u team=%s roster=%u capacity=%u\n",
+            static_cast<unsigned long long>(agentDatum.m_id),
+            slot,
+            team == MatchTeam::A ? "A" : "B",
+            m_roster.Count(),
+            m_roster.Capacity());
+        PersistMatchRecord();
         Multiplayer::INetworkEntityManager* networkEntityManager = m_multiplayer != nullptr
             ? m_multiplayer->GetNetworkEntityManager()
             : nullptr;
@@ -186,6 +235,66 @@ namespace STWGameplay
             m_sessionOwned = true;
             m_state = STWMultiplayerTransportState::Hosting;
         }
+        if (agentType == Multiplayer::MultiplayerAgentType::DedicatedServer && !m_dedicatedHardenedLogged)
+        {
+            m_dedicatedHardenedLogged = true;
+            AZ_Printf(
+                "STWGameplay",
+                "STW_MP_DEDICATED_HARDENED=1 agent=DedicatedServer capacity=%u\n",
+                m_roster.Capacity());
+        }
+    }
+
+    uint32_t STWMultiplayerRuntime::MatchCapacity() const
+    {
+        return m_roster.Capacity();
+    }
+
+    void STWMultiplayerRuntime::PersistMatchRecord()
+    {
+        AZ::IO::FileIOBase* fileIo = AZ::IO::FileIOBase::GetInstance();
+        if (fileIo == nullptr)
+        {
+            AZ_Printf("STWGameplay", "STW_MATCH_RECORD_SAVED=0 reason=no_file_io\n");
+            return;
+        }
+        const std::string record = m_roster.Serialize();
+        AZ::IO::HandleType handle = AZ::IO::InvalidHandle;
+        if (!fileIo->Open(
+                "@user@/stw_match_record.txt",
+                AZ::IO::OpenMode::ModeWrite | AZ::IO::OpenMode::ModeText | AZ::IO::OpenMode::ModeCreatePath,
+                handle))
+        {
+            AZ_Printf("STWGameplay", "STW_MATCH_RECORD_SAVED=0 reason=open\n");
+            return;
+        }
+        fileIo->Write(handle, record.data(), record.size());
+        fileIo->Close(handle);
+
+        if (!fileIo->Open("@user@/stw_match_record.txt", AZ::IO::OpenMode::ModeRead | AZ::IO::OpenMode::ModeText, handle))
+        {
+            AZ_Printf("STWGameplay", "STW_MATCH_RECORD_SAVED=1 STW_MATCH_RECORD_LOADED=0 reason=reread players=%u\n", m_roster.Count());
+            return;
+        }
+        AZ::u64 size = 0;
+        fileIo->Size(handle, size);
+        std::string loadedText;
+        if (size > 0)
+        {
+            loadedText.resize(static_cast<size_t>(size));
+            AZ::u64 bytesRead = 0;
+            fileIo->Read(handle, loadedText.data(), size, false, &bytesRead);
+            loadedText.resize(static_cast<size_t>(bytesRead));
+        }
+        fileIo->Close(handle);
+        MatchRoster loaded;
+        const bool parsed = MatchRoster::Deserialize(loadedText, loaded);
+        AZ_Printf(
+            "STWGameplay",
+            "STW_MATCH_RECORD_SAVED=1 STW_MATCH_RECORD_LOADED=%d players=%u loaded_players=%u\n",
+            parsed && loaded.Count() == m_roster.Count() ? 1 : 0,
+            m_roster.Count(),
+            parsed ? loaded.Count() : 0u);
     }
 
     void STWMultiplayerRuntime::OnPlayerLeave(
