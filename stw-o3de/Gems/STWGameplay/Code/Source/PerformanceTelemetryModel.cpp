@@ -8,10 +8,10 @@ namespace STWGameplay
 {
     namespace
     {
-        constexpr const char* CsvHeader =
+        constexpr const char* PerformanceTelemetryCsvHeader =
             "time_s,frame_ms,cpu_ms,gpu_ms,draw_calls,vram_mib,ram_mib\n";
 
-        bool IsFinite(const PerformanceTelemetrySample& sample)
+        bool PerformanceTelemetrySampleIsFinite(const PerformanceTelemetrySample& sample)
         {
             return std::isfinite(sample.m_timeSeconds)
                 && std::isfinite(sample.m_frameMilliseconds)
@@ -22,7 +22,7 @@ namespace STWGameplay
                 && std::isfinite(sample.m_ramMiB);
         }
 
-        double NearestRank(const AZStd::vector<double>& values, double quantile)
+        double PerformanceTelemetryNearestRank(const AZStd::vector<double>& values, double quantile)
         {
             AZStd::vector<double> sortedValues = values;
             AZStd::sort(sortedValues.begin(), sortedValues.end());
@@ -31,7 +31,7 @@ namespace STWGameplay
             return sortedValues[index];
         }
 
-        AZStd::string Error(const char* message)
+        AZStd::string PerformanceTelemetryError(const char* message)
         {
             return AZStd::string(message);
         }
@@ -62,21 +62,21 @@ namespace STWGameplay
         PerformanceTelemetrySummary summary;
         if (m_samples.empty())
         {
-            summary.m_error = Error("empty benchmark");
+            summary.m_error = PerformanceTelemetryError("empty benchmark");
             return summary;
         }
 
         for (size_t index = 0; index < m_samples.size(); ++index)
         {
             const PerformanceTelemetrySample& sample = m_samples[index];
-            if (!IsFinite(sample))
+            if (!PerformanceTelemetrySampleIsFinite(sample))
             {
-                summary.m_error = Error("non-finite telemetry");
+                summary.m_error = PerformanceTelemetryError("non-finite telemetry");
                 return summary;
             }
             if (index > 0 && sample.m_timeSeconds <= m_samples[index - 1].m_timeSeconds)
             {
-                summary.m_error = Error("timestamps must increase");
+                summary.m_error = PerformanceTelemetryError("timestamps must increase");
                 return summary;
             }
         }
@@ -84,7 +84,7 @@ namespace STWGameplay
         // This is the same forge.py rule: the first timestamp must start near zero.
         if (m_samples.front().m_timeSeconds > 1.0)
         {
-            summary.m_error = Error("timestamps must start near zero");
+            summary.m_error = PerformanceTelemetryError("timestamps must start near zero");
             return summary;
         }
 
@@ -99,9 +99,14 @@ namespace STWGameplay
         }
 
         summary.m_postWarmupSamples = postWarmup.size();
+        if (postWarmup.empty())
+        {
+            summary.m_error = PerformanceTelemetryError("no post-warmup samples");
+            return summary;
+        }
         if (postWarmup.size() < minimumSamples)
         {
-            summary.m_error = Error("insufficient post-warmup samples");
+            summary.m_error = PerformanceTelemetryError("insufficient post-warmup samples");
             return summary;
         }
 
@@ -110,7 +115,7 @@ namespace STWGameplay
         summary.m_durationSeconds = lastTime - firstTime;
         if (summary.m_durationSeconds < sampleSeconds)
         {
-            summary.m_error = Error("capture too short");
+            summary.m_error = PerformanceTelemetryError("capture too short");
             return summary;
         }
 
@@ -131,7 +136,7 @@ namespace STWGameplay
                 || sample.m_vramMiB <= 0.0
                 || sample.m_ramMiB <= 0.0)
             {
-                summary.m_error = Error("missing/zero telemetry");
+                summary.m_error = PerformanceTelemetryError("missing/zero telemetry");
                 return summary;
             }
             frameMilliseconds.push_back(sample.m_frameMilliseconds);
@@ -145,15 +150,15 @@ namespace STWGameplay
 
         if (std::abs(frameDurationSeconds - summary.m_durationSeconds) > summary.m_durationSeconds * 0.05)
         {
-            summary.m_error = Error("CSV must contain contiguous per-frame telemetry");
+            summary.m_error = PerformanceTelemetryError("CSV must contain contiguous per-frame telemetry");
             return summary;
         }
 
-        summary.m_frameP50Milliseconds = NearestRank(frameMilliseconds, 0.50);
-        summary.m_frameP95Milliseconds = NearestRank(frameMilliseconds, 0.95);
-        summary.m_frameP99Milliseconds = NearestRank(frameMilliseconds, 0.99);
-        summary.m_cpuP95Milliseconds = NearestRank(cpuMilliseconds, 0.95);
-        summary.m_gpuP95Milliseconds = NearestRank(gpuMilliseconds, 0.95);
+        summary.m_frameP50Milliseconds = PerformanceTelemetryNearestRank(frameMilliseconds, 0.50);
+        summary.m_frameP95Milliseconds = PerformanceTelemetryNearestRank(frameMilliseconds, 0.95);
+        summary.m_frameP99Milliseconds = PerformanceTelemetryNearestRank(frameMilliseconds, 0.99);
+        summary.m_cpuP95Milliseconds = PerformanceTelemetryNearestRank(cpuMilliseconds, 0.95);
+        summary.m_gpuP95Milliseconds = PerformanceTelemetryNearestRank(gpuMilliseconds, 0.95);
         for (const PerformanceTelemetrySample* sample : postWarmup)
         {
             summary.m_drawCallsPeak = AZStd::max(summary.m_drawCallsPeak, sample->m_drawCalls);
@@ -168,7 +173,7 @@ namespace STWGameplay
     void PerformanceTelemetryModel::WriteCsv(AZStd::string& output) const
     {
         output.clear();
-        output += CsvHeader;
+        output += PerformanceTelemetryCsvHeader;
         for (const PerformanceTelemetrySample& sample : m_samples)
         {
             output += AZStd::string::format(
