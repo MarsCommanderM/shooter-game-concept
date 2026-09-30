@@ -19,6 +19,19 @@ eines Arbeitspakets den Status gegen den aktuellen Remote-HEAD neu prüfen.
 
 ---
 
+## Geschäftsziel (Owner, 2026-09-30)
+
+- Premium-Kauf zu **15–20 €/$**, Ziel **~1 Mio. Einheiten** weltweit.
+- **PC zuerst**, bei Erfolg Integration in **Xbox- und PlayStation-Cloud-Gaming**.
+- Ehrliche Rechnung bei 1 Mio. × Ø 17,50 €: brutto 17,5 Mio. → nach MwSt. ≈ 14,7 →
+  nach 30 % Plattformanteil ≈ 10,3 → nach Refunds ≈ 9,9 Mio., **vor**
+  Ertragsteuer und Serverkosten (netto nach DE-Körperschaftsteuer ≈ 6,5–7 Mio.).
+- Konsequenzen für jede technische Entscheidung: Konsolen- und
+  Cloud-Fähigkeit (Plattformtrennung, Gamepad-first-UX, feste
+  Performance-Budgets), bezahlbarer Serverbetrieb, genug gleichzeitige
+  Spieler (Crossplay, Bot-Backfill). Konsolen-Ports brauchen Plattformverträge
+  (ID@Xbox, PlayStation Partners) und NDA-Engine-Code, das liegt beim Owner (E7).
+
 ## 0. Regeln für Agenten (kurz)
 
 1. **Ein Arbeitspaket (AP) auf einmal.** Nimm das oberste offene AP der
@@ -89,7 +102,7 @@ abgenommen ist, wird kein neuer Inhalt in die Breite gebaut.
 
 | AP | Inhalt | Abhängig | Abnahme | Status (2026-09-30) |
 |---|---|---|---|---|
-| P1.1 | **Performance-Telemetrie vervollständigen:** CPU/GPU-Frame-Zeit werden bereits gemessen (`PERFORMANCE_PROFILE`, `cpu_source=MainThreadCpuTime`, `gpu_source=PassTimestampExtent`; die Doku sagt fälschlich UNAVAILABLE). Es fehlen Draw Calls, VRAM/RAM-Peak, lückenloser CSV-Export, ≥3 Läufe, Formprüfung gegen `policy.json`. Befund `b0c3984`: Frame p95 37,6 ms bei CPU p95 10,7 / GPU p95 12,0 ms, Ursache der Differenz unbekannt | – | Messprotokoll nach PerformanceBudgets besteht Formprüfung; Differenz Frame vs. CPU/GPU erklärt | IN_ARBEIT (Hub A-001, Codex, Stufe 1 Design) |
+| P1.1 | **Performance-Telemetrie vervollständigen** (Stufe 2a Modell FERTIG `1031d58`, Stufe 2b Adapter = Hub A-003): CPU/GPU-Frame-Zeit werden bereits gemessen (`PERFORMANCE_PROFILE`, `cpu_source=MainThreadCpuTime`, `gpu_source=PassTimestampExtent`; die Doku sagt fälschlich UNAVAILABLE). Es fehlen Draw Calls, VRAM/RAM-Peak, lückenloser CSV-Export, ≥3 Läufe, Formprüfung gegen `policy.json`. Befund `b0c3984`: Frame p95 37,6 ms bei CPU p95 10,7 / GPU p95 12,0 ms, Ursache der Differenz unbekannt | – | Messprotokoll nach PerformanceBudgets besteht Formprüfung; Differenz Frame vs. CPU/GPU erklärt | IN_ARBEIT (Hub A-001, Codex, Stufe 1 Design) |
 | P1.2 | **First-Person-Arme** (`STW_FP_01`) für alle Waffenprofile, nicht nur `STW_RIFLE_02`; Hand-Sockets, ADS/Reload/Inspect-Animationen | – | Frame-Captures in Hüfte/ADS/Reload angesehen; Marker `ATOM_FIRSTPERSON_ARMS_MESH` im Gate Pflicht | TEILWEISE (nur Rifle 02, im Gate nicht Pflicht) |
 | P1.3 | **Produktions-Waffenmodelle** (10 Profile unter `Assets/Weapons/`) nach Waffenbudget (FP 85k Tris, 8 Slots, 3 LODs) | P1.2 | je Waffe Visual-Forge-Review `PRODUCTION_CANDIDATE` | OFFEN (alle Platzhalter) |
 | P1.4 | **Produktions-Spielercharakter** (ersetzt `STW_CHARACTER_01`) mit Rig, LODs, Collider | – | Visual-Forge-Review, anatomische Silhouette | OFFEN |
@@ -162,6 +175,9 @@ geprüft (Visual-Forge-Phase 10 „Scaling“: keine Regression).
 | P5.6 | Packaging/Release-Build PC, Store-Integration | OWNER (Store/Plattform) |
 | P5.7 | Rechtliches: Lizenzen aller Assets/Drittbibliotheken, Altersfreigabe, EULA/Datenschutz | OFFEN |
 | P5.8 | Konsolen-Vorbereitung (PlayStation/Xbox laut Vision „potenziell“) | OWNER |
+| P5.9 | Spielerdichte sichern: Crossplay-fähige Architektur, Bot-Backfill für nicht volle Lobbys, Regionen-Matchmaking | OFFEN |
+| P5.10 | Server-Kostenmodell: Kosten je CCU/Stunde messen (dedizierter Server auf Referenz-VM), Hosting-Wahl | OFFEN |
+| P5.11 | Cloud-Gaming-Tauglichkeit: Latenz-/Input-Budget, Auflösungs-/Bitraten-Profile, Gamepad-only-Bedienbarkeit aller Menüs | OFFEN |
 
 ## Phase 6: Polish, Beta, Release
 
@@ -219,5 +235,5 @@ geprüft (Visual-Forge-Phase 10 „Scaling“: keine Regression).
 | E4 | Art-Beschaffung: eigene DCC-Produktion, Outsourcing oder lizenzierte Assets? | P1.3–P1.5 |
 | E5 | Kampagne: Singleplayer-Story, Koop oder nur MP-Wochenkampagne? | P2.9 |
 | E6 | Welche 5 Sprachen? | P5.4 |
-| E7 | Store/Plattform für Release (Steam, Epic, eigene) und Konsolen ja/nein | P5.6, P5.8 |
+| E7 | Store für den PC-Release (Steam, Epic, eigene)? **Teilweise entschieden:** PC zuerst, danach Xbox/PlayStation Cloud Gaming bei Erfolg; Plattformverträge offen | P5.6, P5.8, P5.11 |
 | E8 | Backend für Accounts/Persistenz | P4.3 |
