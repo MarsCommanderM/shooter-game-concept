@@ -25,6 +25,10 @@ Classify visual content as `TEMPORARY_DEBUG`, `BLOCKOUT`, `TECHNICAL_VALIDATION`
 `PRODUCTION_CANDIDATE` or `PRODUCTION_READY`, and never call placeholder content
 final or production-ready without visual and runtime evidence.
 
+What to build next, in which order, and when a work package counts as done:
+[`docs/STW_PRODUCTION_ROADMAP.md`](docs/STW_PRODUCTION_ROADMAP.md). Read it
+before picking up any task and update its status in the same PR.
+
 ## Production scope
 
 New game implementation belongs under `stw-o3de/` and its controlled
