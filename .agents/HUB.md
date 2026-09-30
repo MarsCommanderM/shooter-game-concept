@@ -57,6 +57,11 @@ Der alte Ort `/teamspace/studios/this_studio/stw/` ist ein **Altklon von `main`
    - `.agents/claims/gate.lock` schreiben (`agent`, volle SHA, Start-UTC, Zweck);
    - nach Ende löschen und das Ergebnis posten.
    Niemals parallel zu Ollama/lokaler Inferenz oder einer Live-Spielsitzung.
+   **Umgebungsgrenze Codex (belegt 2026-09-30, `player-slice-20260930T190012Z`):**
+   In der Codex-Sandbox laufen Build und Unit-Tests, aber AssetProcessorBatch
+   kann keinen lokalen Server-Port öffnen. Das volle `task.sh` fährt deshalb
+   Claude auf Codex' exakter SHA. Codex postet nach Build + CTest-PASS
+   `status` mit SHA und Testzahl; Claude übernimmt Lock, Gate und Evidenz.
 8. **Fertig heißt bewiesen:** `done`-Nachricht enthält exakte SHA, Branch,
    geänderte Pfade, ausgeführte Befehle mit Exit-Codes, Testanzahl,
    Gate-Evidenzpfad (`stw-o3de-gate/...`) und alles, was **nicht** verifiziert ist.
