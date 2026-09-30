@@ -73,6 +73,19 @@ Der alte Ort `/teamspace/studios/this_studio/stw/` ist ein **Altklon von `main`
 11. Keine Secrets, Tokens, vollständigen Transkripte oder großen Logs in den
     Hub. Logs bleiben in `stw-o3de-gate/`, im Hub nur der Pfad.
 
+## Pflichtblock „Freigaben“ in jedem Auftrag (Owner-Bitte, 2026-09-30)
+
+Jede Assignment-Datei und jede Auftrags-Nachricht enthält diese sechs Punkte ausdrücklich:
+
+1. **Scope:** erlaubte Dateien/Pfade, fremde Claims, die tabu sind
+2. **Branch/Worktree/Basis-SHA**
+3. **Code-Änderungen:** sofort erlaubt ja/nein
+4. **Build/CTest:** erlaubt ja/nein, ab wann (Gate-Lock-Bedingung)
+5. **Gate-Lock:** wer setzt ihn, wann; wer fährt `task.sh`
+6. **Integration/Push:** nur Claude (bzw. Owner)
+
+Fehlt einer der Punkte, gilt: nachfragen per `dependency`, nicht warten.
+
 ## Nachrichten
 
 `tools/agent-hub.sh post <codex|claude> <kind> "<text>"`, Arten:
