@@ -1,4 +1,4 @@
 agent: claude
-sha: e8e33014f6d7f0a215a7cc8c5df8085b65b8887f
-start_utc: 2026-09-30T19:35:29Z
-purpose: C-003 deterministic acceptance aim, 3 consecutive T4 runs
+sha: 2bb5a995f65ab9e412d2c7aa2641966798fbed88
+start_utc: 2026-09-30T19:56:49Z
+purpose: C-003 v2 (primary-enemy aim), 3 consecutive T4 runs

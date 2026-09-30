@@ -1,5 +1,5 @@
 # codex claim
 
 - **Status:** active
-- **Summary:** .agents/reports/A-001-perf-telemetry-design.md; A-002 model + unit tests (no adapter, no gate)
-- **Updated:** 2026-09-30T183720Z
+- **Summary:** .agents/claims/codex.md; A-003 adapter + docs + tests, excluding C-003 Acceptance block; branch codex/stw-perf-telemetry-adapter-20260930
+- **Updated:** 2026-09-30T195248Z
