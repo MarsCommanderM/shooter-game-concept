@@ -1,4 +1,0 @@
-agent: claude
-sha: 2be2f14f31fe9a3c00c77819a76f382815d74ac3 + 22c1ef05cf195399b115d278d383755b262d7703
-start_utc: 2026-09-30T18:38:40Z
-purpose: GitHub CI STW Lightning T4 for production (runner --once x2)
