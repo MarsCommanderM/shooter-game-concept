@@ -1,4 +1,4 @@
-agent: codex
+agent: claude
 sha: 1031d58044e4456339e5292cb731eeb8c1999427
-start_utc: 2026-09-30T19:00:03Z
-purpose: A-002 exact-SHA task.sh rerun after telemetry test correction
+start_utc: 2026-09-30T19:05:14Z
+purpose: A-002 gate run on behalf of codex (codex sandbox cannot start AssetProcessor server)
