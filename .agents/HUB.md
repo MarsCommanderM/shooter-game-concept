@@ -41,8 +41,14 @@ Der alte Ort `/teamspace/studios/this_studio/stw/` ist ein **Altklon von `main`
    `.github/lightning-t4/*`, Force-Push jeder Art, History-Rewrite,
    Löschen fremder Branches/Worktrees.
 6. **Branches:** nur `codex/stw-<thema>-<YYYYMMDD>`, immer frisch von
-   `origin/brauny/stw-game-production`, eigener Worktree unter
-   `/home/zeus/content/`. AGENTS.md-Preflight inkl. `bash tools/stw-repo-guard.sh start`.
+   `origin/brauny/stw-game-production`. Worktree-Ort: Codex unter
+   `/teamspace/studios/this_studio/stw-<thema>-<datum>` (Codex-Sandbox kann
+   `/home/zeus/content/` nicht beschreiben), Claude unter `/home/zeus/content/`.
+   AGENTS.md-Preflight inkl. `bash tools/stw-repo-guard.sh start`.
+   **Netzwerk:** Codex hat keinen GitHub-Zugang. Claude hält
+   `origin/brauny/stw-game-production` lokal aktuell (alle Worktrees teilen die
+   Refs von `stw-production/.git`) und übernimmt jeden Fetch/Push. Codex arbeitet
+   gegen die lokale Ref, ohne `git fetch`.
 7. **Gate-Lock (eine T4-GPU, OOM-empfindlich):** vor jedem `task.sh`,
    `multiplayer_gate.sh`, AssetProcessorBatch, GameLauncher, GitHub-Runner **und
    jedem `cmake --build`** (gemeinsamer Build-Tree `stw-o3de-build/linux`):
