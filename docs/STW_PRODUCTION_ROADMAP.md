@@ -44,6 +44,12 @@ eines Arbeitspakets den Status gegen den aktuellen Remote-HEAD neu prüfen.
    lokaler LLM-Inferenz auf demselben Host (eine T4-GPU, OOM-empfindlich).
 8. **Offene Owner-Entscheidungen (Abschnitt 9) nie selbst raten.** Fragen.
 
+**Koordination mehrerer Agenten:** Hub unter
+`/teamspace/studios/this_studio/stw-agent-hub/.agents/` (Branch
+`codex/stw-agent-hub`, auf GitHub gespiegelt). Regeln dort in `HUB.md`,
+Aufträge in `assignments/`, Gate-Lock in `claims/gate.lock`. Claude ist
+Orchestrator, Codex Engineer (Owner-Anweisung 2026-09-30).
+
 Status-Werte: `OFFEN`, `IN_ARBEIT`, `FERTIG` (mit Beleg), `BLOCKIERT` (mit Grund),
 `OWNER` (wartet auf Owner-Entscheidung).
 
@@ -69,7 +75,7 @@ weitergebaut werden kann.
 |---|---|---|---|
 | P0.1 | PR #9 (MP-Integrität), #11 (Hit-Evidence), #10 (Quality-Banner) in Produktion | kombinierte SHA T4-Gate PASS, Fast-Forward-Push | IN_ARBEIT: Kandidat `b0c39841` (Merge #11 + #10 auf #9) lokal T4 `RESULT=PASS` inkl. MP-Gate (`stw-o3de-gate/player-slice-20260930T174641Z`, `multiplayer-20260930T175517Z-78056`, 406 Tests); Fast-Forward-Push wartet auf Owner |
 | P0.2 | Diese Roadmap in Produktion, verlinkt aus AGENTS.md | PR gemergt | IN_ARBEIT |
-| P0.3 | Gate-Lücke schließen: `MAIN_MENU_ACCEPTANCE` und `DESTRUCTIBLE_ACCEPTANCE` werden nur geloggt, `task.sh` prüft sie nicht (beide am 2026-09-30 im Game.log `result=PASS`, aber nicht gate-erzwungen) | beide Marker in `task.sh` Pflicht; Negativtest | OFFEN |
+| P0.3 | Gate-Lücke schließen: `MAIN_MENU_ACCEPTANCE` und `DESTRUCTIBLE_ACCEPTANCE` werden nur geloggt, `task.sh` prüft sie nicht (beide am 2026-09-30 im Game.log `result=PASS`, aber nicht gate-erzwungen) | beide Marker in `task.sh` Pflicht; Negativtest | IN_ARBEIT (Hub C-001, Claude, `2be2f14`) |
 | P0.4 | Recovery-Freeze Issue #5 / PR #4 zur Owner-Entscheidung aufbereiten. Befund 2026-09-30: die gesicherten Recovery-Branches (`recovery/stw-weekend-full-2026-09-14`, `recovery/stw-weekend-reconciled-2026-09-14`) enthalten **keinen** echten Ragdoll-Code, nur denselben Zustandsautomaten mit Kommentar „ragdoll ownership remains unavailable“ wie Produktion. Multiplayer-Anteil ist in Produktion überholt und gate-bewiesen. | Beweis-Kommentar in Issue #5; Schließen = Owner | OWNER |
 | P0.5 | Repo-Hygiene: veraltete PRs #1/#2/#3 (gegen `main`), #7/#8 (überholte Recovery) bewerten; roter `Vercel`-Check stammt vom archivierten Web-Prototyp | Owner entscheidet schließen/behalten; Vercel-Integration trennen | OWNER |
 | P0.6 | Lokale Studio-Aufräumarbeit: veraltete Worktrees (`stw-gate-source-worktree-*`, `stw-reconcile-production`, `stw-phase0-production`, kaputter `stw-industrial-yard`) dokumentiert entfernen, nur nach Sicherung | Liste + Sicherung + Owner-OK | OWNER |
@@ -83,7 +89,7 @@ abgenommen ist, wird kein neuer Inhalt in die Breite gebaut.
 
 | AP | Inhalt | Abhängig | Abnahme | Status (2026-09-30) |
 |---|---|---|---|---|
-| P1.1 | **Performance-Telemetrie:** echte CPU/GPU-Frame-Zeiten, Draw Calls, VRAM/RAM als CSV (heute `cpu_frame_ms=UNAVAILABLE`) | – | Messprotokoll nach PerformanceBudgets besteht Formprüfung | OFFEN |
+| P1.1 | **Performance-Telemetrie vervollständigen:** CPU/GPU-Frame-Zeit werden bereits gemessen (`PERFORMANCE_PROFILE`, `cpu_source=MainThreadCpuTime`, `gpu_source=PassTimestampExtent`; die Doku sagt fälschlich UNAVAILABLE). Es fehlen Draw Calls, VRAM/RAM-Peak, lückenloser CSV-Export, ≥3 Läufe, Formprüfung gegen `policy.json`. Befund `b0c3984`: Frame p95 37,6 ms bei CPU p95 10,7 / GPU p95 12,0 ms, Ursache der Differenz unbekannt | – | Messprotokoll nach PerformanceBudgets besteht Formprüfung; Differenz Frame vs. CPU/GPU erklärt | IN_ARBEIT (Hub A-001, Codex, Stufe 1 Design) |
 | P1.2 | **First-Person-Arme** (`STW_FP_01`) für alle Waffenprofile, nicht nur `STW_RIFLE_02`; Hand-Sockets, ADS/Reload/Inspect-Animationen | – | Frame-Captures in Hüfte/ADS/Reload angesehen; Marker `ATOM_FIRSTPERSON_ARMS_MESH` im Gate Pflicht | TEILWEISE (nur Rifle 02, im Gate nicht Pflicht) |
 | P1.3 | **Produktions-Waffenmodelle** (10 Profile unter `Assets/Weapons/`) nach Waffenbudget (FP 85k Tris, 8 Slots, 3 LODs) | P1.2 | je Waffe Visual-Forge-Review `PRODUCTION_CANDIDATE` | OFFEN (alle Platzhalter) |
 | P1.4 | **Produktions-Spielercharakter** (ersetzt `STW_CHARACTER_01`) mit Rig, LODs, Collider | – | Visual-Forge-Review, anatomische Silhouette | OFFEN |
