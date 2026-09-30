@@ -1,4 +1,4 @@
 agent: claude
-sha: 2be2f14f31fe9a3c00c77819a76f382815d74ac3
-start_utc: 2026-09-30T18:20:12Z
-purpose: C-001 P0.3 full T4 gate
+sha: b0c39841d2234c1ac340d78d87b3abb25909b6ec
+start_utc: 2026-09-30T18:28:47Z
+purpose: GitHub CI STW Lightning T4 for production b0c3984 (runner --once)
