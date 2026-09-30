@@ -1,5 +1,18 @@
 # STW CANONICAL REPOSITORY CONTRACT
 
+> ## PRODUCTION QUALITY BAR: REALISTIC CINEMATIC. NOT BLOCKOUT. NOT A PROTOTYPE.
+>
+> STW's target presentation is a hyper-realistic, cinematic AAA native 3D
+> multiplayer FPS. Over 100 prototypes of this game already exist. This is
+> not another one. Never propose, accept, describe, or ship blockout-tier,
+> placeholder-tier, greybox, or "tech demo"-tier visual or gameplay quality
+> as a finished result, in any folder, on any branch. Temporary blockouts
+> are a development tool, never the target. Read
+> [`docs/STW_PRODUCT_VISION.md`](docs/STW_PRODUCT_VISION.md) before any
+> architecture, asset, level, rendering, or cleanup decision. This applies
+> to every agent, every contributor, every session — no exceptions, and no
+> "just this once."
+
 These instructions apply to the entire repository.
 
 ## Canonical identity
