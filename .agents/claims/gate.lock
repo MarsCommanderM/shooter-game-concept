@@ -1,4 +1,4 @@
 agent: claude
 sha: 1031d58044e4456339e5292cb731eeb8c1999427
-start_utc: 2026-09-30T19:14:54Z
-purpose: GitHub CI STW Lightning T4 for production 1031d58 (runner --once)
+start_utc: 2026-09-30T19:24:34Z
+purpose: reproduce GitHub-CI T4 failure (run 36764287092) with local rerun
