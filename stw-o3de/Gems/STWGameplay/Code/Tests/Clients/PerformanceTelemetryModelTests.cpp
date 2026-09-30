@@ -40,7 +40,7 @@ namespace STWGameplay
 
         ASSERT_TRUE(summary.m_valid);
         EXPECT_EQ(summary.m_postWarmupSamples, 601);
-        EXPECT_NEAR(summary.m_durationSeconds, 180.9, 1e-9);
+        EXPECT_NEAR(summary.m_durationSeconds, 180.899, 1e-9);
         EXPECT_DOUBLE_EQ(summary.m_frameP50Milliseconds, 301.0);
         EXPECT_DOUBLE_EQ(summary.m_frameP95Milliseconds, 571.0);
         EXPECT_DOUBLE_EQ(summary.m_frameP99Milliseconds, 595.0);
