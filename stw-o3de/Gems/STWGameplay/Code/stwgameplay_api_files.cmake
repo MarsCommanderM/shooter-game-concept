@@ -19,6 +19,7 @@ set(FILES
     Include/STWGameplay/STWGameplayTypeIds.h
     Include/STWGameplay/PlayerSliceModel.h
     Include/STWGameplay/MatchRulesetModel.h
+    Include/STWGameplay/PerformanceTelemetryModel.h
     Include/STWGameplay/SpawnCheckpointModel.h
     Include/STWGameplay/BodycamCameraPresentation.h
     Include/STWGameplay/STWSkeletalCharacterPresentation.h
