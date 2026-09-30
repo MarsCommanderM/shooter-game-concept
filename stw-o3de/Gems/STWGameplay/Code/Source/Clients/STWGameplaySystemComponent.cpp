@@ -2026,29 +2026,19 @@ namespace STWGameplay
         // 36764287092 (1031d58) missed, the local rerun on the same binaries hit,
         // and without that one confirmed hit COMBAT_FEEDBACK, AUDIO, ENCOUNTER,
         // MULTI_ENEMY and SPAWN_CHECKPOINT acceptance never completed. While the
-        // script holds fire, aim at the nearest living enemy the way a player
-        // would. Only the gameplay look path (m_pendingLook*, consumed by the
-        // simulation step) is driven, so presentation sway/bodycam inputs stay the
-        // scripted values their own acceptance checks expect.
+        // script holds fire, aim at the primary enemy (PrimaryEnemyId, index 0,
+        // "enemy A" of the multi-enemy sequence) the way a player would. Never
+        // fall back to another enemy: UpdateMultiEnemyAcceptance() requires
+        // enemies B and C to stay undamaged until it eliminates them itself.
+        // Only the gameplay look path (m_pendingLook*, consumed by the simulation
+        // step) is driven, so presentation sway/bodycam inputs keep the scripted
+        // values their own acceptance checks expect.
         if (m_input.m_fire)
         {
             const AZ::Vector3 eye = m_model.GetEyePosition();
-            const EnemyCollectionModel& acceptanceEnemies = m_model.GetEnemies();
-            bool acceptanceTargetFound = false;
-            AZ::Vector3 acceptanceTarget = AZ::Vector3::CreateZero();
-            float acceptanceTargetDistanceSq = 0.0f;
-            for (size_t index = 0; index < acceptanceEnemies.GetEnemyCount(); ++index)
-            {
-                const EnemyState& enemy = acceptanceEnemies.GetInstanceByIndex(index).m_combat.GetState();
-                const float distanceSq = (enemy.m_position - eye).GetLengthSq();
-                if (enemy.m_alive && enemy.m_position.IsFinite()
-                    && (!acceptanceTargetFound || distanceSq < acceptanceTargetDistanceSq))
-                {
-                    acceptanceTargetFound = true;
-                    acceptanceTarget = enemy.m_position;
-                    acceptanceTargetDistanceSq = distanceSq;
-                }
-            }
+            const EnemyState& primaryEnemy = m_model.GetEnemy().GetState();
+            const bool acceptanceTargetFound = primaryEnemy.m_alive && primaryEnemy.m_position.IsFinite();
+            const AZ::Vector3 acceptanceTarget = primaryEnemy.m_position;
             if (acceptanceTargetFound)
             {
                 const AZ::Vector3 toTarget = acceptanceTarget - eye;
