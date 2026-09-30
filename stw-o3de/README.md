@@ -1,5 +1,16 @@
 # STW native O3DE production
 
+> ## PRODUCTION QUALITY BAR: REALISTIC CINEMATIC. NOT BLOCKOUT. NOT A PROTOTYPE.
+>
+> Everything under this directory targets a hyper-realistic, cinematic AAA
+> presentation. Over 100 prototypes of this game already exist — this is
+> not another one. Blockout geometry, placeholder materials, and debug
+> visuals are development tools only; never treat them, describe them, or
+> ship them as a finished result. See
+> [`../docs/STW_PRODUCT_VISION.md`](../docs/STW_PRODUCT_VISION.md) and
+> [Project Visual Forge](Docs/README.md) before any asset, level, or
+> rendering decision.
+
 `stw-o3de/` is the authoritative game root for current STW development.
 
 ## Pinned engine

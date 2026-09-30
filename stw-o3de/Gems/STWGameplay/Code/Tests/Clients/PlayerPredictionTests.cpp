@@ -311,6 +311,53 @@ namespace STWGameplay
         EXPECT_FALSE(MatchRoster::Deserialize("version=1\n", loaded));
     }
 
+    TEST(PlayerPredictionTests, MatchRosterFreesSlotWithoutReassigningOtherTeams)
+    {
+        MatchRoster roster(4);
+        uint32_t slot = 99;
+        MatchTeam team = MatchTeam::B;
+        ASSERT_TRUE(roster.TryAdmit(1, slot, team));
+        EXPECT_EQ(slot, 0u);
+        EXPECT_EQ(team, MatchTeam::A);
+        ASSERT_TRUE(roster.TryAdmit(2, slot, team));
+        EXPECT_EQ(slot, 1u);
+        EXPECT_EQ(team, MatchTeam::B);
+        ASSERT_TRUE(roster.TryAdmit(3, slot, team));
+        EXPECT_EQ(slot, 2u);
+        EXPECT_EQ(team, MatchTeam::A);
+        EXPECT_EQ(roster.Count(), 3u);
+
+        uint32_t removedSlot = 99;
+        EXPECT_FALSE(roster.TryRemove(999, removedSlot));
+        ASSERT_TRUE(roster.TryRemove(2, removedSlot));
+        EXPECT_EQ(removedSlot, 1u);
+        EXPECT_EQ(roster.Count(), 2u);
+        EXPECT_EQ(roster.Extent(), 3u);
+        EXPECT_FALSE(roster.IsOccupied(1));
+
+        // Neither remaining player's slot or team moved.
+        EXPECT_TRUE(roster.IsOccupied(0));
+        EXPECT_EQ(roster.UserAt(0), 1u);
+        EXPECT_TRUE(roster.IsOccupied(2));
+        EXPECT_EQ(roster.UserAt(2), 3u);
+
+        // A fresh admit reuses the freed slot - and its team - instead of
+        // growing the roster past its previous extent.
+        ASSERT_TRUE(roster.TryAdmit(4, slot, team));
+        EXPECT_EQ(slot, 1u);
+        EXPECT_EQ(team, MatchTeam::B);
+        EXPECT_EQ(roster.Count(), 3u);
+        EXPECT_EQ(roster.Extent(), 3u);
+
+        MatchRoster loaded;
+        ASSERT_TRUE(MatchRoster::Deserialize(roster.Serialize(), loaded));
+        EXPECT_EQ(loaded.Count(), 3u);
+        EXPECT_EQ(loaded.Extent(), 3u);
+        EXPECT_EQ(loaded.UserAt(0), 1u);
+        EXPECT_EQ(loaded.UserAt(1), 4u);
+        EXPECT_EQ(loaded.UserAt(2), 3u);
+    }
+
     TEST(PlayerPredictionTests, DedicatedHostRejectsPortZeroAndASecondHost)
     {
         DedicatedHostRequest request;

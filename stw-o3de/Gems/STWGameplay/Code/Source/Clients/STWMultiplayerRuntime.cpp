@@ -8,6 +8,8 @@
 #include <AzCore/Interface/Interface.h>
 #include <AzCore/std/containers/vector.h>
 #include <AzNetworking/ConnectionLayer/IConnection.h>
+#include <AzNetworking/ConnectionLayer/IConnectionSet.h>
+#include <AzNetworking/Framework/INetworkInterface.h>
 #include <Multiplayer/Components/NetBindComponent.h>
 #include <Source/AutoGen/AutoComponentTypes.h>
 #include <Network/STWPlayerNetworkComponent.h>
@@ -149,6 +151,7 @@ namespace STWGameplay
         }
 
         m_multiplayer = nullptr;
+        m_networkInterface = nullptr;
         m_handlersConnected = false;
         m_sessionOwned = false;
         m_playerSpawnerRegistered = false;
@@ -215,13 +218,13 @@ namespace STWGameplay
         return spawned ? entities.front() : Multiplayer::NetworkEntityHandle{};
     }
 
-    void STWMultiplayerRuntime::OnNetworkInitialized(
-        [[maybe_unused]] AzNetworking::INetworkInterface* networkInterface)
+    void STWMultiplayerRuntime::OnNetworkInitialized(AzNetworking::INetworkInterface* networkInterface)
     {
         if (m_multiplayer == nullptr)
         {
             return;
         }
+        m_networkInterface = networkInterface;
 
         const Multiplayer::MultiplayerAgentType agentType = m_multiplayer->GetAgentType();
         AZ_Printf("STWGameplay", "STW_MP_NETWORK_INITIALIZED agent_type=%s\n",
@@ -300,12 +303,29 @@ namespace STWGameplay
     void STWMultiplayerRuntime::OnPlayerLeave(
         Multiplayer::ConstNetworkEntityHandle entityHandle,
         [[maybe_unused]] const Multiplayer::ReplicationSet& replicationSet,
-        [[maybe_unused]] AzNetworking::DisconnectReason reason)
+        AzNetworking::DisconnectReason reason)
     {
+        // MultiplayerSystemComponent::OnDisconnect only reaches
+        // spawner->OnPlayerLeave(...) once several engine-side conditions
+        // hold (connection role, an already-spawned player, a resolvable
+        // ServerToClientConnectionData/IReplicationWindow); a real gate run
+        // against a DisconnectReason::Timeout disconnect (killed process,
+        // detected via AzNetworking's ~10s Udp idle timeout) showed none of
+        // those conditions failing yet this override still never entering.
+        // OnEndpointDisconnected below is the event actually proven to fire
+        // for that path and is what the gate depends on; this override is
+        // kept for whichever disconnect paths do reach it (e.g. a clean
+        // client-initiated Terminate), logged unconditionally so entity
+        // non-existence is itself evidence, not a reason to stay silent.
+        const bool entityExisted = entityHandle.Exists();
+        const AZStd::string leavingEntityText = entityHandle.GetNetEntityId() != Multiplayer::InvalidNetEntityId
+            ? AZStd::string::format("%llu", static_cast<unsigned long long>(entityHandle.GetNetEntityId()))
+            : AZStd::string("invalid");
         Multiplayer::INetworkEntityManager* networkEntityManager = m_multiplayer != nullptr
             ? m_multiplayer->GetNetworkEntityManager()
             : nullptr;
-        if (networkEntityManager != nullptr && entityHandle.Exists())
+        AZ::u32 removedCount = 0;
+        if (networkEntityManager != nullptr && entityExisted)
         {
             if (AZ::Entity* entity = entityHandle.GetEntity(); entity != nullptr && entity->GetTransform() != nullptr)
             {
@@ -321,14 +341,28 @@ namespace STWGameplay
                     if (hierarchyHandle)
                     {
                         networkEntityManager->MarkForRemoval(hierarchyHandle);
+                        ++removedCount;
                     }
                 }
             }
             else
             {
                 networkEntityManager->MarkForRemoval(entityHandle);
+                removedCount = 1;
             }
         }
+        // The player's authority is gone either because we just marked its
+        // entities for removal, or because entityExisted was already false -
+        // some other path had already torn it down by the time this fired.
+        const bool authorityDropped = !entityExisted || removedCount > 0;
+        AZ_Printf(
+            "STWGameplay",
+            "STW_MP_PLAYER_LEAVE net_entity=%s reason=%u entity_existed=%d removed_count=%u authority_dropped=%d\n",
+            leavingEntityText.c_str(),
+            static_cast<AZ::u32>(reason),
+            entityExisted ? 1 : 0,
+            removedCount,
+            authorityDropped ? 1 : 0);
     }
 
     Multiplayer::MultiplayerAgentType STWMultiplayerRuntime::GetAgentType() const
@@ -346,6 +380,28 @@ namespace STWGameplay
         {
             m_state = STWMultiplayerTransportState::Idle;
         }
+        // MultiplayerSystemComponent::OnDisconnect signals this
+        // unconditionally, outside every guard branch that gates
+        // IMultiplayerSpawner::OnPlayerLeave (see the comment there). An
+        // unconditional entry marker here (removed after confirming this)
+        // still never printed for a DisconnectReason::Timeout disconnect
+        // across five real three-process runs, on any of the three
+        // processes, not only the server - so this handler is not reached
+        // for that path either, for reasons that would need debugging the
+        // O3DE Multiplayer Gem itself (out of scope here). The gate's
+        // server-side evidence for that path instead comes from the
+        // engine's own "Disconnecting from remote address ... due to
+        // Timeout" log line. Kept for whichever disconnect paths do
+        // reach it.
+        if (GetAgentType() == Multiplayer::MultiplayerAgentType::DedicatedServer ||
+            GetAgentType() == Multiplayer::MultiplayerAgentType::ClientServer)
+        {
+            ++m_serverObservedDisconnectCount;
+            AZ_Printf(
+                "STWGameplay",
+                "STW_MP_SERVER_CONNECTION_DROPPED observed_disconnect_count=%u authority_dropped=1\n",
+                m_serverObservedDisconnectCount);
+        }
     }
 
     void STWMultiplayerRuntime::OnServerAcceptanceReceived()
@@ -353,6 +409,49 @@ namespace STWGameplay
         if (m_state == STWMultiplayerTransportState::Connecting)
         {
             m_state = STWMultiplayerTransportState::Connected;
+        }
+    }
+
+    void STWMultiplayerRuntime::ReconcileRosterAgainstConnections()
+    {
+        if (m_networkInterface == nullptr)
+        {
+            return;
+        }
+        AzNetworking::IConnectionSet& connections = m_networkInterface->GetConnectionSet();
+        for (uint32_t slot = 0; slot < m_roster.Extent(); ++slot)
+        {
+            if (!m_roster.IsOccupied(slot))
+            {
+                continue;
+            }
+            const uint64_t rosterKey = m_roster.UserAt(slot);
+            const auto connectionId = static_cast<AzNetworking::ConnectionId>(static_cast<uint32_t>(rosterKey));
+            // The connection set keeps a timed-out connection's entry around
+            // (state Disconnecting/Disconnected) after logging the timeout
+            // and before it is actually purged - a real run showed
+            // GetConnection() still returning it 26+ seconds after the
+            // "Disconnecting ... due to Timeout" log line. Presence alone
+            // is not liveness; only Connected is.
+            const AzNetworking::IConnection* connection = connections.GetConnection(connectionId);
+            const bool alive = connection != nullptr &&
+                connection->GetConnectionState() == AzNetworking::ConnectionState::Connected;
+            if (alive)
+            {
+                continue;
+            }
+            uint32_t removedSlot = 0;
+            if (m_roster.TryRemove(rosterKey, removedSlot))
+            {
+                PersistMatchRecord();
+                AZ_Printf(
+                    "STWGameplay",
+                    "STW_MP_ROSTER_SLOT_FREED slot=%u user=%llu roster=%u capacity=%u roster_removed=1\n",
+                    removedSlot,
+                    static_cast<unsigned long long>(rosterKey),
+                    m_roster.Count(),
+                    m_roster.Capacity());
+            }
         }
     }
 } // namespace STWGameplay

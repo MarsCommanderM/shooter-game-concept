@@ -925,7 +925,7 @@ for _ in $(seq 1 75); do
 done
 [[ -s "${FRAME_NATIVE}" ]]
 for _ in $(seq 1 180); do
-  runtime_grep -q 'PERFORMANCE_BASELINE' && runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS' && runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS' && runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS' && runtime_grep -q 'ENEMY_AI_ACCEPTANCE result=PASS' && runtime_grep -q 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'COMBAT_FEEDBACK_ACCEPTANCE result=PASS' && runtime_grep -q 'AUDIO_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'JUMP_ACCEPTANCE result=PASS' && runtime_grep -q 'CROUCH_ACCEPTANCE result=PASS' && runtime_grep -q 'SLIDE_ACCEPTANCE result=PASS' && runtime_grep -q 'MANTLE_ACCEPTANCE result=PASS' && runtime_grep -q 'TRAVERSAL_ARBITRATION_ACCEPTANCE result=PASS' && runtime_grep -q 'ENCOUNTER_ACCEPTANCE result=PASS' && runtime_grep -q 'MULTI_ENEMY_ACCEPTANCE result=PASS' && runtime_grep -q 'SPAWN_CHECKPOINT_ACCEPTANCE result=PASS' && runtime_grep -q 'WEAPON_SWITCH_ACCEPTANCE result=PASS' && runtime_grep -q 'LOADOUT_ACCEPTANCE result=PASS' && runtime_grep -q 'BLOCK_22_ANIMATION_ACCEPTANCE=PASS' && runtime_grep -q 'BODYCAM_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'ARENA_PRESENTATION_ACTIVE=1' && runtime_grep -q 'PERFORMANCE_PROFILE ' && break
+  runtime_grep -q 'PERFORMANCE_BASELINE' && runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS' && runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS' && runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS' && runtime_grep -q 'ENEMY_AI_ACCEPTANCE result=PASS' && runtime_grep -q 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'COMBAT_FEEDBACK_ACCEPTANCE result=PASS' && runtime_grep -q 'AUDIO_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'JUMP_ACCEPTANCE result=PASS' && runtime_grep -q 'CROUCH_ACCEPTANCE result=PASS' && runtime_grep -q 'SLIDE_ACCEPTANCE result=PASS' && runtime_grep -q 'MANTLE_ACCEPTANCE result=PASS' && runtime_grep -q 'TRAVERSAL_ARBITRATION_ACCEPTANCE result=PASS' && runtime_grep -q 'ENCOUNTER_ACCEPTANCE result=PASS' && runtime_grep -q 'MULTI_ENEMY_ACCEPTANCE result=PASS' && runtime_grep -q 'SPAWN_CHECKPOINT_ACCEPTANCE result=PASS' && runtime_grep -q 'WEAPON_SWITCH_ACCEPTANCE result=PASS' && runtime_grep -q 'LOADOUT_ACCEPTANCE result=PASS' && runtime_grep -q 'BLOCK_22_ANIMATION_ACCEPTANCE=PASS' && runtime_grep -q 'BODYCAM_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'ARENA_PRESENTATION_ACTIVE=1' && runtime_grep -q 'MAIN_MENU_ACCEPTANCE result=PASS' && runtime_grep -q 'DESTRUCTIBLE_ACCEPTANCE result=PASS' && runtime_grep -q 'PERFORMANCE_PROFILE ' && break
   kill -0 "${launcher_pid}" 2>/dev/null || { tail -n 200 "${LAUNCH_LOG}"; exit 1; }
   sleep 1
 done
@@ -960,6 +960,23 @@ runtime_grep -q 'BODYCAM_ADS_SUPPRESSION_ACTIVE=1'
 runtime_grep -q 'BODYCAM_RESET_TO_NEUTRAL_PASS=1'
 runtime_grep -q 'BODYCAM_REDUCED_MOTION_PROFILE_PASS=1'
 runtime_grep -q 'BODYCAM_PRESENTATION_ACCEPTANCE result=PASS'
+# Main menu and destructible acceptance used to be logged only; the gate now
+# requires them so a regression in either can no longer pass silently.
+runtime_grep -q 'MAIN_MENU_PRESENTATION_ACTIVE=1'
+runtime_grep -q 'MAIN_MENU_BUTTON_COUNT=22'
+runtime_grep -q 'MAIN_MENU_PLAY_GATES_REAL_INPUT_PASS=1'
+runtime_grep -q 'MAIN_MENU_ALL_BUTTONS_CLICK_TESTED=1'
+runtime_grep -q 'MAIN_MENU_SOUND_SLIDER_ROUNDTRIP_PASS=1'
+runtime_grep -q 'MAIN_MENU_KEY_REBIND_ROUNDTRIP_PASS=1'
+runtime_grep -q 'MAIN_MENU_CONTRAST_ROUNDTRIP_PASS=1'
+runtime_grep -q 'MAIN_MENU_INPUT_BINDINGS_PERSISTENCE_PASS=1'
+runtime_grep -q 'MAIN_MENU_BUTTON_SPRITE_APPLIED_PASS=1'
+runtime_grep -q 'MAIN_MENU_ACCEPTANCE result=PASS'
+runtime_grep -q 'DESTRUCTIBLE_OBJECTS_ACTIVE=1'
+runtime_grep -q 'DESTRUCTIBLE_OBJECT_COUNT=4'
+runtime_grep -q 'DESTRUCTIBLE_COLLIDER_DISABLE_PASS=1'
+runtime_grep -q 'DESTRUCTIBLE_MESH_HIDE_PASS=1'
+runtime_grep -q 'DESTRUCTIBLE_ACCEPTANCE result=PASS'
 runtime_grep -q 'AUDIO_PRESENTATION_ACTIVE=1'
 runtime_grep -q 'AUDIO_BACKEND_READY=1'
 runtime_grep -q 'AUDIO_FIRE_EVENT=1'
@@ -1740,4 +1757,29 @@ fi
 echo "=================================================="
 echo "STW_ASSETPROCESSOR_COMMAND_PROOF_END"
 echo "=================================================="
+
+# The single-process launcher above stays alive (idle) all the way to this
+# point - cleanup() only runs on script EXIT - so it and its Xvfb are torn
+# down explicitly here, before the cross-process gate starts its own
+# server/three-client processes and Xvfb displays, rather than leaving two
+# unrelated verification runs' processes alive on the host at once.
+if [[ -n "${launcher_pid}" ]] && kill -0 "${launcher_pid}" 2>/dev/null; then
+  kill -TERM -- "-${launcher_pid}" 2>/dev/null || true
+  wait "${launcher_pid}" 2>/dev/null || true
+fi
+if [[ -n "${xvfb_pid}" ]] && kill -0 "${xvfb_pid}" 2>/dev/null; then
+  kill -TERM "${xvfb_pid}" 2>/dev/null || true
+  wait "${xvfb_pid}" 2>/dev/null || true
+fi
+launcher_pid=""
+xvfb_pid=""
+
+echo "=================================================="
+echo "STW_MULTIPLAYER_GATE_BEGIN"
+echo "=================================================="
+bash "$(dirname "${BASH_SOURCE[0]}")/multiplayer_gate.sh"
+echo "=================================================="
+echo "STW_MULTIPLAYER_GATE_END"
+echo "=================================================="
+
 echo "RESULT=PASS"

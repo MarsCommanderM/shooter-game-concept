@@ -171,6 +171,12 @@ namespace STWGameplay
     {
         if (m_remoteSnapshotBound)
         {
+            // This entity was a remote (Client-role, presentation-only) proxy on this
+            // client. Its deactivation here means the network entity manager removed
+            // it - the normal path after the owning player disconnects - so stop
+            // presentation rather than let stale EMotionFX/Atom state linger.
+            AZ_Printf("STWGameplay", "STW_MP_REMOTE_PRESENTATION_STOPPED entity=%s\n",
+                GetEntityId().ToString().c_str());
             if (STWGameplaySystemComponent* gameplay = AZ::Interface<STWGameplaySystemComponent>::Get())
             {
                 gameplay->UnbindNetworkPlayer(GetEntityId());
