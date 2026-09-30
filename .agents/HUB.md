@@ -44,7 +44,8 @@ Der alte Ort `/teamspace/studios/this_studio/stw/` ist ein **Altklon von `main`
    `origin/brauny/stw-game-production`, eigener Worktree unter
    `/home/zeus/content/`. AGENTS.md-Preflight inkl. `bash tools/stw-repo-guard.sh start`.
 7. **Gate-Lock (eine T4-GPU, OOM-empfindlich):** vor jedem `task.sh`,
-   `multiplayer_gate.sh`, AssetProcessorBatch oder GameLauncher:
+   `multiplayer_gate.sh`, AssetProcessorBatch, GameLauncher, GitHub-Runner **und
+   jedem `cmake --build`** (gemeinsamer Build-Tree `stw-o3de-build/linux`):
    - prüfen, dass `.agents/claims/gate.lock` fehlt und
      `pgrep -fa 'task.sh|GameLauncher|HeadlessServer|AssetProcessorBatch'` leer ist;
    - `.agents/claims/gate.lock` schreiben (`agent`, volle SHA, Start-UTC, Zweck);

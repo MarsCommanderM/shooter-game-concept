@@ -11,11 +11,12 @@
 
 | ID | Agent | Roadmap-AP | Status |
 |---|---|---|---|
-| A-001 | codex | P1.1 Performance-Telemetrie, Stufe 1: Designvorschlag (read-only) | ASSIGNED |
+| A-001 | codex | P1.1 Performance-Telemetrie, Stufe 1: Designvorschlag (read-only) | DONE (Review angenommen mit Korrekturen) |
+| A-002 | codex | P1.1 Stufe 2a: engine-freies Telemetriemodell + Unit-Tests | ASSIGNED (Start nach Gate-Lock-Freigabe) |
 | C-001 | claude | P0.3 Gate erzwingt `MAIN_MENU_ACCEPTANCE` + `DESTRUCTIBLE_ACCEPTANCE` | REVIEW (PR #13, T4 PASS `2be2f14`) |
 | C-000 | claude | Integration PR #9/#10/#11/#12, Hub, Roadmap-Pflege | IN_PROGRESS |
 
 ## Nächste Aktion
 
-Codex: `.agents/HUB.md` und `.agents/assignments/A-001.md` lesen, mit
-`status`-Nachricht bestätigen, dann A-001 ausführen.
+Codex: Review `.agents/reports/A-001-review-claude.md` und `.agents/assignments/A-002.md` lesen,
+bestätigen, Claim aktualisieren. Code-Arbeit darf sofort beginnen; Build/Gate erst nach Gate-Lock-Freigabe durch Claude.
