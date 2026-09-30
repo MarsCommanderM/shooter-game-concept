@@ -2020,6 +2020,58 @@ namespace STWGameplay
             m_input.m_fire = true;
         }
 
+        // Acceptance-only deterministic aim. The scripted shots above used to fire
+        // along whatever heading the scripted movement left behind, so whether the
+        // moving enemy was inside the ray depended on frame timing: GitHub CI run
+        // 36764287092 (1031d58) missed, the local rerun on the same binaries hit,
+        // and without that one confirmed hit COMBAT_FEEDBACK, AUDIO, ENCOUNTER,
+        // MULTI_ENEMY and SPAWN_CHECKPOINT acceptance never completed. While the
+        // script holds fire, aim at the nearest living enemy the way a player
+        // would. Only the gameplay look path (m_pendingLook*, consumed by the
+        // simulation step) is driven, so presentation sway/bodycam inputs stay the
+        // scripted values their own acceptance checks expect.
+        if (m_input.m_fire)
+        {
+            const AZ::Vector3 eye = m_model.GetEyePosition();
+            const EnemyCollectionModel& acceptanceEnemies = m_model.GetEnemies();
+            bool acceptanceTargetFound = false;
+            AZ::Vector3 acceptanceTarget = AZ::Vector3::CreateZero();
+            float acceptanceTargetDistanceSq = 0.0f;
+            for (size_t index = 0; index < acceptanceEnemies.GetEnemyCount(); ++index)
+            {
+                const EnemyState& enemy = acceptanceEnemies.GetInstanceByIndex(index).m_combat.GetState();
+                const float distanceSq = (enemy.m_position - eye).GetLengthSq();
+                if (enemy.m_alive && enemy.m_position.IsFinite()
+                    && (!acceptanceTargetFound || distanceSq < acceptanceTargetDistanceSq))
+                {
+                    acceptanceTargetFound = true;
+                    acceptanceTarget = enemy.m_position;
+                    acceptanceTargetDistanceSq = distanceSq;
+                }
+            }
+            if (acceptanceTargetFound)
+            {
+                const AZ::Vector3 toTarget = acceptanceTarget - eye;
+                const float planar = std::sqrt(toTarget.GetX() * toTarget.GetX() + toTarget.GetY() * toTarget.GetY());
+                // GetAimDirection() is (sin yaw * cos pitch, cos yaw * cos pitch, sin pitch).
+                const float desiredYaw = std::atan2(toTarget.GetX(), toTarget.GetY());
+                const float desiredPitch = AZStd::clamp(
+                    std::atan2(toTarget.GetZ(), planar), -PlayerSliceModel::PitchLimit, PlayerSliceModel::PitchLimit);
+                float yawDelta = desiredYaw - m_model.GetPlayer().m_yaw;
+                while (yawDelta > AZ::Constants::Pi)
+                {
+                    yawDelta -= AZ::Constants::TwoPi;
+                }
+                while (yawDelta < -AZ::Constants::Pi)
+                {
+                    yawDelta += AZ::Constants::TwoPi;
+                }
+                // The model applies yaw += lookX * sensitivity and pitch -= lookY * sensitivity.
+                m_pendingLookX = yawDelta / PlayerSliceModel::LookSensitivity;
+                m_pendingLookY = -(desiredPitch - m_model.GetPlayer().m_pitch) / PlayerSliceModel::LookSensitivity;
+            }
+        }
+
         // Acceptance-only two-weapon stimulus. The model consumes a rising edge, so every switch
         // phase explicitly owns its assertion and is followed by a bounded release phase. In
         // particular, no time-windowed switch input may survive the authoritative player reset.
