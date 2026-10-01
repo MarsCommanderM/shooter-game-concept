@@ -18,6 +18,7 @@
 | A-001 | codex | P1.1 Performance-Telemetrie, Stufe 1: Designvorschlag (read-only) | DONE |
 | A-002 | codex | P1.1 Stufe 2a: engine-freies Telemetriemodell + Unit-Tests | DONE (`1031d58`, in Produktion) |
 | A-003 | codex | P1.1 Stufe 2b: Engine-Adapter + Frame-Lücke | **IN_ARBEIT — siehe Befund unten** |
+| A-004 | codex | P1.2 First-Person-Arme für alle 10 Waffenprofile | QUEUED (nach A-003), siehe `.agents/assignments/A-004.md` |
 | C-003 | claude | CI-Red-Fix (nicht-deterministisches Zielen in der Akzeptanz) | 3x T4 PASS bewiesen, Push blockiert (siehe oben) |
 | C-001 | claude | P0.3 Gate erzwingt `MAIN_MENU_ACCEPTANCE` + `DESTRUCTIBLE_ACCEPTANCE` | DONE (PR #13 gemergt) |
 | C-002 | claude | P1.7 Lighting-Vorarbeit (read-only) | DONE |
