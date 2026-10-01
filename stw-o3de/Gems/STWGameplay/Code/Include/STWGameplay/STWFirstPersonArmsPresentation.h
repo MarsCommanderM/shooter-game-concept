@@ -74,5 +74,7 @@ namespace STWGameplay
         bool m_motionAssetReady = false;
         bool m_visible = true;
         bool m_readyReported = false;
+        bool m_missReported = false;
+        bool m_motionLoop = true;
     };
 }

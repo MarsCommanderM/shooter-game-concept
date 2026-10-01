@@ -73,10 +73,10 @@ namespace STWGameplay
         static FirstPersonArmSelection Select(EquipmentProfileId profileId, FirstPersonArmPose pose);
         //! Reload wins, then inspect, then ADS, otherwise hip. Presentation uses this same mapping.
         static FirstPersonArmPose PoseFor(bool reloading, float adsBlend, bool inspect);
-        //! Marks m_resolved only when the loaded pose actor is this selection's own .actor product
-        //! and that mesh is visible. A table entry alone does not resolve.
+        //! Marks m_resolved only when the loaded pose clip is this selection's own .motion product,
+        //! the base path is that profile's .actor, and the mesh is visible. A table entry alone does not resolve.
         static bool ConfirmRuntime(
-            FirstPersonArmSelection& selection, const char* loadedPoseActorPath, bool meshVisible);
+            FirstPersonArmSelection& selection, const char* loadedMotionPath, bool meshVisible);
         //! PASS only when every profile and pose was ConfirmRuntime'd from its own loaded products.
         //! The returned pointer is replaced by the next call.
         static const char* MarkerFor(const FirstPersonArmSelection* selections, std::size_t count);

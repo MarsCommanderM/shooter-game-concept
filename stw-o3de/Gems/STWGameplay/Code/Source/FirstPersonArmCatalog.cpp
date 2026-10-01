@@ -47,6 +47,13 @@ namespace STWGameplay
                 && std::strstr(path, "stw_fp_01") == nullptr && ContainsFold(path, profileName);
         }
 
+        bool NamesMotionProduct(const char* path, const char* profileName)
+        {
+            return path != nullptr && profileName != nullptr && std::strstr(path, ".motion") != nullptr
+                && std::strstr(path, ".fbx") == nullptr && std::strstr(path, ".actor") == nullptr
+                && std::strstr(path, "stw_fp_01") == nullptr && ContainsFold(path, profileName);
+        }
+
         FirstPersonArmBinding Bind(EquipmentProfileId id, const char* name, float scale)
         {
             AZStd::string product = name;
@@ -75,10 +82,10 @@ namespace STWGameplay
             if (path.actor.empty())
             {
                 path.actor = root + ".actor";
-                path.hip = root + "_hip.actor";
-                path.ads = root + "_ads.actor";
-                path.reload = root + "_reload.actor";
-                path.inspect = root + "_inspect.actor";
+                path.hip = root + "_hip.motion";
+                path.ads = root + "_ads.motion";
+                path.reload = root + "_reload.motion";
+                path.inspect = root + "_inspect.motion";
             }
             const float base = 0.20f + (0.03f * static_cast<float>(index));
             return FirstPersonArmBinding{
@@ -152,7 +159,7 @@ namespace STWGameplay
         const FirstPersonArmPoseBinding& poseBinding = binding->m_poses[poseIndex];
         if (poseBinding.m_assetPath == nullptr || poseBinding.m_name == nullptr
             || !NamesActorProduct(binding->m_actorPath, binding->m_profileName)
-            || !NamesActorProduct(poseBinding.m_assetPath, binding->m_profileName)
+            || !NamesMotionProduct(poseBinding.m_assetPath, binding->m_profileName)
             || std::strcmp(poseBinding.m_name, pose == FirstPersonArmPose::Hip ? "hip"
                     : pose == FirstPersonArmPose::Ads ? "ads"
                     : pose == FirstPersonArmPose::Reload ? "reload"
@@ -193,21 +200,21 @@ namespace STWGameplay
     }
 
     bool FirstPersonArmCatalog::ConfirmRuntime(
-        FirstPersonArmSelection& selection, const char* loadedPoseActorPath, bool meshVisible)
+        FirstPersonArmSelection& selection, const char* loadedMotionPath, bool meshVisible)
     {
         selection.m_resolved = false;
         if (!selection.m_owned || !meshVisible || selection.m_binding == nullptr
-            || loadedPoseActorPath == nullptr || selection.m_actorPath == nullptr
+            || loadedMotionPath == nullptr || selection.m_actorPath == nullptr
             || selection.m_motionPath == nullptr || selection.m_binding->m_profileName == nullptr)
         {
             return false;
         }
-        if (std::strcmp(loadedPoseActorPath, selection.m_motionPath) != 0)
+        if (std::strcmp(loadedMotionPath, selection.m_motionPath) != 0)
         {
             return false;
         }
         if (!NamesActorProduct(selection.m_actorPath, selection.m_binding->m_profileName)
-            || !NamesActorProduct(loadedPoseActorPath, selection.m_binding->m_profileName))
+            || !NamesMotionProduct(loadedMotionPath, selection.m_binding->m_profileName))
         {
             return false;
         }
@@ -240,7 +247,7 @@ namespace STWGameplay
                     || selection.m_actorPath == nullptr || selection.m_motionPath == nullptr
                     || selection.m_poseName == nullptr || selection.m_binding->m_profileName == nullptr
                     || !NamesActorProduct(selection.m_actorPath, selection.m_binding->m_profileName)
-                    || !NamesActorProduct(selection.m_motionPath, selection.m_binding->m_profileName)
+                    || !NamesMotionProduct(selection.m_motionPath, selection.m_binding->m_profileName)
                     || std::strcmp(selection.m_poseName, poseNames[poseIndex]) != 0
                     || selection.m_handSocketLeft == nullptr || selection.m_handSocketRight == nullptr
                     || std::strcmp(selection.m_handSocketLeft, "hand_L") != 0

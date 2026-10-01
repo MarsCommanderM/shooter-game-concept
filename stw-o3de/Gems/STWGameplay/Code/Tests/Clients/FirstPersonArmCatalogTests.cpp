@@ -31,13 +31,15 @@ namespace STWGameplay
         ASSERT_NE(smgReload.m_motionPath, nullptr);
         EXPECT_EQ(std::strstr(smgReload.m_actorPath, "stw_fp_01"), nullptr);
         EXPECT_EQ(std::strstr(smgReload.m_actorPath, ".fbx"), nullptr);
-        EXPECT_EQ(std::strstr(smgReload.m_motionPath, ".motion"), nullptr);
+        EXPECT_EQ(std::strstr(smgReload.m_motionPath, ".fbx"), nullptr);
+        EXPECT_EQ(std::strstr(smgReload.m_motionPath, ".actor"), nullptr);
+        EXPECT_NE(std::strstr(smgReload.m_motionPath, ".motion"), nullptr);
         EXPECT_STREQ(
             smgReload.m_actorPath,
             "assets/industrialyard/stw_industrial_yard_01/firstperson/profiles/stw_smg_01/stw_smg_01.actor");
         EXPECT_STREQ(
             smgReload.m_motionPath,
-            "assets/industrialyard/stw_industrial_yard_01/firstperson/profiles/stw_smg_01/stw_smg_01_reload.actor");
+            "assets/industrialyard/stw_industrial_yard_01/firstperson/profiles/stw_smg_01/stw_smg_01_reload.motion");
         EXPECT_STREQ(smgReload.m_poseName, "reload");
         EXPECT_STRNE(smgReload.m_actorPath, rifleOnly.m_actorPath);
         EXPECT_STRNE(smgReload.m_motionPath, rifleOnly.m_motionPath);
@@ -118,9 +120,10 @@ namespace STWGameplay
                 const FirstPersonArmPoseBinding& pose = binding->m_poses[poseIndex];
                 EXPECT_STREQ(pose.m_name, poseNames[poseIndex]);
                 ASSERT_NE(pose.m_assetPath, nullptr);
-                EXPECT_NE(std::strstr(pose.m_assetPath, ".actor"), nullptr);
+                EXPECT_NE(std::strstr(pose.m_assetPath, ".motion"), nullptr);
                 EXPECT_EQ(std::strstr(pose.m_assetPath, ".fbx"), nullptr);
-                EXPECT_EQ(std::strstr(pose.m_assetPath, ".motion"), nullptr);
+                EXPECT_EQ(std::strstr(pose.m_assetPath, ".actor"), nullptr);
+                EXPECT_EQ(std::strstr(pose.m_assetPath, "stw_fp_01"), nullptr);
                 for (std::size_t other = poseIndex + 1; other < FirstPersonArmCatalog::PoseCount; ++other)
                 {
                     const FirstPersonArmPoseBinding& rest = binding->m_poses[other];
