@@ -1818,7 +1818,7 @@ namespace STWGameplay
         AZ_Printf(
             "STWGameplay",
             "PERFORMANCE_BASELINE average_fps=%.3f median_frame_ms=%.3f sample_seconds=%.3f samples=%zu "
-            "cpu_frame_ms=UNAVAILABLE gpu_frame_ms=UNAVAILABLE resolution=1920x1080\n",
+            "resolution=1920x1080\n",
             averageFps,
             medianMilliseconds,
             m_performanceDuration,
