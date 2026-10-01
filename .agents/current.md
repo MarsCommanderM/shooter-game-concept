@@ -1,35 +1,36 @@
-# Aktueller Stand (gepflegt von Grok, Orchestrator auf Zeit)
+# Aktueller Stand (Grok, Orchestrator auf Zeit)
 
-**Hub ist aktiv.** Letztes Update: 2026-10-01T21:21Z. Claude ist offline. Der Owner hat Grok auf den Orchestrator-Sitz gesetzt, bis er Claude zurücksetzt. Codex bleibt Engineer. Dieselben Regeln aus `HUB.md`. Nachrichten von Grok kommen als Agent `grok`.
+**Hub ist aktiv.** Letztes Update: 2026-10-01T21:31Z. Claude ist offline. Codex bleibt Engineer.
 
-## Arbeitsweise ab jetzt (ein AP, eine SHA, ein Beweis)
+## Entscheidung 21:31Z
 
-1. Es läuft immer nur das oberste offene Arbeitspaket der niedrigsten offenen Phase, dessen Abhängigkeiten erfüllt sind. Heute ist das **P1.1 / A-003**. A-004 bleibt QUEUED.
-2. Ein Beweis gilt nur für die exakte SHA, die im Gate-Log als `SOURCE_COMMIT` steht. Ein PASS auf einer älteren SHA zählt für den neuen Commit nicht.
-3. `done` enthält SHA, Branch, Pfade, Befehle mit Exit-Codes, Testzahl, Evidenzpfad und alles, was nicht verifiziert ist. Der Orchestrator reviewt den Diff gegen die Abnahme des Auftrags. Lücken werden ein Nachzieh-Commit auf demselben Auftrag, kein neues AP.
-4. Integration ist eine eigene SHA: Produktions-HEAD plus bereits bewiesene, noch nicht gepushte Fixes, die CI braucht, plus das reviewte AP. Ein T4 auf dieser kombinierten SHA, Roadmap-Status im selben PR. Push nach Produktion nur Orchestrator oder Owner.
-5. Eine T4. Wer den Lauf startet, hält `.agents/claims/gate.lock`, bis der Prozess weg ist, und postet danach das Ergebnis. Kein zweiter Build, kein `task.sh`, kein Launcher daneben.
+P1.1 ist auf SHA `4804029` gemessen und beantwortet die Roadmap-Frage. Die stärkste nächste Arbeit ist **P1.2 / A-004**, ein Profil nach dem bestehenden `STW_FP_01`, nicht ein weiterer T4 für die alte `PERFORMANCE_BASELINE`-Zeile und nicht alle 10 Waffen auf einmal.
 
-## A-003, Stand 21:21Z
+Beide starten an getrennten Pfaden. Kein gemeinsamer Build, kein zweiter Gate, solange A-004 nur Blender-Quellen schreibt.
 
-- Branch `codex/stw-perf-telemetry-adapter-20260930`, Worktree `stw-perf-telemetry-adapter-20260930`. Drei Commits über Produktion `db369f9`: `0fadded`, `e02fab3`, `4804029`. Enthält C-003 (`2bb5a99`) nicht.
-- `e02fab3`: Player-Slice `stw-o3de-gate/player-slice-20261001T210924Z` und Multiplayer `stw-o3de-gate/multiplayer-20261001T211413Z-417568`, beide `RESULT=PASS`. `PERFORMANCE_TELEMETRY_CSV=PASS samples=1989 duration_s=60.002 rows=2954`. Dieselbe Report-Zeile `PERFORMANCE_BASELINE` trägt weiter `cpu_frame_ms=UNAVAILABLE gpu_frame_ms=UNAVAILABLE`, weil `RecordPerformance` das literal druckt (`STWGameplaySystemComponent.cpp` Z. 1820). Damit ist A-003 Punkt 5 auf dieser SHA offen.
-- `e02fab3` ändert `.github/lightning-t4/task.sh` (+55). Das bleibt für dieses AP im Review. Weitere Änderungen an `task.sh` nur über eine `dependency`.
-- **Jetzt:** Codex hält `gate.lock` seit 21:18Z für den vollen T4 auf `4804029`. `task.sh` läuft (PIDs 428125, 428155). Diesen Lauf zu Ende führen. Keine Commits, kein Rebase, kein A-004, kein zweiter Build, solange der Lock liegt.
+## A-003
 
-## Nächster Schritt nach dem Lauf
+- Review: `.agents/reports/A-003-review-grok.md`
+- Evidenz Slice: `stw-o3de-gate/player-slice-20261001T212051Z`
+- Evidenz Multiplayer: `stw-o3de-gate/multiplayer-20261001T212709Z-443342`, `RESULT=PASS`
+- Frame p95 38.117 ms, RHI-CPU 38.143 ms, Main-Thread-CPU 10.075 ms, GPU 11.510 ms. Present bleibt `UNAVAILABLE` und ist so benannt.
+- `PERFORMANCE_BASELINE` bleibt absichtlich `UNAVAILABLE`. Nicht anfassen.
+- Codex postet `done` und löscht `gate.lock`. Die Gate-Prozesse sind weg. Kein weiterer Commit auf `codex/stw-perf-telemetry-adapter-20260930`.
 
-Codex postet `status`: SHA `4804029`, `RESULT`, Evidenzpfad, ob `PERFORMANCE_BASELINE` echte cpu/gpu-Werte hat, ob `PERFORMANCE_FRAME_GAP` und `PERFORMANCE_TELEMETRY_CSV=PASS` im Log stehen, Exit-Codes. Wenn der Lauf PASS ist und die Baseline weiter UNAVAILABLE druckt: ein Commit, nur diese Printf-Zeile, nichts in `UpdateAutomatedAcceptance`. Danach ein neuer Lock und ein T4 auf der neuen SHA. Wenn der Lauf FAIL ist: Ursache mit Logpfad posten, nicht denselben Lauf wiederholen.
+## A-004, erster Schnitt
 
-C-003 bleibt außerhalb dieses Branches. Vor jedem Produktions-Push kommt eine Integrations-SHA aus `db369f9` + C-003 + reviewtem A-003, einmal gegated. Der 3×-PASS von C-003 ist Claudes Bericht, von Grok in diesem Turn nicht neu gemessen.
+- Neuer Branch `codex/stw-firstperson-arms-20261001` von Produktions-HEAD `db369f9`, Worktree `/teamspace/studios/this_studio/stw-firstperson-arms-20261001`. Nicht vom Adapter-Branch.
+- Blender: `/teamspace/studios/this_studio/tools/blender/4.5.13/blender` (nicht im PATH). Die vorhandene `STW_FP_01.report.json` nennt „Blender 4.5.14 LTS“. Im Bericht die Ausgabe von `blender --version` schreiben.
+- Heute nur zwei Exporte: bestehendes `STW_FP_01` (Rifle, Regression, gleiche Report-Schlüssel) und `STW_SMG_01` (zweihändig, eigene Detailmeshes, kein umbenannter Rifle). Ausgabe neben das bestehende FirstPerson-Set unter `stw-o3de/Project/Assets/IndustrialYard/STW_INDUSTRIAL_YARD_01/FirstPerson/`. Die Engine lädt heute genau `STW_FP_01` für `STW_RIFLE_02`. Kein C++ , kein `task.sh`, kein Gate in diesem Schnitt.
+- Danach `status` mit Report-Pfaden, Tri-Zahlen, UV- und Armature-Flags, `hand_to_grip_distance_max`. Die übrigen 8 Profile und der Gate-Marker `ATOM_FIRSTPERSON_ARMS_MESH` kommen erst nach diesem Beweis.
 
 ## Aufträge
 
 | ID | Agent | Inhalt | Status |
 |---|---|---|---|
-| A-003 | codex | P1.1 Adapter | IN_ARBEIT, Gate auf `4804029` läuft |
-| A-004 | codex | P1.2 First-Person-Arme | QUEUED bis A-003 `done` und reviewt |
-| C-003 | claude | Aim-Fix, lokal 3× PASS laut Claude, nicht in Produktion | wartet auf Integrations-SHA |
-| C-000 | grok | Orchestration | IN_ARBEIT |
+| A-003 | codex | P1.1, SHA `4804029` | Beweis da, `done` fehlt, Lock noch gesetzt |
+| A-004 | codex | P1.2, zuerst FP_01 + SMG_01 | ASSIGNED, erster Schnitt |
+| C-003 | claude | Aim-Fix, nicht in diesem Branch | wartet auf spätere Integrations-SHA |
+| C-000 | grok | Review A-003, Zuschnitt A-004 | IN_ARBEIT |
 
-P0.5 und P0.6 bleiben Owner-Entscheidungen. Daran arbeiten wir nicht.
+P0.5 und P0.6 bleiben beim Owner.
