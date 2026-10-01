@@ -5742,8 +5742,8 @@ namespace STWGameplay
         }
 
         // Camera-relative native viewmodel. Exactly one pre-acquired STW Atom mesh is visible at
-        // a time. STW_RIFLE_02 additionally shows real skinned arms/gloves (STW_FP_01); the
-        // muzzle cue remains procedural for every profile.
+        // a time. Skinned arms follow FirstPersonArmCatalog::Select for the active profile.
+        // The muzzle cue remains procedural for every profile.
         // Recoil/sway/reload pose come from the presentation
         // model, which consumes authoritative events only; fire, damage and reload authority
         // remain in PlayerSliceModel.
@@ -5772,34 +5772,53 @@ namespace STWGameplay
         // reports it instead of silently drawing a placeholder.
         UpdateViewmodelMeshTransform(weaponCenter, right, presentedAim, presentedUp);
 
+        constexpr std::size_t armSelectionCount =
+            WeaponModel::EquipmentProfileCount * FirstPersonArmCatalog::PoseCount;
+        FirstPersonArmSelection armSelections[armSelectionCount];
+        std::size_t armSelectionWritten = 0;
+        for (std::size_t profileIndex = 0; profileIndex < WeaponModel::EquipmentProfileCount; ++profileIndex)
+        {
+            for (std::size_t poseIndex = 0; poseIndex < FirstPersonArmCatalog::PoseCount; ++poseIndex)
+            {
+                armSelections[armSelectionWritten++] = FirstPersonArmCatalog::Select(
+                    static_cast<EquipmentProfileId>(profileIndex), static_cast<FirstPersonArmPose>(poseIndex));
+            }
+        }
         if (!m_armCatalogReported)
         {
+            for (std::size_t index = 0; index < armSelectionWritten; ++index)
+            {
+                m_firstPersonArms.Update(
+                    deltaTime, weaponCenter, right, presentedAim, presentedUp, armSelections[index]);
+            }
             m_armCatalogReported = true;
-            AZ_Printf("STWGameplay", "%s\n", FirstPersonArmCatalog::ReadyMarker());
+            AZ_Printf(
+                "STWGameplay", "%s\n", FirstPersonArmCatalog::MarkerFor(armSelections, armSelectionWritten));
         }
 
-        const bool firstPersonArmsProfileActive =
-            m_model.GetActiveEquipmentProfileId() == EquipmentProfileId::STW_RIFLE_02;
-        if (firstPersonArmsProfileActive != m_firstPersonArmsProfileWasActive)
+        const EquipmentProfileId activeProfile = m_model.GetActiveEquipmentProfileId();
+        const FirstPersonArmPose activePose = FirstPersonArmCatalog::PoseFor(
+            m_viewmodel.GetState() == ViewmodelState::Reload, m_viewmodel.GetAdsBlend(), false);
+        const FirstPersonArmSelection activeSelection = FirstPersonArmCatalog::Select(activeProfile, activePose);
+        if (activeSelection.m_owned != m_firstPersonArmsProfileWasActive)
         {
             AZ_Printf(
-                "STWGameplay", "STW_DIAG_WEAPON_PROFILE_TRANSITION active_profile=%d rifle02_active=%d\n",
-                static_cast<int>(m_model.GetActiveEquipmentProfileId()), firstPersonArmsProfileActive ? 1 : 0);
-            m_firstPersonArmsProfileWasActive = firstPersonArmsProfileActive;
+                "STWGameplay", "STW_DIAG_WEAPON_PROFILE_TRANSITION active_profile=%d arms_owned=%d pose=%s\n",
+                static_cast<int>(activeProfile), activeSelection.m_owned ? 1 : 0,
+                activeSelection.m_poseName != nullptr ? activeSelection.m_poseName : "");
+            m_firstPersonArmsProfileWasActive = activeSelection.m_owned;
         }
-        if (firstPersonArmsProfileActive)
+        if (activeSelection.m_owned)
         {
             m_firstPersonArms.SetVisible(true);
-            m_firstPersonArms.Update(
-                deltaTime, weaponCenter, right, presentedAim, presentedUp, m_viewmodel.GetState(),
-                m_viewmodel.GetAdsBlend());
-            // The skinned rig already includes the rifle body; once it is genuinely rendering,
-            // stop double-drawing the static procedural rifle mesh underneath it.
+            m_firstPersonArms.Update(deltaTime, weaponCenter, right, presentedAim, presentedUp, activeSelection);
+            // Once this profile's skinned rig is genuinely rendering, stop double-drawing its
+            // static viewmodel mesh underneath the arms.
+            const size_t activeIndex = static_cast<size_t>(activeProfile);
             if (m_firstPersonArms.IsSkinnedMeshVisible() && m_meshFeatureProcessor != nullptr
-                && m_viewmodelMeshHandles[static_cast<size_t>(EquipmentProfileId::STW_RIFLE_02)].IsValid())
+                && activeIndex < m_viewmodelMeshHandles.size() && m_viewmodelMeshHandles[activeIndex].IsValid())
             {
-                m_meshFeatureProcessor->SetVisible(
-                    m_viewmodelMeshHandles[static_cast<size_t>(EquipmentProfileId::STW_RIFLE_02)], false);
+                m_meshFeatureProcessor->SetVisible(m_viewmodelMeshHandles[activeIndex], false);
             }
         }
         else

@@ -395,8 +395,7 @@ namespace STWGameplay
         // carries the gate's acceptance state). Presentation only; index 0 of this array stays unused.
         AZStd::array<STWSkeletalCharacterPresentation, EnemyCollectionModel::MaxEnemyCount> m_enemyCharacterPresentations;
         ViewmodelPresentation m_viewmodel;
-        // Skinned arms/gloves/integrated-rifle presentation for STW_RIFLE_02 only (the profile
-        // the STW_FP_01 asset was authored for); other profiles keep the static viewmodel mesh.
+        // Skinned arms for whichever equipment profile FirstPersonArmCatalog::Select owns.
         STWFirstPersonArmsPresentation m_firstPersonArms;
         bool m_firstPersonArmsProfileWasActive = false;
         bool m_armCatalogReported = false;

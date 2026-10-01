@@ -6,7 +6,7 @@
 #include <AzCore/Math/Vector3.h>
 #include <AzCore/std/string/string.h>
 
-#include <STWGameplay/ViewmodelPresentation.h>
+#include <STWGameplay/FirstPersonArmCatalog.h>
 
 namespace AZ
 {
@@ -15,13 +15,12 @@ namespace AZ
 
 namespace STWGameplay
 {
-    //! Presentation-only EMotionFX/Atom integration for the STW_FP_01 first-person arms
-    //! rig (skinned arms, gloves and integrated rifle body). Camera-relative, not
-    //! world-relative: it consumes the same first-person basis (center/right/aim/up) that
-    //! drives the existing static viewmodel meshes, and reacts only to ViewmodelPresentation's
-    //! read-only state. It never writes gameplay state and owns no ammo, magazine or damage
-    //! data. Scope: STW_RIFLE_02 only, the equipment profile the STW_FP_01 asset was authored
-    //! for; other profiles keep the existing static per-profile viewmodel mesh unchanged.
+    //! Presentation-only EMotionFX/Atom integration for the first-person arms.
+    //! Camera-relative, not world-relative: it consumes the same first-person basis
+    //! (center/right/aim/up) that drives the existing static viewmodel meshes. The actor,
+    //! motion, and hip/ADS/reload/inspect offset come from FirstPersonArmCatalog::Select
+    //! for the active profile. It never writes gameplay state and owns no ammo, magazine
+    //! or damage data.
     class STWFirstPersonArmsPresentation final
     {
     public:
@@ -32,10 +31,10 @@ namespace STWGameplay
         STWFirstPersonArmsPresentation& operator=(const STWFirstPersonArmsPresentation&) = delete;
 
         //! Creates the presentation entity on first call, positions it from the camera-relative
-        //! basis, and selects the idle/ads/reload motion from the current viewmodel state.
+        //! basis plus the selected pose offset, and plays that pose's motion.
         void Update(
             float deltaTime, const AZ::Vector3& center, const AZ::Vector3& right, const AZ::Vector3& aim,
-            const AZ::Vector3& up, ViewmodelState viewmodelState, float adsBlend);
+            const AZ::Vector3& up, const FirstPersonArmSelection& selection);
         void SetVisible(bool visible);
         void Shutdown();
 
@@ -53,10 +52,15 @@ namespace STWGameplay
         AZ::Entity* m_entity = nullptr;
         AZ::EntityId m_entityId;
         AZ::Data::AssetId m_actorAssetId;
-        AZ::Data::AssetId m_idleMotionAssetId;
-        AZ::Data::AssetId m_adsMotionAssetId;
-        AZ::Data::AssetId m_reloadMotionAssetId;
+        AZ::Data::AssetId m_motionAssetId;
         AZ::Data::AssetId m_currentMotionAssetId;
+        const char* m_actorPath = "";
+        const char* m_motionPath = "";
+        const char* m_resolvedActorPath = nullptr;
+        const char* m_resolvedMotionPath = nullptr;
+        float m_poseRight = 0.0f;
+        float m_poseForward = 0.0f;
+        float m_poseUp = 0.0f;
 
         bool m_productsResolved = false;
         bool m_productsMissing = false;

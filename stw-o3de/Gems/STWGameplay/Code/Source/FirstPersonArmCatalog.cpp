@@ -2,6 +2,8 @@
 
 #include <AzCore/std/string/string.h>
 
+#include <cstring>
+
 namespace STWGameplay
 {
     namespace
@@ -89,18 +91,143 @@ namespace STWGameplay
         return &Bindings()[index];
     }
 
-    const char* FirstPersonArmCatalog::ReadyMarker()
+    FirstPersonArmSelection FirstPersonArmCatalog::Select(EquipmentProfileId profileId, FirstPersonArmPose pose)
     {
-        static AZStd::string marker;
-        if (marker.empty())
+        FirstPersonArmSelection selection;
+        selection.m_requested = profileId;
+        selection.m_pose = pose;
+        selection.m_loop = pose == FirstPersonArmPose::Hip || pose == FirstPersonArmPose::Ads;
+
+        const FirstPersonArmBinding* binding = Find(profileId);
+        const auto poseIndex = static_cast<std::size_t>(pose);
+        if (binding == nullptr || binding->m_profileId != profileId || poseIndex >= PoseCount
+            || binding->m_actorPath == nullptr || binding->m_profileName == nullptr
+            || binding->m_profileName[0] == '\0')
         {
-            marker = "ATOM_FIRSTPERSON_ARMS_MESH result=PASS";
-            for (const FirstPersonArmBinding& binding : Bindings())
+            return selection;
+        }
+
+        const FirstPersonArmPoseBinding& poseBinding = binding->m_poses[poseIndex];
+        if (poseBinding.m_assetPath == nullptr || poseBinding.m_name == nullptr
+            || std::strstr(binding->m_actorPath, binding->m_profileName) == nullptr
+            || std::strstr(poseBinding.m_assetPath, binding->m_profileName) == nullptr
+            || std::strstr(binding->m_actorPath, "stw_fp_01") != nullptr
+            || std::strcmp(poseBinding.m_name, pose == FirstPersonArmPose::Hip ? "hip"
+                    : pose == FirstPersonArmPose::Ads ? "ads"
+                    : pose == FirstPersonArmPose::Reload ? "reload"
+                    : "inspect") != 0)
+        {
+            return selection;
+        }
+
+        selection.m_binding = binding;
+        selection.m_selected = binding->m_profileId;
+        selection.m_actorPath = binding->m_actorPath;
+        selection.m_motionPath = poseBinding.m_assetPath;
+        selection.m_poseName = poseBinding.m_name;
+        selection.m_handSocketLeft = binding->m_handSocketLeft;
+        selection.m_handSocketRight = binding->m_handSocketRight;
+        selection.m_right = poseBinding.m_right;
+        selection.m_forward = poseBinding.m_forward;
+        selection.m_up = poseBinding.m_up;
+        selection.m_owned = true;
+        return selection;
+    }
+
+    FirstPersonArmPose FirstPersonArmCatalog::PoseFor(bool reloading, float adsBlend, bool inspect)
+    {
+        if (reloading)
+        {
+            return FirstPersonArmPose::Reload;
+        }
+        if (inspect)
+        {
+            return FirstPersonArmPose::Inspect;
+        }
+        if (adsBlend > 0.5f)
+        {
+            return FirstPersonArmPose::Ads;
+        }
+        return FirstPersonArmPose::Hip;
+    }
+
+    const char* FirstPersonArmCatalog::MarkerFor(const FirstPersonArmSelection* selections, std::size_t count)
+    {
+        static const char* poseNames[PoseCount] = {"hip", "ads", "reload", "inspect"};
+        static AZStd::string marker;
+        marker = "ATOM_FIRSTPERSON_ARMS_MESH result=";
+
+        const char* names[WeaponModel::EquipmentProfileCount] = {};
+        bool poseSeen[PoseCount] = {};
+        bool anyOwned = false;
+        bool socketsOk = true;
+
+        if (selections != nullptr)
+        {
+            for (std::size_t index = 0; index < count; ++index)
             {
-                marker += " profile=";
-                marker += binding.m_profileName;
+                const FirstPersonArmSelection& selection = selections[index];
+                const auto profileIndex = static_cast<std::size_t>(selection.m_requested);
+                const auto poseIndex = static_cast<std::size_t>(selection.m_pose);
+                if (!selection.m_owned || selection.m_binding == nullptr || selection.m_selected != selection.m_requested
+                    || selection.m_binding->m_profileId != selection.m_requested
+                    || profileIndex >= WeaponModel::EquipmentProfileCount || poseIndex >= PoseCount
+                    || selection.m_actorPath == nullptr || selection.m_motionPath == nullptr
+                    || selection.m_poseName == nullptr || selection.m_binding->m_profileName == nullptr
+                    || std::strstr(selection.m_actorPath, "stw_fp_01") != nullptr
+                    || std::strstr(selection.m_actorPath, selection.m_binding->m_profileName) == nullptr
+                    || std::strstr(selection.m_motionPath, selection.m_binding->m_profileName) == nullptr
+                    || std::strcmp(selection.m_poseName, poseNames[poseIndex]) != 0
+                    || selection.m_handSocketLeft == nullptr || selection.m_handSocketRight == nullptr
+                    || std::strcmp(selection.m_handSocketLeft, "hand_L") != 0
+                    || std::strcmp(selection.m_handSocketRight, "hand_R") != 0)
+                {
+                    if (selection.m_owned)
+                    {
+                        socketsOk = false;
+                    }
+                    continue;
+                }
+
+                names[profileIndex] = selection.m_binding->m_profileName;
+                poseSeen[poseIndex] = true;
+                anyOwned = true;
             }
-            marker += " poses=hip,ads,reload,inspect sockets=hand_L,hand_R";
+        }
+
+        bool complete = anyOwned && socketsOk;
+        for (const char* name : names)
+        {
+            if (name == nullptr)
+            {
+                complete = false;
+            }
+        }
+        for (const bool seen : poseSeen)
+        {
+            if (!seen)
+            {
+                complete = false;
+            }
+        }
+
+        marker += complete ? "PASS" : "FAIL";
+        for (std::size_t index = 0; index < WeaponModel::EquipmentProfileCount; ++index)
+        {
+            if (names[index] == nullptr)
+            {
+                continue;
+            }
+            marker += " profile=";
+            marker += names[index];
+        }
+        if (poseSeen[0] && poseSeen[1] && poseSeen[2] && poseSeen[3])
+        {
+            marker += " poses=hip,ads,reload,inspect";
+        }
+        if (anyOwned && socketsOk)
+        {
+            marker += " sockets=hand_L,hand_R";
         }
         return marker.c_str();
     }
