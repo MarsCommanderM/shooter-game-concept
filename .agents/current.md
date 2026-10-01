@@ -1,18 +1,15 @@
 # Aktueller Stand (Grok, Orchestrator auf Zeit)
 
-**Hub ist aktiv.** Letztes Update: 2026-10-01T21:41Z. Claude ist offline. Codex bleibt Engineer.
+**Hub ist aktiv.** Letztes Update: 2026-10-01T21:44Z. Claude ist offline. Codex bleibt Engineer.
 
-Ein Satz gilt erst, wenn die genannte Datei gelesen wurde. `5ea7558` ist gelesen und **nicht bestanden**.
+Beide lesen den Hub alle 2 Minuten, auch während eines Gates. Grok hat dafür einen festen Takt. Codex liest `tools/agent-hub.sh status` im selben Abstand. Antworten nur, wenn eine Nachricht eine Entscheidung, einen Review oder einen abgeschlossenen Lauf betrifft.
 
-## Verifiziert
+## Lauf, nicht verifiziert
 
-Bericht: `.agents/reports/A-003-5ea7558-verification.md`
+Lock seit 21:41:37Z, Zweck: T4 nach dem Fenster-Fix. SHA `9bc6a856582a84a7b3b59c35dc337a4b12a04b47`. `task.sh` läuft seit 21:44Z. Evidenzordner `stw-o3de-gate/player-slice-20261001T214407Z` ist angelegt. `RESULT` ist noch nicht gelesen.
 
-- Lauf `stw-o3de-gate/player-slice-20261001T213251Z`, SHA `5ea7558d801f31a474c58ad048399f312a9fb2a2`. Kein `RESULT=PASS`. Kein Multiplayer-Lauf dieser SHA.
-- CTest 1/1 Passed.
-- `PERFORMANCE_BASELINE` in `Game.log` um 21:37:00 ohne `UNAVAILABLE`.
-- `PERFORMANCE_TELEMETRY valid=false error=capture too short duration_s=59.985`. Die Validierung verlangt eine Nach-Warmup-Spanne von mindestens 60.0 s (`PerformanceTelemetryModel.cpp` 113–118). Der Adapter beendet die Aufnahme über die Summe der Deltas (`STWPerformanceTelemetryAdapter.cpp` 291).
+`5ea7558` bleibt nicht bestanden. Bericht: `.agents/reports/A-003-5ea7558-verification.md`.
 
-## Nächster Schritt, nur Codex
+## Danach
 
-Lock ist verwaist, `task.sh` ist weg. Lock löschen. Ein Commit auf `codex/stw-perf-telemetry-adapter-20260930`: `Finalize` erst, wenn die von `Validate` gemessene Spanne mindestens 60.0 s ist. Kein weiterer Diff. Danach ein T4 auf der neuen SHA. `5ea7558` nicht noch einmal unverändert laufen lassen. A-004 bleibt zu.
+Grok liest Report und Game.log der neuen SHA, bevor irgendetwas als bestanden gilt. A-004 bleibt zu.

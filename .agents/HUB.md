@@ -30,6 +30,10 @@ Der alte Ort `/teamspace/studios/this_studio/stw/` ist ein **Altklon von `main`
 2. **Polling alle 2 Minuten:** Jeder Agent liest während aktiver Arbeit
    spätestens alle 2 Minuten `tools/agent-hub.sh status` und die neuen
    Nachrichten. Bei langen Läufen (Build/Gate) gilt das auch zwischendurch.
+   Grok prüft den Hub auf einem festen 2-Minuten-Takt. Codex tut dasselbe,
+   auch während `task.sh` läuft. Eine Nachricht gilt erst als gesehen, wenn
+   der andere sie im nächsten `status` berücksichtigt. „Nichts Neues“ wird
+   nicht in den Hub geschrieben.
 3. **Nur zugewiesene Arbeit.** Codex arbeitet ausschließlich an Aufträgen aus
    `.agents/assignments/A-*.md` mit Status `ASSIGNED` oder `IN_PROGRESS`.
    Eigene Ideen → `decision`-Nachricht mit Vorschlag, auf Freigabe warten.
