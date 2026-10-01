@@ -55,6 +55,8 @@ namespace STWGameplay
         float m_up = 0.0f;
         bool m_loop = true;
         bool m_owned = false;
+        //! Set only by ConfirmRuntime after the presentation loaded this selection's own actor and motion.
+        bool m_resolved = false;
     };
 
     //! Data the unit test and the runtime marker share. No game process is required to read it.
@@ -71,7 +73,12 @@ namespace STWGameplay
         static FirstPersonArmSelection Select(EquipmentProfileId profileId, FirstPersonArmPose pose);
         //! Reload wins, then inspect, then ADS, otherwise hip. Presentation uses this same mapping.
         static FirstPersonArmPose PoseFor(bool reloading, float adsBlend, bool inspect);
-        //! PASS only when selections cover every profile and hip, ADS, reload, and inspect.
+        //! Marks m_resolved only when the loaded actor and motion are this selection's own products
+        //! and the skinned mesh and motion are actually ready. A table entry alone does not resolve.
+        static bool ConfirmRuntime(
+            FirstPersonArmSelection& selection, const char* loadedActorPath, const char* loadedMotionPath,
+            bool meshVisible, bool motionReady);
+        //! PASS only when every profile and pose was ConfirmRuntime'd from its own loaded products.
         //! The returned pointer is replaced by the next call.
         static const char* MarkerFor(const FirstPersonArmSelection* selections, std::size_t count);
     };

@@ -1,0 +1,13 @@
+{
+    "values": [
+        {
+            "$type": "MotionGroup",
+            "name": "STW_SIDEARM_01_hip",
+            "selectedRootBone": "RootNode.STW_SIDEARM_01_Rig",
+            "id": "{DA2C4DEF-CD60-5FDE-88A5-FF4068A5FDCF}",
+            "rules": {
+                "rules": []
+            }
+        }
+    ]
+}

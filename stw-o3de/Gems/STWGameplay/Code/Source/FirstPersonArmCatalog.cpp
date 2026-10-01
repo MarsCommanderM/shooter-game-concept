@@ -32,11 +32,11 @@ namespace STWGameplay
             Paths& path = storage[index];
             if (path.actor.empty())
             {
-                path.actor = root + ".fbx";
-                path.hip = root + "_hip.fbx";
-                path.ads = root + "_ads.fbx";
-                path.reload = root + "_reload.fbx";
-                path.inspect = root + "_inspect.fbx";
+                path.actor = root + ".actor";
+                path.hip = root + "_hip.motion";
+                path.ads = root + "_ads.motion";
+                path.reload = root + "_reload.motion";
+                path.inspect = root + "_inspect.motion";
             }
             const float base = 0.20f + (0.03f * static_cast<float>(index));
             return FirstPersonArmBinding{
@@ -151,6 +151,32 @@ namespace STWGameplay
         return FirstPersonArmPose::Hip;
     }
 
+    bool FirstPersonArmCatalog::ConfirmRuntime(
+        FirstPersonArmSelection& selection, const char* loadedActorPath, const char* loadedMotionPath,
+        bool meshVisible, bool motionReady)
+    {
+        selection.m_resolved = false;
+        if (!selection.m_owned || !meshVisible || !motionReady || selection.m_binding == nullptr
+            || loadedActorPath == nullptr || loadedMotionPath == nullptr || selection.m_actorPath == nullptr
+            || selection.m_motionPath == nullptr || selection.m_binding->m_profileName == nullptr)
+        {
+            return false;
+        }
+        if (std::strcmp(loadedActorPath, selection.m_actorPath) != 0
+            || std::strcmp(loadedMotionPath, selection.m_motionPath) != 0)
+        {
+            return false;
+        }
+        if (std::strstr(loadedActorPath, "stw_fp_01") != nullptr
+            || std::strstr(loadedActorPath, selection.m_binding->m_profileName) == nullptr
+            || std::strstr(loadedMotionPath, selection.m_binding->m_profileName) == nullptr)
+        {
+            return false;
+        }
+        selection.m_resolved = true;
+        return true;
+    }
+
     const char* FirstPersonArmCatalog::MarkerFor(const FirstPersonArmSelection* selections, std::size_t count)
     {
         static const char* poseNames[PoseCount] = {"hip", "ads", "reload", "inspect"};
@@ -169,7 +195,8 @@ namespace STWGameplay
                 const FirstPersonArmSelection& selection = selections[index];
                 const auto profileIndex = static_cast<std::size_t>(selection.m_requested);
                 const auto poseIndex = static_cast<std::size_t>(selection.m_pose);
-                if (!selection.m_owned || selection.m_binding == nullptr || selection.m_selected != selection.m_requested
+                if (!selection.m_owned || !selection.m_resolved || selection.m_binding == nullptr
+                    || selection.m_selected != selection.m_requested
                     || selection.m_binding->m_profileId != selection.m_requested
                     || profileIndex >= WeaponModel::EquipmentProfileCount || poseIndex >= PoseCount
                     || selection.m_actorPath == nullptr || selection.m_motionPath == nullptr

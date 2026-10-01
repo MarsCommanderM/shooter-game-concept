@@ -17,6 +17,8 @@
 #include <Integration/ActorComponentBus.h>
 #include <Integration/SimpleMotionComponentBus.h>
 
+#include <cstring>
+
 namespace STWGameplay
 {
     namespace
@@ -174,15 +176,18 @@ namespace STWGameplay
         }
     }
 
-    void STWFirstPersonArmsPresentation::Update(
+    bool STWFirstPersonArmsPresentation::Update(
         float deltaTime, const AZ::Vector3& center, const AZ::Vector3& right, const AZ::Vector3& aim,
         const AZ::Vector3& up, const FirstPersonArmSelection& selection)
     {
         (void)deltaTime;
-        if (m_entity != nullptr && selection.m_actorPath != m_actorPath)
+        const bool actorChanged = m_entity != nullptr && selection.m_actorPath != m_actorPath;
+        if (actorChanged)
         {
             Shutdown();
         }
+        const bool motionChanged = m_motionPath != nullptr && selection.m_motionPath != nullptr
+            && m_motionPath[0] != '\0' && std::strcmp(m_motionPath, selection.m_motionPath) != 0;
         m_actorPath = selection.m_actorPath != nullptr ? selection.m_actorPath : "";
         m_motionPath = selection.m_motionPath != nullptr ? selection.m_motionPath : "";
         m_poseRight = selection.m_right;
@@ -193,14 +198,23 @@ namespace STWGameplay
         if (!selection.m_owned)
         {
             SetVisible(false);
-            return;
+            return false;
         }
         if (!TryCreatePresentationEntity())
         {
-            return;
+            return false;
         }
 
+        const AZ::Data::AssetId motionBefore = m_currentMotionAssetId;
         SelectMotion(m_motionAssetId, selection.m_loop);
+        const bool motionSwap = motionChanged || m_currentMotionAssetId != motionBefore;
+        if (actorChanged || motionSwap)
+        {
+            m_motionAssetReady = false;
+            m_actorInstanceReady = false;
+            m_skinnedMeshVisible = false;
+            return false;
+        }
 
         // Assimp imports the rig's OBJ-style axes as (-X, Z, Y), the same mapping
         // UpdateViewmodelMeshTransform uses for the static per-profile weapon meshes.
@@ -210,6 +224,7 @@ namespace STWGameplay
         AZ::TransformBus::Event(m_entityId, &AZ::TransformBus::Events::SetWorldTM, transform);
 
         SampleRuntimeDiagnostics();
+        return m_actorInstanceReady && m_skinnedMeshVisible && m_motionAssetReady;
     }
 
     void STWFirstPersonArmsPresentation::SetVisible(bool visible)

@@ -1,0 +1,13 @@
+{
+    "values": [
+        {
+            "$type": "MotionGroup",
+            "name": "STW_LETHAL_FRAG_01_inspect",
+            "selectedRootBone": "RootNode.STW_LETHAL_FRAG_01_Rig",
+            "id": "{3D34D446-370B-5B50-A132-88FC687CE812}",
+            "rules": {
+                "rules": []
+            }
+        }
+    ]
+}

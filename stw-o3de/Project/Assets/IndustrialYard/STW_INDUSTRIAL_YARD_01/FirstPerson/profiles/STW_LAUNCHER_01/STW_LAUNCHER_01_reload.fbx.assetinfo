@@ -1,0 +1,13 @@
+{
+    "values": [
+        {
+            "$type": "MotionGroup",
+            "name": "STW_LAUNCHER_01_reload",
+            "selectedRootBone": "RootNode.STW_LAUNCHER_01_Rig",
+            "id": "{EF51D19E-9F75-5BD9-B53A-1399079AE5E3}",
+            "rules": {
+                "rules": []
+            }
+        }
+    ]
+}

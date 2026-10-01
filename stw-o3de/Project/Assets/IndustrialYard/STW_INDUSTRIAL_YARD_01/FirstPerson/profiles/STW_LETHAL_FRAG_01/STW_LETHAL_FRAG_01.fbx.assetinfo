@@ -1,0 +1,42 @@
+{
+    "values": [
+        {
+            "$type": "ActorGroup",
+            "name": "STW_LETHAL_FRAG_01",
+            "id": "{3E3BCAD8-1728-50B5-9377-E8D05952FC7C}",
+            "rules": {
+                "rules": []
+            }
+        },
+        {
+            "$type": "{07B356B7-3635-40B5-878A-FAC4EFD5AD86} MeshGroup",
+            "name": "STW_LETHAL_FRAG_01_Mesh",
+            "NodeSelectionList": {
+                "selectedNodes": [
+                    "RootNode.STW_LETHAL_FRAG_01_Body",
+                    "RootNode.STW_LETHAL_FRAG_01_Fore_L",
+                    "RootNode.STW_LETHAL_FRAG_01_Fore_R",
+                    "RootNode.STW_LETHAL_FRAG_01_Hand_L",
+                    "RootNode.STW_LETHAL_FRAG_01_Hand_R",
+                    "RootNode.STW_LETHAL_FRAG_01_Upper_L",
+                    "RootNode.STW_LETHAL_FRAG_01_Upper_R",
+                    "RootNode.STW_LETHAL_FRAG_01_Weapon",
+                    "RootNode.STW_LETHAL_FRAG_01_Skin",
+                    "RootNode.STW_LETHAL_FRAG_01_Glove"
+                ],
+                "unselectedNodes": []
+            },
+            "id": "{203921AC-08C7-5999-A438-1F67EEC0137F}",
+            "rules": {
+                "rules": [
+                    {
+                        "$type": "SkinRule"
+                    },
+                    {
+                        "$type": "MaterialRule"
+                    }
+                ]
+            }
+        }
+    ]
+}

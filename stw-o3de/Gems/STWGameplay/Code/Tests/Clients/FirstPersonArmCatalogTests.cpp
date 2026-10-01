@@ -56,6 +56,28 @@ namespace STWGameplay
                     static_cast<EquipmentProfileId>(index), static_cast<FirstPersonArmPose>(poseIndex));
             }
         }
+        const std::string unresolved = FirstPersonArmCatalog::MarkerFor(selections, written);
+        EXPECT_EQ(std::strstr(unresolved.c_str(), "result=PASS"), nullptr);
+
+        FirstPersonArmSelection smgWrong = smgReload;
+        EXPECT_FALSE(FirstPersonArmCatalog::ConfirmRuntime(
+            smgWrong, rifleOnly.m_actorPath, smgReload.m_motionPath, true, true));
+        EXPECT_FALSE(smgWrong.m_resolved);
+        EXPECT_FALSE(FirstPersonArmCatalog::ConfirmRuntime(
+            smgWrong, "assets/industrialyard/stw_industrial_yard_01/firstperson/stw_fp_01.actor",
+            smgReload.m_motionPath, true, true));
+
+        FirstPersonArmSelection rifleResolved = rifleOnly;
+        EXPECT_TRUE(FirstPersonArmCatalog::ConfirmRuntime(
+            rifleResolved, rifleOnly.m_actorPath, rifleOnly.m_motionPath, true, true));
+        const std::string rifleOnlyResolved = FirstPersonArmCatalog::MarkerFor(&rifleResolved, 1);
+        EXPECT_EQ(std::strstr(rifleOnlyResolved.c_str(), "result=PASS"), nullptr);
+
+        for (std::size_t index = 0; index < written; ++index)
+        {
+            EXPECT_TRUE(FirstPersonArmCatalog::ConfirmRuntime(
+                selections[index], selections[index].m_actorPath, selections[index].m_motionPath, true, true));
+        }
         const std::string marker = FirstPersonArmCatalog::MarkerFor(selections, written);
         EXPECT_NE(std::strstr(marker.c_str(), "ATOM_FIRSTPERSON_ARMS_MESH result=PASS"), nullptr);
         EXPECT_NE(std::strstr(marker.c_str(), "poses=hip,ads,reload,inspect"), nullptr);

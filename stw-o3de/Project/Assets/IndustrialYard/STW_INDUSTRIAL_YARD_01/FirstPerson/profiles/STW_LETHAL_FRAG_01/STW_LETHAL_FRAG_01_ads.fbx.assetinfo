@@ -1,0 +1,13 @@
+{
+    "values": [
+        {
+            "$type": "MotionGroup",
+            "name": "STW_LETHAL_FRAG_01_ads",
+            "selectedRootBone": "RootNode.STW_LETHAL_FRAG_01_Rig",
+            "id": "{0BC3E3E3-680E-544C-9367-E0C47955D523}",
+            "rules": {
+                "rules": []
+            }
+        }
+    ]
+}

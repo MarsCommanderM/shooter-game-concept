@@ -1,0 +1,42 @@
+{
+    "values": [
+        {
+            "$type": "ActorGroup",
+            "name": "STW_LAUNCHER_01",
+            "id": "{CF888829-6746-5286-ADED-47BC7195D74B}",
+            "rules": {
+                "rules": []
+            }
+        },
+        {
+            "$type": "{07B356B7-3635-40B5-878A-FAC4EFD5AD86} MeshGroup",
+            "name": "STW_LAUNCHER_01_Mesh",
+            "NodeSelectionList": {
+                "selectedNodes": [
+                    "RootNode.STW_LAUNCHER_01_Body",
+                    "RootNode.STW_LAUNCHER_01_Fore_L",
+                    "RootNode.STW_LAUNCHER_01_Fore_R",
+                    "RootNode.STW_LAUNCHER_01_Hand_L",
+                    "RootNode.STW_LAUNCHER_01_Hand_R",
+                    "RootNode.STW_LAUNCHER_01_Upper_L",
+                    "RootNode.STW_LAUNCHER_01_Upper_R",
+                    "RootNode.STW_LAUNCHER_01_Weapon",
+                    "RootNode.STW_LAUNCHER_01_Skin",
+                    "RootNode.STW_LAUNCHER_01_Glove"
+                ],
+                "unselectedNodes": []
+            },
+            "id": "{A41E757C-4476-52F3-ADCE-880A605467A0}",
+            "rules": {
+                "rules": [
+                    {
+                        "$type": "SkinRule"
+                    },
+                    {
+                        "$type": "MaterialRule"
+                    }
+                ]
+            }
+        }
+    ]
+}

@@ -32,7 +32,9 @@ namespace STWGameplay
 
         //! Creates the presentation entity on first call, positions it from the camera-relative
         //! basis plus the selected pose offset, and plays that pose's motion.
-        void Update(
+        //! Returns true only when this selection's actor instance is visible and its motion is ready.
+        //! The frame that swaps actor or motion returns false so a stale clip cannot count.
+        bool Update(
             float deltaTime, const AZ::Vector3& center, const AZ::Vector3& right, const AZ::Vector3& aim,
             const AZ::Vector3& up, const FirstPersonArmSelection& selection);
         void SetVisible(bool visible);
@@ -42,6 +44,8 @@ namespace STWGameplay
         bool IsActorInstanceReady() const { return m_actorInstanceReady; }
         bool IsSkinnedMeshVisible() const { return m_skinnedMeshVisible; }
         bool IsMotionAssetReady() const { return m_motionAssetReady; }
+        const char* LoadedActorPath() const { return m_actorPath; }
+        const char* LoadedMotionPath() const { return m_motionPath; }
 
     private:
         bool ResolveProducts();

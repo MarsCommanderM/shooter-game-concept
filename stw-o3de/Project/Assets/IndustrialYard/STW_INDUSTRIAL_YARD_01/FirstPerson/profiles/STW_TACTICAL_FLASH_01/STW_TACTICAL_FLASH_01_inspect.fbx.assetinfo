@@ -1,0 +1,13 @@
+{
+    "values": [
+        {
+            "$type": "MotionGroup",
+            "name": "STW_TACTICAL_FLASH_01_inspect",
+            "selectedRootBone": "RootNode.STW_TACTICAL_FLASH_01_Rig",
+            "id": "{0E87D699-DEA9-56C3-9867-28EAFFCEF320}",
+            "rules": {
+                "rules": []
+            }
+        }
+    ]
+}

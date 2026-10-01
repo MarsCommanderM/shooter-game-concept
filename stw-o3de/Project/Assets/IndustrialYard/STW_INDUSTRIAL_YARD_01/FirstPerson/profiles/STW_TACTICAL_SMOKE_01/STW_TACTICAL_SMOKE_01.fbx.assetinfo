@@ -1,0 +1,42 @@
+{
+    "values": [
+        {
+            "$type": "ActorGroup",
+            "name": "STW_TACTICAL_SMOKE_01",
+            "id": "{3936134C-24CD-50DB-92C4-1F035F0648EC}",
+            "rules": {
+                "rules": []
+            }
+        },
+        {
+            "$type": "{07B356B7-3635-40B5-878A-FAC4EFD5AD86} MeshGroup",
+            "name": "STW_TACTICAL_SMOKE_01_Mesh",
+            "NodeSelectionList": {
+                "selectedNodes": [
+                    "RootNode.STW_TACTICAL_SMOKE_01_Body",
+                    "RootNode.STW_TACTICAL_SMOKE_01_Fore_L",
+                    "RootNode.STW_TACTICAL_SMOKE_01_Fore_R",
+                    "RootNode.STW_TACTICAL_SMOKE_01_Hand_L",
+                    "RootNode.STW_TACTICAL_SMOKE_01_Hand_R",
+                    "RootNode.STW_TACTICAL_SMOKE_01_Upper_L",
+                    "RootNode.STW_TACTICAL_SMOKE_01_Upper_R",
+                    "RootNode.STW_TACTICAL_SMOKE_01_Weapon",
+                    "RootNode.STW_TACTICAL_SMOKE_01_Skin",
+                    "RootNode.STW_TACTICAL_SMOKE_01_Glove"
+                ],
+                "unselectedNodes": []
+            },
+            "id": "{4641686A-F9A5-523D-91AA-BEDB176A88C4}",
+            "rules": {
+                "rules": [
+                    {
+                        "$type": "SkinRule"
+                    },
+                    {
+                        "$type": "MaterialRule"
+                    }
+                ]
+            }
+        }
+    ]
+}

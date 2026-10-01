@@ -399,6 +399,7 @@ namespace STWGameplay
         STWFirstPersonArmsPresentation m_firstPersonArms;
         bool m_firstPersonArmsProfileWasActive = false;
         bool m_armCatalogReported = false;
+        std::size_t m_armResolveCursor = 0;
         CombatFeedbackPresentation m_combatFeedback;
         AudioFeedbackPresentation m_audioFeedback;
         EncounterModel m_encounter;

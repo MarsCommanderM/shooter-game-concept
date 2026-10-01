@@ -1,0 +1,13 @@
+{
+    "values": [
+        {
+            "$type": "MotionGroup",
+            "name": "STW_TACTICAL_SMOKE_01_ads",
+            "selectedRootBone": "RootNode.STW_TACTICAL_SMOKE_01_Rig",
+            "id": "{64738683-D7B6-56AC-B3EF-695F7DAB1061}",
+            "rules": {
+                "rules": []
+            }
+        }
+    ]
+}

@@ -1,0 +1,13 @@
+{
+    "values": [
+        {
+            "$type": "MotionGroup",
+            "name": "STW_TACTICAL_FLASH_01_reload",
+            "selectedRootBone": "RootNode.STW_TACTICAL_FLASH_01_Rig",
+            "id": "{6CD612D0-320E-59DD-BA57-B09346A4118D}",
+            "rules": {
+                "rules": []
+            }
+        }
+    ]
+}

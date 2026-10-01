@@ -1,0 +1,13 @@
+{
+    "values": [
+        {
+            "$type": "MotionGroup",
+            "name": "STW_RIFLE_03_ads",
+            "selectedRootBone": "RootNode.STW_RIFLE_03_Rig",
+            "id": "{71A63F40-4E61-53A3-BDD8-B135A6BB90C8}",
+            "rules": {
+                "rules": []
+            }
+        }
+    ]
+}

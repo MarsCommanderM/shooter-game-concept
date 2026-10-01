@@ -35,6 +35,8 @@
 #include <Atom/RPI.Reflect/Model/ModelAsset.h>
 #include <STWGameplay/STWGameplayTypeIds.h>
 #include <STWGameplay/FirstPersonArmCatalog.h>
+
+#include <cstring>
 #include <STWGameplay/ArenaLayout.h>
 #include <STWGameplay/BodycamCameraPresentation.h>
 #include <Network/STWPlayerNetworkComponent.h>
@@ -5786,14 +5788,33 @@ namespace STWGameplay
         }
         if (!m_armCatalogReported)
         {
-            for (std::size_t index = 0; index < armSelectionWritten; ++index)
+            static FirstPersonArmSelection resolvedArms[armSelectionCount] = {};
+            if (m_armResolveCursor < armSelectionWritten)
             {
-                m_firstPersonArms.Update(
-                    deltaTime, weaponCenter, right, presentedAim, presentedUp, armSelections[index]);
+                const FirstPersonArmSelection& probe = armSelections[m_armResolveCursor];
+                const bool ready = m_firstPersonArms.Update(
+                    deltaTime, weaponCenter, right, presentedAim, presentedUp, probe);
+                if (ready)
+                {
+                    FirstPersonArmSelection confirmed = probe;
+                    if (FirstPersonArmCatalog::ConfirmRuntime(
+                            confirmed, m_firstPersonArms.LoadedActorPath(), m_firstPersonArms.LoadedMotionPath(),
+                            m_firstPersonArms.IsSkinnedMeshVisible(), m_firstPersonArms.IsMotionAssetReady()))
+                    {
+                        resolvedArms[m_armResolveCursor] = confirmed;
+                        ++m_armResolveCursor;
+                    }
+                }
             }
-            m_armCatalogReported = true;
-            AZ_Printf(
-                "STWGameplay", "%s\n", FirstPersonArmCatalog::MarkerFor(armSelections, armSelectionWritten));
+            else
+            {
+                const char* marker = FirstPersonArmCatalog::MarkerFor(resolvedArms, armSelectionWritten);
+                if (marker != nullptr && std::strstr(marker, "result=PASS") != nullptr)
+                {
+                    AZ_Printf("STWGameplay", "%s\n", marker);
+                    m_armCatalogReported = true;
+                }
+            }
         }
 
         const EquipmentProfileId activeProfile = m_model.GetActiveEquipmentProfileId();
@@ -5808,7 +5829,7 @@ namespace STWGameplay
                 activeSelection.m_poseName != nullptr ? activeSelection.m_poseName : "");
             m_firstPersonArmsProfileWasActive = activeSelection.m_owned;
         }
-        if (activeSelection.m_owned)
+        if (m_armCatalogReported && activeSelection.m_owned)
         {
             m_firstPersonArms.SetVisible(true);
             m_firstPersonArms.Update(deltaTime, weaponCenter, right, presentedAim, presentedUp, activeSelection);
@@ -5821,7 +5842,7 @@ namespace STWGameplay
                 m_meshFeatureProcessor->SetVisible(m_viewmodelMeshHandles[activeIndex], false);
             }
         }
-        else
+        else if (m_armCatalogReported)
         {
             m_firstPersonArms.SetVisible(false);
         }

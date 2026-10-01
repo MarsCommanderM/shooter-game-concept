@@ -1,0 +1,13 @@
+{
+    "values": [
+        {
+            "$type": "MotionGroup",
+            "name": "STW_SIDEARM_01_inspect",
+            "selectedRootBone": "RootNode.STW_SIDEARM_01_Rig",
+            "id": "{C9F9B4AC-BC68-5E54-BBC7-099EA1568DEB}",
+            "rules": {
+                "rules": []
+            }
+        }
+    ]
+}

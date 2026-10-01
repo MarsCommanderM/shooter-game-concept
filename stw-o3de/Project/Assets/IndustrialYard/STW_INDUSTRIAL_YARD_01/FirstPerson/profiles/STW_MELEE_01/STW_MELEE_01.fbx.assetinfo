@@ -1,0 +1,42 @@
+{
+    "values": [
+        {
+            "$type": "ActorGroup",
+            "name": "STW_MELEE_01",
+            "id": "{4174AC4A-719A-5A3C-83DA-9D89CF0398ED}",
+            "rules": {
+                "rules": []
+            }
+        },
+        {
+            "$type": "{07B356B7-3635-40B5-878A-FAC4EFD5AD86} MeshGroup",
+            "name": "STW_MELEE_01_Mesh",
+            "NodeSelectionList": {
+                "selectedNodes": [
+                    "RootNode.STW_MELEE_01_Body",
+                    "RootNode.STW_MELEE_01_Fore_L",
+                    "RootNode.STW_MELEE_01_Fore_R",
+                    "RootNode.STW_MELEE_01_Hand_L",
+                    "RootNode.STW_MELEE_01_Hand_R",
+                    "RootNode.STW_MELEE_01_Upper_L",
+                    "RootNode.STW_MELEE_01_Upper_R",
+                    "RootNode.STW_MELEE_01_Weapon",
+                    "RootNode.STW_MELEE_01_Skin",
+                    "RootNode.STW_MELEE_01_Glove"
+                ],
+                "unselectedNodes": []
+            },
+            "id": "{B83064F0-7C0A-58D2-B4E3-4573E210EFFD}",
+            "rules": {
+                "rules": [
+                    {
+                        "$type": "SkinRule"
+                    },
+                    {
+                        "$type": "MaterialRule"
+                    }
+                ]
+            }
+        }
+    ]
+}

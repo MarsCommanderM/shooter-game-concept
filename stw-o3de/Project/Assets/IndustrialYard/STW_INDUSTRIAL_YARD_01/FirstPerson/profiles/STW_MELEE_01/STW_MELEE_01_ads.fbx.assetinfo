@@ -1,0 +1,13 @@
+{
+    "values": [
+        {
+            "$type": "MotionGroup",
+            "name": "STW_MELEE_01_ads",
+            "selectedRootBone": "RootNode.STW_MELEE_01_Rig",
+            "id": "{318C8B19-9DA6-532A-AE2D-EAD2FBE48C7C}",
+            "rules": {
+                "rules": []
+            }
+        }
+    ]
+}

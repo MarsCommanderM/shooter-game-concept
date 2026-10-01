@@ -1,0 +1,13 @@
+{
+    "values": [
+        {
+            "$type": "MotionGroup",
+            "name": "STW_SMG_01_inspect",
+            "selectedRootBone": "RootNode.STW_SMG_01_Rig",
+            "id": "{01DF789D-24C9-55F9-ADBF-CE5708230974}",
+            "rules": {
+                "rules": []
+            }
+        }
+    ]
+}

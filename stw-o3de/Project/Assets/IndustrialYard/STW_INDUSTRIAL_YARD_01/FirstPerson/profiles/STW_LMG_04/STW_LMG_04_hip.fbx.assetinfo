@@ -1,0 +1,13 @@
+{
+    "values": [
+        {
+            "$type": "MotionGroup",
+            "name": "STW_LMG_04_hip",
+            "selectedRootBone": "RootNode.STW_LMG_04_Rig",
+            "id": "{375AE69D-1B14-507F-ACDB-A32C3E5A0B40}",
+            "rules": {
+                "rules": []
+            }
+        }
+    ]
+}

@@ -1,0 +1,13 @@
+{
+    "values": [
+        {
+            "$type": "MotionGroup",
+            "name": "STW_LAUNCHER_01_hip",
+            "selectedRootBone": "RootNode.STW_LAUNCHER_01_Rig",
+            "id": "{62779233-8D1A-507A-BFC7-90CAFF0DAF02}",
+            "rules": {
+                "rules": []
+            }
+        }
+    ]
+}

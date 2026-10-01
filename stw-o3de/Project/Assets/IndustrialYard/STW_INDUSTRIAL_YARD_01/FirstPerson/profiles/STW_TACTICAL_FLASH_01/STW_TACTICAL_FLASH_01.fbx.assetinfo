@@ -1,0 +1,42 @@
+{
+    "values": [
+        {
+            "$type": "ActorGroup",
+            "name": "STW_TACTICAL_FLASH_01",
+            "id": "{7C1E5F22-1FD4-5636-B704-420D3B576D5B}",
+            "rules": {
+                "rules": []
+            }
+        },
+        {
+            "$type": "{07B356B7-3635-40B5-878A-FAC4EFD5AD86} MeshGroup",
+            "name": "STW_TACTICAL_FLASH_01_Mesh",
+            "NodeSelectionList": {
+                "selectedNodes": [
+                    "RootNode.STW_TACTICAL_FLASH_01_Body",
+                    "RootNode.STW_TACTICAL_FLASH_01_Fore_L",
+                    "RootNode.STW_TACTICAL_FLASH_01_Fore_R",
+                    "RootNode.STW_TACTICAL_FLASH_01_Hand_L",
+                    "RootNode.STW_TACTICAL_FLASH_01_Hand_R",
+                    "RootNode.STW_TACTICAL_FLASH_01_Upper_L",
+                    "RootNode.STW_TACTICAL_FLASH_01_Upper_R",
+                    "RootNode.STW_TACTICAL_FLASH_01_Weapon",
+                    "RootNode.STW_TACTICAL_FLASH_01_Skin",
+                    "RootNode.STW_TACTICAL_FLASH_01_Glove"
+                ],
+                "unselectedNodes": []
+            },
+            "id": "{E3033CA7-3DBE-542B-BA0F-FA24973DA39A}",
+            "rules": {
+                "rules": [
+                    {
+                        "$type": "SkinRule"
+                    },
+                    {
+                        "$type": "MaterialRule"
+                    }
+                ]
+            }
+        }
+    ]
+}

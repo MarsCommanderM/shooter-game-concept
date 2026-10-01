@@ -1,0 +1,13 @@
+{
+    "values": [
+        {
+            "$type": "MotionGroup",
+            "name": "STW_RIFLE_02_reload",
+            "selectedRootBone": "RootNode.STW_RIFLE_02_Rig",
+            "id": "{064E2AB1-B9A9-5199-AB2C-726B8ECB563C}",
+            "rules": {
+                "rules": []
+            }
+        }
+    ]
+}
