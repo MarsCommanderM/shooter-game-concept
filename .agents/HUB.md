@@ -62,10 +62,15 @@ Der alte Ort `/teamspace/studios/this_studio/stw/` ist ein **Altklon von `main`
    kann keinen lokalen Server-Port öffnen. Das volle `task.sh` fährt deshalb
    Claude auf Codex' exakter SHA. Codex postet nach Build + CTest-PASS
    `status` mit SHA und Testzahl; Claude übernimmt Lock, Gate und Evidenz.
-8. **Fertig heißt bewiesen:** `done`-Nachricht enthält exakte SHA, Branch,
-   geänderte Pfade, ausgeführte Befehle mit Exit-Codes, Testanzahl,
-   Gate-Evidenzpfad (`stw-o3de-gate/...`) und alles, was **nicht** verifiziert ist.
+8. **Fertig heißt bewiesen, danach verifiziert.** Die `done`-Nachricht enthält
+   exakte SHA, Branch, geänderte Pfade, ausgeführte Befehle mit Exit-Codes,
+   Testanzahl, Gate-Evidenzpfad (`stw-o3de-gate/...`) und alles, was offen ist.
    Visuelle Arbeit: Frame angesehen. Kein „sollte gehen“, kein Raten.
+   Verifiziert ist ein Satz erst, wenn der Orchestrator die genannte Datei
+   gelesen und den Satz darin gefunden hat: `SOURCE_COMMIT` gleich der SHA,
+   `RESULT=PASS` in dem Lauf, und jeder Abnahme-Marker im Log dieses Laufs.
+   Ein laufender Gate ist kein PASS. Ein PASS einer älteren SHA gilt nicht
+   für den neuen Commit. Was nicht in der Datei steht, bleibt unverifiziert.
 9. **Review vor Integration:** Codex öffnet keinen PR und merged nichts. Codex
    meldet `done`, Claude reviewt, fordert Nachbesserung an oder integriert.
 10. **Bei Unklarheit oder Fehler sofort `blocker` posten** statt improvisieren.
