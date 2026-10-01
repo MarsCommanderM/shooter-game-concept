@@ -50,10 +50,17 @@ namespace STWGameplay
             }
 
             const AZ::RPI::TimestampResult timestamp = pass->GetLatestTimestampResult();
-            if (timestamp.GetDurationInNanoseconds() > 0)
+            if (timestamp.GetDurationInTicks() > 0)
             {
-                extent.Add(timestamp);
-                hasSample = true;
+                if (hasSample)
+                {
+                    extent.Add(timestamp);
+                }
+                else
+                {
+                    extent = timestamp;
+                    hasSample = true;
+                }
             }
 
             if (const auto* parentPass = azrtti_cast<const AZ::RPI::ParentPass*>(pass))
