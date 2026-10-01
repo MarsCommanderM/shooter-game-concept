@@ -28,15 +28,17 @@ Run `bash tools/stw-repo-guard.sh start` before changing source. The command
 rejects the wrong repository, stale `main`, an unrelated branch, a stale
 production checkout, or a dirty task start.
 
-## Recovery status
+## Recovery status (closed 2026-10-01)
 
-The remote baseline captured before repository cleanup is
-`6992c8040cd7f427b7f306e08ef0e18841f23c53`. It contains the native O3DE
-player/combat/presentation foundation, including the bodycam foundation. The
-separate weekend multiplayer/server/ragdoll package is not present in that
-remote tree and must be recovered under
-[Issue #5](https://github.com/MarsCommanderM/shooter-game-concept/issues/5)
-before integration claims are made.
+Issue #5 and PR #4 covered a 2026-09 concern that a weekend multiplayer/server/
+ragdoll package existed only outside the then-current remote tree and could be
+lost. Both are closed: production's multiplayer is server-authoritative,
+cross-process T4-gate proven, and ahead of the preserved recovery branches
+(`recovery/stw-weekend-full-2026-09-14`, `recovery/stw-weekend-reconciled-2026-09-14`)
+by file count. Ragdoll was never present in production, the recovery branches,
+or anywhere else recovered; it remains `NOT_YET_IMPLEMENTED` and is tracked as
+P1.6 in [`docs/STW_PRODUCTION_ROADMAP.md`](docs/STW_PRODUCTION_ROADMAP.md), not
+as a recovery concern.
 
 ## Legacy boundary
 
