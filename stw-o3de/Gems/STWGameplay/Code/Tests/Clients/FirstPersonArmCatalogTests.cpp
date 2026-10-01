@@ -30,8 +30,14 @@ namespace STWGameplay
         ASSERT_NE(smgReload.m_actorPath, nullptr);
         ASSERT_NE(smgReload.m_motionPath, nullptr);
         EXPECT_EQ(std::strstr(smgReload.m_actorPath, "stw_fp_01"), nullptr);
-        EXPECT_NE(std::strstr(smgReload.m_actorPath, "STW_SMG_01"), nullptr);
-        EXPECT_NE(std::strstr(smgReload.m_motionPath, "STW_SMG_01"), nullptr);
+        EXPECT_EQ(std::strstr(smgReload.m_actorPath, ".fbx"), nullptr);
+        EXPECT_EQ(std::strstr(smgReload.m_motionPath, ".motion"), nullptr);
+        EXPECT_STREQ(
+            smgReload.m_actorPath,
+            "assets/industrialyard/stw_industrial_yard_01/firstperson/profiles/stw_smg_01/stw_smg_01.actor");
+        EXPECT_STREQ(
+            smgReload.m_motionPath,
+            "assets/industrialyard/stw_industrial_yard_01/firstperson/profiles/stw_smg_01/stw_smg_01_reload.actor");
         EXPECT_STREQ(smgReload.m_poseName, "reload");
         EXPECT_STRNE(smgReload.m_actorPath, rifleOnly.m_actorPath);
         EXPECT_STRNE(smgReload.m_motionPath, rifleOnly.m_motionPath);
@@ -60,23 +66,20 @@ namespace STWGameplay
         EXPECT_EQ(std::strstr(unresolved.c_str(), "result=PASS"), nullptr);
 
         FirstPersonArmSelection smgWrong = smgReload;
-        EXPECT_FALSE(FirstPersonArmCatalog::ConfirmRuntime(
-            smgWrong, rifleOnly.m_actorPath, smgReload.m_motionPath, true, true));
+        EXPECT_FALSE(FirstPersonArmCatalog::ConfirmRuntime(smgWrong, rifleOnly.m_motionPath, true));
         EXPECT_FALSE(smgWrong.m_resolved);
         EXPECT_FALSE(FirstPersonArmCatalog::ConfirmRuntime(
-            smgWrong, "assets/industrialyard/stw_industrial_yard_01/firstperson/stw_fp_01.actor",
-            smgReload.m_motionPath, true, true));
+            smgWrong, "assets/industrialyard/stw_industrial_yard_01/firstperson/stw_fp_01.actor", true));
 
         FirstPersonArmSelection rifleResolved = rifleOnly;
-        EXPECT_TRUE(FirstPersonArmCatalog::ConfirmRuntime(
-            rifleResolved, rifleOnly.m_actorPath, rifleOnly.m_motionPath, true, true));
+        EXPECT_TRUE(FirstPersonArmCatalog::ConfirmRuntime(rifleResolved, rifleOnly.m_motionPath, true));
         const std::string rifleOnlyResolved = FirstPersonArmCatalog::MarkerFor(&rifleResolved, 1);
         EXPECT_EQ(std::strstr(rifleOnlyResolved.c_str(), "result=PASS"), nullptr);
 
         for (std::size_t index = 0; index < written; ++index)
         {
             EXPECT_TRUE(FirstPersonArmCatalog::ConfirmRuntime(
-                selections[index], selections[index].m_actorPath, selections[index].m_motionPath, true, true));
+                selections[index], selections[index].m_motionPath, true));
         }
         const std::string marker = FirstPersonArmCatalog::MarkerFor(selections, written);
         EXPECT_NE(std::strstr(marker.c_str(), "ATOM_FIRSTPERSON_ARMS_MESH result=PASS"), nullptr);
@@ -115,7 +118,9 @@ namespace STWGameplay
                 const FirstPersonArmPoseBinding& pose = binding->m_poses[poseIndex];
                 EXPECT_STREQ(pose.m_name, poseNames[poseIndex]);
                 ASSERT_NE(pose.m_assetPath, nullptr);
-                EXPECT_NE(std::strstr(pose.m_assetPath, binding->m_profileName), nullptr);
+                EXPECT_NE(std::strstr(pose.m_assetPath, ".actor"), nullptr);
+                EXPECT_EQ(std::strstr(pose.m_assetPath, ".fbx"), nullptr);
+                EXPECT_EQ(std::strstr(pose.m_assetPath, ".motion"), nullptr);
                 for (std::size_t other = poseIndex + 1; other < FirstPersonArmCatalog::PoseCount; ++other)
                 {
                     const FirstPersonArmPoseBinding& rest = binding->m_poses[other];

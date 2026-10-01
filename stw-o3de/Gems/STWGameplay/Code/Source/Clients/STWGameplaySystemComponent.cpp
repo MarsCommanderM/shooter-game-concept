@@ -5798,8 +5798,8 @@ namespace STWGameplay
                 {
                     FirstPersonArmSelection confirmed = probe;
                     if (FirstPersonArmCatalog::ConfirmRuntime(
-                            confirmed, m_firstPersonArms.LoadedActorPath(), m_firstPersonArms.LoadedMotionPath(),
-                            m_firstPersonArms.IsSkinnedMeshVisible(), m_firstPersonArms.IsMotionAssetReady()))
+                            confirmed, m_firstPersonArms.LoadedMotionPath(),
+                            m_firstPersonArms.IsSkinnedMeshVisible()))
                     {
                         resolvedArms[m_armResolveCursor] = confirmed;
                         ++m_armResolveCursor;

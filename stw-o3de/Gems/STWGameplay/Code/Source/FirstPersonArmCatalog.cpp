@@ -14,10 +14,52 @@ namespace STWGameplay
             return FirstPersonArmPoseBinding{pose, name, path, right, forward, up};
         }
 
+        bool ContainsFold(const char* haystack, const char* needle)
+        {
+            if (haystack == nullptr || needle == nullptr || needle[0] == '\0')
+            {
+                return false;
+            }
+            for (const char* cursor = haystack; *cursor != '\0'; ++cursor)
+            {
+                std::size_t index = 0;
+                while (needle[index] != '\0' && cursor[index] != '\0'
+                    && (cursor[index] == needle[index]
+                        || (cursor[index] >= 'A' && cursor[index] <= 'Z'
+                            && cursor[index] - 'A' + 'a' == needle[index])
+                        || (needle[index] >= 'A' && needle[index] <= 'Z'
+                            && needle[index] - 'A' + 'a' == cursor[index])))
+                {
+                    ++index;
+                }
+                if (needle[index] == '\0')
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        bool NamesActorProduct(const char* path, const char* profileName)
+        {
+            return path != nullptr && profileName != nullptr && std::strstr(path, ".actor") != nullptr
+                && std::strstr(path, ".fbx") == nullptr && std::strstr(path, ".motion") == nullptr
+                && std::strstr(path, "stw_fp_01") == nullptr && ContainsFold(path, profileName);
+        }
+
         FirstPersonArmBinding Bind(EquipmentProfileId id, const char* name, float scale)
         {
+            AZStd::string product = name;
+            for (char& character : product)
+            {
+                if (character >= 'A' && character <= 'Z')
+                {
+                    character = static_cast<char>(character - 'A' + 'a');
+                }
+            }
             const AZStd::string root =
-                AZStd::string("assets/industrialyard/stw_industrial_yard_01/firstperson/profiles/") + name + "/" + name;
+                AZStd::string("assets/industrialyard/stw_industrial_yard_01/firstperson/profiles/") + product + "/"
+                + product;
             // Paths are stored in function-local static strings so the table outlives this call.
             struct Paths
             {
@@ -33,10 +75,10 @@ namespace STWGameplay
             if (path.actor.empty())
             {
                 path.actor = root + ".actor";
-                path.hip = root + "_hip.motion";
-                path.ads = root + "_ads.motion";
-                path.reload = root + "_reload.motion";
-                path.inspect = root + "_inspect.motion";
+                path.hip = root + "_hip.actor";
+                path.ads = root + "_ads.actor";
+                path.reload = root + "_reload.actor";
+                path.inspect = root + "_inspect.actor";
             }
             const float base = 0.20f + (0.03f * static_cast<float>(index));
             return FirstPersonArmBinding{
@@ -109,9 +151,8 @@ namespace STWGameplay
 
         const FirstPersonArmPoseBinding& poseBinding = binding->m_poses[poseIndex];
         if (poseBinding.m_assetPath == nullptr || poseBinding.m_name == nullptr
-            || std::strstr(binding->m_actorPath, binding->m_profileName) == nullptr
-            || std::strstr(poseBinding.m_assetPath, binding->m_profileName) == nullptr
-            || std::strstr(binding->m_actorPath, "stw_fp_01") != nullptr
+            || !NamesActorProduct(binding->m_actorPath, binding->m_profileName)
+            || !NamesActorProduct(poseBinding.m_assetPath, binding->m_profileName)
             || std::strcmp(poseBinding.m_name, pose == FirstPersonArmPose::Hip ? "hip"
                     : pose == FirstPersonArmPose::Ads ? "ads"
                     : pose == FirstPersonArmPose::Reload ? "reload"
@@ -152,24 +193,21 @@ namespace STWGameplay
     }
 
     bool FirstPersonArmCatalog::ConfirmRuntime(
-        FirstPersonArmSelection& selection, const char* loadedActorPath, const char* loadedMotionPath,
-        bool meshVisible, bool motionReady)
+        FirstPersonArmSelection& selection, const char* loadedPoseActorPath, bool meshVisible)
     {
         selection.m_resolved = false;
-        if (!selection.m_owned || !meshVisible || !motionReady || selection.m_binding == nullptr
-            || loadedActorPath == nullptr || loadedMotionPath == nullptr || selection.m_actorPath == nullptr
+        if (!selection.m_owned || !meshVisible || selection.m_binding == nullptr
+            || loadedPoseActorPath == nullptr || selection.m_actorPath == nullptr
             || selection.m_motionPath == nullptr || selection.m_binding->m_profileName == nullptr)
         {
             return false;
         }
-        if (std::strcmp(loadedActorPath, selection.m_actorPath) != 0
-            || std::strcmp(loadedMotionPath, selection.m_motionPath) != 0)
+        if (std::strcmp(loadedPoseActorPath, selection.m_motionPath) != 0)
         {
             return false;
         }
-        if (std::strstr(loadedActorPath, "stw_fp_01") != nullptr
-            || std::strstr(loadedActorPath, selection.m_binding->m_profileName) == nullptr
-            || std::strstr(loadedMotionPath, selection.m_binding->m_profileName) == nullptr)
+        if (!NamesActorProduct(selection.m_actorPath, selection.m_binding->m_profileName)
+            || !NamesActorProduct(loadedPoseActorPath, selection.m_binding->m_profileName))
         {
             return false;
         }
@@ -201,9 +239,8 @@ namespace STWGameplay
                     || profileIndex >= WeaponModel::EquipmentProfileCount || poseIndex >= PoseCount
                     || selection.m_actorPath == nullptr || selection.m_motionPath == nullptr
                     || selection.m_poseName == nullptr || selection.m_binding->m_profileName == nullptr
-                    || std::strstr(selection.m_actorPath, "stw_fp_01") != nullptr
-                    || std::strstr(selection.m_actorPath, selection.m_binding->m_profileName) == nullptr
-                    || std::strstr(selection.m_motionPath, selection.m_binding->m_profileName) == nullptr
+                    || !NamesActorProduct(selection.m_actorPath, selection.m_binding->m_profileName)
+                    || !NamesActorProduct(selection.m_motionPath, selection.m_binding->m_profileName)
                     || std::strcmp(selection.m_poseName, poseNames[poseIndex]) != 0
                     || selection.m_handSocketLeft == nullptr || selection.m_handSocketRight == nullptr
                     || std::strcmp(selection.m_handSocketLeft, "hand_L") != 0

@@ -54,20 +54,21 @@ namespace STWGameplay
         {
             return true;
         }
-        if (!m_actorAssetId.IsValid() || m_resolvedActorPath != m_actorPath)
+        const bool baseChanged = m_resolvedActorPath != m_actorPath || !m_motionAssetId.IsValid();
+        const bool poseChanged = m_resolvedMotionPath != m_motionPath || !m_actorAssetId.IsValid();
+        if (baseChanged)
         {
-            m_actorAssetId = FindFirstPersonAssetId<EMotionFX::Integration::ActorAsset>(m_actorPath);
-            m_resolvedActorPath = m_actorAssetId.IsValid() ? m_actorPath : nullptr;
+            m_motionAssetId = FindFirstPersonAssetId<EMotionFX::Integration::ActorAsset>(m_actorPath);
+            m_resolvedActorPath = m_motionAssetId.IsValid() ? m_actorPath : nullptr;
         }
-        if (!m_motionAssetId.IsValid() || m_resolvedMotionPath != m_motionPath)
+        if (poseChanged)
         {
-            m_motionAssetId = FindFirstPersonAssetId<EMotionFX::Integration::MotionAsset>(m_motionPath);
-            m_resolvedMotionPath = m_motionAssetId.IsValid() ? m_motionPath : nullptr;
+            m_actorAssetId = FindFirstPersonAssetId<EMotionFX::Integration::ActorAsset>(m_motionPath);
+            m_resolvedMotionPath = m_actorAssetId.IsValid() ? m_motionPath : nullptr;
         }
         if (!m_actorAssetId.IsValid() || !m_motionAssetId.IsValid())
         {
-            // The catalog may still be scanning, or this profile's product is not an actor yet.
-            // Retry next Update instead of latching a false negative.
+            // Pose products are actor assets. There is no profile motion clip to wait for.
             m_productsResolved = false;
             return false;
         }
@@ -89,16 +90,7 @@ namespace STWGameplay
 
         auto actorConfiguration = EMotionFX::Integration::ActorComponent::Configuration{};
         actorConfiguration.m_actorAsset = AZ::Data::Asset<EMotionFX::Integration::ActorAsset>(
-            m_actorAssetId, azrtti_typeid<EMotionFX::Integration::ActorAsset>(), m_actorPath);
-
-        auto motionConfiguration = EMotionFX::Integration::SimpleMotionComponent::Configuration{};
-        motionConfiguration.m_motionAsset = AZ::Data::Asset<EMotionFX::Integration::MotionAsset>(
-            m_motionAssetId, azrtti_typeid<EMotionFX::Integration::MotionAsset>(), m_motionPath);
-        motionConfiguration.m_loop = true;
-        motionConfiguration.m_retarget = false;
-        motionConfiguration.m_playOnActivation = true;
-        motionConfiguration.m_inPlace = true;
-        motionConfiguration.m_freezeAtLastFrame = true;
+            m_actorAssetId, azrtti_typeid<EMotionFX::Integration::ActorAsset>(), m_motionPath);
 
         AzFramework::EntityContextId gameContextId = AzFramework::EntityContextId::CreateNull();
         AzFramework::GameEntityContextRequestBus::BroadcastResult(
@@ -112,7 +104,6 @@ namespace STWGameplay
         entity->SetRuntimeActiveByDefault(false);
         entity->CreateComponent<AzFramework::TransformComponent>();
         entity->CreateComponent<EMotionFX::Integration::ActorComponent>(&actorConfiguration);
-        entity->CreateComponent<EMotionFX::Integration::SimpleMotionComponent>(&motionConfiguration);
         m_entityId = entity->GetId();
 
         AzFramework::GameEntityContextRequestBus::Broadcast(
@@ -161,18 +152,15 @@ namespace STWGameplay
             m_skinnedMeshVisible, m_entityId,
             &EMotionFX::Integration::ActorComponentRequests::GetRenderActorVisible);
 
-        float duration = 0.0f;
-        EMotionFX::Integration::SimpleMotionComponentRequestBus::EventResult(
-            duration, m_entityId, &EMotionFX::Integration::SimpleMotionComponentRequests::GetDuration);
-        m_motionAssetReady = m_currentMotionAssetId.IsValid() && duration > 0.0f;
+        m_motionAssetReady = m_resolvedMotionPath != nullptr;
 
         if (!m_readyReported && m_actorInstanceReady && m_skinnedMeshVisible && m_motionAssetReady)
         {
             m_readyReported = true;
             AZ_Printf(
                 "STWGameplay",
-                "ATOM_FIRSTPERSON_ARMS_ACTOR result=READY actor=%s mesh=ready material=bound motion=ready\n",
-                m_actorPath != nullptr ? m_actorPath : "");
+                "ATOM_FIRSTPERSON_ARMS_ACTOR result=READY actor=%s mesh=ready material=bound\n",
+                m_motionPath != nullptr ? m_motionPath : "");
         }
     }
 
@@ -181,13 +169,12 @@ namespace STWGameplay
         const AZ::Vector3& up, const FirstPersonArmSelection& selection)
     {
         (void)deltaTime;
-        const bool actorChanged = m_entity != nullptr && selection.m_actorPath != m_actorPath;
+        const bool actorChanged = m_entity != nullptr
+            && (selection.m_actorPath != m_actorPath || selection.m_motionPath != m_motionPath);
         if (actorChanged)
         {
             Shutdown();
         }
-        const bool motionChanged = m_motionPath != nullptr && selection.m_motionPath != nullptr
-            && m_motionPath[0] != '\0' && std::strcmp(m_motionPath, selection.m_motionPath) != 0;
         m_actorPath = selection.m_actorPath != nullptr ? selection.m_actorPath : "";
         m_motionPath = selection.m_motionPath != nullptr ? selection.m_motionPath : "";
         m_poseRight = selection.m_right;
@@ -205,12 +192,8 @@ namespace STWGameplay
             return false;
         }
 
-        const AZ::Data::AssetId motionBefore = m_currentMotionAssetId;
-        SelectMotion(m_motionAssetId, selection.m_loop);
-        const bool motionSwap = motionChanged || m_currentMotionAssetId != motionBefore;
-        if (actorChanged || motionSwap)
+        if (actorChanged)
         {
-            m_motionAssetReady = false;
             m_actorInstanceReady = false;
             m_skinnedMeshVisible = false;
             return false;
@@ -224,7 +207,7 @@ namespace STWGameplay
         AZ::TransformBus::Event(m_entityId, &AZ::TransformBus::Events::SetWorldTM, transform);
 
         SampleRuntimeDiagnostics();
-        return m_actorInstanceReady && m_skinnedMeshVisible && m_motionAssetReady;
+        return m_actorInstanceReady && m_skinnedMeshVisible && m_productsResolved;
     }
 
     void STWFirstPersonArmsPresentation::SetVisible(bool visible)
