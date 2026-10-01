@@ -207,6 +207,7 @@ namespace STWGameplay
         m_reported = false;
         m_invalidFrameObserved = false;
         m_elapsedSeconds = 0.0;
+        m_postWarmupStartSeconds = -1.0;
         m_csvPath.clear();
         m_rhiCpuFrameMilliseconds.clear();
         m_presentMilliseconds.clear();
@@ -278,6 +279,14 @@ namespace STWGameplay
             return;
         }
 
+        // Validation measures the window from the first actual post-warmup row.
+        // A frame can cross the warmup boundary, so using the fixed 30 s origin
+        // can finalize one frame too early and produce a 59.985 s window.
+        if (m_postWarmupStartSeconds < 0.0)
+        {
+            m_postWarmupStartSeconds = m_elapsedSeconds;
+        }
+
         m_invalidFrameObserved = m_invalidFrameObserved || !valid;
 
         frame.m_rhiCpuFrameMilliseconds > 0.0
@@ -288,7 +297,7 @@ namespace STWGameplay
             m_presentMilliseconds.push_back(frame.m_presentMilliseconds);
         }
 
-        if (m_elapsedSeconds - STWPerformanceTelemetryWarmupSeconds >= STWPerformanceTelemetryWindowSeconds)
+        if (m_elapsedSeconds - m_postWarmupStartSeconds >= STWPerformanceTelemetryWindowSeconds)
         {
             Finalize();
         }

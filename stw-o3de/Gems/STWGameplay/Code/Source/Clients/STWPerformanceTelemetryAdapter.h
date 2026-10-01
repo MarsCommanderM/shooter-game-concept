@@ -52,6 +52,7 @@ namespace STWGameplay
         AZStd::vector<double> m_rhiCpuFrameMilliseconds;
         AZStd::vector<double> m_presentMilliseconds;
         double m_elapsedSeconds = 0.0;
+        double m_postWarmupStartSeconds = -1.0;
         bool m_enabled = false;
         bool m_reported = false;
         bool m_invalidFrameObserved = false;
