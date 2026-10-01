@@ -27,5 +27,6 @@ set(FILES
     Tests/Clients/STWMultiplayerRuntimeTests.cpp
     Tests/Clients/STWPlayerNetworkComponentTests.cpp
     Tests/Clients/ViewmodelPresentationTests.cpp
+    Tests/Clients/FirstPersonArmCatalogTests.cpp
     Tests/Clients/IndustrialYardLookTemplateTests.cpp
     Tests/Clients/IndustrialYardArenaVariantTests.cpp)

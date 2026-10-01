@@ -34,6 +34,7 @@
 #include <Atom/RPI.Reflect/Material/MaterialAsset.h>
 #include <Atom/RPI.Reflect/Model/ModelAsset.h>
 #include <STWGameplay/STWGameplayTypeIds.h>
+#include <STWGameplay/FirstPersonArmCatalog.h>
 #include <STWGameplay/ArenaLayout.h>
 #include <STWGameplay/BodycamCameraPresentation.h>
 #include <Network/STWPlayerNetworkComponent.h>
@@ -5770,6 +5771,12 @@ namespace STWGameplay
         // procedural DrawSolidOBB body is gone; if the mesh fails to initialize the runtime
         // reports it instead of silently drawing a placeholder.
         UpdateViewmodelMeshTransform(weaponCenter, right, presentedAim, presentedUp);
+
+        if (!m_armCatalogReported)
+        {
+            m_armCatalogReported = true;
+            AZ_Printf("STWGameplay", "%s\n", FirstPersonArmCatalog::ReadyMarker());
+        }
 
         const bool firstPersonArmsProfileActive =
             m_model.GetActiveEquipmentProfileId() == EquipmentProfileId::STW_RIFLE_02;

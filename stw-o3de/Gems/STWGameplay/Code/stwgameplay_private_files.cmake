@@ -22,6 +22,7 @@ set(FILES
     Source/BodycamCameraPresentation.cpp
     Source/STWSkeletalCharacterPresentation.cpp
     Source/STWFirstPersonArmsPresentation.cpp
+    Source/FirstPersonArmCatalog.cpp
     Source/ViewmodelPresentation.cpp
     Source/IndustrialYardLookTemplate.cpp
     Source/IndustrialYardArenaVariant.cpp

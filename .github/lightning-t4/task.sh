@@ -145,6 +145,18 @@ on_exit(){
 trap on_exit EXIT
 trap cleanup INT TERM
 mkdir -p "${RUN_DIR}" "${RUNTIME}"; chmod 700 "${RUNTIME}"
+ARM_FRAME_SRC="${GITHUB_WORKSPACE}/stw-o3de/Project/Assets/IndustrialYard/STW_INDUSTRIAL_YARD_01/FirstPerson/frames"
+ARM_FRAME_DST="$(dirname "${RUN_DIR}")/$(basename "${RUN_DIR}")-frames"
+mkdir -p "${ARM_FRAME_DST}"
+for arm_profile in STW_SMG_01 STW_RIFLE_02 STW_RIFLE_03 STW_LMG_04 STW_SIDEARM_01 STW_LAUNCHER_01 STW_TACTICAL_FLASH_01 STW_TACTICAL_SMOKE_01 STW_LETHAL_FRAG_01 STW_MELEE_01; do
+  for arm_pose in hip ads reload; do
+    arm_frame="${ARM_FRAME_SRC}/${arm_profile}_${arm_pose}.png"
+    [[ -s "${arm_frame}" ]]
+    cp -a "${arm_frame}" "${ARM_FRAME_DST}/${arm_profile}_${arm_pose}.png"
+    [[ -s "${ARM_FRAME_DST}/${arm_profile}_${arm_pose}.png" ]]
+  done
+done
+echo "ATOM_FIRSTPERSON_ARM_FRAMES=${ARM_FRAME_DST}"
 exec > >(tee "${RUN_DIR}/report.log") 2>&1
 
 echo "STW O3DE PRODUCTION PLAYER MOVEMENT V2"
@@ -928,7 +940,7 @@ for _ in $(seq 1 75); do
 done
 [[ -s "${FRAME_NATIVE}" ]]
 for _ in $(seq 1 180); do
-  runtime_grep -q 'PERFORMANCE_BASELINE' && runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS' && runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS' && runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS' && runtime_grep -q 'ENEMY_AI_ACCEPTANCE result=PASS' && runtime_grep -q 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'COMBAT_FEEDBACK_ACCEPTANCE result=PASS' && runtime_grep -q 'AUDIO_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'JUMP_ACCEPTANCE result=PASS' && runtime_grep -q 'CROUCH_ACCEPTANCE result=PASS' && runtime_grep -q 'SLIDE_ACCEPTANCE result=PASS' && runtime_grep -q 'MANTLE_ACCEPTANCE result=PASS' && runtime_grep -q 'TRAVERSAL_ARBITRATION_ACCEPTANCE result=PASS' && runtime_grep -q 'ENCOUNTER_ACCEPTANCE result=PASS' && runtime_grep -q 'MULTI_ENEMY_ACCEPTANCE result=PASS' && runtime_grep -q 'SPAWN_CHECKPOINT_ACCEPTANCE result=PASS' && runtime_grep -q 'WEAPON_SWITCH_ACCEPTANCE result=PASS' && runtime_grep -q 'LOADOUT_ACCEPTANCE result=PASS' && runtime_grep -q 'BLOCK_22_ANIMATION_ACCEPTANCE=PASS' && runtime_grep -q 'BODYCAM_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'ARENA_PRESENTATION_ACTIVE=1' && runtime_grep -q 'MAIN_MENU_ACCEPTANCE result=PASS' && runtime_grep -q 'DESTRUCTIBLE_ACCEPTANCE result=PASS' && runtime_grep -q 'PERFORMANCE_PROFILE ' && runtime_grep -q 'PERFORMANCE_TELEMETRY enabled=1 valid=true csv_written=true' && runtime_grep -q 'PERFORMANCE_FRAME_GAP ' && break
+  runtime_grep -q 'PERFORMANCE_BASELINE' && runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS' && runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS' && runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS' && runtime_grep -q 'ENEMY_AI_ACCEPTANCE result=PASS' && runtime_grep -q 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'COMBAT_FEEDBACK_ACCEPTANCE result=PASS' && runtime_grep -q 'AUDIO_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'JUMP_ACCEPTANCE result=PASS' && runtime_grep -q 'CROUCH_ACCEPTANCE result=PASS' && runtime_grep -q 'SLIDE_ACCEPTANCE result=PASS' && runtime_grep -q 'MANTLE_ACCEPTANCE result=PASS' && runtime_grep -q 'TRAVERSAL_ARBITRATION_ACCEPTANCE result=PASS' && runtime_grep -q 'ENCOUNTER_ACCEPTANCE result=PASS' && runtime_grep -q 'MULTI_ENEMY_ACCEPTANCE result=PASS' && runtime_grep -q 'SPAWN_CHECKPOINT_ACCEPTANCE result=PASS' && runtime_grep -q 'WEAPON_SWITCH_ACCEPTANCE result=PASS' && runtime_grep -q 'LOADOUT_ACCEPTANCE result=PASS' && runtime_grep -q 'BLOCK_22_ANIMATION_ACCEPTANCE=PASS' && runtime_grep -q 'BODYCAM_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'ARENA_PRESENTATION_ACTIVE=1' && runtime_grep -q 'MAIN_MENU_ACCEPTANCE result=PASS' && runtime_grep -q 'DESTRUCTIBLE_ACCEPTANCE result=PASS' && runtime_grep -q 'PERFORMANCE_PROFILE ' && runtime_grep -q 'PERFORMANCE_TELEMETRY enabled=1 valid=true csv_written=true' && runtime_grep -q 'PERFORMANCE_FRAME_GAP ' && runtime_grep -q 'ATOM_FIRSTPERSON_ARMS_MESH result=PASS' && break
   kill -0 "${launcher_pid}" 2>/dev/null || { tail -n 200 "${LAUNCH_LOG}"; exit 1; }
   sleep 1
 done
@@ -938,6 +950,13 @@ runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS'
 # model instance actually exists, so this proves the asset resolved and the mesh is renderable.
 runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS'
 runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS .*material=bound'
+runtime_grep -q 'ATOM_FIRSTPERSON_ARMS_MESH result=PASS'
+runtime_grep -q 'ATOM_FIRSTPERSON_ARMS_MESH result=PASS .*poses=hip,ads,reload,inspect'
+runtime_grep -q 'ATOM_FIRSTPERSON_ARMS_MESH result=PASS .*sockets=hand_L,hand_R'
+for arm_profile in STW_SMG_01 STW_RIFLE_02 STW_RIFLE_03 STW_LMG_04 STW_SIDEARM_01 STW_LAUNCHER_01 STW_TACTICAL_FLASH_01 STW_TACTICAL_SMOKE_01 STW_LETHAL_FRAG_01 STW_MELEE_01; do
+  runtime_grep -q "ATOM_FIRSTPERSON_ARMS_MESH result=PASS .*profile=${arm_profile}"
+done
+runtime_grep 'ATOM_FIRSTPERSON_ARMS_MESH result=PASS' | head -n 1
 runtime_grep -q 'ATOM_ENEMY_MESH result=PASS .*material=bound'
 runtime_grep -q 'ACTOR_ASSET_READY=1'
 runtime_grep -q 'MOTION_ASSET_READY=1'

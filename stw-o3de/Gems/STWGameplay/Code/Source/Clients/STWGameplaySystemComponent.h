@@ -399,6 +399,7 @@ namespace STWGameplay
         // the STW_FP_01 asset was authored for); other profiles keep the static viewmodel mesh.
         STWFirstPersonArmsPresentation m_firstPersonArms;
         bool m_firstPersonArmsProfileWasActive = false;
+        bool m_armCatalogReported = false;
         CombatFeedbackPresentation m_combatFeedback;
         AudioFeedbackPresentation m_audioFeedback;
         EncounterModel m_encounter;

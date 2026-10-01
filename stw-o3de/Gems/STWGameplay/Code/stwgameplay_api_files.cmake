@@ -24,6 +24,7 @@ set(FILES
     Include/STWGameplay/BodycamCameraPresentation.h
     Include/STWGameplay/STWSkeletalCharacterPresentation.h
     Include/STWGameplay/STWFirstPersonArmsPresentation.h
+    Include/STWGameplay/FirstPersonArmCatalog.h
     Include/STWGameplay/ViewmodelPresentation.h
     Include/STWGameplay/IndustrialYardLookTemplate.h
     Include/STWGameplay/IndustrialYardArenaVariant.h
