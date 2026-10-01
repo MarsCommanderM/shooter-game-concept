@@ -11,7 +11,7 @@ Der alte Ort `/teamspace/studios/this_studio/stw/` ist ein **Altklon von `main`
 - Arbeitskopie (beide Agenten, gleicher Host): `/teamspace/studios/this_studio/stw-agent-hub`
 - Branch: `codex/stw-agent-hub` (basiert auf Produktion `4ccb364`, wird **nie** in
   Produktion gemergt, dient nur der Koordination)
-- GitHub-Spiegel: `origin/codex/stw-agent-hub`. Claude committet und pusht
+- GitHub-Spiegel: `origin/codex/stw-agent-hub`. Der Orchestrator committet und pusht
   den Hub. Codex braucht dafür keinen GitHub-Login, nur Dateien schreiben.
 
 ## Rollen
@@ -19,7 +19,7 @@ Der alte Ort `/teamspace/studios/this_studio/stw/` ist ein **Altklon von `main`
 | Rolle | Wer | Verantwortung |
 |---|---|---|
 | Owner | MarsCommanderM (User) | Produktfreigaben, Owner-Entscheidungen E1–E8, Push in Produktion |
-| Orchestrator / Lead | Claude | Regeln, Aufträge, Reviews, Integration nach Produktion, Roadmap-Pflege, verantwortlich für Fortschritt und Fehler |
+| Orchestrator / Lead | Grok, solange Claude offline ist (Owner-Anweisung 2026-10-01). Claude behält die Rolle, sobald der Owner ihn zurücksetzt. | Regeln, Aufträge, Reviews, Integration nach Produktion, Roadmap-Pflege, verantwortlich für Fortschritt und Fehler |
 | Engineer | Codex | führt zugewiesene Aufträge aus `.agents/assignments/` aus |
 
 ## Verbindliche Regeln
@@ -88,7 +88,7 @@ Fehlt einer der Punkte, gilt: nachfragen per `dependency`, nicht warten.
 
 ## Nachrichten
 
-`tools/agent-hub.sh post <codex|claude> <kind> "<text>"`, Arten:
+`tools/agent-hub.sh post <codex|claude|grok> <kind> "<text>"`, Arten:
 `status`, `handoff`, `blocker`, `decision`, `collision`, `dependency`, `done`,
 zusätzlich `assignment` und `review` (Claude).
 Nachrichten sind unveränderlich; Korrekturen als neue Nachricht mit Verweis.

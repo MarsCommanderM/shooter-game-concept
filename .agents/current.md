@@ -1,53 +1,35 @@
-# Aktueller Stand (gepflegt von Claude, Orchestrator)
+# Aktueller Stand (gepflegt von Grok, Orchestrator auf Zeit)
 
-**Hub ist aktiv.** Letztes Update: 2026-10-01T17:14Z. Falls das hier alt aussieht: `git -C stw-agent-hub pull origin codex/stw-agent-hub` — dieses File liegt auf dem Branch, nicht nur lokal.
+**Hub ist aktiv.** Letztes Update: 2026-10-01T21:21Z. Claude ist offline. Der Owner hat Grok auf den Orchestrator-Sitz gesetzt, bis er Claude zurücksetzt. Codex bleibt Engineer. Dieselben Regeln aus `HUB.md`. Nachrichten von Grok kommen als Agent `grok`.
 
-- **Ziel:** STW von der Produktionslinie bis Release 1.0 nach
-  `docs/STW_PRODUCTION_ROADMAP.md` bringen.
-- **Coordinator:** Claude (Owner-Anweisung 2026-09-30); Owner: MarsCommanderM
-- **Produktion (origin, `brauny/stw-game-production`):** `db369f9` (Stand 2026-09-30 18:30 UTC). NICHT mehr `1031d58` — das ist veraltet.
-- **Hängender Fast-Forward:** C-003 v2 (`2bb5a99`, deterministisches Primary-Enemy-Aiming, fixt den CI-Red-Grund von 1031d58) ist 3x konsekutiv T4-Gate `RESULT=PASS` bewiesen (Läufe `multiplayer-20261001T163417Z-138786`, `-164209Z-149594`, `-164918Z-159876`), aber der Push nach Produktion ist vom Claude-Code-Auto-Mode-Classifier blockiert (`[Production Deploy]`), zweimal versucht. Owner muss selbst pushen (`! git push ...`) oder eine Permission-Regel setzen.
-- **PR #14** (dokumentiert das Schließen von Issue #5 / PR #4, siehe unten): offen, CI grün bis auf den bekannten irrelevanten Vercel-Check, Merge ebenfalls vom Classifier blockiert.
-- **Issue #5 / PR #4:** beide am 2026-10-01 geschlossen (Owner-Freigabe). Begründung direkt gegen Code geprüft: Ragdoll in Produktion und beiden Recovery-Branches identischer Stub; Produktion hat beim MP-Code 111 vs. 91 Dateien inkl. `MatchSession.h`, das der Recovery-Branch fehlt.
-- **Gate-Lock:** `.agents/claims/gate.lock` (fehlt = frei, aktuell frei)
+## Arbeitsweise ab jetzt (ein AP, eine SHA, ein Beweis)
 
-## Aktive Aufträge
+1. Es läuft immer nur das oberste offene Arbeitspaket der niedrigsten offenen Phase, dessen Abhängigkeiten erfüllt sind. Heute ist das **P1.1 / A-003**. A-004 bleibt QUEUED.
+2. Ein Beweis gilt nur für die exakte SHA, die im Gate-Log als `SOURCE_COMMIT` steht. Ein PASS auf einer älteren SHA zählt für den neuen Commit nicht.
+3. `done` enthält SHA, Branch, Pfade, Befehle mit Exit-Codes, Testzahl, Evidenzpfad und alles, was nicht verifiziert ist. Der Orchestrator reviewt den Diff gegen die Abnahme des Auftrags. Lücken werden ein Nachzieh-Commit auf demselben Auftrag, kein neues AP.
+4. Integration ist eine eigene SHA: Produktions-HEAD plus bereits bewiesene, noch nicht gepushte Fixes, die CI braucht, plus das reviewte AP. Ein T4 auf dieser kombinierten SHA, Roadmap-Status im selben PR. Push nach Produktion nur Orchestrator oder Owner.
+5. Eine T4. Wer den Lauf startet, hält `.agents/claims/gate.lock`, bis der Prozess weg ist, und postet danach das Ergebnis. Kein zweiter Build, kein `task.sh`, kein Launcher daneben.
 
-| ID | Agent | Roadmap-AP | Status |
+## A-003, Stand 21:21Z
+
+- Branch `codex/stw-perf-telemetry-adapter-20260930`, Worktree `stw-perf-telemetry-adapter-20260930`. Drei Commits über Produktion `db369f9`: `0fadded`, `e02fab3`, `4804029`. Enthält C-003 (`2bb5a99`) nicht.
+- `e02fab3`: Player-Slice `stw-o3de-gate/player-slice-20261001T210924Z` und Multiplayer `stw-o3de-gate/multiplayer-20261001T211413Z-417568`, beide `RESULT=PASS`. `PERFORMANCE_TELEMETRY_CSV=PASS samples=1989 duration_s=60.002 rows=2954`. Dieselbe Report-Zeile `PERFORMANCE_BASELINE` trägt weiter `cpu_frame_ms=UNAVAILABLE gpu_frame_ms=UNAVAILABLE`, weil `RecordPerformance` das literal druckt (`STWGameplaySystemComponent.cpp` Z. 1820). Damit ist A-003 Punkt 5 auf dieser SHA offen.
+- `e02fab3` ändert `.github/lightning-t4/task.sh` (+55). Das bleibt für dieses AP im Review. Weitere Änderungen an `task.sh` nur über eine `dependency`.
+- **Jetzt:** Codex hält `gate.lock` seit 21:18Z für den vollen T4 auf `4804029`. `task.sh` läuft (PIDs 428125, 428155). Diesen Lauf zu Ende führen. Keine Commits, kein Rebase, kein A-004, kein zweiter Build, solange der Lock liegt.
+
+## Nächster Schritt nach dem Lauf
+
+Codex postet `status`: SHA `4804029`, `RESULT`, Evidenzpfad, ob `PERFORMANCE_BASELINE` echte cpu/gpu-Werte hat, ob `PERFORMANCE_FRAME_GAP` und `PERFORMANCE_TELEMETRY_CSV=PASS` im Log stehen, Exit-Codes. Wenn der Lauf PASS ist und die Baseline weiter UNAVAILABLE druckt: ein Commit, nur diese Printf-Zeile, nichts in `UpdateAutomatedAcceptance`. Danach ein neuer Lock und ein T4 auf der neuen SHA. Wenn der Lauf FAIL ist: Ursache mit Logpfad posten, nicht denselben Lauf wiederholen.
+
+C-003 bleibt außerhalb dieses Branches. Vor jedem Produktions-Push kommt eine Integrations-SHA aus `db369f9` + C-003 + reviewtem A-003, einmal gegated. Der 3×-PASS von C-003 ist Claudes Bericht, von Grok in diesem Turn nicht neu gemessen.
+
+## Aufträge
+
+| ID | Agent | Inhalt | Status |
 |---|---|---|---|
-| A-001 | codex | P1.1 Performance-Telemetrie, Stufe 1: Designvorschlag (read-only) | DONE |
-| A-002 | codex | P1.1 Stufe 2a: engine-freies Telemetriemodell + Unit-Tests | DONE (`1031d58`, in Produktion) |
-| A-003 | codex | P1.1 Stufe 2b: Engine-Adapter + Frame-Lücke | **IN_ARBEIT — siehe Befund unten** |
-| A-004 | codex | P1.2 First-Person-Arme für alle 10 Waffenprofile | QUEUED (nach A-003), siehe `.agents/assignments/A-004.md` |
-| C-003 | claude | CI-Red-Fix (nicht-deterministisches Zielen in der Akzeptanz) | 3x T4 PASS bewiesen, Push blockiert (siehe oben) |
-| C-001 | claude | P0.3 Gate erzwingt `MAIN_MENU_ACCEPTANCE` + `DESTRUCTIBLE_ACCEPTANCE` | DONE (PR #13 gemergt) |
-| C-002 | claude | P1.7 Lighting-Vorarbeit (read-only) | DONE |
-| C-000 | claude | Integration, Hub, Roadmap-Pflege, Freeze-Closure | IN_ARBEIT |
+| A-003 | codex | P1.1 Adapter | IN_ARBEIT, Gate auf `4804029` läuft |
+| A-004 | codex | P1.2 First-Person-Arme | QUEUED bis A-003 `done` und reviewt |
+| C-003 | claude | Aim-Fix, lokal 3× PASS laut Claude, nicht in Produktion | wartet auf Integrations-SHA |
+| C-000 | grok | Orchestration | IN_ARBEIT |
 
-## A-003 — Review-Befund 2026-10-01T17:11Z (für Codex)
-
-Euer uncommitteter Adapter (`STWPerformanceTelemetryAdapter.cpp/.h` + Tests,
-Worktree `/teamspace/studios/this_studio/stw-perf-telemetry-adapter-20260930`,
-Branch `codex/stw-perf-telemetry-adapter-20260930`) hatte 2 echte Compile-Fehler:
-`passSystem` fälschlich `const AZ::RPI::PassSystemInterface*` deklariert (Z. 88),
-aber `GetRootPass()`/`GetFrameStatistics()` sind nicht-const. Claude hat das
-**minimal gefixt** (nur `const` entfernt, keine Logikänderung), **uncommitted**
-im selben Worktree — euer Claim, nicht gepusht.
-
-Danach: Build clean, Unit-Test PASS. Voller T4-Gate-Lauf
-(`stw-o3de-gate/player-slice-20261001T165828Z`) endet aber mit
-`TASK_EXIT_CODE=1`: `WEAPON_SWITCH_ACCEPTANCE`/`LOADOUT_ACCEPTANCE` noch PASS um
-17:04:09, aber `PHYSX`/`VIEWMODEL`/`COMBAT_FEEDBACK`/`BLOCK_22`/`BODYCAM`/`ARENA`/
-`MAIN_MENU`/`DESTRUCTIBLE`/`PERFORMANCE_PROFILE` fehlen komplett — sieht nach
-Absturz/Hang des GameLaunchers mitten im Lauf aus, zeitlich nah am
-Performance-Messfenster (passt zum neuen Adapter-Code: `AZ::RPI::PassSystemInterface`
-/ `PassTimestamp`-Zugriff). `report.log` bricht bei `STW DIAGNOSTIC DUMP END` ab,
-kein `RESULT=`, kein `stw-player-slice.png` (nur `.ppm`). Nicht weiter von Claude
-untersucht — Adapter-interne Logik ist euer Claim.
-
-**Evidenz:** `stw-o3de-gate/player-slice-20261001T165828Z/{report.log,launcher.log}`
-
-## Nächste Aktion
-
-Codex: A-003 — Absturzursache im Adapter finden (vermutlich `RecordFrame`/Pass-Timestamp-Pfad),
-fixen, committen. Build/CTest sofort erlaubt; voller T4-Gate erst nach Lock-Freigabe (aktuell frei).
+P0.5 und P0.6 bleiben Owner-Entscheidungen. Daran arbeiten wir nicht.

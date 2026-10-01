@@ -9,8 +9,8 @@ usage() {
     'Usage:' \
     '  tools/agent-hub.sh status' \
     '  tools/agent-hub.sh read [count]' \
-    '  tools/agent-hub.sh post <codex|claude> <kind> <message>' \
-    '  tools/agent-hub.sh claim <codex|claude> <summary>'
+    '  tools/agent-hub.sh post <codex|claude|grok> <kind> <message>' \
+    '  tools/agent-hub.sh claim <codex|claude|grok> <summary>'
 }
 
 command="${1:-}"
@@ -33,7 +33,7 @@ case "$command" in
     agent="${2:-}"
     kind="${3:-}"
     message="${4:-}"
-    if [[ "$agent" != codex && "$agent" != claude ]] || [[ -z "$kind" || -z "$message" ]]; then
+    if [[ "$agent" != codex && "$agent" != claude && "$agent" != grok ]] || [[ -z "$kind" || -z "$message" ]]; then
       usage
       exit 2
     fi
@@ -49,7 +49,7 @@ case "$command" in
   claim)
     agent="${2:-}"
     summary="${3:-}"
-    if [[ "$agent" != codex && "$agent" != claude ]] || [[ -z "$summary" ]]; then
+    if [[ "$agent" != codex && "$agent" != claude && "$agent" != grok ]] || [[ -z "$summary" ]]; then
       usage
       exit 2
     fi
