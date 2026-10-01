@@ -247,26 +247,30 @@ namespace STWGameplay
         }
 
         m_elapsedSeconds += deltaTime;
-        if (m_elapsedSeconds < STWPerformanceTelemetryWarmupSeconds)
-        {
-            // Warmup still advances the native provider's frame-to-frame CPU baseline,
-            // but no model row or output allocation is made before the capture window.
-            STWPerformanceTelemetryFrame warmupFrame;
-            if (m_provider)
-            {
-                m_provider->CollectFrame(warmupFrame);
-            }
-            else
-            {
-                s_stwNativePerformanceTelemetryProvider.CollectFrame(warmupFrame);
-            }
-            return;
-        }
-
         STWPerformanceTelemetryFrame frame;
         const bool valid = m_provider
             ? m_provider->CollectFrame(frame)
             : s_stwNativePerformanceTelemetryProvider.CollectFrame(frame);
+
+        // Forge validates the complete timeline before filtering the 30 s warmup.
+        // Keep one row per frame from t ~= 0 so the CSV remains gapless and its
+        // first timestamp satisfies the same contract as PerformanceTelemetryModel.
+        m_model.AddSample(
+            m_elapsedSeconds,
+            static_cast<double>(deltaTime) * 1000.0,
+            frame.m_cpuMilliseconds,
+            frame.m_gpuMilliseconds,
+            frame.m_drawCalls,
+            frame.m_vramMiB,
+            frame.m_ramMiB);
+
+        if (m_elapsedSeconds < STWPerformanceTelemetryWarmupSeconds)
+        {
+            // Warmup rows establish the native provider's frame-to-frame baselines,
+            // but only post-warmup rows participate in validity and gap metrics.
+            return;
+        }
+
         m_invalidFrameObserved = m_invalidFrameObserved || !valid;
 
         frame.m_rhiCpuFrameMilliseconds > 0.0
@@ -276,15 +280,6 @@ namespace STWGameplay
         {
             m_presentMilliseconds.push_back(frame.m_presentMilliseconds);
         }
-
-        m_model.AddSample(
-            m_elapsedSeconds,
-            static_cast<double>(deltaTime) * 1000.0,
-            frame.m_cpuMilliseconds,
-            frame.m_gpuMilliseconds,
-            frame.m_drawCalls,
-            frame.m_vramMiB,
-            frame.m_ramMiB);
 
         if (m_elapsedSeconds - STWPerformanceTelemetryWarmupSeconds >= STWPerformanceTelemetryWindowSeconds)
         {

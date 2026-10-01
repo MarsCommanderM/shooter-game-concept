@@ -25,6 +25,7 @@ GAME_LOG="${PROJECT}/user/log/Game.log"
 FRAME_NATIVE="${RUN_DIR}/stw-player-slice.ppm"
 FRAME="${RUN_DIR}/stw-player-slice.png"
 THUMB="${RUN_DIR}/stw-player-slice-thumb.jpg"
+PERFORMANCE_TELEMETRY_CSV="${RUN_DIR}/performance-telemetry.csv"
 xvfb_pid=""; launcher_pid=""
 
 # Block 21AC diagnosis: trace only the pre-toolchain command path. The ERR trap
@@ -890,6 +891,8 @@ echo "FRESH_GAME_LOG=${GAME_LOG}"
   exec setsid env DISPLAY="${display}" XDG_RUNTIME_DIR="${RUNTIME}" ALSA_CONFIG_PATH="${ALSA}" \
     STW_NATIVE_CAPTURE_PATH="${FRAME_NATIVE}" \
     STW_PHYSX_ACCEPTANCE=1 \
+    STW_PERF_TELEMETRY=1 \
+    STW_PERF_TELEMETRY_CSV="${PERFORMANCE_TELEMETRY_CSV}" \
     VK_ICD_FILENAMES="${ICD}" LD_LIBRARY_PATH="${BIN}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
     ${STDBUF_PREFIX} "${LAUNCHER}" "--project-path=${PROJECT}" "--engine-path=${ENGINE}" \
     --bg_ConnectToAssetProcessor false "--regset=/Amazon/AzCore/Bootstrap/linux_wait_for_connect=0" \
@@ -925,7 +928,7 @@ for _ in $(seq 1 75); do
 done
 [[ -s "${FRAME_NATIVE}" ]]
 for _ in $(seq 1 180); do
-  runtime_grep -q 'PERFORMANCE_BASELINE' && runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS' && runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS' && runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS' && runtime_grep -q 'ENEMY_AI_ACCEPTANCE result=PASS' && runtime_grep -q 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'COMBAT_FEEDBACK_ACCEPTANCE result=PASS' && runtime_grep -q 'AUDIO_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'JUMP_ACCEPTANCE result=PASS' && runtime_grep -q 'CROUCH_ACCEPTANCE result=PASS' && runtime_grep -q 'SLIDE_ACCEPTANCE result=PASS' && runtime_grep -q 'MANTLE_ACCEPTANCE result=PASS' && runtime_grep -q 'TRAVERSAL_ARBITRATION_ACCEPTANCE result=PASS' && runtime_grep -q 'ENCOUNTER_ACCEPTANCE result=PASS' && runtime_grep -q 'MULTI_ENEMY_ACCEPTANCE result=PASS' && runtime_grep -q 'SPAWN_CHECKPOINT_ACCEPTANCE result=PASS' && runtime_grep -q 'WEAPON_SWITCH_ACCEPTANCE result=PASS' && runtime_grep -q 'LOADOUT_ACCEPTANCE result=PASS' && runtime_grep -q 'BLOCK_22_ANIMATION_ACCEPTANCE=PASS' && runtime_grep -q 'BODYCAM_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'ARENA_PRESENTATION_ACTIVE=1' && runtime_grep -q 'MAIN_MENU_ACCEPTANCE result=PASS' && runtime_grep -q 'DESTRUCTIBLE_ACCEPTANCE result=PASS' && runtime_grep -q 'PERFORMANCE_PROFILE ' && break
+  runtime_grep -q 'PERFORMANCE_BASELINE' && runtime_grep -q 'PHYSX_ACCEPTANCE result=PASS' && runtime_grep -q 'VIEWMODEL_ACCEPTANCE result=PASS' && runtime_grep -q 'ATOM_VIEWMODEL_MESH result=PASS' && runtime_grep -q 'ENEMY_AI_ACCEPTANCE result=PASS' && runtime_grep -q 'ENEMY_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'COMBAT_FEEDBACK_ACCEPTANCE result=PASS' && runtime_grep -q 'AUDIO_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'JUMP_ACCEPTANCE result=PASS' && runtime_grep -q 'CROUCH_ACCEPTANCE result=PASS' && runtime_grep -q 'SLIDE_ACCEPTANCE result=PASS' && runtime_grep -q 'MANTLE_ACCEPTANCE result=PASS' && runtime_grep -q 'TRAVERSAL_ARBITRATION_ACCEPTANCE result=PASS' && runtime_grep -q 'ENCOUNTER_ACCEPTANCE result=PASS' && runtime_grep -q 'MULTI_ENEMY_ACCEPTANCE result=PASS' && runtime_grep -q 'SPAWN_CHECKPOINT_ACCEPTANCE result=PASS' && runtime_grep -q 'WEAPON_SWITCH_ACCEPTANCE result=PASS' && runtime_grep -q 'LOADOUT_ACCEPTANCE result=PASS' && runtime_grep -q 'BLOCK_22_ANIMATION_ACCEPTANCE=PASS' && runtime_grep -q 'BODYCAM_PRESENTATION_ACCEPTANCE result=PASS' && runtime_grep -q 'ARENA_PRESENTATION_ACTIVE=1' && runtime_grep -q 'MAIN_MENU_ACCEPTANCE result=PASS' && runtime_grep -q 'DESTRUCTIBLE_ACCEPTANCE result=PASS' && runtime_grep -q 'PERFORMANCE_PROFILE ' && runtime_grep -q 'PERFORMANCE_TELEMETRY enabled=1 valid=true csv_written=true' && runtime_grep -q 'PERFORMANCE_FRAME_GAP ' && break
   kill -0 "${launcher_pid}" 2>/dev/null || { tail -n 200 "${LAUNCH_LOG}"; exit 1; }
   sleep 1
 done
@@ -1083,6 +1086,9 @@ runtime_grep -Eq 'SPAWN_CHECKPOINT_ACCEPTANCE result=PASS initial_spawn=1 defaul
 runtime_grep -Eq 'WEAPON_SWITCH_ACCEPTANCE result=PASS initial_slot=0 first_weapon_visible=1 first_switch_slot=1 second_switch_slot=0 weapon_a_ammo_preserved=1 weapon_b_ammo_changed_on_fire=1 inactive_weapon_ammo_unchanged=1 held_switch_retrigger_blocked=1'
 runtime_grep -Eq 'LOADOUT_ACCEPTANCE result=PASS primary_available=1 secondary_available=1 tactical_available=1 lethal_available=1 melee_available=1 independent_ammo=1 independent_charges=1 inactive_state_preserved=1 slot_validation=1 held_switch_blocked=1 authority_separation=PASS'
 runtime_grep -q 'PERFORMANCE_BASELINE'
+runtime_grep -q 'PERFORMANCE_TELEMETRY enabled=1 valid=true csv_written=true'
+runtime_grep -q 'PERFORMANCE_FRAME_GAP '
+[[ -s "${PERFORMANCE_TELEMETRY_CSV}" ]]
 # Budget-protocol profile (stw-o3de/Docs/PerformanceBudgets): the telemetry itself is a
 # hard requirement - missing, zero or non-finite CPU/GPU time, fewer than 600 samples or
 # a frame sum that disagrees with the window by more than 5 % fails the gate. The
@@ -1119,6 +1125,54 @@ for key, measured in checks:
     print(f"PERFORMANCE_BUDGET {key} measured={measured:.3f} budget={budget[key]} verdict={verdict} scope=CI_HARDWARE_PROVISIONAL")
 print(f"PERFORMANCE_PROFILE=PASS samples={samples} window_s={window:.3f} frame_ms={frame} cpu_ms={cpu} gpu_ms={gpu}")
 PY_PROFILE
+
+# The machine-readable CSV is checked with the same per-run contract as forge.py
+# scene_gate(): exact columns, finite values, timestamps from t ~= 0, strict time
+# ordering, post-warmup positivity, 600+ samples, a 60 s window, and contiguous
+# frame-time accounting within 5 %. Budget comparison remains informational here,
+# matching the existing CI profile gate for provisional T4 hardware.
+python3 - "${PERFORMANCE_TELEMETRY_CSV}" "${GITHUB_WORKSPACE}/stw-o3de/Config/VisualForge/policy.json" <<'PY_TELEMETRY'
+import csv, json, math, sys
+
+csv_path, policy_path = sys.argv[1:]
+columns = ("time_s", "frame_ms", "cpu_ms", "gpu_ms", "draw_calls", "vram_mib", "ram_mib")
+policy = json.load(open(policy_path, encoding="utf-8"))
+capture = policy["capture"]
+with open(csv_path, newline="", encoding="utf-8") as stream:
+    reader = csv.DictReader(stream)
+    if tuple(reader.fieldnames or ()) != columns:
+        raise SystemExit(f"PERFORMANCE_TELEMETRY_CSV=FAIL columns={reader.fieldnames!r}")
+    rows = list(reader)
+if not rows:
+    raise SystemExit("PERFORMANCE_TELEMETRY_CSV=FAIL empty benchmark")
+
+parsed = []
+for index, row in enumerate(rows, 2):
+    try:
+        values = {key: float(row[key]) for key in columns}
+    except (KeyError, TypeError, ValueError) as error:
+        raise SystemExit(f"PERFORMANCE_TELEMETRY_CSV=FAIL row={index} non_numeric={error}")
+    if not all(math.isfinite(value) and value >= 0 for value in values.values()):
+        raise SystemExit(f"PERFORMANCE_TELEMETRY_CSV=FAIL row={index} non_finite_or_negative")
+    parsed.append(values)
+
+times = [row["time_s"] for row in parsed]
+if times[0] > 1 or any(left >= right for left, right in zip(times, times[1:])):
+    raise SystemExit("PERFORMANCE_TELEMETRY_CSV=FAIL timestamps")
+samples = [row for row in parsed if row["time_s"] >= capture["warmup_seconds"]]
+if len(samples) < capture["min_samples"]:
+    raise SystemExit(f"PERFORMANCE_TELEMETRY_CSV=FAIL samples={len(samples)}")
+duration = samples[-1]["time_s"] - samples[0]["time_s"]
+if duration < capture["sample_seconds"]:
+    raise SystemExit(f"PERFORMANCE_TELEMETRY_CSV=FAIL duration_s={duration:.3f}")
+if not all(row[key] > 0 for row in samples for key in columns if key != "time_s"):
+    raise SystemExit("PERFORMANCE_TELEMETRY_CSV=FAIL missing_or_zero_post_warmup_telemetry")
+frame_duration = sum(row["frame_ms"] for row in samples[1:]) / 1000
+if abs(frame_duration - duration) > duration * 0.05:
+    raise SystemExit(
+        f"PERFORMANCE_TELEMETRY_CSV=FAIL frame_sum_s={frame_duration:.3f} duration_s={duration:.3f}")
+print(f"PERFORMANCE_TELEMETRY_CSV=PASS samples={len(samples)} duration_s={duration:.3f} rows={len(rows)}")
+PY_TELEMETRY
 
 # Renderer-quality guardrails: these are production defects, not informational noise.
 # A mesh missing required streams can silently bind dummy inputs, and a degenerate
