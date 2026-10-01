@@ -196,6 +196,7 @@ namespace STWGameplay
         m_audioEnemyBaselineCaptured = false;
         m_audioPreviousRespawnEvents = m_model.GetPlayer().m_respawnEvents;
         m_audioFeedback.Activate();
+        m_performanceTelemetry.Activate();
         AZ::Interface<STWGameplaySystemComponent>::Register(this);
         if (const char* capturePath = std::getenv("STW_NATIVE_CAPTURE_PATH"); capturePath && capturePath[0] != '\0')
         {
@@ -235,6 +236,7 @@ namespace STWGameplay
 
     void STWGameplaySystemComponent::Deactivate()
     {
+        m_performanceTelemetry.Deactivate();
         UnbindAllNetworkPlayers();
         m_multiplayer.Shutdown();
         m_adsHeld = false;
@@ -1546,6 +1548,7 @@ namespace STWGameplay
         UpdateAudioAcceptance();
         UpdateArenaAcceptance();
         RecordPerformance(deltaTime);
+        m_performanceTelemetry.RecordFrame(deltaTime);
 
         // Production runs do not set STW_NATIVE_CAPTURE_PATH. The controlled
         // native verification job uses it to request one genuine Atom/RHI
@@ -1815,7 +1818,7 @@ namespace STWGameplay
         AZ_Printf(
             "STWGameplay",
             "PERFORMANCE_BASELINE average_fps=%.3f median_frame_ms=%.3f sample_seconds=%.3f samples=%zu "
-            "cpu_frame_ms=UNAVAILABLE gpu_frame_ms=UNAVAILABLE resolution=1920x1080\n",
+            "resolution=1920x1080\n",
             averageFps,
             medianMilliseconds,
             m_performanceDuration,

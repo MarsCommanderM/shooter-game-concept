@@ -31,6 +31,17 @@ Materialslots, FP-Texturbudget 180 MiB, Gameplay-Texturkante 2.048, drei LOD-Stu
 Materialslots sind keine Draw-Call-Messung. Separate Cinematic-Klasse erlaubt
 4K und höhere Geometriekosten, bleibt außerhalb der Gameplay-Freigabe.
 
-Der aktuelle STW-Logger meldet `cpu_frame_ms=UNAVAILABLE gpu_frame_ms=UNAVAILABLE`.
-Diese Ausgabe kann das neue Gate nicht bestehen. Profiler-/CSV-Adapter, tatsächliche
-Draw Calls und Speichertelemetrie sowie Acht-Spieler-Messungen sind offene Arbeit.
+Der Adapter wird ausschließlich mit `STW_PERF_TELEMETRY=1` und einem nichtleeren
+`STW_PERF_TELEMETRY_CSV=<path>` aktiviert. Ohne diese beiden Variablen gibt es keine
+Speicherabfrage, keine Draw-/GPU-Abfrage und keine Datei-I/O. Der CSV-Vertrag wird
+von `STWGameplay/Source/Clients/STWPerformanceTelemetryAdapter` bedient.
+
+`draw_calls` bedeutet im O3DE-Adapter die Anzahl der pro Frame ausgeführten Atom-
+Draw-Items (`PassSystemFrameStatistics::m_totalDrawItemsRendered`), nicht eine
+behauptete Anzahl niedriger Treiber- oder API-Aufrufe. `vram_mib` ist die Summe der
+`m_totalResidentInBytes` aller RHI-Device-Heaps, ohne Pool-Doppelzählung. `ram_mib`
+ist der aktuelle Process-Working-Set; `m_peakWorkingSet` bleibt als echte Prozess-
+Spitzenmessung verfügbar. Die Frame-Gap-Zeile stellt RHI-CPU-Framezeit, Main-Thread-
+CPU und Pass-Timestamp-GPU getrennt dar. Die öffentliche RHI-Schnittstelle stellt
+keine Present-Statistik bereit, daher bleibt `present_ms=UNAVAILABLE` ausdrücklich
+unbelegt statt aus anderen Zeiten abgeleitet.

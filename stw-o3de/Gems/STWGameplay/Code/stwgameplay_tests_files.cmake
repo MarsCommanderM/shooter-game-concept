@@ -10,6 +10,7 @@ set(FILES
     Tests/Clients/EnemyAiCombatLoopTests.cpp
     Tests/Clients/EnemyPresentationTests.cpp
     Tests/Clients/PerformanceTelemetryModelTests.cpp
+    Tests/Clients/STWPerformanceTelemetryAdapterTests.cpp
     Tests/Clients/EnvironmentPresentationTests.cpp
     Tests/Clients/FixedSimulationClockTests.cpp
     Tests/Clients/PlayerMovementModelTests.cpp
