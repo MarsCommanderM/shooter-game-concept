@@ -1,22 +1,18 @@
 # Aktueller Stand (Grok, Orchestrator auf Zeit)
 
-**Hub ist aktiv.** Letztes Update: 2026-10-01T21:36Z. Claude ist offline. Codex bleibt Engineer.
+**Hub ist aktiv.** Letztes Update: 2026-10-01T21:41Z. Claude ist offline. Codex bleibt Engineer.
 
-Beweis und Verifikation sind zwei Schritte. Ein Satz ist verifiziert, wenn die genannte Datei gelesen wurde und der Satz darin steht. Ein laufender Gate ist kein PASS.
+Ein Satz gilt erst, wenn die genannte Datei gelesen wurde. `5ea7558` ist gelesen und **nicht bestanden**.
 
-## Verifiziert um 21:36Z, gelesen
+## Verifiziert
 
-- `5ea7558` ändert eine Zeile in `STWGameplaySystemComponent.cpp`. Die Formatzeile `PERFORMANCE_BASELINE` hat drei `%.3f`, ein `%zu` und vier Argumente (`averageFps`, `medianMilliseconds`, `m_performanceDuration`, `m_frameSampleCount`). Die Wörter `cpu_frame_ms=UNAVAILABLE` und `gpu_frame_ms=UNAVAILABLE` stehen in dieser Zeile nicht. `UpdateAutomatedAcceptance` beginnt darunter und ist unverändert.
-- Der laufende Lauf schreibt `stw-o3de-gate/player-slice-20261001T213251Z/report.log`. Dort stehen `SOURCE_COMMIT` und `CHECKOUT_HEAD` auf `5ea7558d801f31a474c58ad048399f312a9fb2a2`.
-- `task.sh` läuft seit 21:32:31Z. Lock gehört Codex. Worktree wird nicht angefasst.
+Bericht: `.agents/reports/A-003-5ea7558-verification.md`
 
-## Nicht verifiziert
+- Lauf `stw-o3de-gate/player-slice-20261001T213251Z`, SHA `5ea7558d801f31a474c58ad048399f312a9fb2a2`. Kein `RESULT=PASS`. Kein Multiplayer-Lauf dieser SHA.
+- CTest 1/1 Passed.
+- `PERFORMANCE_BASELINE` in `Game.log` um 21:37:00 ohne `UNAVAILABLE`.
+- `PERFORMANCE_TELEMETRY valid=false error=capture too short duration_s=59.985`. Die Validierung verlangt eine Nach-Warmup-Spanne von mindestens 60.0 s (`PerformanceTelemetryModel.cpp` 113–118). Der Adapter beendet die Aufnahme über die Summe der Deltas (`STWPerformanceTelemetryAdapter.cpp` 291).
 
-- Kein `RESULT=PASS` für `5ea7558`.
-- Die gedruckte `PERFORMANCE_BASELINE`-Zeile dieses Laufs steht noch nicht im Log.
-- Multiplayer auf dieser SHA hat noch kein Evidenzverzeichnis.
-- A-003 ist damit nicht fertig und nicht verifiziert.
+## Nächster Schritt, nur Codex
 
-## Danach
-
-Codex postet `done` erst, wenn der Lauf fertig ist. Grok liest Report und Game.log und schreibt die Verifikation in den Hub. A-004 startet erst nach dieser Verifikation.
+Lock ist verwaist, `task.sh` ist weg. Lock löschen. Ein Commit auf `codex/stw-perf-telemetry-adapter-20260930`: `Finalize` erst, wenn die von `Validate` gemessene Spanne mindestens 60.0 s ist. Kein weiterer Diff. Danach ein T4 auf der neuen SHA. `5ea7558` nicht noch einmal unverändert laufen lassen. A-004 bleibt zu.
