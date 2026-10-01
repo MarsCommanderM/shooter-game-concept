@@ -3,7 +3,7 @@
         {
             "$type": "MotionGroup",
             "name": "STW_LAUNCHER_01_hip",
-            "selectedRootBone": "RootNode.STW_LAUNCHER_01_Rig",
+            "selectedRootBone": "RootNode.STW_LAUNCHER_01_Rig.root",
             "id": "{62779233-8D1A-507A-BFC7-90CAFF0DAF02}",
             "rules": {
                 "rules": []

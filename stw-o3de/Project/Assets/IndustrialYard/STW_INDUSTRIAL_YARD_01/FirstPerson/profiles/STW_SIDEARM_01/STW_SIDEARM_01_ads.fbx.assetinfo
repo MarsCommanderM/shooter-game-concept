@@ -3,7 +3,7 @@
         {
             "$type": "MotionGroup",
             "name": "STW_SIDEARM_01_ads",
-            "selectedRootBone": "RootNode.STW_SIDEARM_01_Rig",
+            "selectedRootBone": "RootNode.STW_SIDEARM_01_Rig.root",
             "id": "{93296D6E-910E-5A50-9A28-E4E53C981D36}",
             "rules": {
                 "rules": []

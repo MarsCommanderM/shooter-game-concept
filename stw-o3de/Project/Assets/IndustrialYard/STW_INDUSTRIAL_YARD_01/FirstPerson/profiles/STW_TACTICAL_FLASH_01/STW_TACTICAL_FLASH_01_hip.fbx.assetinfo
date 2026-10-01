@@ -3,7 +3,7 @@
         {
             "$type": "MotionGroup",
             "name": "STW_TACTICAL_FLASH_01_hip",
-            "selectedRootBone": "RootNode.STW_TACTICAL_FLASH_01_Rig",
+            "selectedRootBone": "RootNode.STW_TACTICAL_FLASH_01_Rig.root",
             "id": "{0E2FC5F2-0585-581F-B580-6346A1B75D81}",
             "rules": {
                 "rules": []

@@ -3,7 +3,7 @@
         {
             "$type": "MotionGroup",
             "name": "STW_TACTICAL_SMOKE_01_reload",
-            "selectedRootBone": "RootNode.STW_TACTICAL_SMOKE_01_Rig",
+            "selectedRootBone": "RootNode.STW_TACTICAL_SMOKE_01_Rig.root",
             "id": "{EB820CFD-A3FD-54EE-961C-022DEB169A6C}",
             "rules": {
                 "rules": []

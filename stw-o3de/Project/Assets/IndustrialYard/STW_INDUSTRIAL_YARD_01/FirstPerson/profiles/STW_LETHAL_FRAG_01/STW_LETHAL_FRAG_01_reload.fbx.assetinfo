@@ -3,7 +3,7 @@
         {
             "$type": "MotionGroup",
             "name": "STW_LETHAL_FRAG_01_reload",
-            "selectedRootBone": "RootNode.STW_LETHAL_FRAG_01_Rig",
+            "selectedRootBone": "RootNode.STW_LETHAL_FRAG_01_Rig.root",
             "id": "{13CCF9D5-A2C1-52F4-8A49-13D6DEFCB3AB}",
             "rules": {
                 "rules": []

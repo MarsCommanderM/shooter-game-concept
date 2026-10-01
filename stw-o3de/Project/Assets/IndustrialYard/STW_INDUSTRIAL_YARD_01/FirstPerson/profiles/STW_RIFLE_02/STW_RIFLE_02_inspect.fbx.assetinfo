@@ -3,7 +3,7 @@
         {
             "$type": "MotionGroup",
             "name": "STW_RIFLE_02_inspect",
-            "selectedRootBone": "RootNode.STW_RIFLE_02_Rig",
+            "selectedRootBone": "RootNode.STW_RIFLE_02_Rig.root",
             "id": "{20732126-0BFF-5A44-B904-CE1548E5D439}",
             "rules": {
                 "rules": []

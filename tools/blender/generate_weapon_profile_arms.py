@@ -26,6 +26,7 @@ def arguments():
     values = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--skip-frames", action="store_true")
     return parser.parse_args(values)
 
 
@@ -161,7 +162,17 @@ def make_actions(armature, scale):
 
 
 def export_fbx(path, armature, meshes, action):
+    # Blender 4.5 stores keys on an action slot. The FBX exporter only bakes those
+    # curves when the action is also pushed as an NLA strip. Without that strip the
+    # file keeps the bind pose and O3DE writes an empty motion.
+    armature.animation_data_create()
     armature.animation_data.action = action
+    if hasattr(armature.animation_data, "action_slot") and len(action.slots) > 0:
+        armature.animation_data.action_slot = action.slots[0]
+    while armature.animation_data.nla_tracks:
+        armature.animation_data.nla_tracks.remove(armature.animation_data.nla_tracks[0])
+    track = armature.animation_data.nla_tracks.new()
+    track.strips.new(action.name, int(action.frame_start), action)
     bpy.context.scene.frame_start = int(action.frame_start)
     bpy.context.scene.frame_end = int(action.frame_end)
     bpy.context.scene.frame_set(int(action.frame_end))
@@ -177,6 +188,8 @@ def export_fbx(path, armature, meshes, action):
         add_leaf_bones=False,
         bake_anim=True,
         bake_anim_use_all_actions=False,
+        bake_anim_use_nla_strips=True,
+        bake_anim_simplify_factor=0.0,
         path_mode="AUTO",
         axis_forward="-Y",
         axis_up="Z",
@@ -221,8 +234,9 @@ def main():
         export_fbx(folder / f"{name}.fbx", armature, meshes, actions["hip"])
         for pose in ("hip", "ads", "reload", "inspect"):
             export_fbx(folder / f"{name}_{pose}.fbx", armature, meshes, actions[pose])
-        for pose in ("hip", "ads", "reload"):
-            render_pose(frame_root / f"{name}_{pose}.png", armature, actions[pose])
+        if not args.skip_frames:
+            for pose in ("hip", "ads", "reload"):
+                render_pose(frame_root / f"{name}_{pose}.png", armature, actions[pose])
         print(f"STW_PROFILE_ARMS_EXPORTED {name}", flush=True)
 
 

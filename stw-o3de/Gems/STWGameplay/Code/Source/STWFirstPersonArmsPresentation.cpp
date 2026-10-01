@@ -240,7 +240,37 @@ namespace STWGameplay
         AZ::TransformBus::Event(m_entityId, &AZ::TransformBus::Events::SetWorldTM, transform);
 
         SampleRuntimeDiagnostics();
-        return m_actorInstanceReady && m_skinnedMeshVisible && m_motionAssetReady && m_productsResolved;
+        const bool ready = m_actorInstanceReady && m_skinnedMeshVisible && m_motionAssetReady && m_productsResolved;
+        if (!ready)
+        {
+            static int probeFrames = 0;
+            static const char* probeMotion = nullptr;
+            if (probeMotion != m_motionPath)
+            {
+                probeMotion = m_motionPath;
+                probeFrames = 0;
+            }
+            ++probeFrames;
+            if (probeFrames == 180)
+            {
+                float duration = 0.0f;
+                if (m_entity)
+                {
+                    EMotionFX::Integration::SimpleMotionComponentRequestBus::EventResult(
+                        duration, m_entityId, &EMotionFX::Integration::SimpleMotionComponentRequests::GetDuration);
+                }
+                AZ_Printf(
+                    "STWGameplay",
+                    "ATOM_FIRSTPERSON_ARMS_ACTOR result=WAIT actor=%s motion=%s instance=%d visible=%d motion_ready=%d duration=%.3f\n",
+                    m_actorPath != nullptr ? m_actorPath : "",
+                    m_motionPath != nullptr ? m_motionPath : "",
+                    m_actorInstanceReady ? 1 : 0,
+                    m_skinnedMeshVisible ? 1 : 0,
+                    m_motionAssetReady ? 1 : 0,
+                    duration);
+            }
+        }
+        return ready;
     }
 
     void STWFirstPersonArmsPresentation::SetVisible(bool visible)

@@ -3,7 +3,7 @@
         {
             "$type": "MotionGroup",
             "name": "STW_SMG_01_reload",
-            "selectedRootBone": "RootNode.STW_SMG_01_Rig",
+            "selectedRootBone": "RootNode.STW_SMG_01_Rig.root",
             "id": "{D87ABE2F-C1E6-539A-887C-D5C256F7D8B0}",
             "rules": {
                 "rules": []
