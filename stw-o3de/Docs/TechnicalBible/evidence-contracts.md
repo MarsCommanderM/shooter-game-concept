@@ -96,6 +96,15 @@ CSV-Kopf:
 time_s,frame_ms,cpu_ms,gpu_ms,draw_calls,vram_mib,ram_mib
 ```
 
+Für Runtime-Telemetrie gilt: `draw_calls` ist die O3DE-Pass-System-Zahl der
+ausgeführten Draw-Items (`m_totalDrawItemsRendered`), nicht automatisch die Zahl
+der nativen Grafik-API-Aufrufe. `vram_mib` summiert ausschließlich die residenten
+Device-Heaps (`m_totalResidentInBytes`) und zählt Pools nicht nochmals. `ram_mib`
+ist der aktuelle Prozess-Working-Set; Spitzenwerte werden aus den Samples gebildet.
+`PERFORMANCE_FRAME_GAP` meldet zusätzlich RHI-CPU-Framezeit, Main-Thread-CPU,
+Pass-Timestamp-GPU und eine Present-Zeit nur dann, wenn eine öffentliche Quelle
+vorliegt. Unbekannte Werte bleiben `UNAVAILABLE` und werden nicht geschätzt.
+
 Erwartete Revision wird unabhängig mit `--revision` angegeben. Für Promotion
 enthält `asset_content_ids` alle tatsächlich im Lauf verwendeten Paketstände.
 Der Level muss dem Ziellevel des Inspektionsberichts entsprechen.

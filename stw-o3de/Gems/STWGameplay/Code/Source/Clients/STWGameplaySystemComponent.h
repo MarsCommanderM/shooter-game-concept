@@ -37,6 +37,7 @@
 #include "PhysXEnemyRuntime.h"
 #include "STWMultiplayerRuntime.h"
 #include "STWNetworkPlayerAuthority.h"
+#include "STWPerformanceTelemetryAdapter.h"
 
 namespace STWGameplay
 {
@@ -479,6 +480,7 @@ namespace STWGameplay
         double m_profileLastCpuSeconds = -1.0;
         bool m_profileGpuQueriesEnabled = false;
         bool m_profileReported = false;
+        STWPerformanceTelemetryAdapter m_performanceTelemetry;
         bool m_automatedAcceptance = false;
         float m_interactiveRespawnDelay = 0.0f;
         static constexpr float InteractiveRespawnDelaySeconds = 2.0f;
