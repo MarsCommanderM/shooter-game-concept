@@ -73,15 +73,6 @@ rebase, merge, clean, stash, or deletion.
 Do not create a branch unless the user or the active recovery/integration task
 explicitly authorizes it. Never force-push or rewrite shared history.
 
-## Recovery freeze
-
-Issue #5 owns preservation of local Lightning work performed after 2026-09-08.
-That package is expected to contain multiplayer, authoritative server, bodycam,
-ragdoll, tests, and runtime evidence. Recovery is not feature development.
-
-PR #4 remains frozen until the recovery package is safely pushed, reconciled,
-and reverified. Do not merge, retarget, close, or mark it ready.
-
 ## Evidence standard
 
 For visual production work, follow `stw-o3de/Docs/README.md` (Project Visual
