@@ -1082,7 +1082,7 @@ namespace STWGameplay
         m_directionalLightFeatureProcessor->SetRgbIntensity(
             m_directionalLightHandle,
             AZ::Render::PhotometricColor<AZ::Render::PhotometricUnit::Lux>(
-                AZ::Color(1.0f, 0.91f, 0.78f, 1.0f) * GetSunIlluminanceLux()));
+                AZ::Color(1.0f, 0.91f, 0.78f, 1.0f) * LightingRecipeSet::EffectiveAtomLux(m_lightingRecipe)));
         m_directionalLightFeatureProcessor->SetShadowEnabled(m_directionalLightHandle, true);
         m_directionalLightFeatureProcessor->SetShadowmapSize(
             m_directionalLightHandle, static_cast<AZ::Render::ShadowmapSize>(GetSunShadowmapSize()));
@@ -1094,5 +1094,19 @@ namespace STWGameplay
         m_directionalLightFeatureProcessor->SetShadowFarClipDistance(m_directionalLightHandle, 80.0f);
         m_directionalLightFeatureProcessor->SetAngularDiameter(m_directionalLightHandle, 0.5f);
         m_environmentLightInitialized = true;
+    }
+
+    void ArenaPresentation::SetLightingRecipe(LightingRecipeId recipe)
+    {
+        m_lightingRecipe = recipe;
+        if (!m_environmentLightInitialized || m_directionalLightFeatureProcessor == nullptr
+            || !m_directionalLightHandle.IsValid())
+        {
+            return;
+        }
+        m_directionalLightFeatureProcessor->SetRgbIntensity(
+            m_directionalLightHandle,
+            AZ::Render::PhotometricColor<AZ::Render::PhotometricUnit::Lux>(
+                AZ::Color(1.0f, 0.91f, 0.78f, 1.0f) * LightingRecipeSet::EffectiveAtomLux(m_lightingRecipe)));
     }
 }

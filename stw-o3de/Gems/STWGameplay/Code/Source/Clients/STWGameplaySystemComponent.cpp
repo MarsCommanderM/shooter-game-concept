@@ -225,6 +225,7 @@ namespace STWGameplay
         {
             m_nativeCaptureMaxFrames = std::atoi(captureMaxFrames);
         }
+        m_lightingCaptureSequence = std::getenv("STW_LIGHTING_CAPTURE_SEQUENCE") != nullptr;
         m_automatedAcceptance = std::getenv("STW_PHYSX_ACCEPTANCE") != nullptr;
         m_enemyPresentationIdleObserved = m_enemyPresentations[0].GetState() == EnemyBehaviorState::Idle;
         // The PhysX character controller requires the O3DE default physics scene, which does
@@ -277,6 +278,8 @@ namespace STWGameplay
         m_nativeCaptureIntervalSeconds = 0.0f;
         m_nativeCaptureMaxFrames = 0;
         m_nativeCaptureFrameIndex = 0;
+        m_lightingCaptureSequence = false;
+        m_appliedLightingSequenceIndex = -1;
         if (AZ::Interface<STWGameplaySystemComponent>::Get() == this)
         {
             AZ::Interface<STWGameplaySystemComponent>::Unregister(this);
@@ -1564,12 +1567,14 @@ namespace STWGameplay
         const bool captureDue = sequenceMode
             ? (m_nativeCaptureMaxFrames <= 0 || m_nativeCaptureFrameIndex < m_nativeCaptureMaxFrames)
             : !m_nativeCaptureAttempted;
-        // The single verification capture must show the arena variant that is actually
-        // selected, not the first frames of asset streaming. It waits until the Industrial
-        // Yard set is active, bounded by a settle timeout; a capture after the timeout still
-        // happens (so the failure is visible) and reports the variant it shows.
+        // Every capture, including the first frame of an opt-in sequence, must show the
+        // arena variant that is actually selected, not the first frames of asset streaming.
+        // It waits until the Industrial Yard set is active, bounded by a settle timeout.
+        // A capture after the timeout still happens (so the failure is visible) and reports
+        // the variant it shows. Later sequence frames stay due because the settle time is
+        // not reset, and the lighting recipe follows m_nativeCaptureFrameIndex.
         constexpr float NativeCaptureVariantSettleTimeoutSeconds = 30.0f;
-        bool captureVariantSettled = sequenceMode || m_arenaPresentation.IsIndustrialYardVariantActive();
+        bool captureVariantSettled = m_arenaPresentation.IsIndustrialYardVariantActive();
         if (!captureVariantSettled && !m_nativeCapturePath.empty() && captureDue)
         {
             m_nativeCaptureSettleTime += deltaTime;
@@ -4683,10 +4688,37 @@ namespace STWGameplay
         m_destructibleObjectsReported = false;
     }
 
+    void STWGameplaySystemComponent::ApplyCaptureLightingRecipe()
+    {
+        if (!m_lightingCaptureSequence)
+        {
+            return;
+        }
+        const int sequenceIndex = m_nativeCaptureFrameIndex;
+        if (sequenceIndex == m_appliedLightingSequenceIndex)
+        {
+            return;
+        }
+        m_appliedLightingSequenceIndex = sequenceIndex;
+        const LightingRecipeId recipe = LightingRecipeSet::RecipeAtSequenceIndex(sequenceIndex);
+        m_arenaPresentation.SetLightingRecipe(recipe);
+        m_environmentPresentation.SetLightingRecipe(recipe);
+        const LightingRecipe physical = LightingRecipeSet::Get(recipe);
+        AZ_Printf(
+            "STWGameplay",
+            "LIGHTING_RECIPE name=%s atom_lux=%.5f physical_lux=%.1f manual_exposure=0 accent_scale=%.5f ibl_delta_stops=%.3f\n",
+            LightingRecipeSet::Name(recipe),
+            LightingRecipeSet::EffectiveAtomLux(recipe),
+            physical.m_physicalSunLux,
+            LightingRecipeSet::AccentScale(recipe),
+            LightingRecipeSet::IlluminanceStopDeltaFromDay(recipe));
+    }
+
     void STWGameplaySystemComponent::UpdateArenaAcceptance()
     {
         m_arenaPresentation.Update();
         m_environmentPresentation.Update();
+        ApplyCaptureLightingRecipe();
         if (m_arenaMeshStartup == ViewmodelMeshStartup::Waiting && m_arenaPresentation.IsReady())
         {
             m_arenaMeshStartup = ViewmodelMeshStartup::Acquired;

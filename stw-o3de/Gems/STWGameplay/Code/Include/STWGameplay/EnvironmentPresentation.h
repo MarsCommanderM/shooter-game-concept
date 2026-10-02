@@ -11,6 +11,8 @@
 #include <Atom/Feature/CoreLights/DirectionalLightFeatureProcessorInterface.h>
 #include <Atom/Feature/CoreLights/PointLightFeatureProcessorInterface.h>
 
+#include <STWGameplay/LightingRecipe.h>
+
 namespace AZ::Render
 {
     class ImageBasedLightFeatureProcessorInterface;
@@ -86,6 +88,8 @@ namespace STWGameplay
         //! EV trim applied to the image-based light (HDRI ambient) after the preset, so the sky
         //! fills the deck less and the directional key reads. Bounded by the unit tests.
         static float GetIblExposureTrim();
+        void SetLightingRecipe(LightingRecipeId recipe);
+        LightingRecipeId GetLightingRecipe() const { return m_lightingRecipe; }
         static bool IsAccentRigPhysicallyPlausible(const AZStd::array<AccentLightSpec, AccentLightCount>& rig);
 
         //! Cinematic lens stack. Every value is a restrained, engine-bounded look
@@ -135,5 +139,6 @@ namespace STWGameplay
         bool m_shaderBallHidden = false;
         bool m_readyReported = false;
         float m_colorGradingContrastOverride = GetColorGradingContrast();
+        LightingRecipeId m_lightingRecipe = LightingRecipeId::Day;
     };
 }
