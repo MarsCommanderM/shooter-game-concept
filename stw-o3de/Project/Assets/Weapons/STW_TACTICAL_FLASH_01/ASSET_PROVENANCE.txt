@@ -1,9 +1,36 @@
 STW ASSET PROVENANCE
 ====================
 
-Asset name: STW_TACTICAL_FLASH_01
-Asset kind: original fictional sci-fi Tactical presentation mesh
+Asset name:      STW_TACTICAL_FLASH_01
+Asset kind:      static first-person presentation mesh (fictional sci-fi weapon body)
+Origin:          original fictional STW game art
 
-Locally authored minimal geometry and text material only. No external download,
-real-world model, manufacturer data, or grenade physics is represented. The
-mesh is presentation-only; charges remain authoritative in PlayerSliceModel.
+Generation
+----------
+Generated deterministically by tools/assets/create_stw_weapons.py.
+The generator uses no randomness, no timestamps and no downloaded geometry.
+
+Source files
+------------
+    STW_TACTICAL_FLASH_01.obj           LOD0 primary mesh
+    STW_TACTICAL_FLASH_01_LOD1.obj      reduced presentation mesh
+    STW_TACTICAL_FLASH_01_LOD2.obj      core presentation mesh
+    STW_TACTICAL_FLASH_01.material      one Atom StandardPBR material, authored as text
+    ASSET_PROVENANCE.txt
+
+Factual statements
+------------------
+- The geometry was authored locally in this repository.
+- No external model source was used and nothing was downloaded to produce this asset.
+- No textures are used; the material contains only text-authored StandardPBR values.
+- No commercial, sample or third-party asset was copied, converted or adapted.
+- This is an original fictional sci-fi silhouette, not a replica of any real-world weapon.
+- The asset deliberately contains no real-world construction, internal mechanism,
+  functional dimensions or manufacturing information.
+- The asset is presentation only. It owns no gameplay state. Ammunition, fire
+  acceptance, reload completion, hit detection, damage, player movement and target
+  state remain with PlayerSliceModel, PhysXPlayerRuntime and ViewmodelPresentation.
+- LOD0 is the primary mesh. LOD1 and LOD2 omit fine and then mid parts.
+- Geometry uses the engine-local first-person presentation proportions.
+- This record assigns no production classification. A Visual-Forge review is still required.
+- Small tactical canister presentation mesh.

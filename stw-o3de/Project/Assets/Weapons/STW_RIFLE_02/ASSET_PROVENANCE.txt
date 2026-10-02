@@ -5,11 +5,18 @@ Asset name:      STW_RIFLE_02
 Asset kind:      static first-person presentation mesh (fictional sci-fi weapon body)
 Origin:          original fictional STW game art
 
+Generation
+----------
+Generated deterministically by tools/assets/create_stw_weapons.py.
+The generator uses no randomness, no timestamps and no downloaded geometry.
+
 Source files
 ------------
-    STW_RIFLE_02.obj          locally authored geometry
-    STW_RIFLE_02.material     one Atom StandardPBR material, authored as text
-    ASSET_PROVENANCE.txt      this record
+    STW_RIFLE_02.obj           LOD0 primary mesh
+    STW_RIFLE_02_LOD1.obj      reduced presentation mesh
+    STW_RIFLE_02_LOD2.obj      core presentation mesh
+    STW_RIFLE_02.material      one Atom StandardPBR material, authored as text
+    ASSET_PROVENANCE.txt
 
 Factual statements
 ------------------
@@ -17,11 +24,13 @@ Factual statements
 - No external model source was used and nothing was downloaded to produce this asset.
 - No textures are used; the material contains only text-authored StandardPBR values.
 - No commercial, sample or third-party asset was copied, converted or adapted.
-- This is an original fictional sci-fi silhouette, not a replica of any real-world firearm.
-- The asset deliberately contains no real-world construction, internal mechanism, functional
-  dimensions or manufacturing information.
-- The asset is presentation only. It owns no gameplay state: ammunition, fire acceptance,
-  reload completion, hit detection, damage, player movement and target state remain with
-  PlayerSliceModel, PhysXPlayerRuntime and ViewmodelPresentation.
-- The mesh uses the same engine-local first-person presentation convention as STW_SMG_01 and
-  is selected only for the authoritative active weapon slot.
+- This is an original fictional sci-fi silhouette, not a replica of any real-world weapon.
+- The asset deliberately contains no real-world construction, internal mechanism,
+  functional dimensions or manufacturing information.
+- The asset is presentation only. It owns no gameplay state. Ammunition, fire
+  acceptance, reload completion, hit detection, damage, player movement and target
+  state remain with PlayerSliceModel, PhysXPlayerRuntime and ViewmodelPresentation.
+- LOD0 is the primary mesh. LOD1 and LOD2 omit fine and then mid parts.
+- Geometry uses the engine-local first-person presentation proportions.
+- This record assigns no production classification. A Visual-Forge review is still required.
+- Long secondary presentation mesh with side fins.

@@ -20,6 +20,9 @@ visual proportions), so the runtime applies a scale of 1.0 on every axis.
 
 Usage:
     python3 tools/assets/create_stw_smg_01.py [--output <path/to/STW_SMG_01.obj>] [--check]
+
+The tracked STW_SMG_01 files, including LOD1 and LOD2, are written by
+tools/assets/create_stw_weapons.py. The default output path delegates there.
 """
 
 import argparse
@@ -295,6 +298,12 @@ def main(argv=None):
     builder = build()
     facts = validate(builder)
     text = builder.serialise()
+    canonical = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), "..", "..", "stw-o3de", "Project", "Assets", "Weapons",
+        ASSET_NAME, "{0}.obj".format(ASSET_NAME)))
+    if not args.check and os.path.abspath(args.output) == canonical:
+        from create_stw_weapons import main as write_weapons
+        return write_weapons([])
 
     print("STW_ASSET_NAME={0}".format(ASSET_NAME))
     print("STW_ASSET_VERTEX_COUNT={0}".format(facts["vertices"]))

@@ -263,33 +263,39 @@ class ForgeTests(unittest.TestCase):
         self.assertIn("material files 9 outside 1..8", result["failures"])
         self.assertEqual(result["approval"], "NOT_GRANTED")
 
-    def test_live_weapon_packages_miss_lods(self):
+    def test_live_weapon_packages_meet_source_budget(self):
+        import sys
+        asset_tools = forge.DEFAULT_ROOT.parent / "tools" / "assets"
+        sys.path.insert(0, str(asset_tools))
+        import create_stw_weapons
+        expected = create_stw_weapons.lod_counts()
         policy, _profiles = forge.contracts(forge.DEFAULT_ROOT)
         result = forge.inspect_weapons(forge.DEFAULT_ROOT, policy)
         self.assertEqual(result["count"], 10)
-        self.assertEqual(result["source_budget"], "FAIL")
+        self.assertEqual(result["source_budget"], "PASS")
         self.assertEqual(result["approval"], "NOT_GRANTED")
+        self.assertNotIn("PRODUCTION_CANDIDATE", json.dumps(result))
         by_profile = {item["profile"]: item for item in result["packages"]}
         self.assertEqual(set(by_profile), set(forge.WEAPON_PROFILES))
-        self.assertEqual(by_profile["STW_SMG_01"]["triangles"], 216)
-        self.assertEqual(by_profile["STW_RIFLE_02"]["triangles"], 72)
         for profile, item in by_profile.items():
-            if profile not in ("STW_SMG_01", "STW_RIFLE_02"):
-                self.assertEqual(item["triangles"], 24, profile)
+            counts = [lod["triangles"] for lod in item["lods"]]
+            self.assertEqual(counts, expected[profile], profile)
+            self.assertGreater(counts[0], counts[1], profile)
+            self.assertGreater(counts[1], counts[2], profile)
             self.assertEqual(item["material_files"], 1, profile)
-            self.assertEqual(item["lods"], [], profile)
             self.assertEqual(item["texture_memory_mib"], "UNMEASURED", profile)
-            self.assertEqual(item["failures"], ["missing LODs: found 0, weapon_fp requires 3"], profile)
+            self.assertEqual(item["failures"], [], profile)
             self.assertEqual(item["approval"], "NOT_GRANTED", profile)
 
-    def test_weapons_command_fails_live_placeholders(self):
+    def test_weapons_command_measures_live_packages(self):
         with patch("sys.stdout", new_callable=io.StringIO) as stdout:
             code = forge.main(["weapons"])
-        self.assertEqual(code, 1)
+        self.assertEqual(code, 0)
         report = json.loads(stdout.getvalue())
-        self.assertEqual(report["status"], "FAIL")
+        self.assertEqual(report["status"], "PASS")
         self.assertEqual(report["gate"], "weapons")
         self.assertEqual(report["result"]["count"], 10)
+        self.assertEqual(report["result"]["source_budget"], "PASS")
         self.assertEqual(report["result"]["approval"], "NOT_GRANTED")
 
 
