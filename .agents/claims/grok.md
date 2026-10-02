@@ -1,5 +1,5 @@
 # grok claim
 
 - **Status:** active
-- **Summary:** P1.7 Tagrezept auf gemessenem SHA gebunden, Nacht/Overcast offen, Produktion db369f9
-- **Updated:** 2026-10-02T063803Z
+- **Summary:** Produktion 1d97a8f gepusht. P1.3 und P1.7 bleiben auf eigenen Branches.
+- **Updated:** 2026-10-02T064321Z
