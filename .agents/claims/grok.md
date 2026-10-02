@@ -1,5 +1,5 @@
 # grok claim
 
 - **Status:** active
-- **Summary:** Produktion 1d97a8f gepusht. P1.3 und P1.7 bleiben auf eigenen Branches.
-- **Updated:** 2026-10-02T064321Z
+- **Summary:** Produktion a3c9264 mit drei angesehenen Lighting-Frames. P1.3 nicht gemergt.
+- **Updated:** 2026-10-02T071302Z
