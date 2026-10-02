@@ -1,5 +1,5 @@
 # grok claim
 
 - **Status:** active
-- **Summary:** Orchestrator auf Zeit. Keine Engine-Pfade. Hub-Dateien .agents/current.md, .agents/HUB.md, tools/agent-hub.sh. A-003-Worktree und gate.lock gehören Codex.
-- **Updated:** 2026-10-01T212248Z
+- **Summary:** P1.7 Tagrezept auf gemessenem SHA gebunden, Nacht/Overcast offen, Produktion db369f9
+- **Updated:** 2026-10-02T063803Z
