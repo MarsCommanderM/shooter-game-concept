@@ -317,11 +317,7 @@ namespace STWGameplay
             m_postProcessFeatureProcessor->OnPostProcessSettingsChanged();
         }
 
-        if (m_iblFeatureProcessor != nullptr)
-        {
-            m_iblFeatureProcessor->SetExposure(
-                GetIblExposureTrim() + LightingRecipeSet::IlluminanceStopDeltaFromDay(m_lightingRecipe));
-        }
+        ApplyRecipeExposure();
 
         m_lightingPresetApplied = true;
     }
@@ -538,14 +534,23 @@ namespace STWGameplay
         m_accentRigApplied = true;
     }
 
-    void EnvironmentPresentation::SetLightingRecipe(LightingRecipeId recipe)
+    void EnvironmentPresentation::ApplyRecipeExposure()
     {
-        m_lightingRecipe = recipe;
+        if (m_skyboxFeatureProcessor != nullptr)
+        {
+            m_skyboxFeatureProcessor->SetCubemapExposure(LightingRecipeSet::SkyboxExposure(m_lightingRecipe));
+        }
         if (m_iblFeatureProcessor != nullptr)
         {
             m_iblFeatureProcessor->SetExposure(
-                GetIblExposureTrim() + LightingRecipeSet::IlluminanceStopDeltaFromDay(recipe));
+                GetIblExposureTrim() + LightingRecipeSet::IblStopDeltaFromDay(m_lightingRecipe));
         }
+    }
+
+    void EnvironmentPresentation::SetLightingRecipe(LightingRecipeId recipe)
+    {
+        m_lightingRecipe = recipe;
+        ApplyRecipeExposure();
         if (m_pointLightFeatureProcessor == nullptr)
         {
             return;

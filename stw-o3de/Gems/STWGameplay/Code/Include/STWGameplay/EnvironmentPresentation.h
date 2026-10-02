@@ -113,6 +113,7 @@ namespace STWGameplay
         void ApplyLensOptic();
         void TryApplyDepthOfField();
         void ApplyAccentRig();
+        void ApplyRecipeExposure();
         void NeutraliseDefaultLevelVisuals();
 
         AZ::Render::ImageBasedLightFeatureProcessorInterface* m_iblFeatureProcessor = nullptr;

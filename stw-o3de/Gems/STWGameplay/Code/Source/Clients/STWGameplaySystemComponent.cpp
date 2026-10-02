@@ -4706,12 +4706,14 @@ namespace STWGameplay
         const LightingRecipe physical = LightingRecipeSet::Get(recipe);
         AZ_Printf(
             "STWGameplay",
-            "LIGHTING_RECIPE name=%s atom_lux=%.5f physical_lux=%.1f manual_exposure=0 accent_scale=%.5f ibl_delta_stops=%.3f\n",
+            "LIGHTING_RECIPE name=%s atom_lux=%.5f physical_lux=%.1f manual_exposure=0 accent_scale=%.5f ibl_delta_stops=%.3f skybox_ev=%.3f key_lux=%.5f\n",
             LightingRecipeSet::Name(recipe),
             LightingRecipeSet::EffectiveAtomLux(recipe),
             physical.m_physicalSunLux,
             LightingRecipeSet::AccentScale(recipe),
-            LightingRecipeSet::IlluminanceStopDeltaFromDay(recipe));
+            LightingRecipeSet::IblStopDeltaFromDay(recipe),
+            LightingRecipeSet::SkyboxExposure(recipe),
+            LightingRecipeSet::DirectionalKeyLux(recipe));
     }
 
     void STWGameplaySystemComponent::UpdateArenaAcceptance()

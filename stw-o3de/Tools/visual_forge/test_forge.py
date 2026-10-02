@@ -81,6 +81,7 @@ class ForgeTests(unittest.TestCase):
         self.assertIn("MeasuredSafeAtomDayLux = 25.0f", header)
         self.assertIn("DayPhysicalSunLux = 100000.0f", header)
         self.assertIn("return ExposureRelativeAtomLux(id);", header)
+        self.assertIn("return IlluminanceStopDeltaFromDay(id);", header)
         self.assertIn("return false;", header)
         recipes = lighting["recipes"]
         self.assertEqual(recipes["LVL_Lighting_Day"]["sun_lux"], 100000)

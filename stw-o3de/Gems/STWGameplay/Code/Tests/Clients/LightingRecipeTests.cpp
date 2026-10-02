@@ -70,6 +70,48 @@ namespace STWGameplay
         }
     }
 
+    TEST(LightingRecipeTests, SkyboxExposureUsesTheStopDelta)
+    {
+        const float day = LightingRecipeSet::SkyboxExposure(LightingRecipeId::Day);
+        const float overcast = LightingRecipeSet::SkyboxExposure(LightingRecipeId::Overcast);
+        const float night = LightingRecipeSet::SkyboxExposure(LightingRecipeId::Night);
+        EXPECT_FLOAT_EQ(day, LightingRecipeSet::IlluminanceStopDeltaFromDay(LightingRecipeId::Day));
+        EXPECT_FLOAT_EQ(overcast, LightingRecipeSet::IlluminanceStopDeltaFromDay(LightingRecipeId::Overcast));
+        EXPECT_FLOAT_EQ(night, LightingRecipeSet::IlluminanceStopDeltaFromDay(LightingRecipeId::Night));
+        EXPECT_LT(night, overcast);
+        EXPECT_LT(overcast, day);
+        EXPECT_NEAR(day, 0.0f, 1.0e-4f);
+        EXPECT_LT(night, -4.0f);
+    }
+
+    TEST(LightingRecipeTests, DirectionalKeyKeepsTheNightYardInsideTheMeasuredBand)
+    {
+        EXPECT_LT(
+            LightingRecipeSet::ExposureRelativeAtomLux(LightingRecipeId::Night),
+            LightingRecipeSet::SafeAtomLuxMinimum);
+        EXPECT_FLOAT_EQ(
+            LightingRecipeSet::DirectionalKeyLux(LightingRecipeId::Night),
+            LightingRecipeSet::SafeAtomLuxMinimum);
+        EXPECT_GE(LightingRecipeSet::DirectionalKeyLux(LightingRecipeId::Night), LightingRecipeSet::SafeAtomLuxMinimum);
+        EXPECT_LE(LightingRecipeSet::DirectionalKeyLux(LightingRecipeId::Night), LightingRecipeSet::SafeAtomLuxMaximum);
+        EXPECT_FLOAT_EQ(
+            LightingRecipeSet::DirectionalKeyLux(LightingRecipeId::Day),
+            LightingRecipeSet::MeasuredSafeAtomDayLux);
+        EXPECT_GT(
+            LightingRecipeSet::DirectionalKeyLux(LightingRecipeId::Day),
+            LightingRecipeSet::DirectionalKeyLux(LightingRecipeId::Overcast));
+        EXPECT_GT(
+            LightingRecipeSet::DirectionalKeyLux(LightingRecipeId::Overcast),
+            LightingRecipeSet::DirectionalKeyLux(LightingRecipeId::Night));
+        EXPECT_LT(LightingRecipeSet::IblStopDeltaFromDay(LightingRecipeId::Night), 0.0f);
+        EXPECT_GT(
+            LightingRecipeSet::IblStopDeltaFromDay(LightingRecipeId::Night),
+            LightingRecipeSet::SkyboxExposure(LightingRecipeId::Night));
+        EXPECT_FLOAT_EQ(
+            LightingRecipeSet::IblStopDeltaFromDay(LightingRecipeId::Night),
+            LightingRecipeSet::YardIblStopFloor);
+    }
+
     TEST(LightingRecipeTests, CaptureSequenceCyclesDayNightOvercast)
     {
         EXPECT_EQ(LightingRecipeSet::RecipeAtSequenceIndex(0), LightingRecipeId::Day);

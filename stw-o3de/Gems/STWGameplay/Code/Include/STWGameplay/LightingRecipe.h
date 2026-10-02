@@ -25,10 +25,11 @@ namespace STWGameplay
     //! A raw 25,000 lux sun clipped 47% of a captured frame. 25 lux clipped 0.1% and is
     //! the working day key. The recipe's 100,000 lux day value stays a physical reference.
     //! Manual exposure compensation does not drive the image, so exposure_ev100 is not
-    //! written to Atom's manual slider. The stop difference from the day recipe is folded
-    //! into the sun illuminance, which is the value the slice actually responds to.
-    //! The default bound recipe remains Day. Night falls below the unscaled accent band
-    //! and is applied only with AccentScale during an explicit capture sequence.
+    //! written to Atom's manual slider. The stop difference from the day recipe is the
+    //! skybox exposure. The physical night fold is about 0.82 lux and crushes the yard,
+    //! so the directional key is lifted to the measured floor. IBL only takes a short
+    //! stop so the yard stays readable under that darker sky. The default bound recipe
+    //! remains Day.
     class LightingRecipeSet final
     {
     public:
@@ -37,6 +38,9 @@ namespace STWGameplay
         static constexpr float AtomLuxPerPhysicalLux = MeasuredSafeAtomDayLux / DayPhysicalSunLux;
         static constexpr float SafeAtomLuxMinimum = 4.0f;
         static constexpr float SafeAtomLuxMaximum = 100.0f;
+        //! IBL may dim with the recipe, but not by the full night sky gap.
+        //! Half a stop keeps the yard out of the crushed band measured on the 0.82 lux frame.
+        static constexpr float YardIblStopFloor = -0.5f;
 
         static constexpr LightingRecipe Get(LightingRecipeId id)
         {
@@ -94,6 +98,38 @@ namespace STWGameplay
                 return 0.0f;
             }
             return std::log2(recipe / day);
+        }
+
+        //! Stops written to SkyBoxFeatureProcessor::SetCubemapExposure.
+        //! Day is 0. Night is the full physical gap, about -4.93. Returning 0 for every
+        //! recipe drops the delta and fails SkyboxExposureUsesTheStopDelta.
+        static float SkyboxExposure(LightingRecipeId id)
+        {
+            return IlluminanceStopDeltaFromDay(id);
+        }
+
+        //! IBL stop delta. Night is clamped to YardIblStopFloor so the ambient fill
+        //! does not follow the skybox into the crushed yard.
+        static float IblStopDeltaFromDay(LightingRecipeId id)
+        {
+            const float delta = IlluminanceStopDeltaFromDay(id);
+            return delta < YardIblStopFloor ? YardIblStopFloor : delta;
+        }
+
+        //! Directional key on the slice. The physical night fold stays below the band;
+        //! the key used for the yard is lifted to that floor.
+        static constexpr float DirectionalKeyLux(LightingRecipeId id)
+        {
+            const float folded = ExposureRelativeAtomLux(id);
+            if (folded < SafeAtomLuxMinimum)
+            {
+                return SafeAtomLuxMinimum;
+            }
+            if (folded > SafeAtomLuxMaximum)
+            {
+                return SafeAtomLuxMaximum;
+            }
+            return folded;
         }
 
         static constexpr bool AppliesManualExposure()
