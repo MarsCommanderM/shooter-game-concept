@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "TARGET_ONLY",
-  "runtime_adapter": "NOT_YET_IMPLEMENTED",
+  "runtime_adapter": "DAY_BOUND_UNVERIFIED_SCENES",
   "shared_scene": "Project/Levels/DefaultLevel/DefaultLevel.prefab",
   "camera": {
     "position_m": [

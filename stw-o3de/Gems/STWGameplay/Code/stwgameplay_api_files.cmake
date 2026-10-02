@@ -26,6 +26,7 @@ set(FILES
     Include/STWGameplay/STWFirstPersonArmsPresentation.h
     Include/STWGameplay/FirstPersonArmCatalog.h
     Include/STWGameplay/ViewmodelPresentation.h
+    Include/STWGameplay/LightingRecipe.h
     Include/STWGameplay/IndustrialYardLookTemplate.h
     Include/STWGameplay/IndustrialYardArenaVariant.h
     Include/STWGameplay/MainMenuPresentation.h

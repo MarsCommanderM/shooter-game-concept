@@ -74,6 +74,23 @@ class ForgeTests(unittest.TestCase):
         self.assertEqual(len(self.profiles["profiles"]), 4)
         self.assertEqual(self.profiles["runtime_adapter"], "NOT_YET_IMPLEMENTED")
 
+    def test_lighting_day_binding_does_not_apply_raw_lux_or_unmeasured_scenes(self):
+        lighting = json.loads((self.root / "Config/VisualForge/lighting_recipes.json").read_text())
+        self.assertEqual(lighting["status"], "TARGET_ONLY")
+        self.assertEqual(lighting["runtime_adapter"], "DAY_BOUND_UNVERIFIED_SCENES")
+        header = (forge.DEFAULT_ROOT / "Gems/STWGameplay/Code/Include/STWGameplay/LightingRecipe.h").read_text()
+        self.assertIn("MeasuredSafeAtomDayLux = 25.0f", header)
+        self.assertIn("DayPhysicalSunLux = 100000.0f", header)
+        recipes = lighting["recipes"]
+        day = recipes["LVL_Lighting_Day"]["sun_lux"]
+        self.assertEqual(day, 100000)
+        scale = 25.0 / day
+        self.assertEqual(scale * day, 25.0)
+        self.assertEqual(scale * recipes["LVL_Lighting_Overcast"]["sun_lux"], 2.5)
+        self.assertAlmostEqual(scale * recipes["LVL_Lighting_Night"]["sun_lux"], 0.00005)
+        self.assertFalse(4.0 <= scale * recipes["LVL_Lighting_Night"]["sun_lux"] <= 100.0)
+        self.assertFalse(4.0 <= scale * recipes["LVL_Lighting_Overcast"]["sun_lux"] <= 100.0)
+
     def test_asset_validation_does_not_grant_approval(self):
         manifest, _ = self.asset_fixture()
         self.assertEqual(forge.validate_asset(self.root, manifest, self.policy)["approval"], "NOT_GRANTED")
