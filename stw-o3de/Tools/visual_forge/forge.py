@@ -3,6 +3,9 @@
 
 All input paths in contracts are relative to --root (the stw-o3de directory).
 No command edits assets, launches the editor, or promotes content automatically.
+`weapons` measures the ten Assets/Weapons packages against the weapon_fp
+triangle, material-slot and LOD counts. A passing source budget is not an
+art review and never grants PRODUCTION_CANDIDATE.
 """
 import argparse
 import csv
@@ -228,6 +231,168 @@ def validate_asset(root, manifest, policy):
             "classification": manifest["classification"], "approval": "NOT_GRANTED"}
 
 
+# Canonical equipment profiles. The runtime list lives in WeaponModel.cpp.
+WEAPON_PROFILES = (
+    "STW_SMG_01",
+    "STW_RIFLE_02",
+    "STW_RIFLE_03",
+    "STW_LMG_04",
+    "STW_SIDEARM_01",
+    "STW_LAUNCHER_01",
+    "STW_TACTICAL_FLASH_01",
+    "STW_TACTICAL_SMOKE_01",
+    "STW_LETHAL_FRAG_01",
+    "STW_MELEE_01",
+)
+LOD_NODE = re.compile(r"^LOD([0-2])$")
+
+
+def obj_geometry(path):
+    """Count faces the same way validate_asset counts an OBJ primary."""
+    triangles = 0
+    group_tris = {}
+    order = []
+    current = None
+    usemtl = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        tokens = line.split()
+        if not tokens or tokens[0].startswith("#"):
+            continue
+        kind = tokens[0]
+        if kind in ("o", "g") and len(tokens) >= 2:
+            current = tokens[1]
+            if current not in group_tris:
+                group_tris[current] = 0
+                order.append(current)
+        elif kind == "usemtl" and len(tokens) >= 2:
+            usemtl.add(tokens[1])
+        elif kind == "f":
+            require(len(tokens) >= 4, f"invalid OBJ face: {path.name}")
+            added = len(tokens) - 3
+            triangles += added
+            key = current if current is not None else ""
+            if key not in group_tris:
+                group_tris[key] = 0
+                order.append(key)
+            group_tris[key] += added
+    lods = []
+    seen = set()
+    duplicates = []
+    for name in order:
+        match = LOD_NODE.fullmatch(name)
+        if match is None:
+            continue
+        index = int(match.group(1))
+        if index in seen:
+            duplicates.append(name)
+            continue
+        seen.add(index)
+        lods.append({"node": name, "index": index, "triangles": group_tris[name]})
+    return {"triangles": triangles, "usemtl": sorted(usemtl), "lods": lods,
+            "duplicate_lods": duplicates}
+
+
+def texture_map_count(path):
+    count = 0
+
+    def visit(value):
+        nonlocal count
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if key.split(".")[-1] == "textureMap" and item:
+                    count += 1
+                else:
+                    visit(item)
+        elif isinstance(value, list):
+            for item in value:
+                visit(item)
+
+    visit(load(path).get("propertyValues", {}))
+    return count
+
+
+def inspect_weapon_package(root, profile, policy):
+    """Measure one weapon package. Approval stays NOT_GRANTED."""
+    require(profile in WEAPON_PROFILES, f"unknown weapon profile: {profile}")
+    directory = root / "Project/Assets/Weapons" / profile
+    require(directory.is_dir(), f"missing weapon package: {profile}")
+    primary_path = directory / f"{profile}.obj"
+    require(primary_path.is_file(), f"missing primary OBJ: {profile}")
+    allowed = {f"{profile}.obj", f"{profile}_LOD1.obj", f"{profile}_LOD2.obj"}
+    unexpected = sorted(path.name for path in directory.glob("*.obj") if path.name not in allowed)
+    primary = obj_geometry(primary_path)
+    materials = sorted(directory.glob("*.material"))
+    maps = sum(texture_map_count(path) for path in materials)
+    lod_by_index = {}
+    failures = []
+    for item in primary["lods"]:
+        lod_by_index[item["index"]] = item
+    if primary["duplicate_lods"]:
+        failures.append("duplicate LOD nodes in primary OBJ")
+    for index in (1, 2):
+        sibling = directory / f"{profile}_LOD{index}.obj"
+        if not sibling.is_file():
+            continue
+        geom = obj_geometry(sibling)
+        own = [item for item in geom["lods"] if item["index"] == index]
+        if geom["duplicate_lods"] or len(geom["lods"]) != 1 or len(own) != 1:
+            failures.append(f"{sibling.name} must contain only LOD{index}")
+        elif index in lod_by_index:
+            failures.append(f"duplicate LOD{index}")
+        elif geom["triangles"] != own[0]["triangles"]:
+            failures.append(f"{sibling.name} has faces outside LOD{index}")
+        else:
+            lod_by_index[index] = own[0]
+    budget = policy["asset_budgets"]["weapon_fp"]
+    if not 1 <= primary["triangles"] <= budget["triangles"]:
+        failures.append(f"triangles {primary['triangles']} outside 1..{budget['triangles']}")
+    if not 1 <= len(materials) <= budget["materials"]:
+        failures.append(f"material files {len(materials)} outside 1..{budget['materials']}")
+    if len(primary["usemtl"]) > budget["materials"]:
+        failures.append(f"usemtl slots {len(primary['usemtl'])} exceed {budget['materials']}")
+    if unexpected:
+        failures.append("unexpected OBJ files: " + ", ".join(unexpected))
+    expected = list(range(int(budget["lod_count"])))
+    found = sorted(lod_by_index)
+    if found != expected:
+        failures.append(f"missing LODs: found {len(found)}, weapon_fp requires {budget['lod_count']}")
+    else:
+        counts = [lod_by_index[index]["triangles"] for index in expected]
+        if not all(earlier > later for earlier, later in zip(counts, counts[1:])):
+            failures.append("LOD triangle counts must decrease from LOD0")
+        if primary["triangles"] != lod_by_index[0]["triangles"]:
+            failures.append("primary OBJ triangle count includes faces outside LOD0")
+    return {
+        "profile": profile,
+        "primary": f"Project/Assets/Weapons/{profile}/{profile}.obj",
+        "triangles": primary["triangles"],
+        "material_files": len(materials),
+        "usemtl_count": len(primary["usemtl"]),
+        "texture_maps": maps,
+        "texture_memory_mib": "UNMEASURED",
+        "lods": [{"node": lod_by_index[index]["node"], "triangles": lod_by_index[index]["triangles"]}
+                 for index in found],
+        "source_budget": "FAIL" if failures else "PASS",
+        "failures": failures,
+        "approval": "NOT_GRANTED",
+    }
+
+
+def inspect_weapons(root, policy):
+    """Measure all ten weapon packages. Source-budget PASS is not a promotion."""
+    weapons = root / "Project/Assets/Weapons"
+    require(weapons.is_dir(), "missing Project/Assets/Weapons")
+    found = sorted(path.name for path in weapons.iterdir() if path.is_dir())
+    require(found == sorted(WEAPON_PROFILES), "weapon profile set drifted: " + ", ".join(found))
+    packages = [inspect_weapon_package(root, profile, policy) for profile in WEAPON_PROFILES]
+    return {
+        "packages": packages,
+        "count": len(packages),
+        "source_budget": "FAIL" if any(item["source_budget"] != "PASS" for item in packages) else "PASS",
+        "approval": "NOT_GRANTED",
+    }
+
+
 def percentile(values, quantile):
     return sorted(values)[max(0, math.ceil(len(values) * quantile) - 1)]
 
@@ -354,6 +519,7 @@ def main(argv=None):
     promote.add_argument("manifest", type=Path)
     promote.add_argument("evidence", type=Path)
     promote.add_argument("--revision", required=True)
+    sub.add_parser("weapons")
     args = parser.parse_args(argv)
     root = args.root.resolve()
     try:
@@ -368,9 +534,13 @@ def main(argv=None):
             result = validate_asset(root, load(args.manifest), policy)
         elif args.command == "scene":
             result = scene_gate(root, load(args.evidence), policy, profiles, args.revision)
+        elif args.command == "weapons":
+            result = inspect_weapons(root, policy)
         else:
             result = promotion(root, load(args.manifest), load(args.evidence), policy, profiles, args.revision)
-        report, code = {"status": "PASS", "gate": args.command, "result": result}, 0
+        failed = args.command == "weapons" and result["source_budget"] != "PASS"
+        report, code = ({"status": "FAIL" if failed else "PASS", "gate": args.command, "result": result},
+                        1 if failed else 0)
     except (Invalid, OSError, ValueError, KeyError, TypeError, AttributeError, IndexError) as exc:
         report, code = {"status": "FAIL", "gate": args.command, "error": str(exc)}, 1
     rendered = json.dumps(report, indent=2, allow_nan=False) + "\n"

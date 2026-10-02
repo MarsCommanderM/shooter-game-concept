@@ -1,5 +1,6 @@
 """Gate regression tests. Synthetic fixtures prove tooling, never game performance."""
 import copy
+import io
 import json
 from pathlib import Path
 import tempfile
@@ -232,6 +233,64 @@ class ForgeTests(unittest.TestCase):
         result = SimpleNamespace(returncode=0, stdout="stw-o3de/" + manifest["primary"] + "\n", stderr="")
         with patch.object(forge.subprocess, "run", return_value=result):
             self.assertEqual(forge.changed_assets(self.root, self.policy, "a" * 40)["validated_manifests"], 1)
+
+    def weapon_obj(self, profile, suffix, group, faces):
+        body = "v 0 0 0\nv 1 0 0\nv 0 1 0\nv 0 0 1\n" + f"g {group}\n" + ("f 1 2 3\n" * faces)
+        self.write(f"Project/Assets/Weapons/{profile}/{profile}{suffix}.obj", body)
+
+    def test_weapon_source_budget_passes_without_promotion(self):
+        profile = "STW_SMG_01"
+        self.weapon_obj(profile, "", "LOD0", 3)
+        self.weapon_obj(profile, "_LOD1", "LOD1", 2)
+        self.weapon_obj(profile, "_LOD2", "LOD2", 1)
+        self.write(f"Project/Assets/Weapons/{profile}/{profile}.material", "{\"propertyValues\": {}}")
+        result = forge.inspect_weapon_package(self.root, profile, self.policy)
+        self.assertEqual(result["source_budget"], "PASS")
+        self.assertEqual(result["failures"], [])
+        self.assertEqual(result["approval"], "NOT_GRANTED")
+        self.assertEqual(result["texture_memory_mib"], "UNMEASURED")
+        self.assertEqual([item["triangles"] for item in result["lods"]], [3, 2, 1])
+        self.assertNotIn("PRODUCTION_CANDIDATE", json.dumps(result))
+
+    def test_weapon_triangle_and_material_caps_reject(self):
+        profile = "STW_RIFLE_02"
+        self.weapon_obj(profile, "", "body", 85001)
+        for index in range(9):
+            self.write(f"Project/Assets/Weapons/{profile}/slot_{index}.material", "{\"propertyValues\": {}}")
+        result = forge.inspect_weapon_package(self.root, profile, self.policy)
+        self.assertEqual(result["source_budget"], "FAIL")
+        self.assertIn("triangles 85001 outside 1..85000", result["failures"])
+        self.assertIn("material files 9 outside 1..8", result["failures"])
+        self.assertEqual(result["approval"], "NOT_GRANTED")
+
+    def test_live_weapon_packages_miss_lods(self):
+        policy, _profiles = forge.contracts(forge.DEFAULT_ROOT)
+        result = forge.inspect_weapons(forge.DEFAULT_ROOT, policy)
+        self.assertEqual(result["count"], 10)
+        self.assertEqual(result["source_budget"], "FAIL")
+        self.assertEqual(result["approval"], "NOT_GRANTED")
+        by_profile = {item["profile"]: item for item in result["packages"]}
+        self.assertEqual(set(by_profile), set(forge.WEAPON_PROFILES))
+        self.assertEqual(by_profile["STW_SMG_01"]["triangles"], 216)
+        self.assertEqual(by_profile["STW_RIFLE_02"]["triangles"], 72)
+        for profile, item in by_profile.items():
+            if profile not in ("STW_SMG_01", "STW_RIFLE_02"):
+                self.assertEqual(item["triangles"], 24, profile)
+            self.assertEqual(item["material_files"], 1, profile)
+            self.assertEqual(item["lods"], [], profile)
+            self.assertEqual(item["texture_memory_mib"], "UNMEASURED", profile)
+            self.assertEqual(item["failures"], ["missing LODs: found 0, weapon_fp requires 3"], profile)
+            self.assertEqual(item["approval"], "NOT_GRANTED", profile)
+
+    def test_weapons_command_fails_live_placeholders(self):
+        with patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            code = forge.main(["weapons"])
+        self.assertEqual(code, 1)
+        report = json.loads(stdout.getvalue())
+        self.assertEqual(report["status"], "FAIL")
+        self.assertEqual(report["gate"], "weapons")
+        self.assertEqual(report["result"]["count"], 10)
+        self.assertEqual(report["result"]["approval"], "NOT_GRANTED")
 
 
 if __name__ == "__main__":
