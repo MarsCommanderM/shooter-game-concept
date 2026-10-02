@@ -9,6 +9,7 @@
 #include <Atom/Feature/Mesh/MeshFeatureProcessorInterface.h>
 
 #include <STWGameplay/IndustrialYardArenaVariant.h>
+#include <STWGameplay/LightingRecipe.h>
 
 namespace STWGameplay
 {
@@ -43,7 +44,10 @@ namespace STWGameplay
         //! lux; a real-world 25,000 lux daylight value blew the deck to flat white, because the
         //! HDRI/IBL and the manual exposure are scaled for that lower range (measured: 47% of the
         //! frame clipped at 25,000 lux, 0.1% at 25 lux).
-        static constexpr float GetSunIlluminanceLux() { return 25.0f; }
+        static constexpr float GetSunIlluminanceLux()
+        {
+            return LightingRecipeSet::EffectiveAtomLux(LightingRecipeSet::GetBoundRecipe());
+        }
 
         //! Sun shadow quality. Atom's directional light defaults to a 1x1 shadow map with no filtering, i.e. no
         //! working shadows at all (measured: the floor luma follows the sun's lux even with a closed roof and no

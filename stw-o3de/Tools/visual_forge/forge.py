@@ -151,8 +151,9 @@ def contracts(root):
         require(ratios[0] > ratios[1] > ratios[2], "LOD thresholds must descend")
         require(profile["motion_blur"] == profile["depth_of_field"] == profile["raytracing"] == "off",
                 "gameplay baseline requires motion blur, DoF and RT off")
-    require(lighting["status"] == "TARGET_ONLY" and lighting["runtime_adapter"] == "NOT_YET_IMPLEMENTED",
-            "lighting adapter has not been verified")
+    require(lighting["status"] == "TARGET_ONLY" and
+            lighting["runtime_adapter"] == "DAY_BOUND_UNVERIFIED_SCENES",
+            "lighting adapter must name the day binding and must not claim night or overcast frames")
     path_in(root, lighting["shared_scene"])
     require(set(lighting["recipes"]) == {"LVL_Lighting_Day", "LVL_Lighting_Night", "LVL_Lighting_Overcast"},
             "day/night/overcast recipes required")
