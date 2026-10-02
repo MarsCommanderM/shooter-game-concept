@@ -319,7 +319,8 @@ namespace STWGameplay
 
         if (m_iblFeatureProcessor != nullptr)
         {
-            m_iblFeatureProcessor->SetExposure(GetIblExposureTrim());
+            m_iblFeatureProcessor->SetExposure(
+                GetIblExposureTrim() + LightingRecipeSet::IlluminanceStopDeltaFromDay(m_lightingRecipe));
         }
 
         m_lightingPresetApplied = true;
@@ -525,8 +526,9 @@ namespace STWGameplay
             {
                 continue;
             }
+            const float scale = LightingRecipeSet::AccentScale(m_lightingRecipe);
             const AZ::Render::PhotometricColor<AZ::Render::PointLightFeatureProcessorInterface::PhotometricUnitType>
-                intensity(spec.m_color * spec.m_candela);
+                intensity(spec.m_color * (spec.m_candela * scale));
             m_pointLightFeatureProcessor->SetPosition(handle, spec.m_position);
             m_pointLightFeatureProcessor->SetRgbIntensity(handle, intensity);
             m_pointLightFeatureProcessor->SetAttenuationRadius(handle, spec.m_attenuationRadiusMeters);
@@ -534,6 +536,33 @@ namespace STWGameplay
             m_accentLightHandles[index] = handle;
         }
         m_accentRigApplied = true;
+    }
+
+    void EnvironmentPresentation::SetLightingRecipe(LightingRecipeId recipe)
+    {
+        m_lightingRecipe = recipe;
+        if (m_iblFeatureProcessor != nullptr)
+        {
+            m_iblFeatureProcessor->SetExposure(
+                GetIblExposureTrim() + LightingRecipeSet::IlluminanceStopDeltaFromDay(recipe));
+        }
+        if (m_pointLightFeatureProcessor == nullptr)
+        {
+            return;
+        }
+        const AZStd::array<AccentLightSpec, AccentLightCount> rig = GetAccentLightRig();
+        const float scale = LightingRecipeSet::AccentScale(recipe);
+        for (size_t index = 0; index < AccentLightCount; ++index)
+        {
+            if (!m_accentLightHandles[index].IsValid())
+            {
+                continue;
+            }
+            const AccentLightSpec& spec = rig[index];
+            const AZ::Render::PhotometricColor<AZ::Render::PointLightFeatureProcessorInterface::PhotometricUnitType>
+                intensity(spec.m_color * (spec.m_candela * scale));
+            m_pointLightFeatureProcessor->SetRgbIntensity(m_accentLightHandles[index], intensity);
+        }
     }
 
     void EnvironmentPresentation::NeutraliseDefaultLevelVisuals()

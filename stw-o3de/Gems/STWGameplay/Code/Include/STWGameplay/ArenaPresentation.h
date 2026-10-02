@@ -49,6 +49,8 @@ namespace STWGameplay
             return LightingRecipeSet::EffectiveAtomLux(LightingRecipeSet::GetBoundRecipe());
         }
 
+        void SetLightingRecipe(LightingRecipeId recipe);
+
         //! Sun shadow quality. Atom's directional light defaults to a 1x1 shadow map with no filtering, i.e. no
         //! working shadows at all (measured: the floor luma follows the sun's lux even with a closed roof and no
         //! cover casts a shadow). 2048 is the engine's own lighting-preset value and the supported maximum.
@@ -163,6 +165,7 @@ namespace STWGameplay
         // one line per state transition instead of one per Update().
         uint32_t m_reportedUnresolvedMask = 0xFFFFFFFFu;
         bool m_environmentLightInitialized = false;
+        LightingRecipeId m_lightingRecipe = LightingRecipeId::Day;
         bool m_initialized = false;
         bool m_defaultLevelGroundHidden = false;
         bool m_defaultLevelGridHidden = false;

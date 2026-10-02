@@ -171,6 +171,7 @@ namespace STWGameplay
         void TryStartArenaMesh();
         void ShutdownArenaMesh();
         void UpdateArenaAcceptance();
+        void ApplyCaptureLightingRecipe();
         void UpdateEnemyCombatAcceptance();
         void UpdateMultiEnemyAcceptance();
         void UpdateEnemyAiAcceptance(float deltaTime);
@@ -465,6 +466,8 @@ namespace STWGameplay
         float m_nativeCaptureIntervalSeconds = 0.0f;
         int m_nativeCaptureMaxFrames = 0;
         int m_nativeCaptureFrameIndex = 0;
+        bool m_lightingCaptureSequence = false;
+        int m_appliedLightingSequenceIndex = -1;
         AZStd::array<float, 2048> m_frameSamples{};
         size_t m_frameSampleCount = 0;
         float m_performanceDuration = 0.0f;

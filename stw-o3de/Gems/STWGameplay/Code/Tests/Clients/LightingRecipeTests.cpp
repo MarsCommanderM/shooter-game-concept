@@ -1,50 +1,81 @@
 #include <gtest/gtest.h>
 
 #include <STWGameplay/ArenaPresentation.h>
+#include <STWGameplay/EnvironmentPresentation.h>
 #include <STWGameplay/LightingRecipe.h>
 
 namespace STWGameplay
 {
-    TEST(LightingRecipeTests, DayPhysicalTargetIsTheRejectedRawLux)
+    TEST(LightingRecipeTests, DayPhysicalTargetIsNotTheAtomSun)
     {
         const LightingRecipe day = LightingRecipeSet::Get(LightingRecipeId::Day);
-        EXPECT_FLOAT_EQ(day.m_physicalSunLux, 100000.0f);
-        EXPECT_FLOAT_EQ(day.m_sunElevationDegrees, 45.0f);
-        EXPECT_FLOAT_EQ(day.m_sunAzimuthDegrees, 135.0f);
+        EXPECT_FLOAT_EQ(day.m_physicalSunLux, LightingRecipeSet::DayPhysicalSunLux);
         EXPECT_FLOAT_EQ(day.m_exposureEv100, 15.0f);
-        EXPECT_FLOAT_EQ(day.m_practicalTemperatureK, 3200.0f);
         EXPECT_NE(day.m_physicalSunLux, LightingRecipeSet::EffectiveAtomLux(LightingRecipeId::Day));
+        EXPECT_FLOAT_EQ(
+            LightingRecipeSet::EffectiveAtomLux(LightingRecipeId::Day),
+            LightingRecipeSet::ExposureRelativeAtomLux(LightingRecipeId::Day));
     }
 
     TEST(LightingRecipeTests, DayEffectiveLuxIsTheMeasuredAtomSun)
     {
-        EXPECT_FLOAT_EQ(LightingRecipeSet::EffectiveAtomLux(LightingRecipeId::Day), 25.0f);
-        EXPECT_FLOAT_EQ(ArenaPresentation::GetSunIlluminanceLux(), 25.0f);
+        EXPECT_FLOAT_EQ(
+            LightingRecipeSet::ExposureRelativeAtomLux(LightingRecipeId::Day),
+            LightingRecipeSet::MeasuredSafeAtomDayLux);
+        EXPECT_FLOAT_EQ(ArenaPresentation::GetSunIlluminanceLux(), LightingRecipeSet::MeasuredSafeAtomDayLux);
         EXPECT_EQ(LightingRecipeSet::GetBoundRecipe(), LightingRecipeId::Day);
         EXPECT_TRUE(LightingRecipeSet::IsSafeForCurrentDirectionalLight(LightingRecipeId::Day));
-    }
-
-    TEST(LightingRecipeTests, NightAndOvercastStayOutsideTheMeasuredBand)
-    {
-        const LightingRecipe night = LightingRecipeSet::Get(LightingRecipeId::Night);
-        const LightingRecipe overcast = LightingRecipeSet::Get(LightingRecipeId::Overcast);
-        EXPECT_FLOAT_EQ(night.m_physicalSunLux, 0.2f);
-        EXPECT_FLOAT_EQ(night.m_exposureEv100, 1.0f);
-        EXPECT_FLOAT_EQ(overcast.m_physicalSunLux, 10000.0f);
-        EXPECT_FLOAT_EQ(overcast.m_exposureEv100, 12.0f);
-
-        EXPECT_NEAR(LightingRecipeSet::EffectiveAtomLux(LightingRecipeId::Overcast), 2.5f, 0.0001f);
-        EXPECT_NEAR(LightingRecipeSet::EffectiveAtomLux(LightingRecipeId::Night), 0.00005f, 0.0000001f);
-        EXPECT_FALSE(LightingRecipeSet::IsSafeForCurrentDirectionalLight(LightingRecipeId::Night));
-        EXPECT_FALSE(LightingRecipeSet::IsSafeForCurrentDirectionalLight(LightingRecipeId::Overcast));
-        EXPECT_NE(LightingRecipeSet::GetBoundRecipe(), LightingRecipeId::Night);
-        EXPECT_NE(LightingRecipeSet::GetBoundRecipe(), LightingRecipeId::Overcast);
-    }
-
-    TEST(LightingRecipeTests, ExposureEvIsRecordedAndNotApplied)
-    {
+        EXPECT_FLOAT_EQ(LightingRecipeSet::AccentScale(LightingRecipeId::Day), 1.0f);
+        EXPECT_FLOAT_EQ(LightingRecipeSet::IlluminanceStopDeltaFromDay(LightingRecipeId::Day), 0.0f);
         EXPECT_FALSE(LightingRecipeSet::AppliesManualExposure());
-        EXPECT_GT(LightingRecipeSet::Get(LightingRecipeId::Day).m_exposureEv100,
-            LightingRecipeSet::Get(LightingRecipeId::Night).m_exposureEv100);
+    }
+
+    TEST(LightingRecipeTests, ExposureFoldMakesOvercastSafeAndKeepsNightBelowTheUnscaledBand)
+    {
+        const float day = LightingRecipeSet::ExposureRelativeAtomLux(LightingRecipeId::Day);
+        const float overcast = LightingRecipeSet::ExposureRelativeAtomLux(LightingRecipeId::Overcast);
+        const float night = LightingRecipeSet::ExposureRelativeAtomLux(LightingRecipeId::Night);
+        EXPECT_GT(day, overcast);
+        EXPECT_GT(overcast, night);
+        EXPECT_GT(night, 0.0f);
+        EXPECT_GE(overcast, LightingRecipeSet::SafeAtomLuxMinimum);
+        EXPECT_LE(overcast, LightingRecipeSet::SafeAtomLuxMaximum);
+        EXPECT_LT(night, LightingRecipeSet::SafeAtomLuxMinimum);
+        EXPECT_TRUE(LightingRecipeSet::IsSafeForCurrentDirectionalLight(LightingRecipeId::Overcast));
+        EXPECT_FALSE(LightingRecipeSet::IsSafeForCurrentDirectionalLight(LightingRecipeId::Night));
+        EXPECT_NE(LightingRecipeSet::GetBoundRecipe(), LightingRecipeId::Night);
+        EXPECT_LT(
+            LightingRecipeSet::IlluminanceStopDeltaFromDay(LightingRecipeId::Night),
+            LightingRecipeSet::IlluminanceStopDeltaFromDay(LightingRecipeId::Overcast));
+        EXPECT_LT(
+            LightingRecipeSet::IlluminanceStopDeltaFromDay(LightingRecipeId::Overcast),
+            LightingRecipeSet::IlluminanceStopDeltaFromDay(LightingRecipeId::Day));
+    }
+
+    TEST(LightingRecipeTests, ScaledAccentsStayUnderEachRecipeSun)
+    {
+        const LightingRecipeId recipes[] = {
+            LightingRecipeId::Day, LightingRecipeId::Night, LightingRecipeId::Overcast
+        };
+        for (const LightingRecipeId recipe : recipes)
+        {
+            const float sun = LightingRecipeSet::ExposureRelativeAtomLux(recipe);
+            const float scale = LightingRecipeSet::AccentScale(recipe);
+            EXPECT_GT(scale, 0.0f);
+            for (const EnvironmentPresentation::AccentLightSpec& spec : EnvironmentPresentation::GetAccentLightRig())
+            {
+                const float floorLux = (spec.m_candela * scale) / (spec.m_position.GetZ() * spec.m_position.GetZ());
+                EXPECT_LT(floorLux, sun);
+            }
+        }
+    }
+
+    TEST(LightingRecipeTests, CaptureSequenceCyclesDayNightOvercast)
+    {
+        EXPECT_EQ(LightingRecipeSet::RecipeAtSequenceIndex(0), LightingRecipeId::Day);
+        EXPECT_EQ(LightingRecipeSet::RecipeAtSequenceIndex(1), LightingRecipeId::Night);
+        EXPECT_EQ(LightingRecipeSet::RecipeAtSequenceIndex(2), LightingRecipeId::Overcast);
+        EXPECT_EQ(LightingRecipeSet::RecipeAtSequenceIndex(3), LightingRecipeId::Day);
+        EXPECT_STREQ(LightingRecipeSet::Name(LightingRecipeId::Night), "Night");
     }
 }

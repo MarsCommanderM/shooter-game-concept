@@ -81,15 +81,16 @@ class ForgeTests(unittest.TestCase):
         header = (forge.DEFAULT_ROOT / "Gems/STWGameplay/Code/Include/STWGameplay/LightingRecipe.h").read_text()
         self.assertIn("MeasuredSafeAtomDayLux = 25.0f", header)
         self.assertIn("DayPhysicalSunLux = 100000.0f", header)
+        self.assertIn("return ExposureRelativeAtomLux(id);", header)
+        self.assertIn("return false;", header)
         recipes = lighting["recipes"]
-        day = recipes["LVL_Lighting_Day"]["sun_lux"]
-        self.assertEqual(day, 100000)
-        scale = 25.0 / day
-        self.assertEqual(scale * day, 25.0)
-        self.assertEqual(scale * recipes["LVL_Lighting_Overcast"]["sun_lux"], 2.5)
-        self.assertAlmostEqual(scale * recipes["LVL_Lighting_Night"]["sun_lux"], 0.00005)
-        self.assertFalse(4.0 <= scale * recipes["LVL_Lighting_Night"]["sun_lux"] <= 100.0)
-        self.assertFalse(4.0 <= scale * recipes["LVL_Lighting_Overcast"]["sun_lux"] <= 100.0)
+        self.assertEqual(recipes["LVL_Lighting_Day"]["sun_lux"], 100000)
+        self.assertEqual(recipes["LVL_Lighting_Day"]["exposure_ev100"], 15)
+        self.assertEqual(recipes["LVL_Lighting_Overcast"]["sun_lux"], 10000)
+        self.assertEqual(recipes["LVL_Lighting_Overcast"]["exposure_ev100"], 12)
+        self.assertEqual(recipes["LVL_Lighting_Night"]["sun_lux"], 0.2)
+        self.assertEqual(recipes["LVL_Lighting_Night"]["exposure_ev100"], 1)
+        self.assertNotEqual(recipes["LVL_Lighting_Day"]["sun_lux"], 25)
 
     def test_asset_validation_does_not_grant_approval(self):
         manifest, _ = self.asset_fixture()
