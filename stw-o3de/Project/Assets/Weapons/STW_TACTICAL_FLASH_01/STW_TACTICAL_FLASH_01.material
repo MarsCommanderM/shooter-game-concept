@@ -2,10 +2,25 @@
     "materialType": "@gemroot:Atom_Feature_Common@/Assets/Materials/Types/StandardPBR.materialtype",
     "materialTypeVersion": 5,
     "propertyValues": {
-        "baseColor.color": [0.650000, 0.560000, 0.080000, 1.0],
+        "baseColor.color": [
+            0.65,
+            0.56,
+            0.08,
+            1.0
+        ],
         "baseColor.factor": 1.0,
-        "metallic.factor": 0.620000,
-        "roughness.factor": 0.300000,
-        "specularF0.factor": 0.480000
+        "metallic.factor": 0.62,
+        "roughness.factor": 0.3,
+        "specularF0.factor": 0.48,
+        "baseColor.textureMap": "Textures/STW_TACTICAL_FLASH_01_basecolor.png",
+        "baseColor.useTexture": true,
+        "metallic.textureMap": "Textures/STW_TACTICAL_FLASH_01_metallic.png",
+        "metallic.useTexture": true,
+        "roughness.textureMap": "Textures/STW_TACTICAL_FLASH_01_roughness.png",
+        "roughness.useTexture": true,
+        "normal.textureMap": "Textures/STW_TACTICAL_FLASH_01_normal.png",
+        "normal.useTexture": true,
+        "occlusion.diffuseTextureMap": "Textures/STW_TACTICAL_FLASH_01_ao.png",
+        "occlusion.diffuseUseTexture": true
     }
 }

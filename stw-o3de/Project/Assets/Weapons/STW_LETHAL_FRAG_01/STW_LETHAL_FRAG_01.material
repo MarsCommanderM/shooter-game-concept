@@ -2,10 +2,25 @@
     "materialType": "@gemroot:Atom_Feature_Common@/Assets/Materials/Types/StandardPBR.materialtype",
     "materialTypeVersion": 5,
     "propertyValues": {
-        "baseColor.color": [0.420000, 0.070000, 0.060000, 1.0],
+        "baseColor.color": [
+            0.42,
+            0.07,
+            0.06,
+            1.0
+        ],
         "baseColor.factor": 1.0,
-        "metallic.factor": 0.700000,
-        "roughness.factor": 0.400000,
-        "specularF0.factor": 0.500000
+        "metallic.factor": 0.7,
+        "roughness.factor": 0.4,
+        "specularF0.factor": 0.5,
+        "baseColor.textureMap": "Textures/STW_LETHAL_FRAG_01_basecolor.png",
+        "baseColor.useTexture": true,
+        "metallic.textureMap": "Textures/STW_LETHAL_FRAG_01_metallic.png",
+        "metallic.useTexture": true,
+        "roughness.textureMap": "Textures/STW_LETHAL_FRAG_01_roughness.png",
+        "roughness.useTexture": true,
+        "normal.textureMap": "Textures/STW_LETHAL_FRAG_01_normal.png",
+        "normal.useTexture": true,
+        "occlusion.diffuseTextureMap": "Textures/STW_LETHAL_FRAG_01_ao.png",
+        "occlusion.diffuseUseTexture": true
     }
 }

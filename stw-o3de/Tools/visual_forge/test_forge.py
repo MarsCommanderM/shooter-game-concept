@@ -238,19 +238,45 @@ class ForgeTests(unittest.TestCase):
         body = "v 0 0 0\nv 1 0 0\nv 0 1 0\nv 0 0 1\n" + f"g {group}\n" + ("f 1 2 3\n" * faces)
         self.write(f"Project/Assets/Weapons/{profile}/{profile}{suffix}.obj", body)
 
+    def tiny_png(self, relative):
+        import struct
+        import zlib
+        row = b"\x00" + b"\x00\x00\x00" * 8
+        raw = row * 8
+        def chunk(tag, data):
+            return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+        png = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 8, 8, 8, 2, 0, 0, 0))
+               + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+        path = self.root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(png)
+
+    def textured_material(self, profile):
+        values = {}
+        for key, suffix in (("baseColor.textureMap", "basecolor"), ("metallic.textureMap", "metallic"),
+                            ("roughness.textureMap", "roughness"), ("normal.textureMap", "normal")):
+            relative = f"Project/Assets/Weapons/{profile}/Textures/{profile}_{suffix}.png"
+            self.tiny_png(relative)
+            values[key] = f"Textures/{profile}_{suffix}.png"
+        self.write(f"Project/Assets/Weapons/{profile}/{profile}.material",
+                   json.dumps({"propertyValues": values}))
+
     def test_weapon_source_budget_passes_without_promotion(self):
         profile = "STW_SMG_01"
         self.weapon_obj(profile, "", "LOD0", 3)
         self.weapon_obj(profile, "_LOD1", "LOD1", 2)
         self.weapon_obj(profile, "_LOD2", "LOD2", 1)
-        self.write(f"Project/Assets/Weapons/{profile}/{profile}.material", "{\"propertyValues\": {}}")
+        self.textured_material(profile)
         result = forge.inspect_weapon_package(self.root, profile, self.policy)
         self.assertEqual(result["source_budget"], "PASS")
         self.assertEqual(result["failures"], [])
         self.assertEqual(result["approval"], "NOT_GRANTED")
         self.assertEqual(result["texture_memory_mib"], "UNMEASURED")
+        self.assertEqual(result["texture_edge"], 8)
+        self.assertEqual(result["reviews"]["art"], "NOT_REVIEWED")
         self.assertEqual([item["triangles"] for item in result["lods"]], [3, 2, 1])
         self.assertNotIn("PRODUCTION_CANDIDATE", json.dumps(result))
+        self.assertNotIn("APPROVED", json.dumps(result))
 
     def test_weapon_triangle_and_material_caps_reject(self):
         profile = "STW_RIFLE_02"
@@ -283,7 +309,10 @@ class ForgeTests(unittest.TestCase):
             self.assertGreater(counts[0], counts[1], profile)
             self.assertGreater(counts[1], counts[2], profile)
             self.assertEqual(item["material_files"], 1, profile)
+            self.assertGreaterEqual(item["texture_maps"], 4, profile)
+            self.assertEqual(item["texture_edge"], 2048, profile)
             self.assertEqual(item["texture_memory_mib"], "UNMEASURED", profile)
+            self.assertEqual(item["reviews"]["art"], "NOT_REVIEWED", profile)
             self.assertEqual(item["failures"], [], profile)
             self.assertEqual(item["approval"], "NOT_GRANTED", profile)
 

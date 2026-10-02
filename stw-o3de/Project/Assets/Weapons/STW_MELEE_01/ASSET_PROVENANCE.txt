@@ -16,13 +16,19 @@ Source files
     STW_MELEE_01_LOD1.obj      reduced presentation mesh
     STW_MELEE_01_LOD2.obj      core presentation mesh
     STW_MELEE_01.material      one Atom StandardPBR material, authored as text
+    Textures/STW_MELEE_01_basecolor.png
+    Textures/STW_MELEE_01_metallic.png
+    Textures/STW_MELEE_01_roughness.png
+    Textures/STW_MELEE_01_normal.png
+    Textures/STW_MELEE_01_ao.png
     ASSET_PROVENANCE.txt
 
 Factual statements
 ------------------
 - The geometry was authored locally in this repository.
 - No external model source was used and nothing was downloaded to produce this asset.
-- No textures are used; the material contains only text-authored StandardPBR values.
+- BaseColor, metallic, roughness, normal and AO maps are original procedural PNGs
+  from tools/assets/create_stw_weapon_textures.py. No image was downloaded.
 - No commercial, sample or third-party asset was copied, converted or adapted.
 - This is an original fictional sci-fi silhouette, not a replica of any real-world weapon.
 - The asset deliberately contains no real-world construction, internal mechanism,

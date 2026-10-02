@@ -14,6 +14,7 @@ import json
 import math
 from pathlib import Path
 import re
+import struct
 import subprocess
 import sys
 
@@ -292,23 +293,35 @@ def obj_geometry(path):
             "duplicate_lods": duplicates}
 
 
-def texture_map_count(path):
-    count = 0
+REQUIRED_TEXTURE_KEYS = (
+    "baseColor.textureMap",
+    "metallic.textureMap",
+    "roughness.textureMap",
+    "normal.textureMap",
+)
 
-    def visit(value):
-        nonlocal count
-        if isinstance(value, dict):
-            for key, item in value.items():
-                if key.split(".")[-1] == "textureMap" and item:
-                    count += 1
-                else:
-                    visit(item)
-        elif isinstance(value, list):
-            for item in value:
-                visit(item)
 
-    visit(load(path).get("propertyValues", {}))
-    return count
+def png_edge(path):
+    header = path.read_bytes()[:24]
+    require(len(header) == 24 and header[:8] == b"\x89PNG\r\n\x1a\n" and header[12:16] == b"IHDR",
+            f"texture is not a PNG: {path.name}")
+    return struct.unpack(">II", header[16:24])
+
+
+def texture_sources(path):
+    """Return (key, resolved file or None) for referenced texture maps."""
+    values = load(path).get("propertyValues", {})
+    found = []
+    for key, item in values.items():
+        leaf = key.split(".")[-1]
+        if leaf not in ("textureMap", "diffuseTextureMap") or not item:
+            continue
+        if not isinstance(item, str):
+            found.append((key, None))
+            continue
+        texture = (path.parent / item).resolve()
+        found.append((key, texture if texture.is_file() else None))
+    return found
 
 
 def inspect_weapon_package(root, profile, policy):
@@ -322,7 +335,10 @@ def inspect_weapon_package(root, profile, policy):
     unexpected = sorted(path.name for path in directory.glob("*.obj") if path.name not in allowed)
     primary = obj_geometry(primary_path)
     materials = sorted(directory.glob("*.material"))
-    maps = sum(texture_map_count(path) for path in materials)
+    referenced = []
+    for material in materials:
+        referenced.extend(texture_sources(material))
+    present = {key: texture for key, texture in referenced if texture is not None}
     lod_by_index = {}
     failures = []
     for item in primary["lods"]:
@@ -362,16 +378,34 @@ def inspect_weapon_package(root, profile, policy):
             failures.append("LOD triangle counts must decrease from LOD0")
         if primary["triangles"] != lod_by_index[0]["triangles"]:
             failures.append("primary OBJ triangle count includes faces outside LOD0")
+    edges = []
+    for key in REQUIRED_TEXTURE_KEYS:
+        texture = present.get(key)
+        if texture is None:
+            failures.append(f"missing texture map {key}")
+            continue
+        width, height = png_edge(texture)
+        if width != height:
+            failures.append(f"{key} is not square")
+        elif width > budget["texture_edge"] or height > budget["texture_edge"]:
+            failures.append(f"texture edge {width} exceeds {budget['texture_edge']}")
+        else:
+            edges.append(width)
+    for key, texture in referenced:
+        if texture is None and key not in REQUIRED_TEXTURE_KEYS:
+            failures.append(f"missing texture file for {key}")
     return {
         "profile": profile,
         "primary": f"Project/Assets/Weapons/{profile}/{profile}.obj",
         "triangles": primary["triangles"],
         "material_files": len(materials),
         "usemtl_count": len(primary["usemtl"]),
-        "texture_maps": maps,
+        "texture_maps": len(present),
+        "texture_edge": max(edges) if edges else 0,
         "texture_memory_mib": "UNMEASURED",
         "lods": [{"node": lod_by_index[index]["node"], "triangles": lod_by_index[index]["triangles"]}
                  for index in found],
+        "reviews": {role: "NOT_REVIEWED" for role in policy["required_reviews"]},
         "source_budget": "FAIL" if failures else "PASS",
         "failures": failures,
         "approval": "NOT_GRANTED",

@@ -3,14 +3,24 @@
     "materialTypeVersion": 5,
     "propertyValues": {
         "baseColor.color": [
-            0.018000,
-            0.240000,
-            0.310000,
+            0.018,
+            0.24,
+            0.31,
             1.0
         ],
         "baseColor.factor": 1.0,
-        "metallic.factor": 0.720000,
-        "roughness.factor": 0.280000,
-        "specularF0.factor": 0.520000
+        "metallic.factor": 0.72,
+        "roughness.factor": 0.28,
+        "specularF0.factor": 0.52,
+        "baseColor.textureMap": "Textures/STW_RIFLE_02_basecolor.png",
+        "baseColor.useTexture": true,
+        "metallic.textureMap": "Textures/STW_RIFLE_02_metallic.png",
+        "metallic.useTexture": true,
+        "roughness.textureMap": "Textures/STW_RIFLE_02_roughness.png",
+        "roughness.useTexture": true,
+        "normal.textureMap": "Textures/STW_RIFLE_02_normal.png",
+        "normal.useTexture": true,
+        "occlusion.diffuseTextureMap": "Textures/STW_RIFLE_02_ao.png",
+        "occlusion.diffuseUseTexture": true
     }
 }

@@ -2,10 +2,25 @@
     "materialType": "@gemroot:Atom_Feature_Common@/Assets/Materials/Types/StandardPBR.materialtype",
     "materialTypeVersion": 5,
     "propertyValues": {
-        "baseColor.color": [0.120000, 0.330000, 0.300000, 1.0],
+        "baseColor.color": [
+            0.12,
+            0.33,
+            0.3,
+            1.0
+        ],
         "baseColor.factor": 1.0,
-        "metallic.factor": 0.560000,
-        "roughness.factor": 0.480000,
-        "specularF0.factor": 0.440000
+        "metallic.factor": 0.56,
+        "roughness.factor": 0.48,
+        "specularF0.factor": 0.44,
+        "baseColor.textureMap": "Textures/STW_TACTICAL_SMOKE_01_basecolor.png",
+        "baseColor.useTexture": true,
+        "metallic.textureMap": "Textures/STW_TACTICAL_SMOKE_01_metallic.png",
+        "metallic.useTexture": true,
+        "roughness.textureMap": "Textures/STW_TACTICAL_SMOKE_01_roughness.png",
+        "roughness.useTexture": true,
+        "normal.textureMap": "Textures/STW_TACTICAL_SMOKE_01_normal.png",
+        "normal.useTexture": true,
+        "occlusion.diffuseTextureMap": "Textures/STW_TACTICAL_SMOKE_01_ao.png",
+        "occlusion.diffuseUseTexture": true
     }
 }
